@@ -542,21 +542,6 @@ client.on("message", async (msg) => {
       `✅ Kontak berhasil ditambahkan:\n${newKontak.name} | ${newKontak.phoneNumber}`
     );
   }
-
-  if (body.startsWith("!editkontak")) {
-    if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
-
-    const [, idStr] = body.split(" ");
-    const id = parseInt(idStr);
-    if (!contacts.has(id)) return msg.reply("❌ ID tidak ditemukan.");
-
-    const kontak = contacts.get(id);
-    sessions.set(sender, { step: "edit-kontak-nama", id });
-    return msg.reply(
-      `✏️ Kontak saat ini:\n${kontak.name} | ${kontak.phoneNumber}\n\nMasukkan nama baru:`
-    );
-  }
-
   if (body === "!editkontak") {
     if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
 
@@ -587,7 +572,6 @@ client.on("message", async (msg) => {
     const selected = session.list?.[index - 1];
     if (!selected) return msg.reply("❌ Nomor tidak valid.");
 
-    // Simpan kontak lengkap ke session
     session.kontak = {
       id: selected.id,
       name: selected.name,
@@ -612,10 +596,18 @@ client.on("message", async (msg) => {
 
     if (!kontak?.id) {
       sessions.delete(sender);
-      return msg.reply("❌ Error: kontak tidak memiliki ID. Data rusak.");
+      return msg.reply(
+        "❌ Error: ID kontak tidak ditemukan. Coba tambah ulang kontak."
+      );
     }
 
-    // Update data
+    // ⚠️ Tambahan keamanan: pastikan contacts masih Map
+    if (!(contacts instanceof Map)) {
+      return msg.reply(
+        "❌ Error internal: data kontak rusak (bukan Map). Restart bot."
+      );
+    }
+
     kontak.name = session.newName;
     kontak.phoneNumber = nomor;
 

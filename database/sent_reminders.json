@@ -22,5 +22,11 @@
     "phoneNumber": "6287728972090",
     "reminderDateTime": "2025-06-21T10:45:00.000Z",
     "message": "Halo Hafri, ini pengingat tagihan bulan Juni tanggal 2025-06-21.\r\n"
+  },
+  {
+    "id": 1750502520059,
+    "phoneNumber": "6282240271264",
+    "reminderDateTime": "2025-06-21T11:11:00.000Z",
+    "message": "Halo 6282240271264, ini pengingat tagihan bulan Juni tanggal 2025-06-21.\r\n"
   }
 ]
