@@ -311,9 +311,9 @@ client.on("message", async (msg) => {
         );
         const nama = kontak ? kontak.name : r.phoneNumber;
         const waktu = new Date(r.reminderDateTime).toLocaleString("id-ID");
-        return `${i + 1}. ${nama} | ${waktu}\n🆔 ID: ${r.id}`;
+        return `${i + 1}. ${nama} | ${waktu}`;
       })
-      .join("\n\n");
+      .join("\n");
 
     sessions.set(sender, {
       step: "edit-reminder-select",
@@ -321,7 +321,7 @@ client.on("message", async (msg) => {
     });
 
     return msg.reply(
-      `✏️ Pilih reminder yang ingin diedit:\n\n${list}\n\nKetik nomor:`
+      `✏️ Pilih reminder yang ingin diedit:\n${list}\n\nKetik nomor:`
     );
   }
 
@@ -343,19 +343,98 @@ client.on("message", async (msg) => {
     const dt = new Date(`${tanggal}T${jam}:00`);
     if (isNaN(dt.getTime())) return msg.reply("❌ Format waktu salah.");
 
-    const reminder = session.selectedReminder;
-    const bulan = dt.toLocaleString("id-ID", { month: "long" });
+    session.newDate = dt;
+    session.step = "edit-reminder-pesan";
+    return msg.reply(
+      "📩 Ganti isi pesan?\n1. Pakai template\n2. Ketik manual\n3. Tidak usah ganti\n\nKetik 1 / 2 / 3:"
+    );
+  }
 
-    reminder.reminderDateTime = dt;
-    reminder.message = reminder.message
-      .replace(/\d{4}-\d{2}-\d{2}/, tanggal)
-      .replace(/bulan \w+/gi, `bulan ${bulan}`);
+  if (session?.step === "edit-reminder-pesan") {
+    if (body === "1") {
+      const templates = await loadTemplates();
+      session.templateOptions = templates;
+      session.step = "edit-reminder-template";
+
+      const list = templates.map((t, i) => `${i + 1}. ${t.name}`).join("\n");
+      return msg.reply(`📄 Pilih Template:\n${list}\n\nKetik nomor:`);
+    }
+
+    if (body === "2") {
+      session.step = "edit-reminder-custom";
+      return msg.reply("✏️ Ketik pesan baru:");
+    }
+
+    if (body === "3") {
+      const reminder = session.selectedReminder;
+      reminder.reminderDateTime = session.newDate;
+
+      reminders.set(reminder.id, reminder);
+      await saveMapToFile(reminders, remindersPath);
+      sessions.delete(sender);
+
+      return msg.reply(
+        `✅ Reminder berhasil diperbarui ke ${session.newDate.toLocaleString(
+          "id-ID"
+        )}`
+      );
+    }
+
+    return msg.reply("❌ Pilih 1 / 2 / 3 sesuai opsi.");
+  }
+
+  if (session?.step === "edit-reminder-template") {
+    const idx = parseInt(body);
+    const selected = session.templateOptions?.[idx - 1];
+    if (!selected) return msg.reply("❌ Template tidak ditemukan.");
+
+    const reminder = session.selectedReminder;
+    const tanggal = session.newDate.toISOString().split("T")[0];
+    const bulan = session.newDate.toLocaleString("id-ID", { month: "long" });
+
+    const kontak = Array.from(contacts.values()).find(
+      (c) => c.phoneNumber === reminder.phoneNumber
+    );
+
+    const finalMessage = selected.content
+      .replace(/{{nama}}/gi, kontak?.name || reminder.phoneNumber)
+      .replace(/{{tanggal}}/gi, tanggal)
+      .replace(/{{bulan}}/gi, bulan);
+
+    reminder.reminderDateTime = session.newDate;
+    reminder.message = finalMessage;
 
     reminders.set(reminder.id, reminder);
     await saveMapToFile(reminders, remindersPath);
     sessions.delete(sender);
 
-    return msg.reply(`✅ Reminder berhasil diubah ke ${tanggal} ${jam}`);
+    return msg.reply(
+      "✅ Reminder berhasil diperbarui dengan pesan dari template."
+    );
+  }
+
+  if (session?.step === "edit-reminder-custom") {
+    const reminder = session.selectedReminder;
+    const tanggal = session.newDate.toISOString().split("T")[0];
+    const bulan = session.newDate.toLocaleString("id-ID", { month: "long" });
+
+    const kontak = Array.from(contacts.values()).find(
+      (c) => c.phoneNumber === reminder.phoneNumber
+    );
+
+    const finalMessage = body
+      .replace(/{{nama}}/gi, kontak?.name || reminder.phoneNumber)
+      .replace(/{{tanggal}}/gi, tanggal)
+      .replace(/{{bulan}}/gi, bulan);
+
+    reminder.reminderDateTime = session.newDate;
+    reminder.message = finalMessage;
+
+    reminders.set(reminder.id, reminder);
+    await saveMapToFile(reminders, remindersPath);
+    sessions.delete(sender);
+
+    return msg.reply("✅ Reminder berhasil diperbarui dengan pesan custom.");
   }
 
   if (body === "!deletereminder") {
