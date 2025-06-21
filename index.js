@@ -614,6 +614,19 @@ cron.schedule("*/1 * * * *", async () => {
       );
       console.log("📤 Reminder terkirim:", reminder.phoneNumber);
 
+      // Kirim salinan ke semua admin
+      for (const [nomor, role] of roles.entries()) {
+        if (role === "admin") {
+          const jid = `${nomor}@c.us`;
+          if (jid !== `${reminder.phoneNumber}@c.us`) {
+            await client.sendMessage(
+              jid,
+              `📥 Reminder terkirim ke ${reminder.phoneNumber}:\n\n${reminder.message}`
+            );
+          }
+        }
+      }
+
       sentReminders.set(id, reminder);
       reminders.delete(id);
 
