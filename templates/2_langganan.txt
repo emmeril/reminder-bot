@@ -1,0 +1,1 @@
+Halo {{nama}}, ini pengingat tagihan bulan {{bulan}} tanggal {{tanggal}}.
