@@ -587,9 +587,14 @@ client.on("message", async (msg) => {
     const selected = session.list?.[index - 1];
     if (!selected) return msg.reply("❌ Nomor tidak valid.");
 
-    session.kontak = selected;
-    session.step = "edit-kontak-nama";
+    // Simpan kontak lengkap ke session
+    session.kontak = {
+      id: selected.id,
+      name: selected.name,
+      phoneNumber: selected.phoneNumber,
+    };
 
+    session.step = "edit-kontak-nama";
     return msg.reply(`✏️ Nama saat ini: ${selected.name}\nMasukkan nama baru:`);
   }
 
@@ -604,6 +609,13 @@ client.on("message", async (msg) => {
     if (!/^628\d{7,13}$/.test(nomor)) return msg.reply("❌ Nomor tidak valid!");
 
     const kontak = session.kontak;
+
+    if (!kontak?.id) {
+      sessions.delete(sender);
+      return msg.reply("❌ Error: kontak tidak memiliki ID. Data rusak.");
+    }
+
+    // Update data
     kontak.name = session.newName;
     kontak.phoneNumber = nomor;
 
