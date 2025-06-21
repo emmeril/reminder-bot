@@ -1,0 +1,1 @@
+Hai {{nama}}, jangan lupa bayar tagihan Emmeril Hotspot untuk bulan {{bulan}}, tanggal {{tanggal}} sebesar Rp 75.000, pembayaran bisa melalui transfer ke BCA 134-266-9497 a/n Hafriyanto. Abaikan pesan ini jika sudah melakukan pembayaran. Terima kasih.
