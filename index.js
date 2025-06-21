@@ -403,17 +403,15 @@ client.on("message", async (msg) => {
   }
 
   if (body === "!listreminder") {
-    if (!isAdmin(sender)) {
-      return msg.reply("❌ Anda bukan admin.");
-    }
-
-    if (reminders.size === 0) {
-      return msg.reply("📭 Belum ada reminder yang aktif.");
-    }
+    if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
 
     const sorted = Array.from(reminders.values()).sort(
       (a, b) => new Date(a.reminderDateTime) - new Date(b.reminderDateTime)
     );
+
+    if (sorted.length === 0) {
+      return msg.reply("📭 Belum ada reminder yang aktif.");
+    }
 
     const list = sorted
       .map((r, i) => {
@@ -421,12 +419,17 @@ client.on("message", async (msg) => {
           (c) => c.phoneNumber === r.phoneNumber
         );
         const nama = kontak ? kontak.name : r.phoneNumber;
-        const waktu = new Date(r.reminderDateTime).toLocaleString("id-ID");
-        return `${i + 1}. ${nama} | ${waktu}\n📩 Pesan: ${r.message}`;
+        const waktu = new Date(r.reminderDateTime).toLocaleString("id-ID", {
+          dateStyle: "long",
+          timeStyle: "short",
+          timeZone: "Asia/Jakarta",
+        });
+
+        return `${i + 1}. ${nama} — ${waktu} WIB\n   💬 ${r.message}`;
       })
       .join("\n\n");
 
-    return msg.reply(`📌 Reminder Aktif (urut tanggal terdekat):\n\n${list}`);
+    return msg.reply(`📌 Reminder Aktif (urut tanggal):\n\n${list}`);
   }
 
   if (body === "!addkontak") {
@@ -574,17 +577,17 @@ client.on("message", async (msg) => {
   if (body === "!listkontak") {
     if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
 
-    if (contacts.size === 0) return msg.reply("📭 Tidak ada kontak.");
-
     const sorted = Array.from(contacts.values()).sort((a, b) =>
       a.name.localeCompare(b.name)
     );
 
-    const list = sorted
-      .map((c, i) => `${i + 1}. ${c.name} | ${c.phoneNumber}`)
-      .join("\n");
+    if (sorted.length === 0) return msg.reply("📭 Belum ada kontak.");
 
-    return msg.reply(`📇 Daftar Kontak (A-Z):\n\n${list}`);
+    const list = sorted
+      .map((c, i) => `${i + 1}. ${c.name}\n   📞 ${c.phoneNumber}`)
+      .join("\n\n");
+
+    return msg.reply(`📇 Daftar Kontak (A–Z):\n\n${list}`);
   }
 
   // ADMIN add role
