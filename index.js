@@ -95,6 +95,7 @@ let isReady = false;
 
 //termux
 const client = new Client({
+  authStrategy: new LocalAuth(),
   puppeteer: {
     executablePath: "/usr/bin/chromium",
     headless: true,
