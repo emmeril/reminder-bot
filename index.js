@@ -88,9 +88,22 @@ const isAdmin = (sender) => {
 let currentQR = null;
 let isReady = false;
 
+// const client = new Client({
+//   authStrategy: new LocalAuth(),
+//   puppeteer: { headless: true, args: ["--no-sandbox"] },
+// });
+
+//termux
 const client = new Client({
-  authStrategy: new LocalAuth(),
-  puppeteer: { headless: true, args: ["--no-sandbox"] },
+  puppeteer: {
+    executablePath: "/usr/bin/chromium",
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+    ],
+  },
 });
 
 client.on("qr", (qr) => {
@@ -103,6 +116,12 @@ client.on("ready", () => {
   isReady = true;
   currentQR = null;
   console.log("✅ WhatsApp berhasil terhubung.");
+});
+
+client.on("disconnected", (reason) => {
+  console.log("❌ WhatsApp disconnected:", reason);
+  fs.rmSync(".wwebjs_auth", { recursive: true, force: true });
+  process.exit(); // atau restart otomatis
 });
 
 app.get("/qr", async (req, res) => {
