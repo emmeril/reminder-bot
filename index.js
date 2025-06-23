@@ -214,7 +214,7 @@ app.get("/qr", async (req, res) => {
 
 client.initialize();
 
-const PORT = 3000;
+const PORT = 3025;
 app.listen(PORT, () => {
   console.log(`🌐 Akses QR di browser: http://localhost:${PORT}/qr`);
 });
