@@ -700,6 +700,38 @@ client.on("message", async (msg) => {
     await saveRolesToFile();
     return msg.reply(`✅ ${newAdminNumber} sekarang menjadi admin.`);
   }
+
+  // ===== HELP & MENU =====
+  if (body === "!help" || body === "!menu") {
+    // Daftar perintah umum (semua pengguna)
+    const umum = [
+      "📖  *Menu Bantuan*",
+      "",
+      "• !help / !menu  – tampilkan bantuan",
+    ];
+
+    // Daftar perintah khusus admin
+    const admin = [
+      "",
+      "🛠️  *Perintah Admin:*",
+      "• !addreminder      – tambah reminder",
+      "• !editreminder     – ubah reminder",
+      "• !deletereminder   – hapus reminder",
+      "• !listreminder     – lihat semua reminder",
+      "• !addkontak        – tambah kontak",
+      "• !editkontak       – ubah kontak",
+      "• !deletekontak     – hapus kontak",
+      "• !listkontak       – lihat semua kontak",
+      "• !setadmin <no>    – jadikan nomor admin",
+    ];
+
+    const menuText = isAdmin(sender)
+      ? umum.concat(admin).join("\n")
+      : umum.join("\n");
+
+    return msg.reply(menuText);
+  }
+  // ===== END HELP =====
 });
 
 // Cron kirim reminder
