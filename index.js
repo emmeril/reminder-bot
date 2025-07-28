@@ -100,9 +100,32 @@ const client = new Client({
     executablePath: "/usr/bin/chromium",
     headless: true,
     args: [
+      // WAJIB: Keamanan dan stabilitas
       "--no-sandbox",
       "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
+
+      // SANGAT PENTING untuk Armbian (memori terbatas)
+      "--disable-dev-shm-usage", // Menggunakan /tmp bukan /dev/shm, penting jika memori /dev/shm kecil
+      "--disable-accelerated-2d-canvas", // Kurangi beban GPU/CPU
+      "--disable-gpu", // Menonaktifkan akselerasi GPU, Armbian umumnya tidak punya GPU yang kuat
+      "--no-zygote", // Kurangi overhead proses
+      "--disable-gpu-shader-disk-cache", // Kurangi I/O disk
+
+      // Mengurangi resource yang tidak perlu, sangat membantu di Armbian
+      "--no-first-run", // Mempercepat startup
+      "--disable-gl-drawing-for-tests", // Kurangi rendering GL
+      "--disable-canvas-aa", // Matikan anti-aliasing canvas
+      "--disable-extensions", // Matikan ekstensi
+      "--disable-features=IsolateOrigins,site-per-process", // Kurangi overhead isolasi situs
+      "--disable-site-isolation-trials", // Matikan uji coba isolasi situs
+      "--disable-features=BlockInsecurePrivateNetworkRequests",
+      "--no-service-worker-by-default", // Matikan service worker default
+      "--mute-audio", // Matikan audio jika tidak perlu (hemat resource)
+      "--disable-background-networking", // Mengurangi aktivitas jaringan di latar belakang
+      "--disable-background-timer-throttling", // Mencegah throttling timer background
+      "--disable-backgrounding-occluded-windows", // Menonaktifkan backgrounding window yang tertutup
+      "--disable-ipc-flooding-protection", // Menonaktifkan perlindungan IPC flooding
+      "--disable-renderer-backgrounding", // Menonaktifkan backgrounding renderer
     ],
   },
 });
