@@ -100,35 +100,46 @@ const client = new Client({
     executablePath: "/usr/bin/chromium",
     headless: true,
     args: [
-      // WAJIB: Keamanan dan stabilitas
       "--no-sandbox",
       "--disable-setuid-sandbox",
 
-      // SANGAT PENTING untuk Armbian (memori terbatas)
-      "--disable-dev-shm-usage", // Menggunakan /tmp bukan /dev/shm, penting jika memori /dev/shm kecil
-      "--disable-accelerated-2d-canvas", // Kurangi beban GPU/CPU
-      "--disable-gpu", // Menonaktifkan akselerasi GPU, Armbian umumnya tidak punya GPU yang kuat
-      "--no-zygote", // Kurangi overhead proses
-      "--disable-gpu-shader-disk-cache", // Kurangi I/O disk
+      // Optimasi untuk device low-resource
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-accelerated-2d-canvas",
+      "--disable-gpu-shader-disk-cache",
+      "--no-zygote",
 
-      // Mengurangi resource yang tidak perlu, sangat membantu di Armbian
-      "--no-first-run", // Mempercepat startup
-      "--disable-gl-drawing-for-tests", // Kurangi rendering GL
-      "--disable-canvas-aa", // Matikan anti-aliasing canvas
-      "--disable-extensions", // Matikan ekstensi
-      "--disable-features=IsolateOrigins,site-per-process", // Kurangi overhead isolasi situs
-      "--disable-site-isolation-trials", // Matikan uji coba isolasi situs
-      "--disable-features=BlockInsecurePrivateNetworkRequests",
-      "--no-service-worker-by-default", // Matikan service worker default
-      "--mute-audio", // Matikan audio jika tidak perlu (hemat resource)
-      "--disable-background-networking", // Mengurangi aktivitas jaringan di latar belakang
-      "--disable-background-timer-throttling", // Mencegah throttling timer background
-      "--disable-backgrounding-occluded-windows", // Menonaktifkan backgrounding window yang tertutup
-      "--disable-ipc-flooding-protection", // Menonaktifkan perlindungan IPC flooding
-      "--disable-renderer-backgrounding", // Menonaktifkan backgrounding renderer
+      // Mempercepat startup dan kurangi overhead
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-extensions",
+      "--disable-infobars",
+
+      // Minimalkan proses background
+      "--disable-background-networking",
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
+
+      // Nonaktifkan fitur Chromium berat
+      "--disable-features=IsolateOrigins,site-per-process,BlockInsecurePrivateNetworkRequests",
+      "--disable-site-isolation-trials",
+      "--disable-sync",
+      "--disable-translate",
+      "--disable-gl-drawing-for-tests",
+      "--disable-canvas-aa",
+      "--no-service-worker-by-default",
+      "--mute-audio",
+
+      // Tambahan untuk stabilitas di STB
+      "--single-process", // Kurangi overhead multi-proses
+      "--disable-crash-reporter", // Jangan kirim laporan crash
+      "--disable-client-side-phishing-detection",
     ],
   },
 });
+
 
 client.on("qr", (qr) => {
   currentQR = qr;
