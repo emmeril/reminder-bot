@@ -259,16 +259,6 @@ client.on("message", async (msg) => {
   const body = msg.body.trim();
   const session = sessions.get(sender);
   const number = sender.split("@")[0];
-  
-  // Tambahkan fitur untuk membatalkan proses di tengah jalan
-  if (body === "!cancel") {
-    if (session) {
-      sessions.delete(sender);
-      return msg.reply("✅ Sesi saat ini dibatalkan.");
-    } else {
-      return msg.reply("❌ Tidak ada sesi yang aktif untuk dibatalkan.");
-    }
-  }
 
   if (body === "!addreminder") {
     if (!isAdmin(sender)) {
@@ -752,7 +742,6 @@ client.on("message", async (msg) => {
       "📖  *Menu Bantuan*",
       "",
       "• !help / !menu  – tampilkan bantuan",
-      "• !cancel        – batalkan proses saat ini",
     ];
 
     // Daftar perintah khusus admin
