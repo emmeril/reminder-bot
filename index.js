@@ -99,43 +99,10 @@ const client = new Client({
   puppeteer: {
     executablePath: "/usr/bin/chromium",
     headless: true,
-    args: [
+     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
-
-      // Optimasi untuk device low-resource
       "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--disable-accelerated-2d-canvas",
-      "--disable-gpu-shader-disk-cache",
-      "--no-zygote",
-
-      // Mempercepat startup dan kurangi overhead
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-extensions",
-      "--disable-infobars",
-
-      // Minimalkan proses background
-      "--disable-background-networking",
-      "--disable-background-timer-throttling",
-      "--disable-backgrounding-occluded-windows",
-      "--disable-renderer-backgrounding",
-
-      // Nonaktifkan fitur Chromium berat
-      "--disable-features=IsolateOrigins,site-per-process,BlockInsecurePrivateNetworkRequests",
-      "--disable-site-isolation-trials",
-      "--disable-sync",
-      "--disable-translate",
-      "--disable-gl-drawing-for-tests",
-      "--disable-canvas-aa",
-      "--no-service-worker-by-default",
-      "--mute-audio",
-
-      // Tambahan untuk stabilitas di STB
-      "--single-process", // Kurangi overhead multi-proses
-      "--disable-crash-reporter", // Jangan kirim laporan crash
-      "--disable-client-side-phishing-detection",
     ],
   },
 });
