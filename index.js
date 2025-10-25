@@ -279,47 +279,165 @@ const autoSave = async () => {
   }
 })();
 
-// Setup WhatsApp
+// 🔧 FIX: Enhanced Puppeteer configuration untuk stability
+const puppeteerOptions = {
+  executablePath: "/usr/bin/chromium",
+  headless: true,
+  args: [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-accelerated-2d-canvas",
+    "--no-first-run",
+    "--no-zygote",
+    "--disable-gpu",
+    "--disable-software-rasterizer",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--disable-features=TranslateUI,BlinkGenPropertyTrees",
+    "--disable-ipc-flooding-protection",
+    "--enable-features=NetworkService,NetworkServiceInProcess",
+    "--ignore-certificate-errors",
+    "--ignore-ssl-errors",
+    "--no-default-browser-check",
+    "--disable-default-apps",
+    "--disable-background-networking",
+    "--disable-extensions",
+    "--disable-translate",
+    "--disable-sync",
+    "--disable-plugins",
+    "--disable-plugins-discovery",
+    "--disable-file-system",
+    "--disable-session-crashed-bubble",
+    "--disable-logging",
+    "--disable-remote-fonts",
+    "--disable-web-security",
+    "--disable-xss-auditor",
+    "--disable-popup-blocking",
+    "--disable-breakpad",
+    "--disable-client-side-phishing-detection",
+    "--disable-component-extensions-with-background-pages",
+    "--disable-hang-monitor",
+    "--disable-prompt-on-repost",
+    "--disable-domain-reliability",
+    "--disable-back-forward-cache",
+    "--disable-notifications",
+    "--disable-shm-usage",
+    "--disable-webrtc-hw-decoding",
+    "--disable-webrtc-hw-encoding",
+    "--disable-webrtc-multiple-routes",
+    "--disable-webrtc-hw-vp8-encoding",
+    "--single-process",
+    "--mute-audio",
+    "--autoplay-policy=user-gesture-required",
+    "--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.64 Safari/537.36"
+  ],
+  ignoreHTTPSErrors: true,
+  handleSIGINT: false,
+  handleSIGTERM: false,
+  handleSIGHUP: false,
+};
+
+// 🔧 FIX: Client dengan restart mechanism
+let client = null;
 let currentQR = null;
 let isReady = false;
+let restartCount = 0;
+const MAX_RESTARTS = 10;
+const RESTART_DELAY = 10000; // 10 detik
 
-// const client = new Client({
-//   authStrategy: new LocalAuth(),
-//   puppeteer: { headless: true, args: ["--no-sandbox"] },
-// });
+const initializeClient = () => {
+  try {
+    if (client) {
+      try {
+        client.destroy();
+      } catch (e) {
+        console.log('🔄 Cleaning up previous client...');
+      }
+      client = null;
+    }
 
-//termux
-const client = new Client({
-  authStrategy: new LocalAuth(),
-  puppeteer: {
-    executablePath: "/usr/bin/chromium",
-    headless: true,
-     args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-    ],
-  },
-});
+    client = new Client({
+      authStrategy: new LocalAuth({
+        clientId: "whatsapp-bot",
+        dataPath: DB_PATH
+      }),
+      puppeteer: puppeteerOptions,
+      webVersionCache: {
+        type: 'remote',
+        remotePath: `https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html`,
+      }
+    });
 
-client.on("qr", (qr) => {
-  currentQR = qr;
-  isReady = false;
-  console.log("📲 QR code siap discan.");
-});
+    client.on("qr", (qr) => {
+      currentQR = qr;
+      isReady = false;
+      console.log("📲 QR code siap discan.");
+      qrcode.generate(qr, { small: true });
+    });
 
-client.on("ready", () => {
-  isReady = true;
-  currentQR = null;
-  console.log("✅ WhatsApp berhasil terhubung.");
-});
+    client.on("ready", () => {
+      isReady = true;
+      currentQR = null;
+      restartCount = 0; // Reset restart count on successful ready
+      console.log("✅ WhatsApp berhasil terhubung.");
+    });
 
-client.on("disconnected", (reason) => {
-  console.log("❌ WhatsApp disconnected:", reason);
-  fs.rmSync(".wwebjs_auth", { recursive: true, force: true });
-  process.exit();
-});
+    client.on("authenticated", () => {
+      console.log("🔐 Authentication successful");
+    });
 
+    client.on("auth_failure", (msg) => {
+      console.error("❌ Authentication failure:", msg);
+      setTimeout(restartClient, RESTART_DELAY);
+    });
+
+    client.on("disconnected", (reason) => {
+      console.log("❌ WhatsApp disconnected:", reason);
+      isReady = false;
+      setTimeout(restartClient, RESTART_DELAY);
+    });
+
+    // 🔧 FIX: Handle page errors
+    client.on("change_state", (state) => {
+      console.log("🔁 State changed:", state);
+    });
+
+    client.on("loading_screen", (percent, message) => {
+      console.log(`🔄 Loading: ${percent}% ${message || ''}`);
+    });
+
+    // Initialize WhatsApp client
+    client.initialize().catch(error => {
+      console.error('❌ Failed to initialize client:', error);
+      setTimeout(restartClient, RESTART_DELAY);
+    });
+
+  } catch (error) {
+    console.error('❌ Error creating client:', error);
+    setTimeout(restartClient, RESTART_DELAY);
+  }
+};
+
+const restartClient = () => {
+  if (restartCount >= MAX_RESTARTS) {
+    console.error(`❌ Maximum restart attempts (${MAX_RESTARTS}) reached. Giving up.`);
+    return;
+  }
+
+  restartCount++;
+  console.log(`🔄 Restarting WhatsApp client... (Attempt ${restartCount}/${MAX_RESTARTS})`);
+  
+  setTimeout(() => {
+    initializeClient();
+  }, RESTART_DELAY);
+};
+
+// Start the client
+initializeClient();
+
+// Express setup untuk QR code
 app.get("/qr", async (req, res) => {
   if (isReady) {
     return res.send(`
@@ -395,6 +513,15 @@ app.get("/qr", async (req, res) => {
             font-size: 0.8rem;
             color: #aaa;
           }
+          .restart-info {
+            margin-top: 10px;
+            padding: 10px;
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            font-size: 0.8rem;
+            color: #856404;
+          }
         </style>
       </head>
       <body>
@@ -402,20 +529,24 @@ app.get("/qr", async (req, res) => {
         <img src="${qrImage}" alt="QR Code WhatsApp" />
         <p>Silakan scan dengan aplikasi WhatsApp kamu.</p>
         <p class="small">⏳ Halaman ini auto-refresh setiap 15 detik</p>
+        <div class="restart-info">
+          🔄 Restart count: ${restartCount}/${MAX_RESTARTS}
+        </div>
       </body>
     </html>
   `);
 });
-
-client.initialize();
 
 const PORT = 3025;
 app.listen(PORT, () => {
   console.log(`🌐 Akses QR di browser: http://localhost:${PORT}/qr`);
 });
 
-// 🔧 FIX: Bot logic dengan error handling yang lebih baik
+// 🔧 FIX: Enhanced message handler dengan better session management
 client.on("message", async (msg) => {
+  // Skip if message is from status broadcast
+  if (msg.from === 'status@broadcast') return;
+  
   const sender = msg.from;
   const body = msg.body.trim();
   const session = sessions.get(sender);
@@ -990,8 +1121,13 @@ client.on("message", async (msg) => {
   }
 });
 
-// 🔧 FIX: Cron job dengan better error handling
+// 🔧 FIX: Enhanced cron job dengan better error handling dan connection check
 cron.schedule("*/1 * * * *", async () => {
+  if (!isReady) {
+    console.log('⏳ Skip cron job - WhatsApp not ready');
+    return;
+  }
+
   try {
     const now = Date.now();
     const due = Array.from(reminders.entries()).filter(
@@ -1004,6 +1140,12 @@ cron.schedule("*/1 * * * *", async () => {
 
     for (const [id, reminder] of due) {
       try {
+        // Check if client is still connected before sending
+        if (!client || !isReady) {
+          console.log('⏳ Skip sending - client not ready');
+          break;
+        }
+
         await client.sendMessage(
           `${reminder.phoneNumber}@c.us`,
           reminder.message
@@ -1048,6 +1190,13 @@ cron.schedule("*/1 * * * *", async () => {
         reminders.set(newReminder.id, newReminder);
       } catch (err) {
         console.error("❌ Gagal kirim:", err.message);
+        
+        // If it's a connection error, trigger restart
+        if (err.message.includes('closed') || err.message.includes('disconnected')) {
+          console.log('🔁 Connection error detected, triggering restart...');
+          restartClient();
+          break;
+        }
       }
     }
 
@@ -1086,7 +1235,9 @@ process.on('uncaughtException', async (error) => {
   } catch (saveError) {
     console.error('❌ Gagal emergency save:', saveError);
   }
-  process.exit(1);
+  setTimeout(() => {
+    process.exit(1);
+  }, 1000);
 });
 
 process.on('unhandledRejection', async (reason, promise) => {
@@ -1096,5 +1247,20 @@ process.on('unhandledRejection', async (reason, promise) => {
   } catch (saveError) {
     console.error('❌ Gagal emergency save:', saveError);
   }
-  process.exit(1);
+  setTimeout(() => {
+    process.exit(1);
+  }, 1000);
 });
+
+// Session cleanup setiap 1 jam untuk mencegah memory leak
+setInterval(() => {
+  const now = Date.now();
+  const oneHourAgo = now - (60 * 60 * 1000);
+  
+  for (const [sender, session] of sessions.entries()) {
+    if (session.lastActivity && session.lastActivity < oneHourAgo) {
+      sessions.delete(sender);
+      console.log(`🧹 Cleaned up stale session for ${sender}`);
+    }
+  }
+}, 60 * 60 * 1000);
