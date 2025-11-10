@@ -270,10 +270,10 @@ const autoSave = async () => {
     await createBackup();
     
     // Start auto-save interval
-    setInterval(autoSave, 5 * 60 * 1000); // 5 menit
+    setInterval(autoSave, 1440 * 60 * 1000); // Setiap 24 jam
     
-    // Backup setiap 1 jam
-    setInterval(createBackup, 60 * 60 * 1000);
+    // Backup setiap 24 jam
+    setInterval(createBackup, 1440 * 60 * 1000);
   } catch (error) {
     console.error('❌ Failed to load initial data:', error);
   }
