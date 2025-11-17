@@ -270,7 +270,7 @@ const autoSave = async () => {
     await createBackup();
     
     // Start auto-save interval (setiap 30 menit)
-    setInterval(autoSave, 30 * 60 * 1000);
+    setInterval(autoSave, 24 * 60 * 60 * 1000);
     
     // Backup setiap 24 jam
     setInterval(createBackup, 24 * 60 * 60 * 1000);
