@@ -267,7 +267,7 @@ const autoSave = async () => {
     console.log(`✅ Data loaded: ${contacts.size} contacts, ${reminders.size} reminders, ${roles.size} roles`);
     
     // Create initial backup
-    await createBackup();
+    // await createBackup();
     
     // Start auto-save interval
     setInterval(autoSave, 1440 * 60 * 1000); // Setiap 24 jam
