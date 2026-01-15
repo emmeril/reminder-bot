@@ -305,9 +305,9 @@ const puppeteerOptions = {
   handleSIGTERM: false,
   handleSIGHUP: false,
   webVersionCache: {
-      type: 'remote',
-      remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
-    }
+            type: 'remote',
+            remotePath: `https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1031490220-alpha.html`,    
+        }
 
 };
 
@@ -337,9 +337,9 @@ const initializeClient = () => {
       }),
       puppeteer: puppeteerOptions,
       webVersionCache: {
-        type: 'remote',
-        remotePath: `https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html`,
-      }
+            type: 'remote',
+            remotePath: `https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1031490220-alpha.html`,    
+        }
     });
 
     client.on("qr", (qr) => {
