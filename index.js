@@ -282,33 +282,21 @@ const autoSave = async () => {
 // 🔧 FIX: Enhanced Puppeteer configuration untuk stability
 const puppeteerOptions = {
   executablePath: "/usr/bin/chromium",
-  headless: true,
+  headless: true,  // Simpler dari "new"
   args: [
+    // 🎯 WAJIB 3 INI SAJA:
     "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-accelerated-2d-canvas",
-        "--no-first-run",
-        "--no-zygote",
-        "--disable-gpu",
-        "--disable-software-rasterizer",
-        "--disable-web-security",
-        "--disable-features=VizDisplayCompositor",
-        "--disable-background-timer-throttling",
-        "--disable-backgrounding-occluded-windows",
-        "--disable-renderer-backgrounding",
-        "--max-old-space-size=512",
-        "--single-process"
+    "--disable-setuid-sandbox", 
+    "--disable-dev-shm-usage",
+    
+    // 💾 OPTIONAL untuk hemat RAM:
+    "--disable-gpu",
+    "--no-first-run",
+    "--disable-software-rasterizer"
   ],
+  
   ignoreHTTPSErrors: true,
-  handleSIGINT: false,
-  handleSIGTERM: false,
-  handleSIGHUP: false,
-  webVersionCache: {
-            type: 'remote',
-            remotePath: `https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1031490220-alpha.html`,    
-        }
-
+  timeout: 60000
 };
 
 // 🔧 FIX: Client dengan restart mechanism
