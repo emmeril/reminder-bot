@@ -295,8 +295,7 @@ const puppeteerOptions = {
     "--disable-software-rasterizer"
   ],
   
-  ignoreHTTPSErrors: true,
-  timeout: 60000
+  ignoreHTTPSErrors: true
 };
 
 // 🔧 FIX: Client dengan restart mechanism
