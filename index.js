@@ -8,9 +8,6 @@ const app = express();
 
 const cron = require("node-cron");
 
-// ==============================
-// PATH & DIRECTORY SETUP
-// ==============================
 const DB_PATH = path.join(__dirname, "database");
 const TEMPLATE_PATH = path.join(__dirname, "templates");
 
@@ -23,18 +20,13 @@ const remindersPath = path.join(DB_PATH, "reminders.json");
 const sentRemindersPath = path.join(DB_PATH, "sent_reminders.json");
 const rolesPath = path.join(DB_PATH, "roles.json");
 
-// ==============================
-// DATA STORES
-// ==============================
 let contacts = new Map();
 let reminders = new Map();
 let sentReminders = new Map();
 let roles = new Map();
 let sessions = new Map();
 
-// ==============================
-// FILE LOCK MECHANISM
-// ==============================
+// 🔧 FIX: Lock mechanism untuk prevent race conditions
 const fileLocks = new Map();
 
 const acquireLock = async (filePath) => {
@@ -48,9 +40,7 @@ const releaseLock = (filePath) => {
   fileLocks.delete(filePath);
 };
 
-// ==============================
-// ATOMIC FILE OPERATIONS
-// ==============================
+// 🔧 FIX: Atomic write dengan backup dan retry mechanism
 const atomicWrite = async (filePath, data, maxRetries = 3) => {
   await acquireLock(filePath);
   
@@ -111,9 +101,7 @@ const atomicWrite = async (filePath, data, maxRetries = 3) => {
   }
 };
 
-// ==============================
-// DATA LOADING FUNCTIONS
-// ==============================
+// Utils dengan error handling yang lebih baik
 const loadMapFromFile = async (filePath, key = "id") => {
   try {
     const raw = await fs.readFile(filePath, "utf-8");
@@ -178,6 +166,27 @@ const loadRolesFromFile = async () => {
   }
 };
 
+// 🔧 FIX: Gunakan atomic write untuk semua save operations
+const saveMapToFile = async (map, filePath) => {
+  try {
+    const arr = Array.from(map.values());
+    await atomicWrite(filePath, arr);
+  } catch (error) {
+    console.error(`❌ Critical error saving ${filePath}:`, error);
+    throw error;
+  }
+};
+
+const saveRolesToFile = async () => {
+  try {
+    const obj = Object.fromEntries(roles);
+    await atomicWrite(rolesPath, obj);
+  } catch (error) {
+    console.error("❌ Critical error saving roles:", error);
+    throw error;
+  }
+};
+
 const loadTemplates = async () => {
   try {
     const files = await fs.readdir(TEMPLATE_PATH);
@@ -202,37 +211,12 @@ const loadTemplates = async () => {
   }
 };
 
-// ==============================
-// DATA SAVING FUNCTIONS
-// ==============================
-const saveMapToFile = async (map, filePath) => {
-  try {
-    const arr = Array.from(map.values());
-    await atomicWrite(filePath, arr);
-  } catch (error) {
-    console.error(`❌ Critical error saving ${filePath}:`, error);
-    throw error;
-  }
-};
-
-const saveRolesToFile = async () => {
-  try {
-    const obj = Object.fromEntries(roles);
-    await atomicWrite(rolesPath, obj);
-  } catch (error) {
-    console.error("❌ Critical error saving roles:", error);
-    throw error;
-  }
-};
-
-// ==============================
-// UTILITY FUNCTIONS
-// ==============================
 const isAdmin = (sender) => {
   const number = sender.split("@")[0];
   return roles.get(number) === "admin";
 };
 
+// 🔧 FIX: Periodic backup dan auto-save
 const createBackup = async () => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const backupDir = path.join(DB_PATH, 'backups', timestamp);
@@ -256,6 +240,7 @@ const createBackup = async () => {
   }
 };
 
+// Auto-save setiap 5 menit untuk prevent data loss
 const autoSave = async () => {
   try {
     console.log('🔄 Auto-saving data...');
@@ -269,9 +254,7 @@ const autoSave = async () => {
   }
 };
 
-// ==============================
-// INITIAL DATA LOAD
-// ==============================
+// Load data awal dengan error handling
 (async () => {
   try {
     console.log('📂 Loading data...');
@@ -283,8 +266,11 @@ const autoSave = async () => {
     
     console.log(`✅ Data loaded: ${contacts.size} contacts, ${reminders.size} reminders, ${roles.size} roles`);
     
-    // Start auto-save interval (setiap 24 jam)
-    setInterval(autoSave, 1440 * 60 * 1000);
+    // Create initial backup
+    // await createBackup();
+    
+    // Start auto-save interval
+    setInterval(autoSave, 1440 * 60 * 1000); // Setiap 24 jam
     
     // Backup setiap 24 jam
     setInterval(createBackup, 1440 * 60 * 1000);
@@ -293,9 +279,7 @@ const autoSave = async () => {
   }
 })();
 
-// ==============================
-// WHATSAPP CLIENT CONFIGURATION
-// ==============================
+// ==================== WHATSAPP CLIENT IMPROVEMENTS ====================
 let client = null;
 let currentQR = null;
 let isReady = false;
@@ -303,20 +287,18 @@ let isReconnecting = false;
 let reconnectAttempts = 0;
 let lastReconnectTime = null;
 let reconnectTimer = null;
-let waState = null;
+let keepAliveTimer = null;
 
-// Reconnection constants
 const MAX_RECONNECT_ATTEMPTS = 10;
-const RECONNECT_DELAY = 5000; // 5 seconds
-const MIN_RECONNECT_INTERVAL = 30000; // 30 seconds
+const MIN_RECONNECT_INTERVAL = 30000; // 30 detik
+const RECONNECT_DELAY = 5000; // 5 detik
 
-// Create WhatsApp client dengan konfigurasi yang lebih stabil
 const createWhatsAppClient = () => {
   console.log("🔄 Creating WhatsApp client...");
+
   return new Client({
     authStrategy: new LocalAuth({
-      clientId: "whatsapp-bot",
-      dataPath: DB_PATH
+      dataPath: DB_PATH,
     }),
     puppeteer: {
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium",
@@ -334,728 +316,18 @@ const createWhatsAppClient = () => {
         "--disable-background-timer-throttling",
         "--disable-backgrounding-occluded-windows",
         "--disable-renderer-backgrounding",
-        "--max-old-space-size=512"
+        "--max-old-space-size=512",
       ],
       ignoreHTTPSErrors: true,
     },
     webVersionCache: {
-      type: 'remote',
-      remotePath: `https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1031490220-alpha.html`,    
-    }
+      type: "remote",
+      remotePath:
+        "https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1031490220-alpha.html",
+    },
   });
 };
 
-// ==============================
-// MESSAGE HANDLER
-// ==============================
-const handleMessage = async (msg) => {
-  // Skip if message is from status broadcast
-  if (msg.from === 'status@broadcast') return;
-  
-  const sender = msg.from;
-  const body = msg.body.trim();
-  const session = sessions.get(sender);
-  const number = sender.split("@")[0];
-  
-  try {
-    // Update session activity
-    if (session) {
-      session.lastActivity = Date.now();
-    }
-
-    if (body === "!cancel") {
-      if (session) {
-        sessions.delete(sender);
-        return msg.reply("✅ Sesi saat ini dibatalkan.");
-      } else {
-        return msg.reply("❌ Tidak ada sesi yang aktif untuk dibatalkan.");
-      }
-    }
-
-    if (body === "!addreminder") {
-      if (!isAdmin(sender)) {
-        return msg.reply("❌ Anda bukan admin. Akses ditolak.");
-      }
-
-      const contactList = Array.from(contacts.values());
-      const list = contactList.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
-
-      sessions.set(sender, { step: "add-1", contactList, lastActivity: Date.now() });
-      return msg.reply(
-        `📇 Kontak tersedia:\n${list}\n\nKetik nomor kontak (misal: 1):`
-      );
-    }
-
-    if (session?.step === "add-1") {
-      const index = parseInt(body);
-      const contact = session.contactList?.[index - 1];
-
-      if (!contact) return msg.reply("❌ Nomor kontak tidak valid.");
-
-      session.kontak = contact;
-
-      const templates = await loadTemplates();
-      session.templateOptions = templates;
-      session.step = "add-2";
-      session.lastActivity = Date.now();
-
-      const list = templates.map((t, i) => `${i + 1}. ${t.name}`).join("\n");
-
-      const fullList = `📄 Pilih Template atau Custom:\n${list}\n${
-        templates.length + 1
-      }. ✏️ Ketik manual (Custom)\n\nKetik angka pilihan:`;
-      return msg.reply(fullList);
-    }
-
-    if (session?.step === "add-2") {
-      const idx = parseInt(body);
-      const templates = session.templateOptions;
-
-      if (idx >= 1 && idx <= templates.length) {
-        session.template = templates[idx - 1].content;
-        session.step = "add-4";
-        session.lastActivity = Date.now();
-        return msg.reply("📅 Ketik tanggal & jam (format: YYYY-MM-DD HH:mm):");
-      }
-
-      if (idx === templates.length + 1) {
-        session.step = "add-3-custom";
-        session.lastActivity = Date.now();
-        return msg.reply("✏️ Ketik pesan custom Anda:");
-      }
-
-      return msg.reply("❌ Pilihan tidak valid. Ketik angka yang tersedia.");
-    }
-
-    if (session?.step === "add-3-custom") {
-      session.template = body;
-      session.step = "add-4";
-      session.lastActivity = Date.now();
-      return msg.reply("📅 Ketik tanggal & jam (format: YYYY-MM-DD HH:mm):");
-    }
-
-    if (session?.step === "add-4") {
-      const [tanggal, jam] = body.split(" ");
-      const dt = new Date(`${tanggal}T${jam}:00`);
-      if (isNaN(dt.getTime())) return msg.reply("❌ Format waktu salah.");
-
-      const bulan = dt.toLocaleString("id-ID", { month: "long" });
-      const { kontak, template } = session;
-
-      const finalMessage = template
-        .replace(/{{nama}}/gi, kontak.name)
-        .replace(/{{tanggal}}/gi, tanggal)
-        .replace(/{{bulan}}/gi, bulan);
-
-      const reminder = {
-        id: Date.now(),
-        phoneNumber: kontak.phoneNumber,
-        reminderDateTime: dt,
-        message: finalMessage,
-      };
-
-      try {
-        reminders.set(reminder.id, reminder);
-        await saveMapToFile(reminders, remindersPath);
-        sessions.delete(sender);
-
-        return msg.reply(
-          `✅ Reminder disimpan untuk ${kontak.name} pada ${tanggal} ${jam}`
-        );
-      } catch (error) {
-        console.error('❌ Error saving reminder:', error);
-        return msg.reply("❌ Gagal menyimpan reminder. Coba lagi.");
-      }
-    }
-
-    if (body === "!editreminder") {
-      if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
-
-      const sorted = Array.from(reminders.values()).sort(
-        (a, b) => new Date(a.reminderDateTime) - new Date(b.reminderDateTime)
-      );
-
-      if (sorted.length === 0) {
-        return msg.reply("📭 Tidak ada reminder yang bisa diedit.");
-      }
-
-      const list = sorted
-        .map((r, i) => {
-          const kontak = Array.from(contacts.values()).find(
-            (c) => c.phoneNumber === r.phoneNumber
-          );
-          const nama = kontak ? kontak.name : r.phoneNumber;
-          const waktu = new Date(r.reminderDateTime).toLocaleString("id-ID");
-          return `${i + 1}. ${nama} | ${waktu}`;
-        })
-        .join("\n");
-
-      sessions.set(sender, {
-        step: "edit-reminder-select",
-        list: sorted,
-        lastActivity: Date.now()
-      });
-
-      return msg.reply(
-        `✏️ Pilih reminder yang ingin diedit:\n${list}\n\nKetik nomor:`
-      );
-    }
-
-    if (session?.step === "edit-reminder-select") {
-      const index = parseInt(body);
-      const selected = session.list?.[index - 1];
-      if (!selected) return msg.reply("❌ Nomor tidak valid.");
-
-      session.selectedReminder = selected;
-      session.step = "edit-reminder-tanggal";
-      session.lastActivity = Date.now();
-
-      return msg.reply(
-        "📅 Masukkan tanggal & jam baru (format: YYYY-MM-DD HH:mm):"
-      );
-    }
-
-    if (session?.step === "edit-reminder-tanggal") {
-      const [tanggal, jam] = body.split(" ");
-      const dt = new Date(`${tanggal}T${jam}:00`);
-      if (isNaN(dt.getTime())) return msg.reply("❌ Format waktu salah.");
-
-      session.newDate = dt;
-      session.step = "edit-reminder-pesan";
-      session.lastActivity = Date.now();
-      return msg.reply(
-        "📩 Ganti isi pesan?\n1. Pakai template\n2. Ketik manual\n3. Tidak usah ganti\n\nKetik 1 / 2 / 3:"
-      );
-    }
-
-    if (session?.step === "edit-reminder-pesan") {
-      if (body === "1") {
-        const templates = await loadTemplates();
-        session.templateOptions = templates;
-        session.step = "edit-reminder-template";
-        session.lastActivity = Date.now();
-
-        const list = templates.map((t, i) => `${i + 1}. ${t.name}`).join("\n");
-        return msg.reply(`📄 Pilih Template:\n${list}\n\nKetik nomor:`);
-      }
-
-      if (body === "2") {
-        session.step = "edit-reminder-custom";
-        session.lastActivity = Date.now();
-        return msg.reply("✏️ Ketik pesan baru:");
-      }
-
-      if (body === "3") {
-        const reminder = session.selectedReminder;
-        reminder.reminderDateTime = session.newDate;
-
-        try {
-          reminders.set(reminder.id, reminder);
-          await saveMapToFile(reminders, remindersPath);
-          sessions.delete(sender);
-
-          return msg.reply(
-            `✅ Reminder berhasil diperbarui ke ${session.newDate.toLocaleString(
-              "id-ID"
-            )}`
-          );
-        } catch (error) {
-          console.error('❌ Error saving reminder:', error);
-          return msg.reply("❌ Gagal memperbarui reminder. Coba lagi.");
-        }
-      }
-
-      return msg.reply("❌ Pilih 1 / 2 / 3 sesuai opsi.");
-    }
-
-    if (session?.step === "edit-reminder-template") {
-      const idx = parseInt(body);
-      const selected = session.templateOptions?.[idx - 1];
-      if (!selected) return msg.reply("❌ Template tidak ditemukan.");
-
-      const reminder = session.selectedReminder;
-      const tanggal = session.newDate.toISOString().split("T")[0];
-      const bulan = session.newDate.toLocaleString("id-ID", { month: "long" });
-
-      const kontak = Array.from(contacts.values()).find(
-        (c) => c.phoneNumber === reminder.phoneNumber
-      );
-
-      const finalMessage = selected.content
-        .replace(/{{nama}}/gi, kontak?.name || reminder.phoneNumber)
-        .replace(/{{tanggal}}/gi, tanggal)
-        .replace(/{{bulan}}/gi, bulan);
-
-      reminder.reminderDateTime = session.newDate;
-      reminder.message = finalMessage;
-
-      try {
-        reminders.set(reminder.id, reminder);
-        await saveMapToFile(reminders, remindersPath);
-        sessions.delete(sender);
-
-        return msg.reply(
-          "✅ Reminder berhasil diperbarui dengan pesan dari template."
-        );
-      } catch (error) {
-        console.error('❌ Error saving reminder:', error);
-        return msg.reply("❌ Gagal memperbarui reminder. Coba lagi.");
-      }
-    }
-
-    if (session?.step === "edit-reminder-custom") {
-      const reminder = session.selectedReminder;
-      const tanggal = session.newDate.toISOString().split("T")[0];
-      const bulan = session.newDate.toLocaleString("id-ID", { month: "long" });
-
-      const kontak = Array.from(contacts.values()).find(
-        (c) => c.phoneNumber === reminder.phoneNumber
-      );
-
-      const finalMessage = body
-        .replace(/{{nama}}/gi, kontak?.name || reminder.phoneNumber)
-        .replace(/{{tanggal}}/gi, tanggal)
-        .replace(/{{bulan}}/gi, bulan);
-
-      reminder.reminderDateTime = session.newDate;
-      reminder.message = finalMessage;
-
-      try {
-        reminders.set(reminder.id, reminder);
-        await saveMapToFile(reminders, remindersPath);
-        sessions.delete(sender);
-
-        return msg.reply("✅ Reminder berhasil diperbarui dengan pesan custom.");
-      } catch (error) {
-        console.error('❌ Error saving reminder:', error);
-        return msg.reply("❌ Gagal memperbarui reminder. Coba lagi.");
-      }
-    }
-
-    if (body === "!deletereminder") {
-      if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
-
-      const sorted = Array.from(reminders.values()).sort(
-        (a, b) => new Date(a.reminderDateTime) - new Date(b.reminderDateTime)
-      );
-
-      if (sorted.length === 0) {
-        return msg.reply("📭 Tidak ada reminder yang aktif.");
-      }
-
-      const list = sorted
-        .map((r, i) => {
-          const kontak = Array.from(contacts.values()).find(
-            (c) => c.phoneNumber === r.phoneNumber
-          );
-          const nama = kontak ? kontak.name : r.phoneNumber;
-          const waktu = new Date(r.reminderDateTime).toLocaleString("id-ID");
-          return `${i + 1}. ${nama} | ${waktu}`;
-        })
-        .join("\n");
-
-      sessions.set(sender, {
-        step: "delete-reminder-select",
-        list: sorted,
-        lastActivity: Date.now()
-      });
-
-      return msg.reply(
-        `🗑️ Reminder yang tersedia:\n${list}\n\nKetik nomor reminder yang ingin dihapus:`
-      );
-    }
-
-    if (session?.step === "delete-reminder-select") {
-      const index = parseInt(body);
-      const selected = session.list?.[index - 1];
-      if (!selected) return msg.reply("❌ Nomor tidak valid.");
-
-      try {
-        reminders.delete(selected.id);
-        await saveMapToFile(reminders, remindersPath);
-        sessions.delete(sender);
-
-        return msg.reply(`✅ Reminder berhasil dihapus:\n${selected.message}`);
-      } catch (error) {
-        console.error('❌ Error deleting reminder:', error);
-        return msg.reply("❌ Gagal menghapus reminder. Coba lagi.");
-      }
-    }
-
-    if (body === "!listreminder") {
-      if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
-
-      const sorted = Array.from(reminders.values()).sort(
-        (a, b) => new Date(a.reminderDateTime) - new Date(b.reminderDateTime)
-      );
-
-      if (sorted.length === 0) {
-        return msg.reply("📭 Belum ada reminder yang aktif.");
-      }
-
-      const list = sorted
-        .map((r, i) => {
-          const kontak = Array.from(contacts.values()).find(
-            (c) => c.phoneNumber === r.phoneNumber
-          );
-          const nama = kontak ? kontak.name : r.phoneNumber;
-          const waktu = new Date(r.reminderDateTime).toLocaleString("id-ID", {
-            dateStyle: "long",
-            timeStyle: "short",
-            timeZone: "Asia/Jakarta",
-          });
-
-          return `${i + 1}. ${nama} — ${waktu} WIB\n   💬 ${r.message}`;
-        })
-        .join("\n\n");
-
-      return msg.reply(`📌 Reminder Aktif (urut tanggal):\n\n${list}`);
-    }
-
-    if (body === "!addkontak") {
-      if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
-
-      sessions.set(sender, { step: "add-kontak-nama", lastActivity: Date.now() });
-      return msg.reply("📝 Masukkan nama kontak:");
-    }
-
-    if (session?.step === "add-kontak-nama") {
-      session.nama = body;
-      session.step = "add-kontak-nomor";
-      session.lastActivity = Date.now();
-      return msg.reply("📞 Masukkan nomor HP (format 628xxx):");
-    }
-
-    if (session?.step === "add-kontak-nomor") {
-      const nomor = body.replace(/[^0-9]/g, "");
-      if (!/^628\d{7,13}$/.test(nomor)) return msg.reply("❌ Nomor tidak valid!");
-
-      const newKontak = {
-        id: Date.now(),
-        name: session.nama,
-        phoneNumber: nomor,
-      };
-
-      try {
-        contacts.set(newKontak.id, newKontak);
-        await saveMapToFile(contacts, contactsPath);
-        sessions.delete(sender);
-
-        return msg.reply(
-          `✅ Kontak berhasil ditambahkan:\n${newKontak.name} | ${newKontak.phoneNumber}`
-        );
-      } catch (error) {
-        console.error('❌ Error saving contact:', error);
-        return msg.reply("❌ Gagal menambahkan kontak. Coba lagi.");
-      }
-    }
-
-    if (body === "!editkontak") {
-      if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
-
-      const sorted = Array.from(contacts.values()).sort((a, b) =>
-        a.name.localeCompare(b.name)
-      );
-
-      if (sorted.length === 0) {
-        return msg.reply("📭 Tidak ada kontak untuk diedit.");
-      }
-
-      const list = sorted
-        .map((c, i) => `${i + 1}. ${c.name} | ${c.phoneNumber}`)
-        .join("\n");
-
-      sessions.set(sender, {
-        step: "edit-kontak-select",
-        list: sorted,
-        lastActivity: Date.now()
-      });
-
-      return msg.reply(
-        `✏️ Kontak tersedia:\n${list}\n\nKetik nomor kontak yang ingin diedit:`
-      );
-    }
-
-    if (session?.step === "edit-kontak-select") {
-      const index = parseInt(body);
-      const selected = session.list?.[index - 1];
-      if (!selected) return msg.reply("❌ Nomor tidak valid.");
-
-      session.kontak = {
-        id: selected.id,
-        name: selected.name,
-        phoneNumber: selected.phoneNumber,
-      };
-
-      session.step = "edit-kontak-nama";
-      session.lastActivity = Date.now();
-      return msg.reply(`✏️ Nama saat ini: ${selected.name}\nMasukkan nama baru:`);
-    }
-
-    if (session?.step === "edit-kontak-nama") {
-      session.newName = body;
-      session.step = "edit-kontak-nomor";
-      session.lastActivity = Date.now();
-      return msg.reply(`📞 Masukkan nomor HP baru (format: 628xxx):`);
-    }
-
-    if (session?.step === "edit-kontak-nomor") {
-      const nomor = body.replace(/[^0-9]/g, "");
-      if (!/^628\d{7,13}$/.test(nomor)) return msg.reply("❌ Nomor tidak valid!");
-
-      const kontak = session.kontak;
-
-      if (!kontak?.id) {
-        sessions.delete(sender);
-        return msg.reply(
-          "❌ Error: ID kontak tidak ditemukan. Coba tambah ulang kontak."
-        );
-      }
-
-      if (!(contacts instanceof Map)) {
-        return msg.reply(
-          "❌ Error internal: data kontak rusak (bukan Map). Restart bot."
-        );
-      }
-
-      kontak.name = session.newName;
-      kontak.phoneNumber = nomor;
-
-      try {
-        contacts.set(kontak.id, kontak);
-        await saveMapToFile(contacts, contactsPath);
-        sessions.delete(sender);
-
-        return msg.reply(
-          `✅ Kontak berhasil diperbarui:\n${kontak.name} | ${kontak.phoneNumber}`
-        );
-      } catch (error) {
-        console.error('❌ Error saving contact:', error);
-        return msg.reply("❌ Gagal memperbarui kontak. Coba lagi.");
-      }
-    }
-
-    if (body === "!deletekontak") {
-      if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
-
-      const sorted = Array.from(contacts.values()).sort((a, b) =>
-        a.name.localeCompare(b.name)
-      );
-
-      if (sorted.length === 0) {
-        return msg.reply("📭 Tidak ada kontak untuk dihapus.");
-      }
-
-      const list = sorted
-        .map((c, i) => `${i + 1}. ${c.name} | ${c.phoneNumber}`)
-        .join("\n");
-
-      sessions.set(sender, {
-        step: "delete-kontak-select",
-        list: sorted,
-        lastActivity: Date.now()
-      });
-
-      return msg.reply(
-        `🗑️ Kontak tersedia:\n${list}\n\nKetik nomor kontak yang ingin dihapus:`
-      );
-    }
-
-    if (session?.step === "delete-kontak-select") {
-      const index = parseInt(body);
-      const selected = session.list?.[index - 1];
-      if (!selected) return msg.reply("❌ Nomor tidak valid.");
-
-      try {
-        contacts.delete(selected.id);
-        await saveMapToFile(contacts, contactsPath);
-        sessions.delete(sender);
-
-        return msg.reply(`✅ Kontak '${selected.name}' berhasil dihapus.`);
-      } catch (error) {
-        console.error('❌ Error deleting contact:', error);
-        return msg.reply("❌ Gagal menghapus kontak. Coba lagi.");
-      }
-    }
-
-    if (body === "!listkontak") {
-      if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
-
-      const sorted = Array.from(contacts.values()).sort((a, b) =>
-        a.name.localeCompare(b.name)
-      );
-
-      if (sorted.length === 0) return msg.reply("📭 Belum ada kontak.");
-
-      const list = sorted
-        .map((c, i) => `${i + 1}. ${c.name}\n   📞 ${c.phoneNumber}`)
-        .join("\n\n");
-
-      return msg.reply(`📇 Daftar Kontak (A–Z):\n\n${list}`);
-    }
-
-    // ADMIN add role
-    if (body.startsWith("!setadmin ") && isAdmin(sender)) {
-      const newAdminNumber = body.split(" ")[1].replace(/[^0-9]/g, "");
-      
-      try {
-        roles.set(newAdminNumber, "admin");
-        await saveRolesToFile();
-        return msg.reply(`✅ ${newAdminNumber} sekarang menjadi admin.`);
-      } catch (error) {
-        console.error('❌ Error setting admin:', error);
-        return msg.reply("❌ Gagal menambahkan admin. Coba lagi.");
-      }
-    }
-
-    // ===== HELP & MENU =====
-    if (body === "!help" || body === "!menu") {
-      const umum = [
-        "📖  *Menu Bantuan*",
-        "",
-        "• !help / !menu  – tampilkan bantuan",
-        "• !cancel        – batalkan proses saat ini",
-      ];
-
-      const admin = [
-        "",
-        "🛠️  *Perintah Admin:*",
-        "• !addreminder      – tambah reminder",
-        "• !editreminder     – ubah reminder",
-        "• !deletereminder   – hapus reminder",
-        "• !listreminder     – lihat semua reminder",
-        "• !addkontak        – tambah kontak",
-        "• !editkontak       – ubah kontak",
-        "• !deletekontak     – hapus kontak",
-        "• !listkontak       – lihat semua kontak",
-        "• !setadmin <no>    – jadikan nomor admin",
-      ];
-
-      const menuText = isAdmin(sender)
-        ? umum.concat(admin).join("\n")
-        : umum.join("\n");
-
-      return msg.reply(menuText);
-    }
-    // ===== END HELP =====
-
-  } catch (error) {
-    console.error('❌ Error in message handler:', error);
-    return msg.reply("❌ Terjadi error internal. Silakan coba lagi.");
-  }
-};
-
-// ==============================
-// WHATSAPP EVENT HANDLING
-// ==============================
-const setupWhatsAppEvents = () => {
-  if (!client) {
-    console.error("❌ Cannot setup events: client is null");
-    return;
-  }
-
-  client.removeAllListeners();
-
-  // ======================
-  // QR
-  // ======================
-  client.on("qr", (qr) => {
-    currentQR = qr;
-    isReady = false;
-    reconnectAttempts = 0;
-    isReconnecting = false;
-    console.log("📲 QR code generated");
-    qrcode.generate(qr, { small: true });
-  });
-
-  // ======================
-  // AUTH
-  // ======================
-  client.on("authenticated", () => {
-    console.log("🔐 WhatsApp authenticated");
-    reconnectAttempts = 0;
-    isReconnecting = false;
-  });
-
-  client.on("auth_failure", (msg) => {
-    console.error("❌ Auth failure:", msg);
-    isReady = false;
-    isReconnecting = false;
-    scheduleReconnect();
-  });
-
-  // ======================
-  // READY
-  // ======================
-  client.on("ready", () => {
-    console.log("✅ WhatsApp ready");
-    isReady = true;
-    currentQR = null;
-    reconnectAttempts = 0;
-    isReconnecting = false;
-    lastReconnectTime = null;
-    waState = "CONNECTED";
-  });
-
-  // ======================
-  // STATE MONITOR
-  // ======================
-  client.on("change_state", (state) => {
-    waState = state;
-    console.log("📡 WA STATE:", state);
-
-    if (state === "CONNECTED") {
-      isReady = true;
-      reconnectAttempts = 0;
-      isReconnecting = false;
-    }
-
-    if (["DISCONNECTED", "CONFLICT"].includes(state)) {
-      isReady = false;
-      scheduleReconnect();
-    }
-  });
-
-  // ======================
-  // DISCONNECTED
-  // ======================
-  client.on("disconnected", (reason) => {
-    console.log("❌ WhatsApp disconnected:", reason);
-    isReady = false;
-    currentQR = null;
-
-    if (["UNAUTHORIZED", "CONFLICT"].includes(reason)) {
-      try {
-        const sessionPath = path.join(DB_PATH, ".wwebjs_auth");
-        fs.rmSync(sessionPath, { recursive: true, force: true });
-        console.log("🧹 Session cleared");
-      } catch (error) {
-        console.error("❌ Failed to clear session:", error.message);
-      }
-    }
-
-    scheduleReconnect();
-  });
-
-  // ======================
-  // ERROR
-  // ======================
-  client.on("error", (error) => {
-    console.error("❌ WhatsApp error:", error.message);
-    if (!isReady && !isReconnecting) {
-      scheduleReconnect();
-    }
-  });
-
-  // ======================
-  // MESSAGE HANDLER
-  // ======================
-  client.on("message", handleMessage);
-};
-
-// ==============================
-// RECONNECTION MECHANISM
-// ==============================
 const scheduleReconnect = () => {
   if (isReconnecting) {
     console.log("[WA] Reconnect already running, skip");
@@ -1080,7 +352,6 @@ const scheduleReconnect = () => {
   lastReconnectTime = now;
   isReconnecting = true;
 
-  // exponential backoff (max 30s)
   const delay = Math.min(
     30000,
     RECONNECT_DELAY * Math.pow(2, reconnectAttempts)
@@ -1093,66 +364,738 @@ const scheduleReconnect = () => {
   clearTimeout(reconnectTimer);
   reconnectTimer = setTimeout(async () => {
     try {
-      if (!client) {
-        console.log("[WA] Client null, creating new");
-        client = createWhatsAppClient();
-        setupWhatsAppEvents();
-        await client.initialize();
-        return;
+      // 🔥 HARD RESET
+      if (client) {
+        console.log("🧨 Destroying WhatsApp client");
+        await client.destroy().catch(() => {});
+        client = null;
       }
 
-      console.log("[WA] Re-initializing WhatsApp");
+      console.log("[WA] Creating new WhatsApp client");
+      client = createWhatsAppClient();
+      setupWhatsAppEvents();
+
+      console.log("[WA] Initializing WhatsApp");
       await client.initialize();
+
     } catch (err) {
-      console.error("❌ Reconnect error:", err.message);
+      console.error("❌ Reconnect failed:", err.message);
+      isReconnecting = false;
+      scheduleReconnect();
+      return;
+
     } finally {
-      // failsafe unlock (hindari deadlock)
+      // failsafe unlock (anti deadlock)
       setTimeout(() => {
         if (!isReady) {
           isReconnecting = false;
         }
-      }, 10000);
+      }, 15000);
     }
   }, delay);
 
   return true;
 };
 
-// ==============================
-// INITIALIZE WHATSAPP
-// ==============================
+const setupWhatsAppEvents = () => {
+  if (!client) {
+    console.error("❌ Cannot setup events: client is null");
+    return;
+  }
+
+  client.removeAllListeners();
+
+  // ===== QR =====
+  client.on("qr", (qr) => {
+    currentQR = qr;
+    isReady = false;
+    reconnectAttempts = 0;
+    isReconnecting = false;
+    console.log("📲 QR code generated");
+    qrcode.generate(qr, { small: true });
+  });
+
+  // ===== AUTH =====
+  client.on("authenticated", () => {
+    console.log("🔐 WhatsApp authenticated");
+    reconnectAttempts = 0;
+    isReconnecting = false;
+  });
+
+  client.on("auth_failure", (msg) => {
+    console.error("❌ Auth failure:", msg);
+    isReady = false;
+    isReconnecting = false;
+    scheduleReconnect();
+  });
+
+  // ===== READY =====
+  client.on("ready", () => {
+    console.log("✅ WhatsApp ready");
+    isReady = true;
+    currentQR = null;
+    reconnectAttempts = 0;
+    isReconnecting = false;
+    lastReconnectTime = null;
+  });
+
+  // ===== STATE =====
+  client.on("change_state", (state) => {
+    console.log("📡 WA STATE:", state);
+
+    if (state === "CONNECTED") {
+      isReady = true;
+      reconnectAttempts = 0;
+      isReconnecting = false;
+    }
+
+    if (["DISCONNECTED", "CONFLICT"].includes(state)) {
+      isReady = false;
+      scheduleReconnect();
+    }
+  });
+
+  // ===== DISCONNECTED =====
+  client.on("disconnected", (reason) => {
+    console.log("❌ WhatsApp disconnected:", reason);
+    isReady = false;
+    currentQR = null;
+
+    if (["UNAUTHORIZED", "CONFLICT"].includes(reason)) {
+      try {
+        const sessionPath = path.join(DB_PATH, ".wwebjs_auth");
+        fs.rmSync(sessionPath, { recursive: true, force: true });
+        console.log("🧹 Session cleared");
+      } catch {}
+    }
+
+    scheduleReconnect();
+  });
+
+  // ===== ERROR =====
+  client.on("error", (error) => {
+    console.error("❌ WhatsApp error:", error.message);
+    if (!isReady && !isReconnecting) {
+      scheduleReconnect();
+    }
+  });
+
+  // ===== MESSAGE HANDLER =====
+  client.on("message", async (msg) => {
+    // Skip if message is from status broadcast
+    if (msg.from === 'status@broadcast') return;
+    
+    const sender = msg.from;
+    const body = msg.body.trim();
+    const session = sessions.get(sender);
+    const number = sender.split("@")[0];
+    
+    // Tambahkan try-catch di level tertinggi
+    try {
+      if (body === "!cancel") {
+        if (session) {
+          sessions.delete(sender);
+          return msg.reply("✅ Sesi saat ini dibatalkan.");
+        } else {
+          return msg.reply("❌ Tidak ada sesi yang aktif untuk dibatalkan.");
+        }
+      }
+
+      if (body === "!addreminder") {
+        if (!isAdmin(sender)) {
+          return msg.reply("❌ Anda bukan admin. Akses ditolak.");
+        }
+
+        const contactList = Array.from(contacts.values());
+        const list = contactList.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
+
+        sessions.set(sender, { step: "add-1", contactList });
+        return msg.reply(
+          `📇 Kontak tersedia:\n${list}\n\nKetik nomor kontak (misal: 1):`
+        );
+      }
+
+      if (session?.step === "add-1") {
+        const index = parseInt(body);
+        const contact = session.contactList?.[index - 1];
+
+        if (!contact) return msg.reply("❌ Nomor kontak tidak valid.");
+
+        session.kontak = contact;
+
+        const templates = await loadTemplates();
+        session.templateOptions = templates;
+        session.step = "add-2";
+
+        const list = templates.map((t, i) => `${i + 1}. ${t.name}`).join("\n");
+
+        const fullList = `📄 Pilih Template atau Custom:\n${list}\n${
+          templates.length + 1
+        }. ✏️ Ketik manual (Custom)\n\nKetik angka pilihan:`;
+        return msg.reply(fullList);
+      }
+
+      if (session?.step === "add-2") {
+        const idx = parseInt(body);
+        const templates = session.templateOptions;
+
+        if (idx >= 1 && idx <= templates.length) {
+          session.template = templates[idx - 1].content;
+          session.step = "add-4";
+          return msg.reply("📅 Ketik tanggal & jam (format: YYYY-MM-DD HH:mm):");
+        }
+
+        if (idx === templates.length + 1) {
+          session.step = "add-3-custom";
+          return msg.reply("✏️ Ketik pesan custom Anda:");
+        }
+
+        return msg.reply("❌ Pilihan tidak valid. Ketik angka yang tersedia.");
+      }
+
+      if (session?.step === "add-3-custom") {
+        session.template = body;
+        session.step = "add-4";
+        return msg.reply("📅 Ketik tanggal & jam (format: YYYY-MM-DD HH:mm):");
+      }
+
+      if (session?.step === "add-4") {
+        const [tanggal, jam] = body.split(" ");
+        const dt = new Date(`${tanggal}T${jam}:00`);
+        if (isNaN(dt.getTime())) return msg.reply("❌ Format waktu salah.");
+
+        const bulan = dt.toLocaleString("id-ID", { month: "long" });
+        const { kontak, template } = session;
+
+        const finalMessage = template
+          .replace(/{{nama}}/gi, kontak.name)
+          .replace(/{{tanggal}}/gi, tanggal)
+          .replace(/{{bulan}}/gi, bulan);
+
+        const reminder = {
+          id: Date.now(),
+          phoneNumber: kontak.phoneNumber,
+          reminderDateTime: dt,
+          message: finalMessage,
+        };
+
+        try {
+          reminders.set(reminder.id, reminder);
+          await saveMapToFile(reminders, remindersPath);
+          sessions.delete(sender);
+
+          return msg.reply(
+            `✅ Reminder disimpan untuk ${kontak.name} pada ${tanggal} ${jam}`
+          );
+        } catch (error) {
+          console.error('❌ Error saving reminder:', error);
+          return msg.reply("❌ Gagal menyimpan reminder. Coba lagi.");
+        }
+      }
+
+      if (body === "!editreminder") {
+        if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
+
+        const sorted = Array.from(reminders.values()).sort(
+          (a, b) => new Date(a.reminderDateTime) - new Date(b.reminderDateTime)
+        );
+
+        if (sorted.length === 0) {
+          return msg.reply("📭 Tidak ada reminder yang bisa diedit.");
+        }
+
+        const list = sorted
+          .map((r, i) => {
+            const kontak = Array.from(contacts.values()).find(
+              (c) => c.phoneNumber === r.phoneNumber
+            );
+            const nama = kontak ? kontak.name : r.phoneNumber;
+            const waktu = new Date(r.reminderDateTime).toLocaleString("id-ID");
+            return `${i + 1}. ${nama} | ${waktu}`;
+          })
+          .join("\n");
+
+        sessions.set(sender, {
+          step: "edit-reminder-select",
+          list: sorted,
+        });
+
+        return msg.reply(
+          `✏️ Pilih reminder yang ingin diedit:\n${list}\n\nKetik nomor:`
+        );
+      }
+
+      if (session?.step === "edit-reminder-select") {
+        const index = parseInt(body);
+        const selected = session.list?.[index - 1];
+        if (!selected) return msg.reply("❌ Nomor tidak valid.");
+
+        session.selectedReminder = selected;
+        session.step = "edit-reminder-tanggal";
+
+        return msg.reply(
+          "📅 Masukkan tanggal & jam baru (format: YYYY-MM-DD HH:mm):"
+        );
+      }
+
+      if (session?.step === "edit-reminder-tanggal") {
+        const [tanggal, jam] = body.split(" ");
+        const dt = new Date(`${tanggal}T${jam}:00`);
+        if (isNaN(dt.getTime())) return msg.reply("❌ Format waktu salah.");
+
+        session.newDate = dt;
+        session.step = "edit-reminder-pesan";
+        return msg.reply(
+          "📩 Ganti isi pesan?\n1. Pakai template\n2. Ketik manual\n3. Tidak usah ganti\n\nKetik 1 / 2 / 3:"
+        );
+      }
+
+      if (session?.step === "edit-reminder-pesan") {
+        if (body === "1") {
+          const templates = await loadTemplates();
+          session.templateOptions = templates;
+          session.step = "edit-reminder-template";
+
+          const list = templates.map((t, i) => `${i + 1}. ${t.name}`).join("\n");
+          return msg.reply(`📄 Pilih Template:\n${list}\n\nKetik nomor:`);
+        }
+
+        if (body === "2") {
+          session.step = "edit-reminder-custom";
+          return msg.reply("✏️ Ketik pesan baru:");
+        }
+
+        if (body === "3") {
+          const reminder = session.selectedReminder;
+          reminder.reminderDateTime = session.newDate;
+
+          try {
+            reminders.set(reminder.id, reminder);
+            await saveMapToFile(reminders, remindersPath);
+            sessions.delete(sender);
+
+            return msg.reply(
+              `✅ Reminder berhasil diperbarui ke ${session.newDate.toLocaleString(
+                "id-ID"
+              )}`
+            );
+          } catch (error) {
+            console.error('❌ Error saving reminder:', error);
+            return msg.reply("❌ Gagal memperbarui reminder. Coba lagi.");
+          }
+        }
+
+        return msg.reply("❌ Pilih 1 / 2 / 3 sesuai opsi.");
+      }
+
+      if (session?.step === "edit-reminder-template") {
+        const idx = parseInt(body);
+        const selected = session.templateOptions?.[idx - 1];
+        if (!selected) return msg.reply("❌ Template tidak ditemukan.");
+
+        const reminder = session.selectedReminder;
+        const tanggal = session.newDate.toISOString().split("T")[0];
+        const bulan = session.newDate.toLocaleString("id-ID", { month: "long" });
+
+        const kontak = Array.from(contacts.values()).find(
+          (c) => c.phoneNumber === reminder.phoneNumber
+        );
+
+        const finalMessage = selected.content
+          .replace(/{{nama}}/gi, kontak?.name || reminder.phoneNumber)
+          .replace(/{{tanggal}}/gi, tanggal)
+          .replace(/{{bulan}}/gi, bulan);
+
+        reminder.reminderDateTime = session.newDate;
+        reminder.message = finalMessage;
+
+        try {
+          reminders.set(reminder.id, reminder);
+          await saveMapToFile(reminders, remindersPath);
+          sessions.delete(sender);
+
+          return msg.reply(
+            "✅ Reminder berhasil diperbarui dengan pesan dari template."
+          );
+        } catch (error) {
+          console.error('❌ Error saving reminder:', error);
+          return msg.reply("❌ Gagal memperbarui reminder. Coba lagi.");
+        }
+      }
+
+      if (session?.step === "edit-reminder-custom") {
+        const reminder = session.selectedReminder;
+        const tanggal = session.newDate.toISOString().split("T")[0];
+        const bulan = session.newDate.toLocaleString("id-ID", { month: "long" });
+
+        const kontak = Array.from(contacts.values()).find(
+          (c) => c.phoneNumber === reminder.phoneNumber
+        );
+
+        const finalMessage = body
+          .replace(/{{nama}}/gi, kontak?.name || reminder.phoneNumber)
+          .replace(/{{tanggal}}/gi, tanggal)
+          .replace(/{{bulan}}/gi, bulan);
+
+        reminder.reminderDateTime = session.newDate;
+        reminder.message = finalMessage;
+
+        try {
+          reminders.set(reminder.id, reminder);
+          await saveMapToFile(reminders, remindersPath);
+          sessions.delete(sender);
+
+          return msg.reply("✅ Reminder berhasil diperbarui dengan pesan custom.");
+        } catch (error) {
+          console.error('❌ Error saving reminder:', error);
+          return msg.reply("❌ Gagal memperbarui reminder. Coba lagi.");
+        }
+      }
+
+      if (body === "!deletereminder") {
+        if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
+
+        const sorted = Array.from(reminders.values()).sort(
+          (a, b) => new Date(a.reminderDateTime) - new Date(b.reminderDateTime)
+        );
+
+        if (sorted.length === 0) {
+          return msg.reply("📭 Tidak ada reminder yang aktif.");
+        }
+
+        const list = sorted
+          .map((r, i) => {
+            const kontak = Array.from(contacts.values()).find(
+              (c) => c.phoneNumber === r.phoneNumber
+            );
+            const nama = kontak ? kontak.name : r.phoneNumber;
+            const waktu = new Date(r.reminderDateTime).toLocaleString("id-ID");
+            return `${i + 1}. ${nama} | ${waktu}`;
+          })
+          .join("\n");
+
+        sessions.set(sender, {
+          step: "delete-reminder-select",
+          list: sorted,
+        });
+
+        return msg.reply(
+          `🗑️ Reminder yang tersedia:\n${list}\n\nKetik nomor reminder yang ingin dihapus:`
+        );
+      }
+
+      if (session?.step === "delete-reminder-select") {
+        const index = parseInt(body);
+        const selected = session.list?.[index - 1];
+        if (!selected) return msg.reply("❌ Nomor tidak valid.");
+
+        try {
+          reminders.delete(selected.id);
+          await saveMapToFile(reminders, remindersPath);
+          sessions.delete(sender);
+
+          return msg.reply(`✅ Reminder berhasil dihapus:\n${selected.message}`);
+        } catch (error) {
+          console.error('❌ Error deleting reminder:', error);
+          return msg.reply("❌ Gagal menghapus reminder. Coba lagi.");
+        }
+      }
+
+      if (body === "!listreminder") {
+        if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
+
+        const sorted = Array.from(reminders.values()).sort(
+          (a, b) => new Date(a.reminderDateTime) - new Date(b.reminderDateTime)
+        );
+
+        if (sorted.length === 0) {
+          return msg.reply("📭 Belum ada reminder yang aktif.");
+        }
+
+        const list = sorted
+          .map((r, i) => {
+            const kontak = Array.from(contacts.values()).find(
+              (c) => c.phoneNumber === r.phoneNumber
+            );
+            const nama = kontak ? kontak.name : r.phoneNumber;
+            const waktu = new Date(r.reminderDateTime).toLocaleString("id-ID", {
+              dateStyle: "long",
+              timeStyle: "short",
+              timeZone: "Asia/Jakarta",
+            });
+
+            return `${i + 1}. ${nama} — ${waktu} WIB\n   💬 ${r.message}`;
+          })
+          .join("\n\n");
+
+        return msg.reply(`📌 Reminder Aktif (urut tanggal):\n\n${list}`);
+      }
+
+      if (body === "!addkontak") {
+        if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
+
+        sessions.set(sender, { step: "add-kontak-nama" });
+        return msg.reply("📝 Masukkan nama kontak:");
+      }
+
+      if (session?.step === "add-kontak-nama") {
+        session.nama = body;
+        session.step = "add-kontak-nomor";
+        return msg.reply("📞 Masukkan nomor HP (format 628xxx):");
+      }
+
+      if (session?.step === "add-kontak-nomor") {
+        const nomor = body.replace(/[^0-9]/g, "");
+        if (!/^628\d{7,13}$/.test(nomor)) return msg.reply("❌ Nomor tidak valid!");
+
+        const newKontak = {
+          id: Date.now(),
+          name: session.nama,
+          phoneNumber: nomor,
+        };
+
+        try {
+          contacts.set(newKontak.id, newKontak);
+          await saveMapToFile(contacts, contactsPath);
+          sessions.delete(sender);
+
+          return msg.reply(
+            `✅ Kontak berhasil ditambahkan:\n${newKontak.name} | ${newKontak.phoneNumber}`
+          );
+        } catch (error) {
+          console.error('❌ Error saving contact:', error);
+          return msg.reply("❌ Gagal menambahkan kontak. Coba lagi.");
+        }
+      }
+
+      if (body === "!editkontak") {
+        if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
+
+        const sorted = Array.from(contacts.values()).sort((a, b) =>
+          a.name.localeCompare(b.name)
+        );
+
+        if (sorted.length === 0) {
+          return msg.reply("📭 Tidak ada kontak untuk diedit.");
+        }
+
+        const list = sorted
+          .map((c, i) => `${i + 1}. ${c.name} | ${c.phoneNumber}`)
+          .join("\n");
+
+        sessions.set(sender, {
+          step: "edit-kontak-select",
+          list: sorted,
+        });
+
+        return msg.reply(
+          `✏️ Kontak tersedia:\n${list}\n\nKetik nomor kontak yang ingin diedit:`
+        );
+      }
+
+      if (session?.step === "edit-kontak-select") {
+        const index = parseInt(body);
+        const selected = session.list?.[index - 1];
+        if (!selected) return msg.reply("❌ Nomor tidak valid.");
+
+        session.kontak = {
+          id: selected.id,
+          name: selected.name,
+          phoneNumber: selected.phoneNumber,
+        };
+
+        session.step = "edit-kontak-nama";
+        return msg.reply(`✏️ Nama saat ini: ${selected.name}\nMasukkan nama baru:`);
+      }
+
+      if (session?.step === "edit-kontak-nama") {
+        session.newName = body;
+        session.step = "edit-kontak-nomor";
+        return msg.reply(`📞 Masukkan nomor HP baru (format: 628xxx):`);
+      }
+
+      if (session?.step === "edit-kontak-nomor") {
+        const nomor = body.replace(/[^0-9]/g, "");
+        if (!/^628\d{7,13}$/.test(nomor)) return msg.reply("❌ Nomor tidak valid!");
+
+        const kontak = session.kontak;
+
+        if (!kontak?.id) {
+          sessions.delete(sender);
+          return msg.reply(
+            "❌ Error: ID kontak tidak ditemukan. Coba tambah ulang kontak."
+          );
+        }
+
+        if (!(contacts instanceof Map)) {
+          return msg.reply(
+            "❌ Error internal: data kontak rusak (bukan Map). Restart bot."
+          );
+        }
+
+        kontak.name = session.newName;
+        kontak.phoneNumber = nomor;
+
+        try {
+          contacts.set(kontak.id, kontak);
+          await saveMapToFile(contacts, contactsPath);
+          sessions.delete(sender);
+
+          return msg.reply(
+            `✅ Kontak berhasil diperbarui:\n${kontak.name} | ${kontak.phoneNumber}`
+          );
+        } catch (error) {
+          console.error('❌ Error saving contact:', error);
+          return msg.reply("❌ Gagal memperbarui kontak. Coba lagi.");
+        }
+      }
+
+      if (body === "!deletekontak") {
+        if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
+
+        const sorted = Array.from(contacts.values()).sort((a, b) =>
+          a.name.localeCompare(b.name)
+        );
+
+        if (sorted.length === 0) {
+          return msg.reply("📭 Tidak ada kontak untuk dihapus.");
+        }
+
+        const list = sorted
+          .map((c, i) => `${i + 1}. ${c.name} | ${c.phoneNumber}`)
+          .join("\n");
+
+        sessions.set(sender, {
+          step: "delete-kontak-select",
+          list: sorted,
+        });
+
+        return msg.reply(
+          `🗑️ Kontak tersedia:\n${list}\n\nKetik nomor kontak yang ingin dihapus:`
+        );
+      }
+
+      if (session?.step === "delete-kontak-select") {
+        const index = parseInt(body);
+        const selected = session.list?.[index - 1];
+        if (!selected) return msg.reply("❌ Nomor tidak valid.");
+
+        try {
+          contacts.delete(selected.id);
+          await saveMapToFile(contacts, contactsPath);
+          sessions.delete(sender);
+
+          return msg.reply(`✅ Kontak '${selected.name}' berhasil dihapus.`);
+        } catch (error) {
+          console.error('❌ Error deleting contact:', error);
+          return msg.reply("❌ Gagal menghapus kontak. Coba lagi.");
+        }
+      }
+
+      if (body === "!listkontak") {
+        if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
+
+        const sorted = Array.from(contacts.values()).sort((a, b) =>
+          a.name.localeCompare(b.name)
+        );
+
+        if (sorted.length === 0) return msg.reply("📭 Belum ada kontak.");
+
+        const list = sorted
+          .map((c, i) => `${i + 1}. ${c.name}\n   📞 ${c.phoneNumber}`)
+          .join("\n\n");
+
+        return msg.reply(`📇 Daftar Kontak (A–Z):\n\n${list}`);
+      }
+
+      // ADMIN add role
+      if (body.startsWith("!setadmin ") && isAdmin(sender)) {
+        const newAdminNumber = body.split(" ")[1].replace(/[^0-9]/g, "");
+        
+        try {
+          roles.set(newAdminNumber, "admin");
+          await saveRolesToFile();
+          return msg.reply(`✅ ${newAdminNumber} sekarang menjadi admin.`);
+        } catch (error) {
+          console.error('❌ Error setting admin:', error);
+          return msg.reply("❌ Gagal menambahkan admin. Coba lagi.");
+        }
+      }
+
+      // ===== HELP & MENU =====
+      if (body === "!help" || body === "!menu") {
+        const umum = [
+          "📖  *Menu Bantuan*",
+          "",
+          "• !help / !menu  – tampilkan bantuan",
+          "• !cancel        – batalkan proses saat ini",
+        ];
+
+        const admin = [
+          "",
+          "🛠️  *Perintah Admin:*",
+          "• !addreminder      – tambah reminder",
+          "• !editreminder     – ubah reminder",
+          "• !deletereminder   – hapus reminder",
+          "• !listreminder     – lihat semua reminder",
+          "• !addkontak        – tambah kontak",
+          "• !editkontak       – ubah kontak",
+          "• !deletekontak     – hapus kontak",
+          "• !listkontak       – lihat semua kontak",
+          "• !setadmin <no>    – jadikan nomor admin",
+        ];
+
+        const menuText = isAdmin(sender)
+          ? umum.concat(admin).join("\n")
+          : umum.join("\n");
+
+        return msg.reply(menuText);
+      }
+      // ===== END HELP =====
+
+    } catch (error) {
+      console.error('❌ Error in message handler:', error);
+      return msg.reply("❌ Terjadi error internal. Silakan coba lagi.");
+    }
+  });
+};
+
 const initializeWhatsApp = () => {
   if (!client) {
     client = createWhatsAppClient();
     setupWhatsAppEvents();
   }
-  
-  client.initialize().catch(error => {
+
+  client.initialize().catch((error) => {
     console.error("❌ Failed to initialize WhatsApp:", error.message);
     isReconnecting = false;
     scheduleReconnect();
   });
 };
 
-// Start WhatsApp
+const startWhatsAppKeepAlive = () => {
+  if (keepAliveTimer) return;
+
+  keepAliveTimer = setInterval(async () => {
+    if (!client || !isReady) return;
+
+    try {
+      await client.getState();
+      reconnectAttempts = 0;
+      console.log("💓 WA keep-alive OK");
+    } catch {
+      console.log("💔 WA keep-alive failed");
+      isReady = false;
+      scheduleReconnect();
+    }
+  }, 300000); // 5 menit
+};
+
+// Start WhatsApp client
 initializeWhatsApp();
+startWhatsAppKeepAlive();
 
-setInterval(async () => {
-  if (!client || !isReady) return;
-
-  try {
-    await client.getState();
-    console.log("💓 WA keep-alive OK");
-  } catch {
-    console.log("💔 WA keep-alive failed");
-    isReady = false;
-    scheduleReconnect();
-  }
-}, 300000);
-
-// ==============================
-// EXPRESS SERVER FOR QR
-// ==============================
+// Express setup untuk QR code
 app.get("/qr", async (req, res) => {
   if (isReady) {
     return res.send(`
@@ -1237,15 +1180,6 @@ app.get("/qr", async (req, res) => {
             font-size: 0.8rem;
             color: #856404;
           }
-          .state-info {
-            margin-top: 5px;
-            padding: 8px;
-            background: #d1ecf1;
-            border: 1px solid #bee5eb;
-            border-radius: 5px;
-            font-size: 0.8rem;
-            color: #0c5460;
-          }
         </style>
       </head>
       <body>
@@ -1255,9 +1189,6 @@ app.get("/qr", async (req, res) => {
         <p class="small">⏳ Halaman ini auto-refresh setiap 15 detik</p>
         <div class="restart-info">
           🔄 Reconnect attempts: ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}
-        </div>
-        <div class="state-info">
-          📡 Connection state: ${waState || 'Unknown'}
         </div>
       </body>
     </html>
@@ -1269,9 +1200,7 @@ app.listen(PORT, () => {
   console.log(`🌐 Akses QR di browser: http://localhost:${PORT}/qr`);
 });
 
-// ==============================
-// CRON JOB FOR REMINDERS
-// ==============================
+// 🔧 FIX: Enhanced cron job dengan better error handling dan connection check
 cron.schedule("*/1 * * * *", async () => {
   if (!isReady) {
     console.log('⏳ Skip cron job - WhatsApp not ready');
@@ -1341,16 +1270,16 @@ cron.schedule("*/1 * * * *", async () => {
       } catch (err) {
         console.error("❌ Gagal kirim:", err.message);
         
-        // If it's a connection error, trigger reconnection
-        if (err.message.includes('closed') || err.message.includes('disconnected') || err.message.includes('not connected')) {
-          console.log('🔁 Connection error detected, triggering reconnection...');
+        // If it's a connection error, trigger reconnect
+        if (err.message.includes('closed') || err.message.includes('disconnected')) {
+          console.log('🔁 Connection error detected, triggering reconnect...');
           scheduleReconnect();
           break;
         }
       }
     }
 
-    // Save dengan error handling
+    // 🔧 FIX: Save dengan error handling
     if (due.length > 0) {
       try {
         await saveMapToFile(reminders, remindersPath);
@@ -1365,9 +1294,7 @@ cron.schedule("*/1 * * * *", async () => {
   }
 });
 
-// ==============================
-// PROCESS EVENT HANDLERS
-// ==============================
+// Handle process exit untuk save data terakhir
 process.on('SIGINT', async () => {
   console.log('\n🔄 Menyimpan data sebelum shutdown...');
   try {
@@ -1416,5 +1343,3 @@ setInterval(() => {
     }
   }
 }, 60 * 60 * 1000);
-
-console.log("🚀 WhatsApp Bot started successfully!");
