@@ -8,6 +8,9 @@ const app = express();
 
 const cron = require("node-cron");
 
+// ==============================
+// PATH & DIRECTORY SETUP
+// ==============================
 const DB_PATH = path.join(__dirname, "database");
 const TEMPLATE_PATH = path.join(__dirname, "templates");
 
@@ -20,13 +23,18 @@ const remindersPath = path.join(DB_PATH, "reminders.json");
 const sentRemindersPath = path.join(DB_PATH, "sent_reminders.json");
 const rolesPath = path.join(DB_PATH, "roles.json");
 
+// ==============================
+// DATA STORES
+// ==============================
 let contacts = new Map();
 let reminders = new Map();
 let sentReminders = new Map();
 let roles = new Map();
 let sessions = new Map();
 
-// 🔧 FIX: Lock mechanism untuk prevent race conditions
+// ==============================
+// FILE LOCK MECHANISM
+// ==============================
 const fileLocks = new Map();
 
 const acquireLock = async (filePath) => {
@@ -40,7 +48,9 @@ const releaseLock = (filePath) => {
   fileLocks.delete(filePath);
 };
 
-// 🔧 FIX: Atomic write dengan backup dan retry mechanism
+// ==============================
+// ATOMIC FILE OPERATIONS
+// ==============================
 const atomicWrite = async (filePath, data, maxRetries = 3) => {
   await acquireLock(filePath);
   
@@ -101,7 +111,9 @@ const atomicWrite = async (filePath, data, maxRetries = 3) => {
   }
 };
 
-// Utils dengan error handling yang lebih baik
+// ==============================
+// DATA LOADING FUNCTIONS
+// ==============================
 const loadMapFromFile = async (filePath, key = "id") => {
   try {
     const raw = await fs.readFile(filePath, "utf-8");
@@ -166,27 +178,6 @@ const loadRolesFromFile = async () => {
   }
 };
 
-// 🔧 FIX: Gunakan atomic write untuk semua save operations
-const saveMapToFile = async (map, filePath) => {
-  try {
-    const arr = Array.from(map.values());
-    await atomicWrite(filePath, arr);
-  } catch (error) {
-    console.error(`❌ Critical error saving ${filePath}:`, error);
-    throw error;
-  }
-};
-
-const saveRolesToFile = async () => {
-  try {
-    const obj = Object.fromEntries(roles);
-    await atomicWrite(rolesPath, obj);
-  } catch (error) {
-    console.error("❌ Critical error saving roles:", error);
-    throw error;
-  }
-};
-
 const loadTemplates = async () => {
   try {
     const files = await fs.readdir(TEMPLATE_PATH);
@@ -211,12 +202,37 @@ const loadTemplates = async () => {
   }
 };
 
+// ==============================
+// DATA SAVING FUNCTIONS
+// ==============================
+const saveMapToFile = async (map, filePath) => {
+  try {
+    const arr = Array.from(map.values());
+    await atomicWrite(filePath, arr);
+  } catch (error) {
+    console.error(`❌ Critical error saving ${filePath}:`, error);
+    throw error;
+  }
+};
+
+const saveRolesToFile = async () => {
+  try {
+    const obj = Object.fromEntries(roles);
+    await atomicWrite(rolesPath, obj);
+  } catch (error) {
+    console.error("❌ Critical error saving roles:", error);
+    throw error;
+  }
+};
+
+// ==============================
+// UTILITY FUNCTIONS
+// ==============================
 const isAdmin = (sender) => {
   const number = sender.split("@")[0];
   return roles.get(number) === "admin";
 };
 
-// 🔧 FIX: Periodic backup dan auto-save
 const createBackup = async () => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const backupDir = path.join(DB_PATH, 'backups', timestamp);
@@ -240,7 +256,6 @@ const createBackup = async () => {
   }
 };
 
-// Auto-save setiap 5 menit untuk prevent data loss
 const autoSave = async () => {
   try {
     console.log('🔄 Auto-saving data...');
@@ -254,7 +269,9 @@ const autoSave = async () => {
   }
 };
 
-// Load data awal dengan error handling
+// ==============================
+// INITIAL DATA LOAD
+// ==============================
 (async () => {
   try {
     console.log('📂 Loading data...');
@@ -266,11 +283,8 @@ const autoSave = async () => {
     
     console.log(`✅ Data loaded: ${contacts.size} contacts, ${reminders.size} reminders, ${roles.size} roles`);
     
-    // Create initial backup
-    // await createBackup();
-    
-    // Start auto-save interval
-    setInterval(autoSave, 1440 * 60 * 1000); // Setiap 24 jam
+    // Start auto-save interval (setiap 24 jam)
+    setInterval(autoSave, 1440 * 60 * 1000);
     
     // Backup setiap 24 jam
     setInterval(createBackup, 1440 * 60 * 1000);
@@ -279,230 +293,62 @@ const autoSave = async () => {
   }
 })();
 
-// 🔧 FIX: Enhanced Puppeteer configuration untuk stability
-const puppeteerOptions = {
-  executablePath: "/usr/bin/chromium",
-  headless: true,  // Simpler dari "new"
-  args: [
-    // 🎯 WAJIB 3 INI SAJA:
-    "--no-sandbox",
-    "--disable-setuid-sandbox", 
-    "--disable-dev-shm-usage",
-    
-    // 💾 OPTIONAL untuk hemat RAM:
-    "--disable-gpu",
-    "--no-first-run",
-    "--disable-software-rasterizer"
-  ],
-  
-  ignoreHTTPSErrors: true
-};
-
-// 🔧 FIX: Client dengan restart mechanism
+// ==============================
+// WHATSAPP CLIENT CONFIGURATION
+// ==============================
 let client = null;
 let currentQR = null;
 let isReady = false;
-let restartCount = 0;
-const MAX_RESTARTS = 10;
-const RESTART_DELAY = 10000; // 10 detik
+let isReconnecting = false;
+let reconnectAttempts = 0;
+let lastReconnectTime = null;
+let reconnectTimer = null;
+let waState = null;
 
-const initializeClient = () => {
-  try {
-    if (client) {
-      try {
-        client.destroy();
-      } catch (e) {
-        console.log('🔄 Cleaning up previous client...');
-      }
-      client = null;
+// Reconnection constants
+const MAX_RECONNECT_ATTEMPTS = 10;
+const RECONNECT_DELAY = 5000; // 5 seconds
+const MIN_RECONNECT_INTERVAL = 30000; // 30 seconds
+
+// Create WhatsApp client dengan konfigurasi yang lebih stabil
+const createWhatsAppClient = () => {
+  console.log("🔄 Creating WhatsApp client...");
+  return new Client({
+    authStrategy: new LocalAuth({
+      clientId: "whatsapp-bot",
+      dataPath: DB_PATH
+    }),
+    puppeteer: {
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium",
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--no-zygote",
+        "--disable-gpu",
+        "--disable-software-rasterizer",
+        "--disable-features=VizDisplayCompositor",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+        "--max-old-space-size=512"
+      ],
+      ignoreHTTPSErrors: true,
+    },
+    webVersionCache: {
+      type: 'remote',
+      remotePath: `https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1031490220-alpha.html`,    
     }
-
-    client = new Client({
-      authStrategy: new LocalAuth({
-        clientId: "whatsapp-bot",
-        dataPath: DB_PATH
-      }),
-      puppeteer: puppeteerOptions,
-      webVersionCache: {
-            type: 'remote',
-            remotePath: `https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1031490220-alpha.html`,    
-        }
-    });
-
-    client.on("qr", (qr) => {
-      currentQR = qr;
-      isReady = false;
-      console.log("📲 QR code siap discan.");
-      qrcode.generate(qr, { small: true });
-    });
-
-    client.on("ready", () => {
-      isReady = true;
-      currentQR = null;
-      restartCount = 0; // Reset restart count on successful ready
-      console.log("✅ WhatsApp berhasil terhubung.");
-    });
-
-    client.on("authenticated", () => {
-      console.log("🔐 Authentication successful");
-    });
-
-    client.on("auth_failure", (msg) => {
-      console.error("❌ Authentication failure:", msg);
-      setTimeout(restartClient, RESTART_DELAY);
-    });
-
-    client.on("disconnected", (reason) => {
-      console.log("❌ WhatsApp disconnected:", reason);
-      isReady = false;
-      setTimeout(restartClient, RESTART_DELAY);
-    });
-
-    // 🔧 FIX: Handle page errors
-    client.on("change_state", (state) => {
-      console.log("🔁 State changed:", state);
-    });
-
-    client.on("loading_screen", (percent, message) => {
-      console.log(`🔄 Loading: ${percent}% ${message || ''}`);
-    });
-
-    // Initialize WhatsApp client
-    client.initialize().catch(error => {
-      console.error('❌ Failed to initialize client:', error);
-      setTimeout(restartClient, RESTART_DELAY);
-    });
-
-  } catch (error) {
-    console.error('❌ Error creating client:', error);
-    setTimeout(restartClient, RESTART_DELAY);
-  }
+  });
 };
 
-const restartClient = () => {
-  if (restartCount >= MAX_RESTARTS) {
-    console.error(`❌ Maximum restart attempts (${MAX_RESTARTS}) reached. Giving up.`);
-    return;
-  }
-
-  restartCount++;
-  console.log(`🔄 Restarting WhatsApp client... (Attempt ${restartCount}/${MAX_RESTARTS})`);
-  
-  setTimeout(() => {
-    initializeClient();
-  }, RESTART_DELAY);
-};
-
-// Start the client
-initializeClient();
-
-// Express setup untuk QR code
-app.get("/qr", async (req, res) => {
-  if (isReady) {
-    return res.send(`
-      <html>
-        <head>
-          <title>WhatsApp Terhubung</title>
-          <style>
-            body {
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              height: 100vh;
-              background: #f2f2f2;
-              font-family: sans-serif;
-              margin: 0;
-            }
-            .status {
-              font-size: 1.5rem;
-              color: #28a745;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="status">✅ WhatsApp sudah terhubung.</div>
-        </body>
-      </html>
-    `);
-  }
-
-  if (!currentQR) {
-    return res.send("⏳ Menunggu QR code tersedia...");
-  }
-
-  const qrImage = await QRCode.toDataURL(currentQR);
-
-  res.send(`
-    <html>
-      <head>
-        <title>Scan QR WhatsApp</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <meta http-equiv="refresh" content="15" />
-        <style>
-          body {
-            margin: 0;
-            padding: 0;
-            background: #f7f7f7;
-            font-family: sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            text-align: center;
-          }
-          h1 {
-            margin-bottom: 1rem;
-            font-size: 1.8rem;
-            color: #333;
-          }
-          img {
-            width: 90%;
-            max-width: 300px;
-            border: 8px solid #fff;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            border-radius: 10px;
-          }
-          p {
-            margin-top: 1rem;
-            font-size: 1rem;
-            color: #666;
-          }
-          .small {
-            font-size: 0.8rem;
-            color: #aaa;
-          }
-          .restart-info {
-            margin-top: 10px;
-            padding: 10px;
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-radius: 5px;
-            font-size: 0.8rem;
-            color: #856404;
-          }
-        </style>
-      </head>
-      <body>
-        <h1>Scan QR WhatsApp</h1>
-        <img src="${qrImage}" alt="QR Code WhatsApp" />
-        <p>Silakan scan dengan aplikasi WhatsApp kamu.</p>
-        <p class="small">⏳ Halaman ini auto-refresh setiap 15 detik</p>
-        <div class="restart-info">
-          🔄 Restart count: ${restartCount}/${MAX_RESTARTS}
-        </div>
-      </body>
-    </html>
-  `);
-});
-
-const PORT = 3025;
-app.listen(PORT, () => {
-  console.log(`🌐 Akses QR di browser: http://localhost:${PORT}/qr`);
-});
-
-// 🔧 FIX: Enhanced message handler dengan better session management
-client.on("message", async (msg) => {
+// ==============================
+// MESSAGE HANDLER
+// ==============================
+const handleMessage = async (msg) => {
   // Skip if message is from status broadcast
   if (msg.from === 'status@broadcast') return;
   
@@ -511,8 +357,12 @@ client.on("message", async (msg) => {
   const session = sessions.get(sender);
   const number = sender.split("@")[0];
   
-  // Tambahkan try-catch di level tertinggi
   try {
+    // Update session activity
+    if (session) {
+      session.lastActivity = Date.now();
+    }
+
     if (body === "!cancel") {
       if (session) {
         sessions.delete(sender);
@@ -530,7 +380,7 @@ client.on("message", async (msg) => {
       const contactList = Array.from(contacts.values());
       const list = contactList.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
 
-      sessions.set(sender, { step: "add-1", contactList });
+      sessions.set(sender, { step: "add-1", contactList, lastActivity: Date.now() });
       return msg.reply(
         `📇 Kontak tersedia:\n${list}\n\nKetik nomor kontak (misal: 1):`
       );
@@ -547,6 +397,7 @@ client.on("message", async (msg) => {
       const templates = await loadTemplates();
       session.templateOptions = templates;
       session.step = "add-2";
+      session.lastActivity = Date.now();
 
       const list = templates.map((t, i) => `${i + 1}. ${t.name}`).join("\n");
 
@@ -563,11 +414,13 @@ client.on("message", async (msg) => {
       if (idx >= 1 && idx <= templates.length) {
         session.template = templates[idx - 1].content;
         session.step = "add-4";
+        session.lastActivity = Date.now();
         return msg.reply("📅 Ketik tanggal & jam (format: YYYY-MM-DD HH:mm):");
       }
 
       if (idx === templates.length + 1) {
         session.step = "add-3-custom";
+        session.lastActivity = Date.now();
         return msg.reply("✏️ Ketik pesan custom Anda:");
       }
 
@@ -577,6 +430,7 @@ client.on("message", async (msg) => {
     if (session?.step === "add-3-custom") {
       session.template = body;
       session.step = "add-4";
+      session.lastActivity = Date.now();
       return msg.reply("📅 Ketik tanggal & jam (format: YYYY-MM-DD HH:mm):");
     }
 
@@ -639,6 +493,7 @@ client.on("message", async (msg) => {
       sessions.set(sender, {
         step: "edit-reminder-select",
         list: sorted,
+        lastActivity: Date.now()
       });
 
       return msg.reply(
@@ -653,6 +508,7 @@ client.on("message", async (msg) => {
 
       session.selectedReminder = selected;
       session.step = "edit-reminder-tanggal";
+      session.lastActivity = Date.now();
 
       return msg.reply(
         "📅 Masukkan tanggal & jam baru (format: YYYY-MM-DD HH:mm):"
@@ -666,6 +522,7 @@ client.on("message", async (msg) => {
 
       session.newDate = dt;
       session.step = "edit-reminder-pesan";
+      session.lastActivity = Date.now();
       return msg.reply(
         "📩 Ganti isi pesan?\n1. Pakai template\n2. Ketik manual\n3. Tidak usah ganti\n\nKetik 1 / 2 / 3:"
       );
@@ -676,6 +533,7 @@ client.on("message", async (msg) => {
         const templates = await loadTemplates();
         session.templateOptions = templates;
         session.step = "edit-reminder-template";
+        session.lastActivity = Date.now();
 
         const list = templates.map((t, i) => `${i + 1}. ${t.name}`).join("\n");
         return msg.reply(`📄 Pilih Template:\n${list}\n\nKetik nomor:`);
@@ -683,6 +541,7 @@ client.on("message", async (msg) => {
 
       if (body === "2") {
         session.step = "edit-reminder-custom";
+        session.lastActivity = Date.now();
         return msg.reply("✏️ Ketik pesan baru:");
       }
 
@@ -798,6 +657,7 @@ client.on("message", async (msg) => {
       sessions.set(sender, {
         step: "delete-reminder-select",
         list: sorted,
+        lastActivity: Date.now()
       });
 
       return msg.reply(
@@ -855,13 +715,14 @@ client.on("message", async (msg) => {
     if (body === "!addkontak") {
       if (!isAdmin(sender)) return msg.reply("❌ Anda bukan admin.");
 
-      sessions.set(sender, { step: "add-kontak-nama" });
+      sessions.set(sender, { step: "add-kontak-nama", lastActivity: Date.now() });
       return msg.reply("📝 Masukkan nama kontak:");
     }
 
     if (session?.step === "add-kontak-nama") {
       session.nama = body;
       session.step = "add-kontak-nomor";
+      session.lastActivity = Date.now();
       return msg.reply("📞 Masukkan nomor HP (format 628xxx):");
     }
 
@@ -907,6 +768,7 @@ client.on("message", async (msg) => {
       sessions.set(sender, {
         step: "edit-kontak-select",
         list: sorted,
+        lastActivity: Date.now()
       });
 
       return msg.reply(
@@ -926,12 +788,14 @@ client.on("message", async (msg) => {
       };
 
       session.step = "edit-kontak-nama";
+      session.lastActivity = Date.now();
       return msg.reply(`✏️ Nama saat ini: ${selected.name}\nMasukkan nama baru:`);
     }
 
     if (session?.step === "edit-kontak-nama") {
       session.newName = body;
       session.step = "edit-kontak-nomor";
+      session.lastActivity = Date.now();
       return msg.reply(`📞 Masukkan nomor HP baru (format: 628xxx):`);
     }
 
@@ -989,6 +853,7 @@ client.on("message", async (msg) => {
       sessions.set(sender, {
         step: "delete-kontak-select",
         list: sorted,
+        lastActivity: Date.now()
       });
 
       return msg.reply(
@@ -1078,9 +943,335 @@ client.on("message", async (msg) => {
     console.error('❌ Error in message handler:', error);
     return msg.reply("❌ Terjadi error internal. Silakan coba lagi.");
   }
+};
+
+// ==============================
+// WHATSAPP EVENT HANDLING
+// ==============================
+const setupWhatsAppEvents = () => {
+  if (!client) {
+    console.error("❌ Cannot setup events: client is null");
+    return;
+  }
+
+  client.removeAllListeners();
+
+  // ======================
+  // QR
+  // ======================
+  client.on("qr", (qr) => {
+    currentQR = qr;
+    isReady = false;
+    reconnectAttempts = 0;
+    isReconnecting = false;
+    console.log("📲 QR code generated");
+    qrcode.generate(qr, { small: true });
+  });
+
+  // ======================
+  // AUTH
+  // ======================
+  client.on("authenticated", () => {
+    console.log("🔐 WhatsApp authenticated");
+    reconnectAttempts = 0;
+    isReconnecting = false;
+  });
+
+  client.on("auth_failure", (msg) => {
+    console.error("❌ Auth failure:", msg);
+    isReady = false;
+    isReconnecting = false;
+    scheduleReconnect();
+  });
+
+  // ======================
+  // READY
+  // ======================
+  client.on("ready", () => {
+    console.log("✅ WhatsApp ready");
+    isReady = true;
+    currentQR = null;
+    reconnectAttempts = 0;
+    isReconnecting = false;
+    lastReconnectTime = null;
+    waState = "CONNECTED";
+  });
+
+  // ======================
+  // STATE MONITOR
+  // ======================
+  client.on("change_state", (state) => {
+    waState = state;
+    console.log("📡 WA STATE:", state);
+
+    if (state === "CONNECTED") {
+      isReady = true;
+      reconnectAttempts = 0;
+      isReconnecting = false;
+    }
+
+    if (["DISCONNECTED", "CONFLICT"].includes(state)) {
+      isReady = false;
+      scheduleReconnect();
+    }
+  });
+
+  // ======================
+  // DISCONNECTED
+  // ======================
+  client.on("disconnected", (reason) => {
+    console.log("❌ WhatsApp disconnected:", reason);
+    isReady = false;
+    currentQR = null;
+
+    if (["UNAUTHORIZED", "CONFLICT"].includes(reason)) {
+      try {
+        const sessionPath = path.join(DB_PATH, ".wwebjs_auth");
+        fs.rmSync(sessionPath, { recursive: true, force: true });
+        console.log("🧹 Session cleared");
+      } catch (error) {
+        console.error("❌ Failed to clear session:", error.message);
+      }
+    }
+
+    scheduleReconnect();
+  });
+
+  // ======================
+  // ERROR
+  // ======================
+  client.on("error", (error) => {
+    console.error("❌ WhatsApp error:", error.message);
+    if (!isReady && !isReconnecting) {
+      scheduleReconnect();
+    }
+  });
+
+  // ======================
+  // MESSAGE HANDLER
+  // ======================
+  client.on("message", handleMessage);
+};
+
+// ==============================
+// RECONNECTION MECHANISM
+// ==============================
+const scheduleReconnect = () => {
+  if (isReconnecting) {
+    console.log("[WA] Reconnect already running, skip");
+    return false;
+  }
+
+  const now = Date.now();
+  if (lastReconnectTime && now - lastReconnectTime < MIN_RECONNECT_INTERVAL) {
+    const wait = Math.ceil(
+      (MIN_RECONNECT_INTERVAL - (now - lastReconnectTime)) / 1000
+    );
+    console.log(`[WA] Wait ${wait}s before reconnect`);
+    return false;
+  }
+
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    console.error("🛑 Max reconnect attempts reached");
+    return false;
+  }
+
+  reconnectAttempts++;
+  lastReconnectTime = now;
+  isReconnecting = true;
+
+  // exponential backoff (max 30s)
+  const delay = Math.min(
+    30000,
+    RECONNECT_DELAY * Math.pow(2, reconnectAttempts)
+  );
+
+  console.log(
+    `🔄 Reconnect in ${delay / 1000}s (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`
+  );
+
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(async () => {
+    try {
+      if (!client) {
+        console.log("[WA] Client null, creating new");
+        client = createWhatsAppClient();
+        setupWhatsAppEvents();
+        await client.initialize();
+        return;
+      }
+
+      console.log("[WA] Re-initializing WhatsApp");
+      await client.initialize();
+    } catch (err) {
+      console.error("❌ Reconnect error:", err.message);
+    } finally {
+      // failsafe unlock (hindari deadlock)
+      setTimeout(() => {
+        if (!isReady) {
+          isReconnecting = false;
+        }
+      }, 10000);
+    }
+  }, delay);
+
+  return true;
+};
+
+// ==============================
+// INITIALIZE WHATSAPP
+// ==============================
+const initializeWhatsApp = () => {
+  if (!client) {
+    client = createWhatsAppClient();
+    setupWhatsAppEvents();
+  }
+  
+  client.initialize().catch(error => {
+    console.error("❌ Failed to initialize WhatsApp:", error.message);
+    isReconnecting = false;
+    scheduleReconnect();
+  });
+};
+
+// Start WhatsApp
+initializeWhatsApp();
+
+setInterval(async () => {
+  if (!client || !isReady) return;
+
+  try {
+    await client.getState();
+    console.log("💓 WA keep-alive OK");
+  } catch {
+    console.log("💔 WA keep-alive failed");
+    isReady = false;
+    scheduleReconnect();
+  }
+}, 300000);
+
+// ==============================
+// EXPRESS SERVER FOR QR
+// ==============================
+app.get("/qr", async (req, res) => {
+  if (isReady) {
+    return res.send(`
+      <html>
+        <head>
+          <title>WhatsApp Terhubung</title>
+          <style>
+            body {
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              height: 100vh;
+              background: #f2f2f2;
+              font-family: sans-serif;
+              margin: 0;
+            }
+            .status {
+              font-size: 1.5rem;
+              color: #28a745;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="status">✅ WhatsApp sudah terhubung.</div>
+        </body>
+      </html>
+    `);
+  }
+
+  if (!currentQR) {
+    return res.send("⏳ Menunggu QR code tersedia...");
+  }
+
+  const qrImage = await QRCode.toDataURL(currentQR);
+
+  res.send(`
+    <html>
+      <head>
+        <title>Scan QR WhatsApp</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta http-equiv="refresh" content="15" />
+        <style>
+          body {
+            margin: 0;
+            padding: 0;
+            background: #f7f7f7;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            text-align: center;
+          }
+          h1 {
+            margin-bottom: 1rem;
+            font-size: 1.8rem;
+            color: #333;
+          }
+          img {
+            width: 90%;
+            max-width: 300px;
+            border: 8px solid #fff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border-radius: 10px;
+          }
+          p {
+            margin-top: 1rem;
+            font-size: 1rem;
+            color: #666;
+          }
+          .small {
+            font-size: 0.8rem;
+            color: #aaa;
+          }
+          .restart-info {
+            margin-top: 10px;
+            padding: 10px;
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            font-size: 0.8rem;
+            color: #856404;
+          }
+          .state-info {
+            margin-top: 5px;
+            padding: 8px;
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            border-radius: 5px;
+            font-size: 0.8rem;
+            color: #0c5460;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Scan QR WhatsApp</h1>
+        <img src="${qrImage}" alt="QR Code WhatsApp" />
+        <p>Silakan scan dengan aplikasi WhatsApp kamu.</p>
+        <p class="small">⏳ Halaman ini auto-refresh setiap 15 detik</p>
+        <div class="restart-info">
+          🔄 Reconnect attempts: ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}
+        </div>
+        <div class="state-info">
+          📡 Connection state: ${waState || 'Unknown'}
+        </div>
+      </body>
+    </html>
+  `);
 });
 
-// 🔧 FIX: Enhanced cron job dengan better error handling dan connection check
+const PORT = 3025;
+app.listen(PORT, () => {
+  console.log(`🌐 Akses QR di browser: http://localhost:${PORT}/qr`);
+});
+
+// ==============================
+// CRON JOB FOR REMINDERS
+// ==============================
 cron.schedule("*/1 * * * *", async () => {
   if (!isReady) {
     console.log('⏳ Skip cron job - WhatsApp not ready');
@@ -1150,16 +1341,16 @@ cron.schedule("*/1 * * * *", async () => {
       } catch (err) {
         console.error("❌ Gagal kirim:", err.message);
         
-        // If it's a connection error, trigger restart
-        if (err.message.includes('closed') || err.message.includes('disconnected')) {
-          console.log('🔁 Connection error detected, triggering restart...');
-          restartClient();
+        // If it's a connection error, trigger reconnection
+        if (err.message.includes('closed') || err.message.includes('disconnected') || err.message.includes('not connected')) {
+          console.log('🔁 Connection error detected, triggering reconnection...');
+          scheduleReconnect();
           break;
         }
       }
     }
 
-    // 🔧 FIX: Save dengan error handling
+    // Save dengan error handling
     if (due.length > 0) {
       try {
         await saveMapToFile(reminders, remindersPath);
@@ -1174,7 +1365,9 @@ cron.schedule("*/1 * * * *", async () => {
   }
 });
 
-// Handle process exit untuk save data terakhir
+// ==============================
+// PROCESS EVENT HANDLERS
+// ==============================
 process.on('SIGINT', async () => {
   console.log('\n🔄 Menyimpan data sebelum shutdown...');
   try {
@@ -1223,3 +1416,5 @@ setInterval(() => {
     }
   }
 }, 60 * 60 * 1000);
+
+console.log("🚀 WhatsApp Bot started successfully!");
