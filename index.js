@@ -530,7 +530,8 @@ class WhatsAppClient {
   }
 
   async handleAddReminderStep1(msg, sender, body, session) {
-    const index = parseInt(body) - 1;
+    const index = Number.parseInt(body, 10) - 1;
+    if (Number.isNaN(index)) return msg.reply("❌ Nomor kontak tidak valid.");
     const contact = session.contactList[index];
     if (!contact) return msg.reply("❌ Nomor kontak tidak valid.");
 
@@ -545,7 +546,8 @@ class WhatsAppClient {
   }
 
   async handleAddReminderStep2(msg, sender, body, session) {
-    const idx = parseInt(body);
+    const idx = Number.parseInt(body, 10);
+    if (Number.isNaN(idx)) return msg.reply("❌ Pilihan tidak valid.");
     const templates = session.templateOptions;
     if (idx >= 1 && idx <= templates.length) {
       session.template = templates[idx - 1].content;
@@ -605,7 +607,8 @@ class WhatsAppClient {
   }
 
   async handleEditReminderSelect(msg, sender, body, session) {
-    const index = parseInt(body) - 1;
+    const index = Number.parseInt(body, 10) - 1;
+    if (Number.isNaN(index)) return msg.reply("❌ Nomor tidak valid.");
     const selected = session.list[index];
     if (!selected) return msg.reply("❌ Nomor tidak valid.");
 
@@ -640,14 +643,15 @@ class WhatsAppClient {
       return msg.reply("✏️ Ketik pesan baru:");
     }
     if (option === '3') {
-      await this.updateReminder(session.selectedReminder, session.newDate, null, sender);
+      await this.updateReminder(msg, session.selectedReminder, session.newDate, null, sender);
     } else {
       msg.reply("❌ Pilih 1 / 2 / 3.");
     }
   }
 
   async handleEditReminderTemplate(msg, sender, body, session) {
-    const idx = parseInt(body) - 1;
+    const idx = Number.parseInt(body, 10) - 1;
+    if (Number.isNaN(idx)) return msg.reply("❌ Template tidak valid.");
     const template = session.templateOptions[idx];
     if (!template) return msg.reply("❌ Template tidak valid.");
 
@@ -661,7 +665,7 @@ class WhatsAppClient {
       bulan,
     });
 
-    await this.updateReminder(reminder, session.newDate, newMessage, sender);
+    await this.updateReminder(msg, reminder, session.newDate, newMessage, sender);
   }
 
   async handleEditReminderCustom(msg, sender, body, session) {
@@ -675,10 +679,10 @@ class WhatsAppClient {
       bulan,
     });
 
-    await this.updateReminder(reminder, session.newDate, newMessage, sender);
+    await this.updateReminder(msg, reminder, session.newDate, newMessage, sender);
   }
 
-  async updateReminder(reminder, newDate, newMessage, sender) {
+  async updateReminder(msg, reminder, newDate, newMessage, sender) {
     reminder.reminderDateTime = newDate;
     if (newMessage) reminder.message = newMessage;
     await this.dataManager.updateReminder(reminder.id, reminder);
@@ -701,7 +705,8 @@ class WhatsAppClient {
   }
 
   async handleDeleteReminderSelect(msg, sender, body, session) {
-    const index = parseInt(body) - 1;
+    const index = Number.parseInt(body, 10) - 1;
+    if (Number.isNaN(index)) return msg.reply("❌ Nomor tidak valid.");
     const selected = session.list[index];
     if (!selected) return msg.reply("❌ Nomor tidak valid.");
 
@@ -759,7 +764,8 @@ class WhatsAppClient {
   }
 
   async handleEditContactSelect(msg, sender, body, session) {
-    const index = parseInt(body) - 1;
+    const index = Number.parseInt(body, 10) - 1;
+    if (Number.isNaN(index)) return msg.reply("❌ Nomor tidak valid.");
     const selected = session.list[index];
     if (!selected) return msg.reply("❌ Nomor tidak valid.");
 
@@ -798,7 +804,8 @@ class WhatsAppClient {
   }
 
   async handleDeleteContactSelect(msg, sender, body, session) {
-    const index = parseInt(body) - 1;
+    const index = Number.parseInt(body, 10) - 1;
+    if (Number.isNaN(index)) return msg.reply("❌ Nomor tidak valid.");
     const selected = session.list[index];
     if (!selected) return msg.reply("❌ Nomor tidak valid.");
 
@@ -816,7 +823,14 @@ class WhatsAppClient {
   }
 
   async handleSetAdmin(msg, sender, body) {
-    const newAdminNumber = body.split(' ')[1].replace(/[^0-9]/g, '');
+    const rawNumber = body.split(' ')[1];
+    if (!rawNumber) return msg.reply("❌ Format salah. Gunakan: !setadmin 628xxx");
+
+    const newAdminNumber = rawNumber.replace(/[^0-9]/g, '');
+    if (!/^628\d{7,13}$/.test(newAdminNumber)) {
+      return msg.reply("❌ Nomor admin tidak valid. Gunakan format 628xxx.");
+    }
+
     await this.dataManager.addAdmin(newAdminNumber);
     msg.reply(`✅ ${newAdminNumber} sekarang menjadi admin.`);
   }
