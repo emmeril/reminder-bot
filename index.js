@@ -24,6 +24,38 @@ const CONFIG = {
 // ==================== UTILITY FUNCTIONS ====================
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+const generateId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+const parseDateTimeInput = (input) => {
+  const match = input.trim().match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})$/);
+  if (!match) return null;
+
+  const [, tanggal, jam] = match;
+  const date = new Date(`${tanggal}T${jam}:00`);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return { tanggal, jam, date };
+};
+
+const addMonthsSafely = (date, monthsToAdd) => {
+  const source = new Date(date);
+  const targetMonthIndex = source.getMonth() + monthsToAdd;
+  const year = source.getFullYear() + Math.floor(targetMonthIndex / 12);
+  const month = ((targetMonthIndex % 12) + 12) % 12;
+  const lastDayOfTargetMonth = new Date(year, month + 1, 0).getDate();
+  const day = Math.min(source.getDate(), lastDayOfTargetMonth);
+
+  return new Date(
+    year,
+    month,
+    day,
+    source.getHours(),
+    source.getMinutes(),
+    source.getSeconds(),
+    source.getMilliseconds()
+  );
+};
+
 const formatDate = (date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -259,6 +291,12 @@ class DataManager {
   findContactByPhone(phone) {
     return Array.from(this.contacts.values()).find(c => c.phoneNumber === phone);
   }
+
+  hasContactPhone(phoneNumber, excludeId = null) {
+    return Array.from(this.contacts.values()).some(
+      contact => contact.phoneNumber === phoneNumber && contact.id !== excludeId
+    );
+  }
 }
 
 // ==================== SESSION MANAGER ====================
@@ -355,28 +393,34 @@ class WhatsAppClient {
   }
 
   createClient() {
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    const puppeteerOptions = {
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--no-zygote",
+        "--disable-gpu",
+        "--disable-software-rasterizer",
+        "--disable-features=VizDisplayCompositor",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+        "--max-old-space-size=512",
+      ],
+      ignoreHTTPSErrors: true,
+    };
+
+    if (executablePath) {
+      puppeteerOptions.executablePath = executablePath;
+    }
+
     return new Client({
       authStrategy: new LocalAuth({ dataPath: CONFIG.DB_PATH }),
-      puppeteer: {
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium",
-        headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-accelerated-2d-canvas",
-          "--no-first-run",
-          "--no-zygote",
-          "--disable-gpu",
-          "--disable-software-rasterizer",
-          "--disable-features=VizDisplayCompositor",
-          "--disable-background-timer-throttling",
-          "--disable-backgrounding-occluded-windows",
-          "--disable-renderer-backgrounding",
-          "--max-old-space-size=512",
-        ],
-        ignoreHTTPSErrors: true,
-      },
+      puppeteer: puppeteerOptions,
       webVersionCache: {
         type: "remote",
         remotePath:
@@ -569,9 +613,13 @@ class WhatsAppClient {
   }
 
   async handleAddReminderStep4(msg, sender, body, session) {
-    const [tanggal, jam] = body.split(' ');
-    const dt = new Date(`${tanggal}T${jam}:00`);
-    if (isNaN(dt.getTime())) return msg.reply("❌ Format waktu salah.");
+    const parsed = parseDateTimeInput(body);
+    if (!parsed) return msg.reply("❌ Format waktu salah. Gunakan YYYY-MM-DD HH:mm.");
+
+    const { tanggal, jam, date: dt } = parsed;
+    if (dt.getTime() <= Date.now()) {
+      return msg.reply("❌ Waktu reminder harus di masa depan.");
+    }
 
     const bulan = dt.toLocaleString("id-ID", { month: "long" });
     const { kontak, template } = session;
@@ -582,7 +630,7 @@ class WhatsAppClient {
     });
 
     const reminder = {
-      id: Date.now(),
+      id: generateId(),
       phoneNumber: kontak.phoneNumber,
       reminderDateTime: dt,
       message: finalMessage,
@@ -622,9 +670,13 @@ class WhatsAppClient {
   }
 
   async handleEditReminderDate(msg, sender, body, session) {
-    const [tanggal, jam] = body.split(' ');
-    const dt = new Date(`${tanggal}T${jam}:00`);
-    if (isNaN(dt.getTime())) return msg.reply("❌ Format waktu salah.");
+    const parsed = parseDateTimeInput(body);
+    if (!parsed) return msg.reply("❌ Format waktu salah. Gunakan YYYY-MM-DD HH:mm.");
+
+    const { date: dt } = parsed;
+    if (dt.getTime() <= Date.now()) {
+      return msg.reply("❌ Waktu reminder harus di masa depan.");
+    }
 
     session.newDate = dt;
     this.sessionManager.createSession(sender, { ...session, step: 'edit-reminder-pesan' });
@@ -744,9 +796,12 @@ class WhatsAppClient {
   async handleAddContactNumber(msg, sender, body, session) {
     const nomor = body.replace(/[^0-9]/g, "");
     if (!/^628\d{7,13}$/.test(nomor)) return msg.reply("❌ Nomor tidak valid!");
+    if (this.dataManager.hasContactPhone(nomor)) {
+      return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
+    }
 
     const newContact = {
-      id: Date.now(),
+      id: generateId(),
       name: session.nama,
       phoneNumber: nomor,
     };
@@ -786,6 +841,9 @@ class WhatsAppClient {
   async handleEditContactNumber(msg, sender, body, session) {
     const nomor = body.replace(/[^0-9]/g, "");
     if (!/^628\d{7,13}$/.test(nomor)) return msg.reply("❌ Nomor tidak valid!");
+    if (this.dataManager.hasContactPhone(nomor, session.kontak.id)) {
+      return msg.reply("❌ Nomor ini sudah dipakai kontak lain.");
+    }
 
     const kontak = session.kontak;
     kontak.name = session.newName;
@@ -862,12 +920,24 @@ class WhatsAppClient {
 
   // ========== CLIENT LIFECYCLE ==========
   scheduleReconnect() {
-    if (this.isReconnecting) return false;
+    clearTimeout(this.reconnectTimer);
+
     const now = Date.now();
     if (this.lastReconnectTime && now - this.lastReconnectTime < CONFIG.MIN_RECONNECT_INTERVAL) {
-      console.log(`⏳ Wait ${Math.ceil((CONFIG.MIN_RECONNECT_INTERVAL - (now - this.lastReconnectTime)) / 1000)}s before reconnect`);
+      const waitTime = CONFIG.MIN_RECONNECT_INTERVAL - (now - this.lastReconnectTime);
+      console.log(`⏳ Wait ${Math.ceil(waitTime / 1000)}s before reconnect`);
+      if (!this.isReconnecting) {
+        this.isReconnecting = true;
+        this.reconnectTimer = setTimeout(() => {
+          this.isReconnecting = false;
+          this.scheduleReconnect();
+        }, waitTime);
+      }
       return false;
     }
+
+    if (this.isReconnecting) return false;
+
     if (this.reconnectAttempts >= CONFIG.MAX_RECONNECT_ATTEMPTS) {
       console.error("🛑 Max reconnect attempts reached");
       return false;
@@ -943,66 +1013,73 @@ class ReminderScheduler {
   constructor(whatsAppClient, dataManager) {
     this.whatsAppClient = whatsAppClient;
     this.dataManager = dataManager;
+    this.isProcessing = false;
   }
 
   async processDueReminders() {
+    if (this.isProcessing) {
+      console.log('⏳ Skip cron - previous run still processing');
+      return;
+    }
+
     if (!this.whatsAppClient.isReady) {
       console.log('⏳ Skip cron - WhatsApp not ready');
       return;
     }
 
-    const now = Date.now();
-    const due = Array.from(this.dataManager.reminders.entries()).filter(
-      ([, r]) => new Date(r.reminderDateTime).getTime() <= now
-    );
+    this.isProcessing = true;
+    try {
+      const now = Date.now();
+      const due = Array.from(this.dataManager.reminders.entries()).filter(
+        ([, r]) => new Date(r.reminderDateTime).getTime() <= now
+      );
 
-    if (due.length === 0) return;
+      if (due.length === 0) return;
 
-    console.log(`⏰ Processing ${due.length} due reminders...`);
+      console.log(`⏰ Processing ${due.length} due reminders...`);
 
-    for (const [id, reminder] of due) {
-      try {
-        await this.whatsAppClient.sendMessage(reminder.phoneNumber, reminder.message);
-        console.log("📤 Reminder terkirim:", reminder.phoneNumber);
+      for (const [id, reminder] of due) {
+        try {
+          await this.whatsAppClient.sendMessage(reminder.phoneNumber, reminder.message);
+          console.log("📤 Reminder terkirim:", reminder.phoneNumber);
 
-        // Kirim ke admin
-        for (const [nomor, role] of this.dataManager.roles.entries()) {
-          if (role === "admin" && nomor !== reminder.phoneNumber) {
-            await this.whatsAppClient.sendMessage(
-              nomor,
-              `📥 Reminder terkirim ke ${reminder.phoneNumber}:\n\n${reminder.message}`
-            ).catch(() => {});
+          for (const [nomor, role] of this.dataManager.roles.entries()) {
+            if (role === "admin" && nomor !== reminder.phoneNumber) {
+              await this.whatsAppClient.sendMessage(
+                nomor,
+                `📥 Reminder terkirim ke ${reminder.phoneNumber}:\n\n${reminder.message}`
+              ).catch(() => {});
+            }
+          }
+
+          await this.dataManager.moveToSent(id);
+
+          const next = addMonthsSafely(reminder.reminderDateTime, 1);
+          const nextDate = formatDate(next);
+          const bulan = next.toLocaleString("id-ID", { month: "long" });
+
+          const newMessage = reminder.message
+            .replace(/\d{4}-\d{2}-\d{2}/, nextDate)
+            .replace(/bulan \w+/gi, `bulan ${bulan}`);
+
+          const newReminder = {
+            id: generateId(),
+            phoneNumber: reminder.phoneNumber,
+            reminderDateTime: next,
+            message: newMessage,
+          };
+          await this.dataManager.addReminder(newReminder);
+        } catch (err) {
+          console.error("❌ Gagal kirim:", err.message);
+          if (err.message.includes('closed') || err.message.includes('disconnected')) {
+            console.log('🔁 Connection error, triggering reconnect...');
+            this.whatsAppClient.scheduleReconnect();
+            break;
           }
         }
-
-        // Pindahkan ke sent dan buat reminder bulan depan
-        await this.dataManager.moveToSent(id);
-
-        const next = new Date(reminder.reminderDateTime);
-        next.setMonth(next.getMonth() + 1);
-        const nextDate = formatDate(next);
-        const bulan = next.toLocaleString("id-ID", { month: "long" });
-
-        const newMessage = reminder.message
-          .replace(/\d{4}-\d{2}-\d{2}/, nextDate)
-          .replace(/bulan \w+/gi, `bulan ${bulan}`);
-
-        const newReminder = {
-          id: Date.now(),
-          phoneNumber: reminder.phoneNumber,
-          reminderDateTime: next,
-          message: newMessage,
-        };
-        await this.dataManager.addReminder(newReminder);
-
-      } catch (err) {
-        console.error("❌ Gagal kirim:", err.message);
-        if (err.message.includes('closed') || err.message.includes('disconnected')) {
-          console.log('🔁 Connection error, triggering reconnect...');
-          this.whatsAppClient.scheduleReconnect();
-          break;
-        }
       }
+    } finally {
+      this.isProcessing = false;
     }
   }
 }
@@ -1065,11 +1142,23 @@ class WebServer {
   whatsAppClient.startKeepAlive();
 
   // Start cron job
-  cron.schedule(CONFIG.CRON_SCHEDULE, () => reminderScheduler.processDueReminders());
+  cron.schedule(CONFIG.CRON_SCHEDULE, () => {
+    reminderScheduler.processDueReminders().catch(error => {
+      console.error('❌ Cron job failed:', error.message);
+    });
+  });
 
   // Auto-save dan backup berkala
-  setInterval(() => dataManager.saveAll(), CONFIG.AUTO_SAVE_INTERVAL);
-  setInterval(() => dataManager.createBackup(), CONFIG.BACKUP_INTERVAL);
+  setInterval(() => {
+    dataManager.saveAll().catch(error => {
+      console.error('❌ Auto-save failed:', error.message);
+    });
+  }, CONFIG.AUTO_SAVE_INTERVAL);
+  setInterval(() => {
+    dataManager.createBackup().catch(error => {
+      console.error('❌ Backup failed:', error.message);
+    });
+  }, CONFIG.BACKUP_INTERVAL);
 
   // Cleanup session setiap jam
   setInterval(() => sessionManager.cleanupStaleSessions(), 60 * 60 * 1000);
