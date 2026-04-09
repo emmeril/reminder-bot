@@ -24,6 +24,27 @@ const CONFIG = {
 // ==================== UTILITY FUNCTIONS ====================
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+const HELP_COMMANDS = new Set(["!help", "!menu"]);
+const ALLOWED_NON_ADMIN_COMMANDS = HELP_COMMANDS;
+const SESSION_STEPS = {
+  ADD_REMINDER_CONTACT: "add-1",
+  ADD_REMINDER_TEMPLATE: "add-2",
+  ADD_REMINDER_CUSTOM: "add-3-custom",
+  ADD_REMINDER_DATE: "add-4",
+  EDIT_REMINDER_SELECT: "edit-reminder-select",
+  EDIT_REMINDER_DATE: "edit-reminder-tanggal",
+  EDIT_REMINDER_MESSAGE: "edit-reminder-pesan",
+  EDIT_REMINDER_TEMPLATE: "edit-reminder-template",
+  EDIT_REMINDER_CUSTOM: "edit-reminder-custom",
+  DELETE_REMINDER_SELECT: "delete-reminder-select",
+  ADD_CONTACT_NAME: "add-kontak-nama",
+  ADD_CONTACT_NUMBER: "add-kontak-nomor",
+  EDIT_CONTACT_SELECT: "edit-kontak-select",
+  EDIT_CONTACT_NAME: "edit-kontak-nama",
+  EDIT_CONTACT_NUMBER: "edit-kontak-nomor",
+  DELETE_CONTACT_SELECT: "delete-kontak-select",
+};
+
 const generateId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
 const parseDateTimeInput = (input) => {
@@ -70,6 +91,15 @@ const formatDateTime = (date) => {
     timeZone: "Asia/Jakarta",
   });
 };
+
+const parseSelectionIndex = (value) => {
+  const index = Number.parseInt(value, 10) - 1;
+  return Number.isNaN(index) ? null : index;
+};
+
+const normalizePhoneNumber = (value) => value.replace(/[^0-9]/g, "");
+
+const isValidPhoneNumber = (value) => /^628\d{7,13}$/.test(value);
 
 // ==================== DATA MANAGER ====================
 class DataManager {
@@ -392,6 +422,76 @@ class WhatsAppClient {
     this.keepAliveTimer = null;
   }
 
+  getCommandHandlers() {
+    return {
+      "!addreminder": this.handleAddReminder,
+      "!editreminder": this.handleEditReminder,
+      "!deletereminder": this.handleDeleteReminder,
+      "!listreminder": this.handleListReminder,
+      "!addkontak": this.handleAddContact,
+      "!editkontak": this.handleEditContact,
+      "!deletekontak": this.handleDeleteContact,
+      "!listkontak": this.handleListContact,
+      "!help": this.sendHelp,
+      "!menu": this.sendHelp,
+    };
+  }
+
+  getSessionHandlers() {
+    return {
+      [SESSION_STEPS.ADD_REMINDER_CONTACT]: this.handleAddReminderStep1,
+      [SESSION_STEPS.ADD_REMINDER_TEMPLATE]: this.handleAddReminderStep2,
+      [SESSION_STEPS.ADD_REMINDER_CUSTOM]: this.handleAddReminderStep3,
+      [SESSION_STEPS.ADD_REMINDER_DATE]: this.handleAddReminderStep4,
+      [SESSION_STEPS.EDIT_REMINDER_SELECT]: this.handleEditReminderSelect,
+      [SESSION_STEPS.EDIT_REMINDER_DATE]: this.handleEditReminderDate,
+      [SESSION_STEPS.EDIT_REMINDER_MESSAGE]: this.handleEditReminderMessageOption,
+      [SESSION_STEPS.EDIT_REMINDER_TEMPLATE]: this.handleEditReminderTemplate,
+      [SESSION_STEPS.EDIT_REMINDER_CUSTOM]: this.handleEditReminderCustom,
+      [SESSION_STEPS.DELETE_REMINDER_SELECT]: this.handleDeleteReminderSelect,
+      [SESSION_STEPS.ADD_CONTACT_NAME]: this.handleAddContactName,
+      [SESSION_STEPS.ADD_CONTACT_NUMBER]: this.handleAddContactNumber,
+      [SESSION_STEPS.EDIT_CONTACT_SELECT]: this.handleEditContactSelect,
+      [SESSION_STEPS.EDIT_CONTACT_NAME]: this.handleEditContactName,
+      [SESSION_STEPS.EDIT_CONTACT_NUMBER]: this.handleEditContactNumber,
+      [SESSION_STEPS.DELETE_CONTACT_SELECT]: this.handleDeleteContactSelect,
+    };
+  }
+
+  parseListSelection(body, items) {
+    const index = parseSelectionIndex(body);
+    if (index === null) return null;
+    return items[index] || null;
+  }
+
+  formatReminderDisplay(reminder, index, withMessage = false) {
+    const kontak = this.dataManager.findContactByPhone(reminder.phoneNumber);
+    const nama = kontak ? kontak.name : reminder.phoneNumber;
+    const waktu = formatDateTime(new Date(reminder.reminderDateTime));
+
+    if (!withMessage) {
+      return `${index + 1}. ${nama} | ${waktu}`;
+    }
+
+    return `${index + 1}. ${nama} — ${waktu} WIB\n   💬 ${reminder.message}`;
+  }
+
+  formatContactDisplay(contact, index, multiline = false) {
+    if (multiline) {
+      return `${index + 1}. ${contact.name}\n   📞 ${contact.phoneNumber}`;
+    }
+
+    return `${index + 1}. ${contact.name} | ${contact.phoneNumber}`;
+  }
+
+  createSession(sender, data) {
+    this.sessionManager.createSession(sender, data);
+  }
+
+  clearSession(sender) {
+    this.sessionManager.deleteSession(sender);
+  }
+
   createClient() {
     const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
     const puppeteerOptions = {
@@ -504,57 +604,31 @@ class WhatsAppClient {
     const sender = msg.from;
     const body = msg.body.trim();
     const session = this.sessionManager.getSession(sender);
-    const number = sender.split('@')[0];
 
     try {
       if (body === "!cancel") {
         if (session) {
-          this.sessionManager.deleteSession(sender);
+          this.clearSession(sender);
           return msg.reply("✅ Sesi saat ini dibatalkan.");
         }
         return msg.reply("❌ Tidak ada sesi yang aktif.");
       }
 
-      // Admin commands
-      if (!this.dataManager.isAdmin(sender) && !body.startsWith('!help') && !body.startsWith('!menu')) {
-        // Non-admin hanya bisa help
-        if (body === '!help' || body === '!menu') {
-          return this.sendHelp(msg, sender);
-        }
-        return; // Abaikan perintah lain
+      if (!this.dataManager.isAdmin(sender) && !ALLOWED_NON_ADMIN_COMMANDS.has(body)) {
+        return;
       }
 
-      // Route commands
-      if (body === "!addreminder") return this.handleAddReminder(msg, sender);
-      if (body === "!editreminder") return this.handleEditReminder(msg, sender);
-      if (body === "!deletereminder") return this.handleDeleteReminder(msg, sender);
-      if (body === "!listreminder") return this.handleListReminder(msg, sender);
-      if (body === "!addkontak") return this.handleAddContact(msg, sender);
-      if (body === "!editkontak") return this.handleEditContact(msg, sender);
-      if (body === "!deletekontak") return this.handleDeleteContact(msg, sender);
-      if (body === "!listkontak") return this.handleListContact(msg, sender);
-      if (body.startsWith("!setadmin ")) return this.handleSetAdmin(msg, sender, body);
-      if (body === "!help" || body === "!menu") return this.sendHelp(msg, sender);
+      const commandHandler = this.getCommandHandlers()[body];
+      if (commandHandler) {
+        return commandHandler.call(this, msg, sender);
+      }
 
-      // Session steps
+      if (body.startsWith("!setadmin ")) return this.handleSetAdmin(msg, sender, body);
+
       if (session) {
-        switch (session.step) {
-          case 'add-1': return this.handleAddReminderStep1(msg, sender, body, session);
-          case 'add-2': return this.handleAddReminderStep2(msg, sender, body, session);
-          case 'add-3-custom': return this.handleAddReminderStep3(msg, sender, body, session);
-          case 'add-4': return this.handleAddReminderStep4(msg, sender, body, session);
-          case 'edit-reminder-select': return this.handleEditReminderSelect(msg, sender, body, session);
-          case 'edit-reminder-tanggal': return this.handleEditReminderDate(msg, sender, body, session);
-          case 'edit-reminder-pesan': return this.handleEditReminderMessageOption(msg, sender, body, session);
-          case 'edit-reminder-template': return this.handleEditReminderTemplate(msg, sender, body, session);
-          case 'edit-reminder-custom': return this.handleEditReminderCustom(msg, sender, body, session);
-          case 'delete-reminder-select': return this.handleDeleteReminderSelect(msg, sender, body, session);
-          case 'add-kontak-nama': return this.handleAddContactName(msg, sender, body, session);
-          case 'add-kontak-nomor': return this.handleAddContactNumber(msg, sender, body, session);
-          case 'edit-kontak-select': return this.handleEditContactSelect(msg, sender, body, session);
-          case 'edit-kontak-nama': return this.handleEditContactName(msg, sender, body, session);
-          case 'edit-kontak-nomor': return this.handleEditContactNumber(msg, sender, body, session);
-          case 'delete-kontak-select': return this.handleDeleteContactSelect(msg, sender, body, session);
+        const sessionHandler = this.getSessionHandlers()[session.step];
+        if (sessionHandler) {
+          return sessionHandler.call(this, msg, sender, body, session);
         }
       }
     } catch (error) {
@@ -570,20 +644,20 @@ class WhatsAppClient {
       return msg.reply("📭 Tidak ada kontak. Tambahkan kontak dulu dengan !addkontak.");
     }
     const list = contacts.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
-    this.sessionManager.createSession(sender, { step: 'add-1', contactList: contacts });
+    this.createSession(sender, { step: SESSION_STEPS.ADD_REMINDER_CONTACT, contactList: contacts });
     msg.reply(`📇 Kontak tersedia:\n${list}\n\nKetik nomor kontak:`);
   }
 
   async handleAddReminderStep1(msg, sender, body, session) {
-    const index = Number.parseInt(body, 10) - 1;
-    if (Number.isNaN(index)) return msg.reply("❌ Nomor kontak tidak valid.");
-    const contact = session.contactList[index];
+    const index = parseSelectionIndex(body);
+    if (index === null) return msg.reply("❌ Nomor kontak tidak valid.");
+    const contact = index === null ? null : session.contactList[index];
     if (!contact) return msg.reply("❌ Nomor kontak tidak valid.");
 
     const templates = await this.templateManager.loadTemplates();
     const list = templates.map((t, i) => `${i + 1}. ${t.name}`).join("\n");
-    this.sessionManager.createSession(sender, {
-      step: 'add-2',
+    this.createSession(sender, {
+      step: SESSION_STEPS.ADD_REMINDER_TEMPLATE,
       kontak: contact,
       templateOptions: templates,
     });
@@ -596,11 +670,11 @@ class WhatsAppClient {
     const templates = session.templateOptions;
     if (idx >= 1 && idx <= templates.length) {
       session.template = templates[idx - 1].content;
-      this.sessionManager.createSession(sender, { ...session, step: 'add-4' });
+      this.createSession(sender, { ...session, step: SESSION_STEPS.ADD_REMINDER_DATE });
       return msg.reply("📅 Ketik tanggal & jam (format: YYYY-MM-DD HH:mm):");
     }
     if (idx === templates.length + 1) {
-      this.sessionManager.createSession(sender, { ...session, step: 'add-3-custom' });
+      this.createSession(sender, { ...session, step: SESSION_STEPS.ADD_REMINDER_CUSTOM });
       return msg.reply("✏️ Ketik pesan custom Anda:");
     }
     msg.reply("❌ Pilihan tidak valid.");
@@ -608,7 +682,7 @@ class WhatsAppClient {
 
   async handleAddReminderStep3(msg, sender, body, session) {
     session.template = body;
-    this.sessionManager.createSession(sender, { ...session, step: 'add-4' });
+    this.createSession(sender, { ...session, step: SESSION_STEPS.ADD_REMINDER_DATE });
     msg.reply("📅 Ketik tanggal & jam (format: YYYY-MM-DD HH:mm):");
   }
 
@@ -637,7 +711,7 @@ class WhatsAppClient {
     };
 
     await this.dataManager.addReminder(reminder);
-    this.sessionManager.deleteSession(sender);
+    this.clearSession(sender);
     msg.reply(`✅ Reminder disimpan untuk ${kontak.name} pada ${tanggal} ${jam}`);
   }
 
@@ -645,26 +719,22 @@ class WhatsAppClient {
     const sorted = this.dataManager.getSortedReminders();
     if (sorted.length === 0) return msg.reply("📭 Tidak ada reminder.");
 
-    const list = sorted.map((r, i) => {
-      const kontak = this.dataManager.findContactByPhone(r.phoneNumber);
-      const nama = kontak ? kontak.name : r.phoneNumber;
-      return `${i + 1}. ${nama} | ${formatDateTime(new Date(r.reminderDateTime))}`;
-    }).join("\n");
+    const list = sorted.map((r, i) => this.formatReminderDisplay(r, i)).join("\n");
 
-    this.sessionManager.createSession(sender, { step: 'edit-reminder-select', list: sorted });
+    this.createSession(sender, { step: SESSION_STEPS.EDIT_REMINDER_SELECT, list: sorted });
     msg.reply(`✏️ Pilih reminder yang ingin diedit:\n${list}\n\nKetik nomor:`);
   }
 
   async handleEditReminderSelect(msg, sender, body, session) {
-    const index = Number.parseInt(body, 10) - 1;
-    if (Number.isNaN(index)) return msg.reply("❌ Nomor tidak valid.");
-    const selected = session.list[index];
+    const index = parseSelectionIndex(body);
+    if (index === null) return msg.reply("❌ Nomor tidak valid.");
+    const selected = index === null ? null : session.list[index];
     if (!selected) return msg.reply("❌ Nomor tidak valid.");
 
-    this.sessionManager.createSession(sender, {
+    this.createSession(sender, {
       ...session,
       selectedReminder: selected,
-      step: 'edit-reminder-tanggal',
+      step: SESSION_STEPS.EDIT_REMINDER_DATE,
     });
     msg.reply("📅 Masukkan tanggal & jam baru (format: YYYY-MM-DD HH:mm):");
   }
@@ -679,7 +749,7 @@ class WhatsAppClient {
     }
 
     session.newDate = dt;
-    this.sessionManager.createSession(sender, { ...session, step: 'edit-reminder-pesan' });
+    this.createSession(sender, { ...session, step: SESSION_STEPS.EDIT_REMINDER_MESSAGE });
     msg.reply("📩 Ganti isi pesan?\n1. Pakai template\n2. Ketik manual\n3. Tidak usah ganti\n\nKetik 1 / 2 / 3:");
   }
 
@@ -688,11 +758,11 @@ class WhatsAppClient {
     if (option === '1') {
       const templates = await this.templateManager.loadTemplates();
       const list = templates.map((t, i) => `${i + 1}. ${t.name}`).join("\n");
-      this.sessionManager.createSession(sender, { ...session, step: 'edit-reminder-template', templateOptions: templates });
+      this.createSession(sender, { ...session, step: SESSION_STEPS.EDIT_REMINDER_TEMPLATE, templateOptions: templates });
       return msg.reply(`📄 Pilih Template:\n${list}\n\nKetik nomor:`);
     }
     if (option === '2') {
-      this.sessionManager.createSession(sender, { ...session, step: 'edit-reminder-custom' });
+      this.createSession(sender, { ...session, step: SESSION_STEPS.EDIT_REMINDER_CUSTOM });
       return msg.reply("✏️ Ketik pesan baru:");
     }
     if (option === '3') {
@@ -703,8 +773,8 @@ class WhatsAppClient {
   }
 
   async handleEditReminderTemplate(msg, sender, body, session) {
-    const idx = Number.parseInt(body, 10) - 1;
-    if (Number.isNaN(idx)) return msg.reply("❌ Template tidak valid.");
+    const idx = parseSelectionIndex(body);
+    if (idx === null) return msg.reply("❌ Template tidak valid.");
     const template = session.templateOptions[idx];
     if (!template) return msg.reply("❌ Template tidak valid.");
 
@@ -739,7 +809,7 @@ class WhatsAppClient {
     reminder.reminderDateTime = newDate;
     if (newMessage) reminder.message = newMessage;
     await this.dataManager.updateReminder(reminder.id, reminder);
-    this.sessionManager.deleteSession(sender);
+    this.clearSession(sender);
     msg.reply(`✅ Reminder berhasil diperbarui ke ${formatDateTime(newDate)}`);
   }
 
@@ -747,24 +817,20 @@ class WhatsAppClient {
     const sorted = this.dataManager.getSortedReminders();
     if (sorted.length === 0) return msg.reply("📭 Tidak ada reminder.");
 
-    const list = sorted.map((r, i) => {
-      const kontak = this.dataManager.findContactByPhone(r.phoneNumber);
-      const nama = kontak ? kontak.name : r.phoneNumber;
-      return `${i + 1}. ${nama} | ${formatDateTime(new Date(r.reminderDateTime))}`;
-    }).join("\n");
+    const list = sorted.map((r, i) => this.formatReminderDisplay(r, i)).join("\n");
 
-    this.sessionManager.createSession(sender, { step: 'delete-reminder-select', list: sorted });
+    this.createSession(sender, { step: SESSION_STEPS.DELETE_REMINDER_SELECT, list: sorted });
     msg.reply(`🗑️ Reminder yang tersedia:\n${list}\n\nKetik nomor reminder yang ingin dihapus:`);
   }
 
   async handleDeleteReminderSelect(msg, sender, body, session) {
-    const index = Number.parseInt(body, 10) - 1;
-    if (Number.isNaN(index)) return msg.reply("❌ Nomor tidak valid.");
-    const selected = session.list[index];
+    const index = parseSelectionIndex(body);
+    if (index === null) return msg.reply("❌ Nomor tidak valid.");
+    const selected = index === null ? null : session.list[index];
     if (!selected) return msg.reply("❌ Nomor tidak valid.");
 
     await this.dataManager.deleteReminder(selected.id);
-    this.sessionManager.deleteSession(sender);
+    this.clearSession(sender);
     msg.reply(`✅ Reminder berhasil dihapus.`);
   }
 
@@ -784,18 +850,18 @@ class WhatsAppClient {
 
   // ========== CONTACT HANDLERS ==========
   async handleAddContact(msg, sender) {
-    this.sessionManager.createSession(sender, { step: 'add-kontak-nama' });
+    this.createSession(sender, { step: SESSION_STEPS.ADD_CONTACT_NAME });
     msg.reply("📝 Masukkan nama kontak:");
   }
 
   async handleAddContactName(msg, sender, body, session) {
-    this.sessionManager.createSession(sender, { ...session, nama: body, step: 'add-kontak-nomor' });
+    this.createSession(sender, { ...session, nama: body, step: SESSION_STEPS.ADD_CONTACT_NUMBER });
     msg.reply("📞 Masukkan nomor HP (format 628xxx):");
   }
 
   async handleAddContactNumber(msg, sender, body, session) {
-    const nomor = body.replace(/[^0-9]/g, "");
-    if (!/^628\d{7,13}$/.test(nomor)) return msg.reply("❌ Nomor tidak valid!");
+    const nomor = normalizePhoneNumber(body);
+    if (!isValidPhoneNumber(nomor)) return msg.reply("❌ Nomor tidak valid!");
     if (this.dataManager.hasContactPhone(nomor)) {
       return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
     }
@@ -806,7 +872,7 @@ class WhatsAppClient {
       phoneNumber: nomor,
     };
     await this.dataManager.addContact(newContact);
-    this.sessionManager.deleteSession(sender);
+    this.clearSession(sender);
     msg.reply(`✅ Kontak berhasil ditambahkan:\n${newContact.name} | ${newContact.phoneNumber}`);
   }
 
@@ -814,33 +880,33 @@ class WhatsAppClient {
     const contacts = this.dataManager.getSortedContacts();
     if (contacts.length === 0) return msg.reply("📭 Tidak ada kontak.");
 
-    const list = contacts.map((c, i) => `${i + 1}. ${c.name} | ${c.phoneNumber}`).join("\n");
-    this.sessionManager.createSession(sender, { step: 'edit-kontak-select', list: contacts });
+    const list = contacts.map((c, i) => this.formatContactDisplay(c, i)).join("\n");
+    this.createSession(sender, { step: SESSION_STEPS.EDIT_CONTACT_SELECT, list: contacts });
     msg.reply(`✏️ Kontak tersedia:\n${list}\n\nKetik nomor kontak yang ingin diedit:`);
   }
 
   async handleEditContactSelect(msg, sender, body, session) {
-    const index = Number.parseInt(body, 10) - 1;
-    if (Number.isNaN(index)) return msg.reply("❌ Nomor tidak valid.");
-    const selected = session.list[index];
+    const index = parseSelectionIndex(body);
+    if (index === null) return msg.reply("❌ Nomor tidak valid.");
+    const selected = index === null ? null : session.list[index];
     if (!selected) return msg.reply("❌ Nomor tidak valid.");
 
-    this.sessionManager.createSession(sender, {
+    this.createSession(sender, {
       ...session,
       kontak: selected,
-      step: 'edit-kontak-nama',
+      step: SESSION_STEPS.EDIT_CONTACT_NAME,
     });
     msg.reply(`✏️ Nama saat ini: ${selected.name}\nMasukkan nama baru:`);
   }
 
   async handleEditContactName(msg, sender, body, session) {
-    this.sessionManager.createSession(sender, { ...session, newName: body, step: 'edit-kontak-nomor' });
+    this.createSession(sender, { ...session, newName: body, step: SESSION_STEPS.EDIT_CONTACT_NUMBER });
     msg.reply("📞 Masukkan nomor HP baru (format: 628xxx):");
   }
 
   async handleEditContactNumber(msg, sender, body, session) {
-    const nomor = body.replace(/[^0-9]/g, "");
-    if (!/^628\d{7,13}$/.test(nomor)) return msg.reply("❌ Nomor tidak valid!");
+    const nomor = normalizePhoneNumber(body);
+    if (!isValidPhoneNumber(nomor)) return msg.reply("❌ Nomor tidak valid!");
     if (this.dataManager.hasContactPhone(nomor, session.kontak.id)) {
       return msg.reply("❌ Nomor ini sudah dipakai kontak lain.");
     }
@@ -849,7 +915,7 @@ class WhatsAppClient {
     kontak.name = session.newName;
     kontak.phoneNumber = nomor;
     await this.dataManager.updateContact(kontak.id, kontak);
-    this.sessionManager.deleteSession(sender);
+    this.clearSession(sender);
     msg.reply(`✅ Kontak berhasil diperbarui:\n${kontak.name} | ${kontak.phoneNumber}`);
   }
 
@@ -857,19 +923,19 @@ class WhatsAppClient {
     const contacts = this.dataManager.getSortedContacts();
     if (contacts.length === 0) return msg.reply("📭 Tidak ada kontak.");
 
-    const list = contacts.map((c, i) => `${i + 1}. ${c.name} | ${c.phoneNumber}`).join("\n");
-    this.sessionManager.createSession(sender, { step: 'delete-kontak-select', list: contacts });
+    const list = contacts.map((c, i) => this.formatContactDisplay(c, i)).join("\n");
+    this.createSession(sender, { step: SESSION_STEPS.DELETE_CONTACT_SELECT, list: contacts });
     msg.reply(`🗑️ Kontak tersedia:\n${list}\n\nKetik nomor kontak yang ingin dihapus:`);
   }
 
   async handleDeleteContactSelect(msg, sender, body, session) {
-    const index = Number.parseInt(body, 10) - 1;
-    if (Number.isNaN(index)) return msg.reply("❌ Nomor tidak valid.");
-    const selected = session.list[index];
+    const index = parseSelectionIndex(body);
+    if (index === null) return msg.reply("❌ Nomor tidak valid.");
+    const selected = index === null ? null : session.list[index];
     if (!selected) return msg.reply("❌ Nomor tidak valid.");
 
     await this.dataManager.deleteContact(selected.id);
-    this.sessionManager.deleteSession(sender);
+    this.clearSession(sender);
     msg.reply(`✅ Kontak '${selected.name}' berhasil dihapus.`);
   }
 
@@ -885,8 +951,8 @@ class WhatsAppClient {
     const rawNumber = body.split(' ')[1];
     if (!rawNumber) return msg.reply("❌ Format salah. Gunakan: !setadmin 628xxx");
 
-    const newAdminNumber = rawNumber.replace(/[^0-9]/g, '');
-    if (!/^628\d{7,13}$/.test(newAdminNumber)) {
+    const newAdminNumber = normalizePhoneNumber(rawNumber);
+    if (!isValidPhoneNumber(newAdminNumber)) {
       return msg.reply("❌ Nomor admin tidak valid. Gunakan format 628xxx.");
     }
 
