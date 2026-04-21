@@ -19,6 +19,7 @@ const CONFIG = {
   MIN_RECONNECT_INTERVAL: 30000, // 30 detik
   RECONNECT_DELAY: 5000, // 5 detik
   CRON_SCHEDULE: "*/1 * * * *", // setiap menit
+  RESET_PAYMENT_SCHEDULE: "0 0 1 * *", // setiap tanggal 1 bulan baru (00:00)
 };
 
 // ==================== UTILITY FUNCTIONS ====================
@@ -350,6 +351,22 @@ class DataManager {
     return Array.from(this.contacts.values())
       .filter(c => c.paymentStatus === status)
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async resetAllPaymentStatus() {
+    let resetCount = 0;
+    for (const contact of this.contacts.values()) {
+      if (contact.paymentStatus === PAYMENT_STATUS.PAID) {
+        contact.paymentStatus = PAYMENT_STATUS.UNPAID;
+        contact.paymentDate = null;
+        resetCount++;
+      }
+    }
+    if (resetCount > 0) {
+      await this.saveContacts();
+      console.log(`🔄 Reset payment status for ${resetCount} contacts to UNPAID`);
+    }
+    return resetCount;
   }
 }
 
@@ -1308,6 +1325,24 @@ class WebServer {
     reminderScheduler.processDueReminders().catch(error => {
       console.error('❌ Cron job failed:', error.message);
     });
+  });
+
+  // Reset payment status every 1st of month
+  cron.schedule(CONFIG.RESET_PAYMENT_SCHEDULE, async () => {
+    console.log('🔄 Resetting payment status for new month...');
+    const count = await dataManager.resetAllPaymentStatus();
+    if (count > 0) {
+      for (const [nomor, role] of dataManager.roles.entries()) {
+        if (role === "admin") {
+          try {
+            await whatsAppClient.sendMessage(
+              nomor,
+              `📢 *RESET PEMBAYARAN*\n\nStatus pembayaran ${count} kontak telah direset ke *Belum Dibayar* untuk bulan baru.`
+            );
+          } catch (e) { /* ignore */ }
+        }
+      }
+    }
   });
 
   // Auto-save dan backup berkala
