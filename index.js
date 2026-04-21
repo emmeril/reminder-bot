@@ -83,6 +83,7 @@ const SESSION_STEPS = {
   EDIT_CONTACT_NUMBER: "edit-kontak-nomor",
   DELETE_CONTACT_SELECT: "delete-kontak-select",
   BAYAR_SELECT: "bayar-select",
+  BAYAR_CONFIRM_ARREARS: "bayar-confirm-arrears",
 };
 
 const generateId = () => `${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
@@ -646,6 +647,7 @@ class WhatsAppClient {
       [SESSION_STEPS.EDIT_CONTACT_NUMBER]: this.handleEditContactNumber,
       [SESSION_STEPS.DELETE_CONTACT_SELECT]: this.handleDeleteContactSelect,
       [SESSION_STEPS.BAYAR_SELECT]: this.handleBayarSelect,
+      [SESSION_STEPS.BAYAR_CONFIRM_ARREARS]: this.handleBayarConfirmArrears,
     };
   }
 
@@ -1146,12 +1148,27 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
     const contacts = this.dataManager.getSortedContacts();
     if (contacts.length === 0) return msg.reply("📭 Tidak ada kontak.");
 
-    const unpaid = contacts.filter(c => c.paymentStatus !== PAYMENT_STATUS.PAID);
-    if (unpaid.length === 0) return msg.reply("✅ Semua kontak sudah lunas!");
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    const currKey = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
 
-    const list = unpaid.map((c, i) => `${i + 1}. ${c.name} | ${c.phoneNumber}`).join("\n");
-    this.createSession(sender, { step: SESSION_STEPS.BAYAR_SELECT, contactList: unpaid });
-    msg.reply(`💳 Pilih kontak yang sudah BAYAR:\n${list}\n\nKetik nomor:`);
+    const contactsWithArrears = contacts.filter(c => {
+      const pm = c.paymentMonths || {};
+      const currPaid = pm[currKey]?.status === PAYMENT_STATUS.PAID;
+      return !currPaid;
+    });
+
+    if (contactsWithArrears.length === 0) return msg.reply("✅ Semua kontak sudah lunas bulan ini!");
+
+    const list = contactsWithArrears.map((c, i) => {
+      const arrears = this.getArrearsForContact(c);
+      const badge = arrears.length > 0 ? ` (⚠️${arrears.length} tunggakan)` : '';
+      return `${i + 1}. ${c.name}${badge} | ${c.phoneNumber}`;
+    }).join("\n");
+
+    this.createSession(sender, { step: SESSION_STEPS.BAYAR_SELECT, contactList: contactsWithArrears });
+    msg.reply(`💳 Pilih kontak yang sudah BAYAR:\n${list}\n\nKetik nomor:\n\n💡 Tanda (⚠️n) = memiliki n bulan tunggakan`);
   }
 
   async handleBayarSelect(msg, sender, body, session) {
@@ -1163,10 +1180,31 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
       return msg.reply("❌ Kontak ini sudah lunas.");
     }
 
+    const arrears = this.getArrearsForContact(contact);
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
-    
+    const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+    if (arrears.length > 0) {
+      const arrearsText = arrears.map(a => 
+        `  - ${a.monthName} ${a.year}`
+      ).join("\n");
+
+      this.createSession(sender, { 
+        step: SESSION_STEPS.BAYAR_CONFIRM_ARREARS,
+        contact: contact,
+        arrears: arrears
+      });
+
+      return msg.reply(
+        `⚠️ *KONFIRMASI PEMBAYARAN*\n\n` +
+        `${contact.name} memiliki tunggakan:\n${arrearsText}\n\n` +
+        `Pembayaran saat ini akan dialokasikan ke tunggakan TERTAUA dulu.\n\n` +
+        `Pilih:\n1. Bayar tunggakan saja\n2. Bayar tunggakan + bulan ini\n3. Bayar bulan ini saja (tunggakan tetap ada)\n\nKetik 1/2/3:`
+      );
+    }
+
     await this.dataManager.setPaymentForMonth(contact.id, currentYear, currentMonth, PAYMENT_STATUS.PAID);
     this.clearSession(sender);
 
@@ -1176,7 +1214,109 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
     msg.reply(`✅ Status pembayaran ${contact.name} diperbarui menjadi *Sudah Dibayar*.\n\nID Transaksi: ${transactionId}\n\nNotifikasi dikirim ke ${contact.phoneNumber}.`);
   }
 
-  async sendPaymentNotification(contact, transactionId) {
+  getArrearsForContact(contact) {
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    const pm = contact.paymentMonths || {};
+    const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", 
+                        "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+    const arrears = [];
+    for (let i = 1; i < currentMonth; i++) {
+      const key = `${currentYear}-${String(i).padStart(2, "0")}`;
+      if (pm[key]?.status !== PAYMENT_STATUS.PAID) {
+        arrears.push({
+          key,
+          month: i,
+          monthName: monthNames[i],
+          year: currentYear
+        });
+      }
+    }
+    return arrears.sort((a, b) => a.month - b.month);
+  }
+
+  async handleBayarConfirmArrears(msg, sender, body, session) {
+    const choice = body.trim();
+    const { contact, arrears } = session;
+    
+    if (!['1', '2', '3'].includes(choice)) {
+      return msg.reply("❌ Pilih 1, 2, atau 3.");
+    }
+    
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", 
+                        "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    const currentMonthName = monthNames[currentMonth];
+    const transactionId = `TRX-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+
+    if (choice === '1') {
+      for (const monthData of arrears) {
+        const [year, month] = monthData.key.split('-');
+        await this.dataManager.setPaymentForMonth(
+          contact.id, 
+          parseInt(year), 
+          parseInt(month), 
+          PAYMENT_STATUS.PAID
+        );
+      }
+      
+      this.clearSession(sender);
+      const contactUpdated = this.dataManager.contacts.get(contact.id);
+      await this.sendPaymentNotification(contactUpdated, transactionId, 'ARREARS-ONLY');
+      
+      return msg.reply(
+        `✅ Tunggakan ${contact.name} telah dicatat lunas.\n\n` +
+        `Tunggakan yang lunas:\n${arrears.map(a => `  ✓ ${a.monthName}`).join('\n')}\n\n` +
+        `Catatan: Bulan ${currentMonthName} ${currentYear} BELUM lunas.\n\n` +
+        `ID Transaksi: ${transactionId}`
+      );
+    }
+    
+    if (choice === '2') {
+      for (const monthData of arrears) {
+        const [year, month] = monthData.key.split('-');
+        await this.dataManager.setPaymentForMonth(
+          contact.id, 
+          parseInt(year), 
+          parseInt(month), 
+          PAYMENT_STATUS.PAID
+        );
+      }
+      await this.dataManager.setPaymentForMonth(contact.id, currentYear, currentMonth, PAYMENT_STATUS.PAID);
+      
+      this.clearSession(sender);
+      const contactUpdated = this.dataManager.contacts.get(contact.id);
+      await this.sendPaymentNotification(contactUpdated, transactionId, 'FULL-PAID');
+      
+      return msg.reply(
+        `✅ Semua tagihan ${contact.name} LUNAS!\n\n` +
+        `Tunggakan yang lunas:\n${arrears.map(a => `  ✓ ${a.monthName}`).join('\n')}\n  ✓ ${currentMonthName} (bulan ini)\n\n` +
+        `ID Transaksi: ${transactionId}`
+      );
+    }
+    
+    if (choice === '3') {
+      await this.dataManager.setPaymentForMonth(contact.id, currentYear, currentMonth, PAYMENT_STATUS.PAID);
+      
+      this.clearSession(sender);
+      const contactUpdated = this.dataManager.contacts.get(contact.id);
+      await this.sendPaymentNotification(contactUpdated, transactionId, 'CURRENT-ONLY');
+      
+      return msg.reply(
+        `⚠️ *PEMBAYARAN BULAN INI SAJA*\n\n` +
+        `Bulan ${currentMonthName} ${currentYear} sudah lunas.\n` +
+        `Tunggakan ${arrears.length} bulan tetap ADA:\n${arrears.map(a => `  • ${a.monthName}`).join('\n')}\n\n` +
+        `Silakan bayar tunggakan segera untuk menghindari suspend.\n\n` +
+        `ID Transaksi: ${transactionId}`
+      );
+    }
+  }
+
+  async sendPaymentNotification(contact, transactionId, paymentType = 'DEFAULT') {
     const paymentDate = contact.paymentDate ? new Date(contact.paymentDate) : new Date();
     const formattedDate = paymentDate.toLocaleString("id-ID", {
       day: "2-digit",
@@ -1185,6 +1325,17 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
       hour: "2-digit",
       minute: "2-digit",
     });
+
+    let statusText = "LUNAS";
+    let noteText = "Pembayaran Anda telah berhasil kami terima.";
+
+    if (paymentType === 'ARREARS-ONLY') {
+      noteText = "Pembayaran tunggakan telah kami terima. Catatan: Bulan ini masih belum lunas.";
+    } else if (paymentType === 'CURRENT-ONLY') {
+      noteText = "Pembayaran bulan ini telah kami terima. Namun Anda masih memiliki tunggakan bulan sebelumnya. Silakan lunasi agar layanan tidak terputus.";
+    } else if (paymentType === 'FULL-PAID') {
+      noteText = "Semua tagihan (tunggakan + bulan ini) telah lunas. Terima kasih atas kelancarannya!";
+    }
 
     const message = 
 `*BUKTI PEMBAYARAN EMMERIL HOTSPOT*
@@ -1201,9 +1352,9 @@ ${transactionId}
 ${formattedDate}
 
 *Status*
-LUNAS
+${statusText}
 
-Pembayaran Anda telah berhasil kami terima.
+${noteText}
 
 Hormat kami,
 CS Emmeril Hotspot`;
@@ -1269,7 +1420,7 @@ CS Emmeril Hotspot`;
     const currKey = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
 
     const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-    const systemStartMonth = 4; // April 2026
+    const systemStartMonth = 4;
     const systemStartYear = 2026;
     const isPrevBeforeSystem = prevYear < systemStartYear || (prevYear === systemStartYear && prevMonth < systemStartMonth);
 
@@ -1284,22 +1435,34 @@ CS Emmeril Hotspot`;
       if (!prevPaid && !isPrevBeforeSystem) reasons.push(`${monthNames[prevMonth]}`);
       
       if (reasons.length > 0) {
-        overdue.push({ contact, reasons: reasons.join(", ") });
+        overdue.push({ contact, reasons: reasons.join(", "), currPaid, prevPaid });
       }
     }
 
     if (overdue.length === 0) {
-      return msg.reply(`🎉 *_semua TAGIHAN LUNAS!*\n\nSemua kontak sudah membayar untuk bulan ${monthNames[currentMonth]}.`);
+      return msg.reply(`🎉 *SEMUA TAGIHAN LUNAS!*\n\nSemua kontak sudah membayar untuk bulan ${monthNames[currentMonth]} ${currentYear}.`);
     }
 
-    let text = `⚠️ *DAFTAR TUNGGAKAN*\n\n`;
+    let text = `⚠️ *LAPORAN TUNGGAKAN*\n`;
+    text += `📅 Periode: ${monthNames[currentMonth]} ${currentYear}\n\n`;
     text += `Catatan: Bulan sebelum sistem dimulai (sebelum April 2026) tidak dihitung.\n\n`;
     text += `Terdapat ${overdue.length} kontak dengan tagihan belum lunas:\n\n`;
     text += overdue.map((o, i) => {
-      const indicator = o.reasons.includes(monthNames[currentMonth]) && o.reasons.includes(monthNames[prevMonth]) && !isPrevBeforeSystem ? "🔴" : 
-                       o.reasons.includes(monthNames[currentMonth]) ? "🟠" : "🟡";
-      return `${i + 1}. ${o.contact.name}\n   ${indicator} Belum bayar: ${o.reasons}`;
+      const indicator = o.currPaid ? "🟡" : "🔴";
+      const status = o.currPaid ? "(Bulan ini LUNAS) " : "(Bulan ini BELUM) ";
+      return `${indicator} ${o.contact.name}\n   ${status}Belum: ${o.reasons}`;
     }).join("\n\n");
+
+    text += `\n\n━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `📋 *KETERANGAN:*\n`;
+    text += `🔴 = Tunggakan berat (bulan ini + sebelumnya)\n`;
+    text += `🟡 = Tunggakan ringan (bulan sebelumnya saja)\n\n`;
+    text += `💡 *CARA MENGATASI:*\n`;
+    text += `Gunakan !bayar lalu pilih kontak.\n`;
+    text += `Sistem akan menawarkan 3 opsi:\n`;
+    text += `  1. Bayar tunggakan saja\n`;
+    text += `  2. Bayar tunggakan + bulan ini\n`;
+    text += `  3. Bayar bulan ini saja\n`;
 
     msg.reply(text);
   }
@@ -1310,6 +1473,7 @@ CS Emmeril Hotspot`;
 
     const now = new Date();
     const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
     const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
     let text = `📜 *RIWAYAT TAGIHAN PER KONTAK*\n\n`;
@@ -1319,17 +1483,26 @@ CS Emmeril Hotspot`;
       const paidMonths = [];
       const unpaidMonths = [];
 
-      for (let m = 1; m <= 12; m++) {
+      for (let m = 1; m <= currentMonth; m++) {
         const key = `${currentYear}-${String(m).padStart(2, "0")}`;
         if (pm[key]?.status === PAYMENT_STATUS.PAID) {
-          paidMonths.push(monthNames[m].slice(0, 3));
+          paidMonths.push(monthNames[m]);
+        } else {
+          unpaidMonths.push(monthNames[m]);
         }
       }
 
-      if (paidMonths.length > 0) {
-        text += `📱 ${contact.name}\n   ✅ Lunas: ${paidMonths.join(", ")}\n`;
+      if (paidMonths.length > 0 || unpaidMonths.length > 0) {
+        text += `📱 ${contact.name}\n`;
+        if (paidMonths.length > 0) {
+          text += `   ✅ Lunas: ${paidMonths.map(m => m.slice(0, 3)).join(", ")}\n`;
+        }
+        if (unpaidMonths.length > 0) {
+          text += `   ⏳ Belum: ${unpaidMonths.map(m => m.slice(0, 3)).join(", ")}\n`;
+        }
+        text += `\n`;
       } else {
-        text += `📱 ${contact.name}\n   ⏳ Belum ada pembayaran\n`;
+        text += `📱 ${contact.name}\n   ⏳ Belum ada pembayaran\n\n`;
       }
     }
 
