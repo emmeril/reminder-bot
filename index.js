@@ -420,6 +420,15 @@ class DataManager {
       const pm = contact.paymentMonths || {};
       const prevStatus = pm[prevKey]?.status;
       const currStatus = pm[currentKey]?.status;
+      const now = new Date();
+      const systemStartMonth = 4; // April 2026 - bulan sistem diimplementasikan
+      const systemStartYear = 2026;
+      
+      // Jika bulan sebelum sistem dimulai, dianggap LUNAS (tidak valid untuk perhitungan)
+      const isPrevBeforeSystem = prevYear < systemStartYear || (prevYear === systemStartYear && prevMonth < systemStartMonth);
+      if (isPrevBeforeSystem) return false;
+      
+      // Untuk bulan saat sistem dimulai dan setelahnya
       const isPrevUnpaid = !prevStatus || prevStatus !== PAYMENT_STATUS.PAID;
       const isCurrUnpaid = !currStatus || currStatus !== PAYMENT_STATUS.PAID;
       return isPrevUnpaid || isCurrUnpaid;
@@ -1202,6 +1211,9 @@ CS Emmeril Hotspot
     const currKey = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
 
     const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    const systemStartMonth = 4; // April 2026
+    const systemStartYear = 2026;
+    const isPrevBeforeSystem = prevYear < systemStartYear || (prevYear === systemStartYear && prevMonth < systemStartMonth);
 
     const overdue = [];
     for (const contact of contacts) {
@@ -1209,22 +1221,24 @@ CS Emmeril Hotspot
       const currPaid = pm[currKey]?.status === PAYMENT_STATUS.PAID;
       const prevPaid = pm[prevKey]?.status === PAYMENT_STATUS.PAID;
       
-      if (!currPaid || !prevPaid) {
-        const reasons = [];
-        if (!currPaid) reasons.push(`${monthNames[currentMonth]}`);
-        if (!prevPaid) reasons.push(`${monthNames[prevMonth]}`);
+      const reasons = [];
+      if (!currPaid) reasons.push(`${monthNames[currentMonth]}`);
+      if (!prevPaid && !isPrevBeforeSystem) reasons.push(`${monthNames[prevMonth]}`);
+      
+      if (reasons.length > 0) {
         overdue.push({ contact, reasons: reasons.join(", ") });
       }
     }
 
     if (overdue.length === 0) {
-      return msg.reply(`🎉 *_semua TAGIHAN LUNAS!*\n\nSemua kontak sudah membayar untuk bulan ${monthNames[prevMonth]} dan ${monthNames[currentMonth]}.`);
+      return msg.reply(`🎉 *_semua TAGIHAN LUNAS!*\n\nSemua kontak sudah membayar untuk bulan ${monthNames[currentMonth]}.`);
     }
 
     let text = `⚠️ *DAFTAR TUNGGAKAN*\n\n`;
+    text += `Catatan: Bulan sebelum sistem dimulai (sebelum April 2026) tidak dihitung.\n\n`;
     text += `Terdapat ${overdue.length} kontak dengan tagihan belum lunas:\n\n`;
     text += overdue.map((o, i) => {
-      const indicator = o.reasons.includes(monthNames[currentMonth]) && o.reasons.includes(monthNames[prevMonth]) ? "🔴" : 
+      const indicator = o.reasons.includes(monthNames[currentMonth]) && o.reasons.includes(monthNames[prevMonth]) && !isPrevBeforeSystem ? "🔴" : 
                        o.reasons.includes(monthNames[currentMonth]) ? "🟠" : "🟡";
       return `${i + 1}. ${o.contact.name}\n   ${indicator} Belum bayar: ${o.reasons}`;
     }).join("\n\n");
