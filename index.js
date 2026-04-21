@@ -1187,7 +1187,7 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
     });
 
     const message = 
-`*KONFIRMASI PEMBAYARAN*
+`*BUKTI PEMBAYARAN EMMERIL HOTSPOT*
 
 Halo ${contact.name}!
 
