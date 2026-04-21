@@ -43,9 +43,18 @@ const SESSION_STEPS = {
   EDIT_CONTACT_NAME: "edit-kontak-nama",
   EDIT_CONTACT_NUMBER: "edit-kontak-nomor",
   DELETE_CONTACT_SELECT: "delete-kontak-select",
+  BAYAR_SELECT: "bayar-select",
 };
 
 const generateId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+const PAYMENT_STATUS = {
+  PAID: "PAID",
+  UNPAID: "UNPAID",
+};
+
+const getPaymentEmoji = (status) => status === PAYMENT_STATUS.PAID ? "✅" : "⏳";
+const getPaymentLabel = (status) => status === PAYMENT_STATUS.PAID ? "Sudah Dibayar" : "Belum Dibayar";
 
 const parseDateTimeInput = (input) => {
   const match = input.trim().match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})$/);
@@ -327,6 +336,21 @@ class DataManager {
       contact => contact.phoneNumber === phoneNumber && contact.id !== excludeId
     );
   }
+
+  async updatePaymentStatus(id, status) {
+    const contact = this.contacts.get(id);
+    if (!contact) throw new Error('Contact not found');
+    contact.paymentStatus = status;
+    contact.paymentDate = status === PAYMENT_STATUS.PAID ? new Date().toISOString() : null;
+    await this.saveContacts();
+    return contact;
+  }
+
+  getContactsByStatus(status) {
+    return Array.from(this.contacts.values())
+      .filter(c => c.paymentStatus === status)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
 }
 
 // ==================== SESSION MANAGER ====================
@@ -432,6 +456,8 @@ class WhatsAppClient {
       "!editkontak": this.handleEditContact,
       "!deletekontak": this.handleDeleteContact,
       "!listkontak": this.handleListContact,
+      "!bayar": this.handleBayar,
+      "!statusbayar": this.handleStatusBayar,
       "!help": this.sendHelp,
       "!menu": this.sendHelp,
     };
@@ -455,6 +481,7 @@ class WhatsAppClient {
       [SESSION_STEPS.EDIT_CONTACT_NAME]: this.handleEditContactName,
       [SESSION_STEPS.EDIT_CONTACT_NUMBER]: this.handleEditContactNumber,
       [SESSION_STEPS.DELETE_CONTACT_SELECT]: this.handleDeleteContactSelect,
+      [SESSION_STEPS.BAYAR_SELECT]: this.handleBayarSelect,
     };
   }
 
@@ -470,18 +497,21 @@ class WhatsAppClient {
     const waktu = formatDateTime(new Date(reminder.reminderDateTime));
 
     if (!withMessage) {
-      return `${index + 1}. ${nama} | ${waktu}`;
+return `${index + 1}. ${nama} | ${waktu}`;
     }
 
     return `${index + 1}. ${nama} — ${waktu} WIB\n   💬 ${reminder.message}`;
   }
 
   formatContactDisplay(contact, index, multiline = false) {
+    const status = contact.paymentStatus || PAYMENT_STATUS.UNPAID;
+    const label = getPaymentLabel(status);
+    const emoji = getPaymentEmoji(status);
     if (multiline) {
-      return `${index + 1}. ${contact.name}\n   📞 ${contact.phoneNumber}`;
+      return `${index + 1}. ${contact.name}\n   📞 ${contact.phoneNumber}\n   ${emoji} ${label}`;
     }
 
-    return `${index + 1}. ${contact.name} | ${contact.phoneNumber}`;
+    return `${index + 1}. ${contact.name} | ${contact.phoneNumber} | ${emoji} ${label}`;
   }
 
   createSession(sender, data) {
@@ -863,17 +893,18 @@ class WhatsAppClient {
     const nomor = normalizePhoneNumber(body);
     if (!isValidPhoneNumber(nomor)) return msg.reply("❌ Nomor tidak valid!");
     if (this.dataManager.hasContactPhone(nomor)) {
-      return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
+return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
     }
 
     const newContact = {
       id: generateId(),
       name: session.nama,
       phoneNumber: nomor,
+      paymentStatus: PAYMENT_STATUS.UNPAID,
     };
     await this.dataManager.addContact(newContact);
     this.clearSession(sender);
-    msg.reply(`✅ Kontak berhasil ditambahkan:\n${newContact.name} | ${newContact.phoneNumber}`);
+    msg.reply(`✅ Kontak berhasil ditambahkan:\n${newContact.name} | ${newContact.phoneNumber}\n⏳ Status: Belum Dibayar`);
   }
 
   async handleEditContact(msg, sender) {
@@ -943,8 +974,71 @@ class WhatsAppClient {
     const contacts = this.dataManager.getSortedContacts();
     if (contacts.length === 0) return msg.reply("📭 Belum ada kontak.");
 
-    const list = contacts.map((c, i) => `${i + 1}. ${c.name}\n   📞 ${c.phoneNumber}`).join("\n\n");
+    const list = contacts.map((c, i) => this.formatContactDisplay(c, i, true)).join("\n\n");
     msg.reply(`📇 Daftar Kontak:\n\n${list}`);
+  }
+
+  async handleBayar(msg, sender) {
+    const contacts = this.dataManager.getSortedContacts();
+    if (contacts.length === 0) return msg.reply("📭 Tidak ada kontak.");
+
+    const unpaid = contacts.filter(c => c.paymentStatus !== PAYMENT_STATUS.PAID);
+    if (unpaid.length === 0) return msg.reply("✅ Semua kontak sudah lunas!");
+
+    const list = unpaid.map((c, i) => `${i + 1}. ${c.name} | ${c.phoneNumber}`).join("\n");
+    this.createSession(sender, { step: SESSION_STEPS.BAYAR_SELECT, contactList: contacts });
+    msg.reply(`💳 Pilih kontak yang sudah BAYAR:\n${list}\n\nKetik nomor:`);
+  }
+
+  async handleBayarSelect(msg, sender, body, session) {
+    const index = parseSelectionIndex(body);
+    if (index === null) return msg.reply("❌ Nomor tidak valid.");
+    const contact = session.contactList[index];
+    if (!contact) return msg.reply("❌ Nomor tidak valid.");
+    if (contact.paymentStatus === PAYMENT_STATUS.PAID) {
+      return msg.reply("❌ Kontak ini sudah lunas.");
+    }
+
+    await this.dataManager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID);
+    this.clearSession(sender);
+
+    await this.sendPaymentNotification(contact);
+    msg.reply(`✅ Status pembayaran ${contact.name} diperbarui menjadi *Sudah Dibayar*.\n\nNotifikasi dikirim ke ${contact.phoneNumber}.`);
+  }
+
+  async sendPaymentNotification(contact) {
+    const message = `📢 *PEMBAYARAN DITERIMA*\n\nHalo ${contact.name}!\n\nPembayaran Anda telah diterima. Terima kasih.\n\nJika ada pertanyaan, silakan hubungi kami.`;
+    try {
+      await this.sendMessage(contact.phoneNumber, message);
+      console.log("📤 Notifikasi pembayaran terkirim:", contact.phoneNumber);
+    } catch (err) {
+      console.error("❌ Gagal kirim notifikasi:", err.message);
+    }
+  }
+
+  async handleStatusBayar(msg) {
+    const contacts = this.dataManager.getSortedContacts();
+    if (contacts.length === 0) return msg.reply("📭 Belum ada kontak.");
+
+    const paid = contacts.filter(c => c.paymentStatus === PAYMENT_STATUS.PAID);
+    const unpaid = contacts.filter(c => c.paymentStatus !== PAYMENT_STATUS.PAID);
+
+    let text = "📊 *LAPORAN PEMBAYARAN*\n\n";
+    text += `✅ *Sudah Dibayar* (${paid.length}):\n`;
+    if (paid.length > 0) {
+      text += paid.map(c => `  • ${c.name}`).join("\n") + "\n\n";
+    } else {
+      text += "  (tidak ada)\n\n";
+    }
+
+    text += `⏳ *Belum Dibayar* (${unpaid.length}):\n`;
+    if (unpaid.length > 0) {
+      text += unpaid.map(c => `  • ${c.name}`).join("\n");
+    } else {
+      text += "  (tidak ada)";
+    }
+
+    msg.reply(text);
   }
 
   async handleSetAdmin(msg, sender, body) {
@@ -978,6 +1072,8 @@ class WhatsAppClient {
       "• !editkontak – ubah kontak",
       "• !deletekontak – hapus kontak",
       "• !listkontak – lihat kontak",
+      "• !bayar – tandai sudah lunas",
+      "• !statusbayar – laporan pembayaran",
       "• !setadmin <no> – jadikan admin",
     ];
     const menuText = this.dataManager.isAdmin(sender) ? umum.concat(admin).join("\n") : umum.join("\n");
