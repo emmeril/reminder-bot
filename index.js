@@ -1150,7 +1150,7 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
     if (unpaid.length === 0) return msg.reply("✅ Semua kontak sudah lunas!");
 
     const list = unpaid.map((c, i) => `${i + 1}. ${c.name} | ${c.phoneNumber}`).join("\n");
-    this.createSession(sender, { step: SESSION_STEPS.BAYAR_SELECT, contactList: contacts });
+    this.createSession(sender, { step: SESSION_STEPS.BAYAR_SELECT, contactList: unpaid });
     msg.reply(`💳 Pilih kontak yang sudah BAYAR:\n${list}\n\nKetik nomor:`);
   }
 
