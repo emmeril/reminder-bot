@@ -54,7 +54,7 @@ const PAYMENT_STATUS = {
   UNPAID: "UNPAID",
 };
 
-const getPaymentEmoji = (status) => status === PAYMENT_STATUS.PAID ? "✅" : "⏳";
+const getPaymentEmoji = (status) => status === PAYMENT_STATUS.PAID ? "[LUNAS]" : "[BELUM]";
 const getPaymentLabel = (status) => status === PAYMENT_STATUS.PAID ? "Sudah Dibayar" : "Belum Dibayar";
 
 const parseDateTimeInput = (input) => {
@@ -162,7 +162,7 @@ class DataManager {
           await fs.rename(tempPath, filePath);
           return;
         } catch (error) {
-          console.error(`❌ Write attempt ${attempt} failed:`, error.message);
+          console.error(`[ERROR] Write attempt ${attempt} failed:`, error.message);
           await fs.copyFile(backupPath, filePath).catch(() => {});
           if (attempt === maxRetries) throw error;
           await sleep(100 * attempt);
@@ -176,12 +176,12 @@ class DataManager {
 
   // Load data
   async loadAll() {
-    console.log('📂 Loading data...');
+    console.log('[LOADING] Loading data...');
     this.contacts = await this.loadMapFromFile(this.getPath('contacts.json'), 'id');
     this.reminders = await this.loadMapFromFile(this.getPath('reminders.json'), 'id');
     this.sentReminders = await this.loadMapFromFile(this.getPath('sent_reminders.json'), 'id');
     this.roles = await this.loadRoles();
-    console.log(`✅ Data loaded: ${this.contacts.size} contacts, ${this.reminders.size} reminders, ${this.roles.size} roles`);
+    console.log(`[OK] Data loaded: ${this.contacts.size} contacts, ${this.reminders.size} reminders, ${this.roles.size} roles`);
   }
 
   getPath(filename) {
@@ -197,7 +197,7 @@ class DataManager {
       return new Map(arr.filter(item => item && item[keyField]).map(item => [item[keyField], item]));
     } catch (error) {
       if (error.code === 'ENOENT') return new Map();
-      console.error(`❌ Error loading ${filePath}:`, error.message);
+      console.error(`[ERROR] Error loading ${filePath}:`, error.message);
       // Attempt recovery from backup
       try {
         const backup = filePath + '.bak';
@@ -217,7 +217,7 @@ class DataManager {
       return new Map(Object.entries(obj));
     } catch (error) {
       if (error.code === 'ENOENT') return new Map();
-      console.error("❌ Error loading roles:", error.message);
+      console.error("[ERROR] Error loading roles:", error.message);
       return new Map();
     }
   }
@@ -240,14 +240,14 @@ class DataManager {
   }
 
   async saveAll() {
-    console.log('🔄 Auto-saving data...');
+    console.log('[REFRESH] Auto-saving data...');
     await Promise.all([
       this.saveContacts(),
       this.saveReminders(),
       this.saveSentReminders(),
       this.saveRoles(),
     ]);
-    console.log('✅ Auto-save completed');
+    console.log('[OK] Auto-save completed');
   }
 
   // Backup
@@ -261,7 +261,7 @@ class DataManager {
       const dest = path.join(backupDir, file);
       await fs.copyFile(src, dest).catch(() => {});
     }));
-    console.log(`💾 Backup created: ${backupDir}`);
+    console.log(`[SAVE] Backup created: ${backupDir}`);
   }
 
   // CRUD Helpers
@@ -446,7 +446,7 @@ class DataManager {
     }
     if (resetCount > 0) {
       await this.saveContacts();
-      console.log(`🔄 Reset payment status for ${resetCount} contacts to UNPAID`);
+      console.log(`[REFRESH] Reset payment status for ${resetCount} contacts to UNPAID`);
     }
     return resetCount;
   }
@@ -477,7 +477,7 @@ class SessionManager {
     for (const [sender, session] of this.sessions.entries()) {
       if (now - session.lastActivity > CONFIG.SESSION_TIMEOUT) {
         this.sessions.delete(sender);
-        console.log(`🧹 Cleaned up stale session for ${sender}`);
+        console.log(`[CLEANUP] Cleaned up stale session for ${sender}`);
       }
     }
   }
@@ -508,14 +508,14 @@ class TemplateManager {
             content,
           });
         } catch (error) {
-          console.error(`❌ Error loading template ${file}:`, error.message);
+          console.error(`[ERROR] Error loading template ${file}:`, error.message);
         }
       }
       this.cache = templates;
       this.cacheTime = now;
       return templates;
     } catch (error) {
-      console.error("❌ Error loading templates:", error.message);
+      console.error("[ERROR] Error loading templates:", error.message);
       return [];
     }
   }
@@ -602,7 +602,7 @@ class WhatsAppClient {
 return `${index + 1}. ${nama} | ${waktu}`;
     }
 
-    return `${index + 1}. ${nama} — ${waktu} WIB\n   💬 ${reminder.message}`;
+    return `${index + 1}. ${nama} - ${waktu} WIB\n   [MSG] ${reminder.message}`;
   }
 
   formatContactDisplay(contact, index, multiline = false) {
@@ -610,7 +610,7 @@ return `${index + 1}. ${nama} | ${waktu}`;
     const label = getPaymentLabel(status);
     const emoji = getPaymentEmoji(status);
     if (multiline) {
-      return `${index + 1}. ${contact.name}\n   📞 ${contact.phoneNumber}\n   ${emoji} ${label}`;
+      return `${index + 1}. ${contact.name}\n   [PHONE] ${contact.phoneNumber}\n   ${emoji} ${label}`;
     }
 
     return `${index + 1}. ${contact.name} | ${contact.phoneNumber} | ${emoji} ${label}`;
@@ -671,24 +671,24 @@ return `${index + 1}. ${nama} | ${waktu}`;
       this.isReady = false;
       this.reconnectAttempts = 0;
       this.isReconnecting = false;
-      console.log("📲 QR code generated");
+      console.log("[QR] QR code generated");
       qrcode.generate(qr, { small: true });
     });
 
     this.client.on("authenticated", () => {
-      console.log("🔐 WhatsApp authenticated");
+      console.log("[AUTH] WhatsApp authenticated");
       this.reconnectAttempts = 0;
       this.isReconnecting = false;
     });
 
     this.client.on("auth_failure", (msg) => {
-      console.error("❌ Auth failure:", msg);
+      console.error("[ERROR] Auth failure:", msg);
       this.isReady = false;
       this.scheduleReconnect();
     });
 
     this.client.on("ready", () => {
-      console.log("✅ WhatsApp ready");
+      console.log("[OK] WhatsApp ready");
       this.isReady = true;
       this.currentQR = null;
       this.reconnectAttempts = 0;
@@ -697,7 +697,7 @@ return `${index + 1}. ${nama} | ${waktu}`;
     });
 
     this.client.on("change_state", (state) => {
-      console.log("📡 WA STATE:", state);
+      console.log("[STATE] WA STATE:", state);
       if (state === "CONNECTED") {
         this.isReady = true;
         this.reconnectAttempts = 0;
@@ -710,7 +710,7 @@ return `${index + 1}. ${nama} | ${waktu}`;
     });
 
     this.client.on("disconnected", (reason) => {
-      console.log("❌ WhatsApp disconnected:", reason);
+      console.log("[ERROR] WhatsApp disconnected:", reason);
       this.isReady = false;
       this.currentQR = null;
       if (["UNAUTHORIZED", "CONFLICT"].includes(reason)) {
@@ -721,7 +721,7 @@ return `${index + 1}. ${nama} | ${waktu}`;
     });
 
     this.client.on("error", (error) => {
-      console.error("❌ WhatsApp error:", error.message);
+      console.error("[ERROR] WhatsApp error:", error.message);
       if (!this.isReady && !this.isReconnecting) {
         this.scheduleReconnect();
       }
@@ -741,9 +741,9 @@ return `${index + 1}. ${nama} | ${waktu}`;
       if (body === "!cancel") {
         if (session) {
           this.clearSession(sender);
-          return msg.reply("✅ Sesi saat ini dibatalkan.");
+          return msg.reply("[OK] Sesi saat ini dibatalkan.");
         }
-        return msg.reply("❌ Tidak ada sesi yang aktif.");
+        return msg.reply("[ERROR] Tidak ada sesi yang aktif.");
       }
 
       if (!this.dataManager.isAdmin(sender) && !ALLOWED_NON_ADMIN_COMMANDS.has(body)) {
@@ -764,8 +764,8 @@ return `${index + 1}. ${nama} | ${waktu}`;
         }
       }
     } catch (error) {
-      console.error('❌ Error in message handler:', error);
-      msg.reply("❌ Terjadi error internal. Silakan coba lagi.");
+      console.error('[ERROR] Error in message handler:', error);
+      msg.reply("[ERROR] Terjadi error internal. Silakan coba lagi.");
     }
   }
 
@@ -773,18 +773,18 @@ return `${index + 1}. ${nama} | ${waktu}`;
   async handleAddReminder(msg, sender) {
     const contacts = this.dataManager.getSortedContacts();
     if (contacts.length === 0) {
-      return msg.reply("📭 Tidak ada kontak. Tambahkan kontak dulu dengan !addkontak.");
+      return msg.reply("[EMPTY] Tidak ada kontak. Tambahkan kontak dulu dengan !addkontak.");
     }
     const list = contacts.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
     this.createSession(sender, { step: SESSION_STEPS.ADD_REMINDER_CONTACT, contactList: contacts });
-    msg.reply(`📇 Kontak tersedia:\n${list}\n\nKetik nomor kontak:`);
+    msg.reply(`[CONTACT] Kontak tersedia:\n${list}\n\nKetik nomor kontak:`);
   }
 
   async handleAddReminderStep1(msg, sender, body, session) {
     const index = parseSelectionIndex(body);
-    if (index === null) return msg.reply("❌ Nomor kontak tidak valid.");
+    if (index === null) return msg.reply("[ERROR] Nomor kontak tidak valid.");
     const contact = index === null ? null : session.contactList[index];
-    if (!contact) return msg.reply("❌ Nomor kontak tidak valid.");
+    if (!contact) return msg.reply("[ERROR] Nomor kontak tidak valid.");
 
     const templates = await this.templateManager.loadTemplates();
     const list = templates.map((t, i) => `${i + 1}. ${t.name}`).join("\n");
@@ -793,38 +793,38 @@ return `${index + 1}. ${nama} | ${waktu}`;
       kontak: contact,
       templateOptions: templates,
     });
-    msg.reply(`📄 Pilih Template atau Custom:\n${list}\n${templates.length + 1}. ✏️ Ketik manual (Custom)\n\nKetik angka pilihan:`);
+    msg.reply(`[TEMPLATE] Pilih Template atau Custom:\n${list}\n${templates.length + 1}. [EDIT] Ketik manual (Custom)\n\nKetik angka pilihan:`);
   }
 
   async handleAddReminderStep2(msg, sender, body, session) {
     const idx = Number.parseInt(body, 10);
-    if (Number.isNaN(idx)) return msg.reply("❌ Pilihan tidak valid.");
+    if (Number.isNaN(idx)) return msg.reply("[ERROR] Pilihan tidak valid.");
     const templates = session.templateOptions;
     if (idx >= 1 && idx <= templates.length) {
       session.template = templates[idx - 1].content;
       this.createSession(sender, { ...session, step: SESSION_STEPS.ADD_REMINDER_DATE });
-      return msg.reply("📅 Ketik tanggal & jam (format: YYYY-MM-DD HH:mm):");
+      return msg.reply("[DATE] Ketik tanggal & jam (format: YYYY-MM-DD HH:mm):");
     }
     if (idx === templates.length + 1) {
       this.createSession(sender, { ...session, step: SESSION_STEPS.ADD_REMINDER_CUSTOM });
-      return msg.reply("✏️ Ketik pesan custom Anda:");
+      return msg.reply("[EDIT] Ketik pesan custom Anda:");
     }
-    msg.reply("❌ Pilihan tidak valid.");
+    msg.reply("[ERROR] Pilihan tidak valid.");
   }
 
   async handleAddReminderStep3(msg, sender, body, session) {
     session.template = body;
     this.createSession(sender, { ...session, step: SESSION_STEPS.ADD_REMINDER_DATE });
-    msg.reply("📅 Ketik tanggal & jam (format: YYYY-MM-DD HH:mm):");
+    msg.reply("[DATE] Ketik tanggal & jam (format: YYYY-MM-DD HH:mm):");
   }
 
   async handleAddReminderStep4(msg, sender, body, session) {
     const parsed = parseDateTimeInput(body);
-    if (!parsed) return msg.reply("❌ Format waktu salah. Gunakan YYYY-MM-DD HH:mm.");
+    if (!parsed) return msg.reply("[ERROR] Format waktu salah. Gunakan YYYY-MM-DD HH:mm.");
 
     const { tanggal, jam, date: dt } = parsed;
     if (dt.getTime() <= Date.now()) {
-      return msg.reply("❌ Waktu reminder harus di masa depan.");
+      return msg.reply("[ERROR] Waktu reminder harus di masa depan.");
     }
 
     const bulan = dt.toLocaleString("id-ID", { month: "long" });
@@ -844,45 +844,45 @@ return `${index + 1}. ${nama} | ${waktu}`;
 
     await this.dataManager.addReminder(reminder);
     this.clearSession(sender);
-    msg.reply(`✅ Reminder disimpan untuk ${kontak.name} pada ${tanggal} ${jam}`);
+    msg.reply(`[OK] Reminder disimpan untuk ${kontak.name} pada ${tanggal} ${jam}`);
   }
 
   async handleEditReminder(msg, sender) {
     const sorted = this.dataManager.getSortedReminders();
-    if (sorted.length === 0) return msg.reply("📭 Tidak ada reminder.");
+    if (sorted.length === 0) return msg.reply("[EMPTY] Tidak ada reminder.");
 
     const list = sorted.map((r, i) => this.formatReminderDisplay(r, i)).join("\n");
 
     this.createSession(sender, { step: SESSION_STEPS.EDIT_REMINDER_SELECT, list: sorted });
-    msg.reply(`✏️ Pilih reminder yang ingin diedit:\n${list}\n\nKetik nomor:`);
+    msg.reply(`[EDIT] Pilih reminder yang ingin diedit:\n${list}\n\nKetik nomor:`);
   }
 
   async handleEditReminderSelect(msg, sender, body, session) {
     const index = parseSelectionIndex(body);
-    if (index === null) return msg.reply("❌ Nomor tidak valid.");
+    if (index === null) return msg.reply("[ERROR] Nomor tidak valid.");
     const selected = index === null ? null : session.list[index];
-    if (!selected) return msg.reply("❌ Nomor tidak valid.");
+    if (!selected) return msg.reply("[ERROR] Nomor tidak valid.");
 
     this.createSession(sender, {
       ...session,
       selectedReminder: selected,
       step: SESSION_STEPS.EDIT_REMINDER_DATE,
     });
-    msg.reply("📅 Masukkan tanggal & jam baru (format: YYYY-MM-DD HH:mm):");
+    msg.reply("[DATE] Masukkan tanggal & jam baru (format: YYYY-MM-DD HH:mm):");
   }
 
   async handleEditReminderDate(msg, sender, body, session) {
     const parsed = parseDateTimeInput(body);
-    if (!parsed) return msg.reply("❌ Format waktu salah. Gunakan YYYY-MM-DD HH:mm.");
+    if (!parsed) return msg.reply("[ERROR] Format waktu salah. Gunakan YYYY-MM-DD HH:mm.");
 
     const { date: dt } = parsed;
     if (dt.getTime() <= Date.now()) {
-      return msg.reply("❌ Waktu reminder harus di masa depan.");
+      return msg.reply("[ERROR] Waktu reminder harus di masa depan.");
     }
 
     session.newDate = dt;
     this.createSession(sender, { ...session, step: SESSION_STEPS.EDIT_REMINDER_MESSAGE });
-    msg.reply("📩 Ganti isi pesan?\n1. Pakai template\n2. Ketik manual\n3. Tidak usah ganti\n\nKetik 1 / 2 / 3:");
+    msg.reply("[MSG_EDIT] Ganti isi pesan?\n1. Pakai template\n2. Ketik manual\n3. Tidak usah ganti\n\nKetik 1 / 2 / 3:");
   }
 
   async handleEditReminderMessageOption(msg, sender, body, session) {
@@ -891,24 +891,24 @@ return `${index + 1}. ${nama} | ${waktu}`;
       const templates = await this.templateManager.loadTemplates();
       const list = templates.map((t, i) => `${i + 1}. ${t.name}`).join("\n");
       this.createSession(sender, { ...session, step: SESSION_STEPS.EDIT_REMINDER_TEMPLATE, templateOptions: templates });
-      return msg.reply(`📄 Pilih Template:\n${list}\n\nKetik nomor:`);
+      return msg.reply(`[TEMPLATE] Pilih Template:\n${list}\n\nKetik nomor:`);
     }
     if (option === '2') {
       this.createSession(sender, { ...session, step: SESSION_STEPS.EDIT_REMINDER_CUSTOM });
-      return msg.reply("✏️ Ketik pesan baru:");
+      return msg.reply("[EDIT] Ketik pesan baru:");
     }
     if (option === '3') {
       await this.updateReminder(msg, session.selectedReminder, session.newDate, null, sender);
     } else {
-      msg.reply("❌ Pilih 1 / 2 / 3.");
+      msg.reply("[ERROR] Pilih 1 / 2 / 3.");
     }
   }
 
   async handleEditReminderTemplate(msg, sender, body, session) {
     const idx = parseSelectionIndex(body);
-    if (idx === null) return msg.reply("❌ Template tidak valid.");
+    if (idx === null) return msg.reply("[ERROR] Template tidak valid.");
     const template = session.templateOptions[idx];
-    if (!template) return msg.reply("❌ Template tidak valid.");
+    if (!template) return msg.reply("[ERROR] Template tidak valid.");
 
     const reminder = session.selectedReminder;
     const kontak = this.dataManager.findContactByPhone(reminder.phoneNumber);
@@ -942,60 +942,60 @@ return `${index + 1}. ${nama} | ${waktu}`;
     if (newMessage) reminder.message = newMessage;
     await this.dataManager.updateReminder(reminder.id, reminder);
     this.clearSession(sender);
-    msg.reply(`✅ Reminder berhasil diperbarui ke ${formatDateTime(newDate)}`);
+    msg.reply(`[OK] Reminder berhasil diperbarui ke ${formatDateTime(newDate)}`);
   }
 
   async handleDeleteReminder(msg, sender) {
     const sorted = this.dataManager.getSortedReminders();
-    if (sorted.length === 0) return msg.reply("📭 Tidak ada reminder.");
+    if (sorted.length === 0) return msg.reply("[EMPTY] Tidak ada reminder.");
 
     const list = sorted.map((r, i) => this.formatReminderDisplay(r, i)).join("\n");
 
     this.createSession(sender, { step: SESSION_STEPS.DELETE_REMINDER_SELECT, list: sorted });
-    msg.reply(`🗑️ Reminder yang tersedia:\n${list}\n\nKetik nomor reminder yang ingin dihapus:`);
+    msg.reply(`[DELETE] Reminder yang tersedia:\n${list}\n\nKetik nomor reminder yang ingin dihapus:`);
   }
 
   async handleDeleteReminderSelect(msg, sender, body, session) {
     const index = parseSelectionIndex(body);
-    if (index === null) return msg.reply("❌ Nomor tidak valid.");
+    if (index === null) return msg.reply("[ERROR] Nomor tidak valid.");
     const selected = index === null ? null : session.list[index];
-    if (!selected) return msg.reply("❌ Nomor tidak valid.");
+    if (!selected) return msg.reply("[ERROR] Nomor tidak valid.");
 
     await this.dataManager.deleteReminder(selected.id);
     this.clearSession(sender);
-    msg.reply(`✅ Reminder berhasil dihapus.`);
+    msg.reply(`[OK] Reminder berhasil dihapus.`);
   }
 
   async handleListReminder(msg) {
     const sorted = this.dataManager.getSortedReminders();
-    if (sorted.length === 0) return msg.reply("📭 Belum ada reminder.");
+    if (sorted.length === 0) return msg.reply("[EMPTY] Belum ada reminder.");
 
     const list = sorted.map((r, i) => {
       const kontak = this.dataManager.findContactByPhone(r.phoneNumber);
       const nama = kontak ? kontak.name : r.phoneNumber;
       const waktu = formatDateTime(new Date(r.reminderDateTime));
-      return `${i + 1}. ${nama} — ${waktu} WIB\n   💬 ${r.message}`;
+      return `${i + 1}. ${nama} - ${waktu} WIB\n   [MSG] ${r.message}`;
     }).join("\n\n");
 
-    msg.reply(`📌 Reminder Aktif:\n\n${list}`);
+    msg.reply(`[REMINDER] Reminder Aktif:\n\n${list}`);
   }
 
   // ========== CONTACT HANDLERS ==========
   async handleAddContact(msg, sender) {
     this.createSession(sender, { step: SESSION_STEPS.ADD_CONTACT_NAME });
-    msg.reply("📝 Masukkan nama kontak:");
+    msg.reply("[INPUT] Masukkan nama kontak:");
   }
 
   async handleAddContactName(msg, sender, body, session) {
     this.createSession(sender, { ...session, nama: body, step: SESSION_STEPS.ADD_CONTACT_NUMBER });
-    msg.reply("📞 Masukkan nomor HP (format 628xxx):");
+    msg.reply("[PHONE] Masukkan nomor HP (format 628xxx):");
   }
 
   async handleAddContactNumber(msg, sender, body, session) {
     const nomor = normalizePhoneNumber(body);
-    if (!isValidPhoneNumber(nomor)) return msg.reply("❌ Nomor tidak valid!");
+    if (!isValidPhoneNumber(nomor)) return msg.reply("[ERROR] Nomor tidak valid!");
     if (this.dataManager.hasContactPhone(nomor)) {
-return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
+return msg.reply("[ERROR] Nomor ini sudah terdaftar sebagai kontak.");
     }
 
     const newContact = {
@@ -1006,42 +1006,42 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
     };
     await this.dataManager.addContact(newContact);
     this.clearSession(sender);
-    msg.reply(`✅ Kontak berhasil ditambahkan:\n${newContact.name} | ${newContact.phoneNumber}\n⏳ Status: Belum Dibayar`);
+    msg.reply(`[OK] Kontak berhasil ditambahkan:\n${newContact.name} | ${newContact.phoneNumber}\n[WAIT] Status: Belum Dibayar`);
   }
 
   async handleEditContact(msg, sender) {
     const contacts = this.dataManager.getSortedContacts();
-    if (contacts.length === 0) return msg.reply("📭 Tidak ada kontak.");
+    if (contacts.length === 0) return msg.reply("[EMPTY] Tidak ada kontak.");
 
     const list = contacts.map((c, i) => this.formatContactDisplay(c, i)).join("\n");
     this.createSession(sender, { step: SESSION_STEPS.EDIT_CONTACT_SELECT, list: contacts });
-    msg.reply(`✏️ Kontak tersedia:\n${list}\n\nKetik nomor kontak yang ingin diedit:`);
+    msg.reply(`[EDIT] Kontak tersedia:\n${list}\n\nKetik nomor kontak yang ingin diedit:`);
   }
 
   async handleEditContactSelect(msg, sender, body, session) {
     const index = parseSelectionIndex(body);
-    if (index === null) return msg.reply("❌ Nomor tidak valid.");
+    if (index === null) return msg.reply("[ERROR] Nomor tidak valid.");
     const selected = index === null ? null : session.list[index];
-    if (!selected) return msg.reply("❌ Nomor tidak valid.");
+    if (!selected) return msg.reply("[ERROR] Nomor tidak valid.");
 
     this.createSession(sender, {
       ...session,
       kontak: selected,
       step: SESSION_STEPS.EDIT_CONTACT_NAME,
     });
-    msg.reply(`✏️ Nama saat ini: ${selected.name}\nMasukkan nama baru:`);
+    msg.reply(`[EDIT] Nama saat ini: ${selected.name}\nMasukkan nama baru:`);
   }
 
   async handleEditContactName(msg, sender, body, session) {
     this.createSession(sender, { ...session, newName: body, step: SESSION_STEPS.EDIT_CONTACT_NUMBER });
-    msg.reply("📞 Masukkan nomor HP baru (format: 628xxx):");
+    msg.reply("[PHONE] Masukkan nomor HP baru (format: 628xxx):");
   }
 
   async handleEditContactNumber(msg, sender, body, session) {
     const nomor = normalizePhoneNumber(body);
-    if (!isValidPhoneNumber(nomor)) return msg.reply("❌ Nomor tidak valid!");
+    if (!isValidPhoneNumber(nomor)) return msg.reply("[ERROR] Nomor tidak valid!");
     if (this.dataManager.hasContactPhone(nomor, session.kontak.id)) {
-      return msg.reply("❌ Nomor ini sudah dipakai kontak lain.");
+      return msg.reply("[ERROR] Nomor ini sudah dipakai kontak lain.");
     }
 
     const kontak = session.kontak;
@@ -1049,56 +1049,56 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
     kontak.phoneNumber = nomor;
     await this.dataManager.updateContact(kontak.id, kontak);
     this.clearSession(sender);
-    msg.reply(`✅ Kontak berhasil diperbarui:\n${kontak.name} | ${kontak.phoneNumber}`);
+    msg.reply(`[OK] Kontak berhasil diperbarui:\n${kontak.name} | ${kontak.phoneNumber}`);
   }
 
   async handleDeleteContact(msg, sender) {
     const contacts = this.dataManager.getSortedContacts();
-    if (contacts.length === 0) return msg.reply("📭 Tidak ada kontak.");
+    if (contacts.length === 0) return msg.reply("[EMPTY] Tidak ada kontak.");
 
     const list = contacts.map((c, i) => this.formatContactDisplay(c, i)).join("\n");
     this.createSession(sender, { step: SESSION_STEPS.DELETE_CONTACT_SELECT, list: contacts });
-    msg.reply(`🗑️ Kontak tersedia:\n${list}\n\nKetik nomor kontak yang ingin dihapus:`);
+    msg.reply(`[DELETE] Kontak tersedia:\n${list}\n\nKetik nomor kontak yang ingin dihapus:`);
   }
 
   async handleDeleteContactSelect(msg, sender, body, session) {
     const index = parseSelectionIndex(body);
-    if (index === null) return msg.reply("❌ Nomor tidak valid.");
+    if (index === null) return msg.reply("[ERROR] Nomor tidak valid.");
     const selected = index === null ? null : session.list[index];
-    if (!selected) return msg.reply("❌ Nomor tidak valid.");
+    if (!selected) return msg.reply("[ERROR] Nomor tidak valid.");
 
     await this.dataManager.deleteContact(selected.id);
     this.clearSession(sender);
-    msg.reply(`✅ Kontak '${selected.name}' berhasil dihapus.`);
+    msg.reply(`[OK] Kontak '${selected.name}' berhasil dihapus.`);
   }
 
   async handleListContact(msg) {
     const contacts = this.dataManager.getSortedContacts();
-    if (contacts.length === 0) return msg.reply("📭 Belum ada kontak.");
+    if (contacts.length === 0) return msg.reply("[EMPTY] Belum ada kontak.");
 
     const list = contacts.map((c, i) => this.formatContactDisplay(c, i, true)).join("\n\n");
-    msg.reply(`📇 Daftar Kontak:\n\n${list}`);
+    msg.reply(`[CONTACT] Daftar Kontak:\n\n${list}`);
   }
 
   async handleBayar(msg, sender) {
     const contacts = this.dataManager.getSortedContacts();
-    if (contacts.length === 0) return msg.reply("📭 Tidak ada kontak.");
+    if (contacts.length === 0) return msg.reply("[EMPTY] Tidak ada kontak.");
 
     const unpaid = contacts.filter(c => c.paymentStatus !== PAYMENT_STATUS.PAID);
-    if (unpaid.length === 0) return msg.reply("✅ Semua kontak sudah lunas!");
+    if (unpaid.length === 0) return msg.reply("[OK] Semua kontak sudah lunas!");
 
     const list = unpaid.map((c, i) => `${i + 1}. ${c.name} | ${c.phoneNumber}`).join("\n");
     this.createSession(sender, { step: SESSION_STEPS.BAYAR_SELECT, contactList: contacts });
-    msg.reply(`💳 Pilih kontak yang sudah BAYAR:\n${list}\n\nKetik nomor:`);
+    msg.reply(`[PAYMENT] Pilih kontak yang sudah BAYAR:\n${list}\n\nKetik nomor:`);
   }
 
   async handleBayarSelect(msg, sender, body, session) {
     const index = parseSelectionIndex(body);
-    if (index === null) return msg.reply("❌ Nomor tidak valid.");
+    if (index === null) return msg.reply("[ERROR] Nomor tidak valid.");
     const contact = session.contactList[index];
-    if (!contact) return msg.reply("❌ Nomor tidak valid.");
+    if (!contact) return msg.reply("[ERROR] Nomor tidak valid.");
     if (contact.paymentStatus === PAYMENT_STATUS.PAID) {
-      return msg.reply("❌ Kontak ini sudah lunas.");
+      return msg.reply("[ERROR] Kontak ini sudah lunas.");
     }
 
     const now = new Date();
@@ -1111,7 +1111,7 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
     const contactUpdated = this.dataManager.contacts.get(contact.id);
     const transactionId = `TRX-${Date.now()}`;
     await this.sendPaymentNotification(contactUpdated, transactionId);
-    msg.reply(`✅ Status pembayaran ${contact.name} diperbarui menjadi *Sudah Dibayar*.\n\nID Transaksi: ${transactionId}\n\nNotifikasi dikirim ke ${contact.phoneNumber}.`);
+    msg.reply(`[OK] Status pembayaran ${contact.name} diperbarui menjadi *Sudah Dibayar*.\n\nID Transaksi: ${transactionId}\n\nNotifikasi dikirim ke ${contact.phoneNumber}.`);
   }
 
   async sendPaymentNotification(contact, transactionId) {
@@ -1124,58 +1124,54 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
       minute: "2-digit",
     });
 
-    const message = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 *KONFIRMASI PEMBAYARAN*
+    const message = 
+`*KONFIRMASI PEMBAYARAN*
 
 Halo ${contact.name}!
 
 Terima kasih telah melakukan pembayaran.
 Berikut detail transaksi Anda:
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🆔 *ID Transaksi*
-   ${transactionId}
+*ID Transaksi*
+${transactionId}
 
-📅 *Tanggal Pembayaran*
-   ${formattedDate}
+*Tanggal Pembayaran*
+${formattedDate}
 
-💰 *Status*
-   ✅ LUNAS
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+*Status*
+LUNAS
 
 Pembayaran Anda telah berhasil kami terima.
 
 Hormat kami,
-CS Emmeril Hotspot
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+CS Emmeril Hotspot`;
 
     try {
       await this.sendMessage(contact.phoneNumber, message);
-      console.log("📤 Notifikasi pembayaran terkirim:", contact.phoneNumber, "| TRX:", transactionId);
+      console.log("[NOTIF_OUT] Notifikasi pembayaran terkirim:", contact.phoneNumber, "| TRX:", transactionId);
     } catch (err) {
-      console.error("❌ Gagal kirim notifikasi:", err.message);
+      console.error("[ERROR] Gagal kirim notifikasi:", err.message);
     }
   }
 
   async handleStatusBayar(msg) {
     const contacts = this.dataManager.getSortedContacts();
-    if (contacts.length === 0) return msg.reply("📭 Belum ada kontak.");
+    if (contacts.length === 0) return msg.reply("[EMPTY] Belum ada kontak.");
 
     const paid = contacts.filter(c => c.paymentStatus === PAYMENT_STATUS.PAID);
     const unpaid = contacts.filter(c => c.paymentStatus !== PAYMENT_STATUS.PAID);
 
-    let text = "📊 *LAPORAN PEMBAYARAN*\n\n";
-    text += `✅ *Sudah Dibayar* (${paid.length}):\n`;
+    let text = "[REPORT] *LAPORAN PEMBAYARAN*\n\n";
+    text += `[OK] *Sudah Dibayar* (${paid.length}):\n`;
     if (paid.length > 0) {
-      text += paid.map(c => `  • ${c.name}`).join("\n") + "\n\n";
+      text += paid.map(c => `  * ${c.name}`).join("\n") + "\n\n";
     } else {
       text += "  (tidak ada)\n\n";
     }
 
-    text += `⏳ *Belum Dibayar* (${unpaid.length}):\n`;
+    text += `[WAIT] *Belum Dibayar* (${unpaid.length}):\n`;
     if (unpaid.length > 0) {
-      text += unpaid.map(c => `  • ${c.name}`).join("\n");
+      text += unpaid.map(c => `  * ${c.name}`).join("\n");
     } else {
       text += "  (tidak ada)";
     }
@@ -1186,21 +1182,21 @@ CS Emmeril Hotspot
   async handleLaporan(msg, sender) {
     const port = CONFIG.PORT;
     const reportUrl = `http://localhost:${port}/report`;
-    const text = `📊 *LINK LAPORAN PEMBAYARAN*\n\n` +
+    const text = `[REPORT] *LINK LAPORAN PEMBAYARAN*\n\n` +
       `Klik link berikut untuk membuka dashboard laporan:\n\n` +
-      `🔗 ${reportUrl}\n\n` +
+      `[LINK] ${reportUrl}\n\n` +
       `Fitur:\n` +
-      `• Lihat data pembayaran per bulan\n` +
-      `• Bandingkan dengan bulan sebelumnya\n` +
-      `• Export ke Excel & PDF\n` +
-      `• Filter berdasarkan periode\n\n` +
+      `* Lihat data pembayaran per bulan\n` +
+      `* Bandingkan dengan bulan sebelumnya\n` +
+      `* Export ke Excel & PDF\n` +
+      `* Filter berdasarkan periode\n\n` +
       `Buka di browser (Chrome/Edge/Firefox)`;
     msg.reply(text);
   }
 
   async handleTunggakan(msg, sender) {
     const contacts = this.dataManager.getSortedContacts();
-    if (contacts.length === 0) return msg.reply("📭 Belum ada kontak.");
+    if (contacts.length === 0) return msg.reply("[EMPTY] Belum ada kontak.");
 
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
@@ -1231,15 +1227,15 @@ CS Emmeril Hotspot
     }
 
     if (overdue.length === 0) {
-      return msg.reply(`🎉 *_semua TAGIHAN LUNAS!*\n\nSemua kontak sudah membayar untuk bulan ${monthNames[currentMonth]}.`);
+      return msg.reply(`[SUCCESS] *_semua TAGIHAN LUNAS!*\n\nSemua kontak sudah membayar untuk bulan ${monthNames[currentMonth]}.`);
     }
 
-    let text = `⚠️ *DAFTAR TUNGGAKAN*\n\n`;
+    let text = `[WARNING] *DAFTAR TUNGGAKAN*\n\n`;
     text += `Catatan: Bulan sebelum sistem dimulai (sebelum April 2026) tidak dihitung.\n\n`;
     text += `Terdapat ${overdue.length} kontak dengan tagihan belum lunas:\n\n`;
     text += overdue.map((o, i) => {
-      const indicator = o.reasons.includes(monthNames[currentMonth]) && o.reasons.includes(monthNames[prevMonth]) && !isPrevBeforeSystem ? "🔴" : 
-                       o.reasons.includes(monthNames[currentMonth]) ? "🟠" : "🟡";
+      const indicator = o.reasons.includes(monthNames[currentMonth]) && o.reasons.includes(monthNames[prevMonth]) && !isPrevBeforeSystem ? "[RED]" : 
+                       o.reasons.includes(monthNames[currentMonth]) ? "[ORANGE]" : "[YELLOW]";
       return `${i + 1}. ${o.contact.name}\n   ${indicator} Belum bayar: ${o.reasons}`;
     }).join("\n\n");
 
@@ -1248,13 +1244,13 @@ CS Emmeril Hotspot
 
   async handleRiwayatTagihan(msg, sender) {
     const contacts = this.dataManager.getSortedContacts();
-    if (contacts.length === 0) return msg.reply("📭 Belum ada kontak.");
+    if (contacts.length === 0) return msg.reply("[EMPTY] Belum ada kontak.");
 
     const now = new Date();
     const currentYear = now.getFullYear();
     const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
-    let text = `📜 *RIWAYAT TAGIHAN PER KONTAK*\n\n`;
+    let text = `[HISTORY] *RIWAYAT TAGIHAN PER KONTAK*\n\n`;
 
     for (const contact of contacts.slice(0, 10)) {
       const pm = contact.paymentMonths || {};
@@ -1269,9 +1265,9 @@ CS Emmeril Hotspot
       }
 
       if (paidMonths.length > 0) {
-        text += `📱 ${contact.name}\n   ✅ Lunas: ${paidMonths.join(", ")}\n`;
+        text += `[CONTACT_ICON] ${contact.name}\n   [OK] Lunas: ${paidMonths.join(", ")}\n`;
       } else {
-        text += `📱 ${contact.name}\n   ⏳ Belum ada pembayaran\n`;
+        text += `[CONTACT_ICON] ${contact.name}\n   [WAIT] Belum ada pembayaran\n`;
       }
     }
 
@@ -1285,41 +1281,41 @@ CS Emmeril Hotspot
 
   async handleSetAdmin(msg, sender, body) {
     const rawNumber = body.split(' ')[1];
-    if (!rawNumber) return msg.reply("❌ Format salah. Gunakan: !setadmin 628xxx");
+    if (!rawNumber) return msg.reply("[ERROR] Format salah. Gunakan: !setadmin 628xxx");
 
     const newAdminNumber = normalizePhoneNumber(rawNumber);
     if (!isValidPhoneNumber(newAdminNumber)) {
-      return msg.reply("❌ Nomor admin tidak valid. Gunakan format 628xxx.");
+      return msg.reply("[ERROR] Nomor admin tidak valid. Gunakan format 628xxx.");
     }
 
     await this.dataManager.addAdmin(newAdminNumber);
-    msg.reply(`✅ ${newAdminNumber} sekarang menjadi admin.`);
+    msg.reply(`[OK] ${newAdminNumber} sekarang menjadi admin.`);
   }
 
   async sendHelp(msg, sender) {
     const umum = [
-      "📖 *Menu Bantuan*",
+      "[HELP] *Menu Bantuan*",
       "",
-      "• !help / !menu – tampilkan bantuan",
-      "• !cancel – batalkan proses",
+      "* !help / !menu – tampilkan bantuan",
+      "* !cancel – batalkan proses",
     ];
     const admin = [
       "",
-      "🛠️ *Perintah Admin:*",
-      "• !addreminder – tambah reminder",
-      "• !editreminder – ubah reminder",
-      "• !deletereminder – hapus reminder",
-      "• !listreminder – lihat reminder",
-      "• !addkontak – tambah kontak",
-      "• !editkontak – ubah kontak",
-      "• !deletekontak – hapus kontak",
-      "• !listkontak – lihat kontak",
-      "• !bayar – tandai sudah lunas",
-      "• !statusbayar – laporan pembayaran",
-      "• !tunggakan – cek tunggakan",
-      "• !riwayattagihan – riwayat tagihan",
-      "• !laporan – lihat link laporan",
-      "• !setadmin <no> – jadikan admin",
+      "[ADMIN] *Perintah Admin:*",
+      "* !addreminder – tambah reminder",
+      "* !editreminder – ubah reminder",
+      "* !deletereminder – hapus reminder",
+      "* !listreminder – lihat reminder",
+      "* !addkontak – tambah kontak",
+      "* !editkontak – ubah kontak",
+      "* !deletekontak – hapus kontak",
+      "* !listkontak – lihat kontak",
+      "* !bayar – tandai sudah lunas",
+      "* !statusbayar – laporan pembayaran",
+      "* !tunggakan – cek tunggakan",
+      "* !riwayattagihan – riwayat tagihan",
+      "* !laporan – lihat link laporan",
+      "* !setadmin <no> – jadikan admin",
     ];
     const menuText = this.dataManager.isAdmin(sender) ? umum.concat(admin).join("\n") : umum.join("\n");
     msg.reply(menuText);
@@ -1332,7 +1328,7 @@ CS Emmeril Hotspot
     const now = Date.now();
     if (this.lastReconnectTime && now - this.lastReconnectTime < CONFIG.MIN_RECONNECT_INTERVAL) {
       const waitTime = CONFIG.MIN_RECONNECT_INTERVAL - (now - this.lastReconnectTime);
-      console.log(`⏳ Wait ${Math.ceil(waitTime / 1000)}s before reconnect`);
+      console.log(`[WAIT] Wait ${Math.ceil(waitTime / 1000)}s before reconnect`);
       if (!this.isReconnecting) {
         this.isReconnecting = true;
         this.reconnectTimer = setTimeout(() => {
@@ -1346,7 +1342,7 @@ CS Emmeril Hotspot
     if (this.isReconnecting) return false;
 
     if (this.reconnectAttempts >= CONFIG.MAX_RECONNECT_ATTEMPTS) {
-      console.error("🛑 Max reconnect attempts reached");
+      console.error("[STOP] Max reconnect attempts reached");
       return false;
     }
 
@@ -1355,7 +1351,7 @@ CS Emmeril Hotspot
     this.isReconnecting = true;
 
     const delay = Math.min(30000, CONFIG.RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts));
-    console.log(`🔄 Reconnect in ${delay / 1000}s (${this.reconnectAttempts}/${CONFIG.MAX_RECONNECT_ATTEMPTS})`);
+    console.log(`[REFRESH] Reconnect in ${delay / 1000}s (${this.reconnectAttempts}/${CONFIG.MAX_RECONNECT_ATTEMPTS})`);
 
     clearTimeout(this.reconnectTimer);
     this.reconnectTimer = setTimeout(async () => {
@@ -1368,7 +1364,7 @@ CS Emmeril Hotspot
         this.setupEvents();
         await this.client.initialize();
       } catch (err) {
-        console.error("❌ Reconnect failed:", err.message);
+        console.error("[ERROR] Reconnect failed:", err.message);
         this.isReconnecting = false;
         this.scheduleReconnect();
       } finally {
@@ -1388,7 +1384,7 @@ CS Emmeril Hotspot
     try {
       await this.client.initialize();
     } catch (error) {
-      console.error("❌ Failed to initialize WhatsApp:", error.message);
+      console.error("[ERROR] Failed to initialize WhatsApp:", error.message);
       this.scheduleReconnect();
     }
   }
@@ -1400,9 +1396,9 @@ CS Emmeril Hotspot
       try {
         await this.client.getState();
         this.reconnectAttempts = 0;
-        console.log("💓 WA keep-alive OK");
+        console.log("[ALIVE] WA keep-alive OK");
       } catch {
-        console.log("💔 WA keep-alive failed");
+        console.log("[DEAD] WA keep-alive failed");
         this.isReady = false;
         this.scheduleReconnect();
       }
@@ -1425,12 +1421,12 @@ class ReminderScheduler {
 
   async processDueReminders() {
     if (this.isProcessing) {
-      console.log('⏳ Skip cron - previous run still processing');
+      console.log('[WAIT] Skip cron - previous run still processing');
       return;
     }
 
     if (!this.whatsAppClient.isReady) {
-      console.log('⏳ Skip cron - WhatsApp not ready');
+      console.log('[WAIT] Skip cron - WhatsApp not ready');
       return;
     }
 
@@ -1448,13 +1444,13 @@ class ReminderScheduler {
       for (const [id, reminder] of due) {
         try {
           await this.whatsAppClient.sendMessage(reminder.phoneNumber, reminder.message);
-          console.log("📤 Reminder terkirim:", reminder.phoneNumber);
+          console.log("[NOTIF_OUT] Reminder terkirim:", reminder.phoneNumber);
 
           for (const [nomor, role] of this.dataManager.roles.entries()) {
             if (role === "admin" && nomor !== reminder.phoneNumber) {
               await this.whatsAppClient.sendMessage(
                 nomor,
-                `📥 Reminder terkirim ke ${reminder.phoneNumber}:\n\n${reminder.message}`
+                `[NOTIF_IN] Reminder terkirim ke ${reminder.phoneNumber}:\n\n${reminder.message}`
               ).catch(() => {});
             }
           }
@@ -1477,9 +1473,9 @@ class ReminderScheduler {
           };
           await this.dataManager.addReminder(newReminder);
         } catch (err) {
-          console.error("❌ Gagal kirim:", err.message);
+          console.error("[ERROR] Gagal kirim:", err.message);
           if (err.message.includes('closed') || err.message.includes('disconnected')) {
-            console.log('🔁 Connection error, triggering reconnect...');
+            console.log('[RETRY] Connection error, triggering reconnect...');
             this.whatsAppClient.scheduleReconnect();
             break;
           }
@@ -1508,12 +1504,12 @@ class WebServer {
       if (this.whatsAppClient.isReady) {
         return res.send(`
           <html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#f2f2f2;font-family:sans-serif;">
-            <div style="font-size:1.5rem;color:#28a745;">✅ WhatsApp sudah terhubung.</div>
+            <div style="font-size:1.5rem;color:#28a745;">[OK] WhatsApp sudah terhubung.</div>
           </body></html>
         `);
       }
       if (!this.whatsAppClient.currentQR) {
-        return res.send("⏳ Menunggu QR code...");
+        return res.send("[WAIT] Menunggu QR code...");
       }
       const qrImage = await QRCode.toDataURL(this.whatsAppClient.currentQR);
       res.send(`
@@ -1649,10 +1645,10 @@ class WebServer {
 <body>
   <div class="container">
     <div class="header">
-      <h1>📊 Laporan Pembayaran</h1>
+      <h1>[REPORT] Laporan Pembayaran</h1>
       <div class="controls">
-        <button class="btn-success" onclick="exportExcel()">📊 Export Excel</button>
-        <button class="btn-danger" onclick="exportPDF()">📄 Export PDF</button>
+        <button class="btn-success" onclick="exportExcel()">[REPORT] Export Excel</button>
+        <button class="btn-danger" onclick="exportPDF()">[TEMPLATE] Export PDF</button>
       </div>
     </div>
 
@@ -1670,26 +1666,26 @@ class WebServer {
 
     <div class="metrics">
       <div class="metric-card">
-        <h3>💰 Total Pembayaran Bulan Ini</h3>
+        <h3>[AMOUNT] Total Pembayaran Bulan Ini</h3>
         <div class="value positive">${currentTotal}</div>
       </div>
       <div class="metric-card">
-        <h3>📈 Pertumbuhan (vs Bulan Lalu)</h3>
+        <h3>[GROWTH] Pertumbuhan (vs Bulan Lalu)</h3>
         <div class="value ${parseFloat(growth) >= 0 ? 'positive' : 'negative'}">${growth}%</div>
       </div>
       <div class="metric-card">
-        <h3>✅ Sudah Dibayar</h3>
+        <h3>[OK] Sudah Dibayar</h3>
         <div class="value">${paidContacts}</div>
       </div>
       <div class="metric-card">
-        <h3>⏳ Belum Dibayar</h3>
+        <h3>[WAIT] Belum Dibayar</h3>
         <div class="value negative">${unpaidContacts}</div>
       </div>
     </div>
 
     <div class="comparison">
       <div class="comparison-card">
-        <h3>📅 Periode Saat Ini (${monthNames[currentMonth]} ${currentYear})</h3>
+        <h3>[DATE] Periode Saat Ini (${monthNames[currentMonth]} ${currentYear})</h3>
         <div class="comparison-row">
           <span class="label">Total Pembayaran</span>
           <span class="value">${currentTotal}</span>
@@ -1700,7 +1696,7 @@ class WebServer {
         </div>
       </div>
       <div class="comparison-card">
-        <h3>📆 Periode Sebelumnya (${monthNames[prevMonth]} ${prevYear})</h3>
+        <h3>[PREV_PERIOD] Periode Sebelumnya (${monthNames[prevMonth]} ${prevYear})</h3>
         <div class="comparison-row">
           <span class="label">Total Pembayaran</span>
           <span class="value">${prevPayments}</span>
@@ -1730,7 +1726,7 @@ class WebServer {
             <td>${c.name}</td>
             <td>${c.phoneNumber}</td>
             <td>${c.paymentDate ? new Date(c.paymentDate).toLocaleString('id-ID') : '-'}</td>
-            <td class="status-paid">✅ Lunas</td>
+            <td class="status-paid">[OK] Lunas</td>
           </tr>
           `).join('')}
         </tbody>
@@ -1756,7 +1752,7 @@ class WebServer {
           if (res.data.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#7f8c8d;">Tidak ada data</td></tr>';
           } else {
-            tbody.innerHTML = res.data.map((c, i) => '<tr><td>' + (i+1) + '</td><td>' + c.name + '</td><td>' + c.phoneNumber + '</td><td>' + (c.paymentDate ? new Date(c.paymentDate).toLocaleString('id-ID') : '-') + '</td><td class="status-paid">✅ Lunas</td></tr>').join('');
+            tbody.innerHTML = res.data.map((c, i) => '<tr><td>' + (i+1) + '</td><td>' + c.name + '</td><td>' + c.phoneNumber + '</td><td>' + (c.paymentDate ? new Date(c.paymentDate).toLocaleString('id-ID') : '-') + '</td><td class="status-paid">[OK] Lunas</td></tr>').join('');
           }
         });
     }
@@ -1805,8 +1801,8 @@ class WebServer {
 
   start(port) {
     this.app.listen(port, () => {
-      console.log(`🌐 Web server running at http://localhost:${port}/qr`);
-      console.log(`📊 Report dashboard: http://localhost:${port}/report`);
+      console.log(`[WEB] Web server running at http://localhost:${port}/qr`);
+      console.log(`[REPORT] Report dashboard: http://localhost:${port}/report`);
     });
   }
 }
@@ -1829,13 +1825,13 @@ class WebServer {
   // Start cron job
   cron.schedule(CONFIG.CRON_SCHEDULE, () => {
     reminderScheduler.processDueReminders().catch(error => {
-      console.error('❌ Cron job failed:', error.message);
+      console.error('[ERROR] Cron job failed:', error.message);
     });
   });
 
   // Reset payment status every 1st of month
   cron.schedule(CONFIG.RESET_PAYMENT_SCHEDULE, async () => {
-    console.log('🔄 Resetting payment status for new month...');
+    console.log('[REFRESH] Resetting payment status for new month...');
     const count = await dataManager.resetAllPaymentStatus();
     const now = new Date();
     const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth();
@@ -1845,13 +1841,13 @@ class WebServer {
 
     for (const [nomor, role] of dataManager.roles.entries()) {
       if (role === "admin") {
-        let notif = `📢 *RESET PEMBAYARAN*\n\nStatus pembayaran telah direset untuk bulan baru.\n\n`;
+        let notif = `[ANNOUNCE] *RESET PEMBAYARAN*\n\nStatus pembayaran telah direset untuk bulan baru.\n\n`;
         if (overdue.length > 0) {
-          notif += `⚠️ *${overdue.length} TAGIHAN BELUM LUNAS* dari bulan ${monthNames[prevMonth]}:\n\n`;
+          notif += `[WARNING] *${overdue.length} TAGIHAN BELUM LUNAS* dari bulan ${monthNames[prevMonth]}:\n\n`;
           notif += overdue.slice(0, 5).map((o, i) => `${i + 1}. ${o.name}`).join("\n");
           if (overdue.length > 5) notif += `\n...dan ${overdue.length - 5} lainnya`;
         } else {
-          notif += `✅ Semua tagihan bulan lalu sudah lunas!`;
+          notif += `[OK] Semua tagihan bulan lalu sudah lunas!`;
         }
         try {
           await whatsAppClient.sendMessage(nomor, notif);
@@ -1863,12 +1859,12 @@ class WebServer {
   // Auto-save dan backup berkala
   setInterval(() => {
     dataManager.saveAll().catch(error => {
-      console.error('❌ Auto-save failed:', error.message);
+      console.error('[ERROR] Auto-save failed:', error.message);
     });
   }, CONFIG.AUTO_SAVE_INTERVAL);
   setInterval(() => {
     dataManager.createBackup().catch(error => {
-      console.error('❌ Backup failed:', error.message);
+      console.error('[ERROR] Backup failed:', error.message);
     });
   }, CONFIG.BACKUP_INTERVAL);
 
@@ -1877,19 +1873,19 @@ class WebServer {
 
   // Graceful shutdown
   process.on('SIGINT', async () => {
-    console.log('\n🔄 Menyimpan data sebelum shutdown...');
+    console.log('\n[REFRESH] Menyimpan data sebelum shutdown...');
     await dataManager.saveAll();
     process.exit(0);
   });
 
   process.on('uncaughtException', async (err) => {
-    console.error('❌ Uncaught Exception:', err);
+    console.error('[ERROR] Uncaught Exception:', err);
     await dataManager.saveAll();
     process.exit(1);
   });
 
   process.on('unhandledRejection', async (reason) => {
-    console.error('❌ Unhandled Rejection:', reason);
+    console.error('[ERROR] Unhandled Rejection:', reason);
     await dataManager.saveAll();
     process.exit(1);
   });
