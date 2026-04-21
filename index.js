@@ -365,6 +365,7 @@ class DataManager {
 
   getAllPaymentsHistory() {
     const history = {};
+    const paymentMonths = this.getPaymentMonths();
     for (const contact of this.contacts.values()) {
       if (contact.paymentDate) {
         const paidDate = new Date(contact.paymentDate);
@@ -377,6 +378,52 @@ class DataManager {
       }
     }
     return history;
+  }
+
+  getPaymentMonths() {
+    return this.paymentMonths || {};
+  }
+
+  getPaymentMonthStatus(contactId) {
+    const contact = this.contacts.get(contactId);
+    if (!contact || !contact.paymentMonths) return {};
+    return contact.paymentMonths;
+  }
+
+  async setPaymentForMonth(contactId, year, month, status) {
+    const contact = this.contacts.get(contactId);
+    if (!contact) return;
+    if (!contact.paymentMonths) contact.paymentMonths = {};
+    const key = `${year}-${String(month).padStart(2, "0")}`;
+    contact.paymentMonths[key] = {
+      status: status,
+      paidDate: status === PAYMENT_STATUS.PAID ? new Date().toISOString() : null
+    };
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    if (year === currentYear && month === currentMonth) {
+      contact.paymentStatus = status;
+      contact.paymentDate = status === PAYMENT_STATUS.PAID ? new Date().toISOString() : null;
+    }
+    await this.saveContacts();
+    return contact;
+  }
+
+  getOverdueContacts(year, month) {
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevKey = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
+    const currentKey = `${year}-${String(month).padStart(2, "0")}`;
+    
+    return Array.from(this.contacts.values()).filter(contact => {
+      const pm = contact.paymentMonths || {};
+      const prevStatus = pm[prevKey]?.status;
+      const currStatus = pm[currentKey]?.status;
+      const isPrevUnpaid = !prevStatus || prevStatus !== PAYMENT_STATUS.PAID;
+      const isCurrUnpaid = !currStatus || currStatus !== PAYMENT_STATUS.PAID;
+      return isPrevUnpaid || isCurrUnpaid;
+    });
   }
 
   async resetAllPaymentStatus() {
@@ -502,6 +549,8 @@ class WhatsAppClient {
       "!bayar": this.handleBayar,
       "!statusbayar": this.handleStatusBayar,
       "!laporan": this.handleLaporan,
+      "!tunggakan": this.handleTunggakan,
+      "!riwayattagihan": this.handleRiwayatTagihan,
       "!help": this.sendHelp,
       "!menu": this.sendHelp,
     };
@@ -1043,6 +1092,10 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
       return msg.reply("❌ Kontak ini sudah lunas.");
     }
 
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    await this.dataManager.setPaymentForMonth(contact.id, currentYear, currentMonth, PAYMENT_STATUS.PAID);
     await this.dataManager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID);
     this.clearSession(sender);
 
@@ -1136,6 +1189,86 @@ CS Emmeril Hotspot
     msg.reply(text);
   }
 
+  async handleTunggakan(msg, sender) {
+    const contacts = this.dataManager.getSortedContacts();
+    if (contacts.length === 0) return msg.reply("📭 Belum ada kontak.");
+
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+    const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+    const prevKey = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
+    const currKey = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
+
+    const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+    const overdue = [];
+    for (const contact of contacts) {
+      const pm = contact.paymentMonths || {};
+      const currPaid = pm[currKey]?.status === PAYMENT_STATUS.PAID;
+      const prevPaid = pm[prevKey]?.status === PAYMENT_STATUS.PAID;
+      
+      if (!currPaid || !prevPaid) {
+        const reasons = [];
+        if (!currPaid) reasons.push(`${monthNames[currentMonth]}`);
+        if (!prevPaid) reasons.push(`${monthNames[prevMonth]}`);
+        overdue.push({ contact, reasons: reasons.join(", ") });
+      }
+    }
+
+    if (overdue.length === 0) {
+      return msg.reply(`🎉 *_semua TAGIHAN LUNAS!*\n\nSemua kontak sudah membayar untuk bulan ${monthNames[prevMonth]} dan ${monthNames[currentMonth]}.`);
+    }
+
+    let text = `⚠️ *DAFTAR TUNGGAKAN*\n\n`;
+    text += `Terdapat ${overdue.length} kontak dengan tagihan belum lunas:\n\n`;
+    text += overdue.map((o, i) => {
+      const indicator = o.reasons.includes(monthNames[currentMonth]) && o.reasons.includes(monthNames[prevMonth]) ? "🔴" : 
+                       o.reasons.includes(monthNames[currentMonth]) ? "🟠" : "🟡";
+      return `${i + 1}. ${o.contact.name}\n   ${indicator} Belum bayar: ${o.reasons}`;
+    }).join("\n\n");
+
+    msg.reply(text);
+  }
+
+  async handleRiwayatTagihan(msg, sender) {
+    const contacts = this.dataManager.getSortedContacts();
+    if (contacts.length === 0) return msg.reply("📭 Belum ada kontak.");
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+    let text = `📜 *RIWAYAT TAGIHAN PER KONTAK*\n\n`;
+
+    for (const contact of contacts.slice(0, 10)) {
+      const pm = contact.paymentMonths || {};
+      const paidMonths = [];
+      const unpaidMonths = [];
+
+      for (let m = 1; m <= 12; m++) {
+        const key = `${currentYear}-${String(m).padStart(2, "0")}`;
+        if (pm[key]?.status === PAYMENT_STATUS.PAID) {
+          paidMonths.push(monthNames[m].slice(0, 3));
+        }
+      }
+
+      if (paidMonths.length > 0) {
+        text += `📱 ${contact.name}\n   ✅ Lunas: ${paidMonths.join(", ")}\n`;
+      } else {
+        text += `📱 ${contact.name}\n   ⏳ Belum ada pembayaran\n`;
+      }
+    }
+
+    if (contacts.length > 10) {
+      text += `\n...dan ${contacts.length - 10} kontak lainnya.\n`;
+    }
+
+    text += `\n\nGunakan !laporan untuk melihat detail lengkap di web.`;
+    msg.reply(text);
+  }
+
   async handleSetAdmin(msg, sender, body) {
     const rawNumber = body.split(' ')[1];
     if (!rawNumber) return msg.reply("❌ Format salah. Gunakan: !setadmin 628xxx");
@@ -1169,6 +1302,8 @@ CS Emmeril Hotspot
       "• !listkontak – lihat kontak",
       "• !bayar – tandai sudah lunas",
       "• !statusbayar – laporan pembayaran",
+      "• !tunggakan – cek tunggakan",
+      "• !riwayattagihan – riwayat tagihan",
       "• !laporan – lihat link laporan",
       "• !setadmin <no> – jadikan admin",
     ];
@@ -1688,16 +1823,25 @@ class WebServer {
   cron.schedule(CONFIG.RESET_PAYMENT_SCHEDULE, async () => {
     console.log('🔄 Resetting payment status for new month...');
     const count = await dataManager.resetAllPaymentStatus();
-    if (count > 0) {
-      for (const [nomor, role] of dataManager.roles.entries()) {
-        if (role === "admin") {
-          try {
-            await whatsAppClient.sendMessage(
-              nomor,
-              `📢 *RESET PEMBAYARAN*\n\nStatus pembayaran ${count} kontak telah direset ke *Belum Dibayar* untuk bulan baru.`
-            );
-          } catch (e) { /* ignore */ }
+    const now = new Date();
+    const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth();
+    const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+    const overdue = dataManager.getOverdueContacts(prevYear, prevMonth);
+    const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+    for (const [nomor, role] of dataManager.roles.entries()) {
+      if (role === "admin") {
+        let notif = `📢 *RESET PEMBAYARAN*\n\nStatus pembayaran telah direset untuk bulan baru.\n\n`;
+        if (overdue.length > 0) {
+          notif += `⚠️ *${overdue.length} TAGIHAN BELUM LUNAS* dari bulan ${monthNames[prevMonth]}:\n\n`;
+          notif += overdue.slice(0, 5).map((o, i) => `${i + 1}. ${o.name}`).join("\n");
+          if (overdue.length > 5) notif += `\n...dan ${overdue.length - 5} lainnya`;
+        } else {
+          notif += `✅ Semua tagihan bulan lalu sudah lunas!`;
         }
+        try {
+          await whatsAppClient.sendMessage(nomor, notif);
+        } catch (e) { /* ignore */ }
       }
     }
   });
