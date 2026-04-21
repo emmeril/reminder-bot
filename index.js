@@ -1049,7 +1049,7 @@ return `${index + 1}. ${nama} | ${waktu}`;
   }
 
   async handleAddContactName(msg, sender, body, session) {
-    this.createSession(sender, { ...session, nama: body, step: SESSION_STEPS.ADD_CONTACT_NUMBER });
+    this.createSession(sender, { ...structuredClone(session), nama: body, step: SESSION_STEPS.ADD_CONTACT_NUMBER });
     msg.reply("📞 Masukkan nomor HP (format 628xxx):");
   }
 
@@ -1095,7 +1095,7 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
   }
 
   async handleEditContactName(msg, sender, body, session) {
-    this.createSession(sender, { ...session, newName: body, step: SESSION_STEPS.EDIT_CONTACT_NUMBER });
+    this.createSession(sender, { ...structuredClone(session), newName: body, step: SESSION_STEPS.EDIT_CONTACT_NUMBER });
     msg.reply("📞 Masukkan nomor HP baru (format: 628xxx):");
   }
 
