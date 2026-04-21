@@ -5,28 +5,66 @@ const qrcode = require("qrcode-terminal");
 const QRCode = require("qrcode");
 const express = require("express");
 const cron = require("node-cron");
+const crypto = require("crypto");
 
-// ==================== KONFIGURASI ====================
 const CONFIG = {
-  PORT: 3025,
+  PORT: process.env.PORT || 3025,
   DB_PATH: path.join(__dirname, "database"),
   TEMPLATE_PATH: path.join(__dirname, "templates"),
-  AUTO_SAVE_INTERVAL: 24 * 60 * 60 * 1000, // 24 jam
-  BACKUP_INTERVAL: 24 * 60 * 60 * 1000, // 24 jam
-  SESSION_TIMEOUT: 60 * 60 * 1000, // 1 jam
-  KEEP_ALIVE_INTERVAL: 5 * 60 * 1000, // 5 menit
+  AUTO_SAVE_INTERVAL: 24 * 60 * 60 * 1000,
+  BACKUP_INTERVAL: 24 * 60 * 60 * 1000,
+  SESSION_TIMEOUT: 60 * 60 * 1000,
+  KEEP_ALIVE_INTERVAL: 5 * 60 * 1000,
   MAX_RECONNECT_ATTEMPTS: 10,
-  MIN_RECONNECT_INTERVAL: 30000, // 30 detik
-  RECONNECT_DELAY: 5000, // 5 detik
-  CRON_SCHEDULE: "*/1 * * * *", // setiap menit
-  RESET_PAYMENT_SCHEDULE: "0 0 1 * *", // setiap tanggal 1 bulan baru (00:00)
+  MIN_RECONNECT_INTERVAL: 30000,
+  RECONNECT_DELAY: 5000,
+  CRON_SCHEDULE: "*/1 * * * *",
+  RESET_PAYMENT_SCHEDULE: "0 0 1 * *",
+  MAX_LOCK_WAIT: 10000,
+  LOCK_POLL_INTERVAL: 50,
+  WEB_API_KEY: process.env.WEB_API_KEY || "dev-key-change-in-production",
 };
+
+const COMMANDS = {
+  HELP: "!help",
+  MENU: "!menu",
+  CANCEL: "!cancel",
+  ADD_REMINDER: "!addreminder",
+  EDIT_REMINDER: "!editreminder",
+  DELETE_REMINDER: "!deletereminder",
+  LIST_REMINDER: "!listreminder",
+  ADD_CONTACT: "!addkontak",
+  EDIT_CONTACT: "!editkontak",
+  DELETE_CONTACT: "!deletekontak",
+  LIST_CONTACT: "!listkontak",
+  BAYAR: "!bayar",
+  STATUS_BAYAR: "!statusbayar",
+  LAPORAN: "!laporan",
+  TUNGGAKAN: "!tunggakan",
+  RIWAYAT_TAGIHAN: "!riwayattagihan",
+  SET_ADMIN: "!setadmin",
+};
+
+const ALLOWED_NON_ADMIN_COMMANDS = new Set([COMMANDS.HELP, COMMANDS.MENU]);
+
+function escapeHtml(str) {
+  if (typeof str !== "string") return str;
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function sanitizeInput(str) {
+  if (typeof str !== "string") return "";
+  return str.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim();
+}
 
 // ==================== UTILITY FUNCTIONS ====================
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-const HELP_COMMANDS = new Set(["!help", "!menu"]);
-const ALLOWED_NON_ADMIN_COMMANDS = HELP_COMMANDS;
 const SESSION_STEPS = {
   ADD_REMINDER_CONTACT: "add-1",
   ADD_REMINDER_TEMPLATE: "add-2",
@@ -47,7 +85,7 @@ const SESSION_STEPS = {
   BAYAR_SELECT: "bayar-select",
 };
 
-const generateId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+const generateId = () => `${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
 
 const PAYMENT_STATUS = {
   PAID: "PAID",
@@ -58,12 +96,29 @@ const getPaymentEmoji = (status) => status === PAYMENT_STATUS.PAID ? "✅" : "�
 const getPaymentLabel = (status) => status === PAYMENT_STATUS.PAID ? "Sudah Dibayar" : "Belum Dibayar";
 
 const parseDateTimeInput = (input) => {
-  const match = input.trim().match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})$/);
+  const match = sanitizeInput(input).match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/);
   if (!match) return null;
 
-  const [, tanggal, jam] = match;
-  const date = new Date(`${tanggal}T${jam}:00`);
+  const [, year, month, day, hour, minute] = match;
+  const yearNum = parseInt(year, 10);
+  const monthNum = parseInt(month, 10);
+  const dayNum = parseInt(day, 10);
+  const hourNum = parseInt(hour, 10);
+  const minuteNum = parseInt(minute, 10);
+
+  if (monthNum < 1 || monthNum > 12) return null;
+  if (dayNum < 1 || dayNum > 31) return null;
+  if (hourNum < 0 || hourNum > 23) return null;
+  if (minuteNum < 0 || minuteNum > 59) return null;
+
+  const maxDays = new Date(yearNum, monthNum, 0).getDate();
+  if (dayNum > maxDays) return null;
+
+  const date = new Date(yearNum, monthNum - 1, dayNum, hourNum, minuteNum);
   if (Number.isNaN(date.getTime())) return null;
+
+  const tanggal = `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+  const jam = `${String(hourNum).padStart(2, '0')}:${String(minuteNum).padStart(2, '0')}`;
 
   return { tanggal, jam, date };
 };
@@ -127,10 +182,13 @@ class DataManager {
     await fs.mkdir(CONFIG.TEMPLATE_PATH, { recursive: true });
   }
 
-  // Lock mechanism
   async acquireLock(filePath) {
+    const startTime = Date.now();
     while (this.fileLocks.has(filePath)) {
-      await sleep(10);
+      if (Date.now() - startTime > CONFIG.MAX_LOCK_WAIT) {
+        throw new Error(`Lock acquisition timeout for ${filePath}`);
+      }
+      await sleep(CONFIG.LOCK_POLL_INTERVAL);
     }
     this.fileLocks.set(filePath, true);
   }
@@ -459,7 +517,10 @@ class SessionManager {
   }
 
   createSession(sender, data) {
-    this.sessions.set(sender, { ...data, lastActivity: Date.now() });
+    this.sessions.set(sender, {
+      ...structuredClone(data),
+      lastActivity: Date.now(),
+    });
   }
 
   getSession(sender) {
@@ -523,7 +584,8 @@ class TemplateManager {
   applyTemplate(template, variables) {
     let message = template;
     for (const [key, value] of Object.entries(variables)) {
-      message = message.replace(new RegExp(`{{${key}}}`, 'gi'), value);
+      const sanitizedValue = typeof value === 'string' ? value.replace(/[*_`~]/g, '\\$&') : value;
+      message = message.replace(new RegExp(`{{${key}}}`, 'gi'), sanitizedValue);
     }
     return message;
   }
@@ -1104,12 +1166,12 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
+    
     await this.dataManager.setPaymentForMonth(contact.id, currentYear, currentMonth, PAYMENT_STATUS.PAID);
-    await this.dataManager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID);
     this.clearSession(sender);
 
     const contactUpdated = this.dataManager.contacts.get(contact.id);
-    const transactionId = `TRX-${Date.now()}`;
+    const transactionId = `TRX-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
     await this.sendPaymentNotification(contactUpdated, transactionId);
     msg.reply(`✅ Status pembayaran ${contact.name} diperbarui menjadi *Sudah Dibayar*.\n\nID Transaksi: ${transactionId}\n\nNotifikasi dikirim ke ${contact.phoneNumber}.`);
   }
@@ -1500,6 +1562,14 @@ class WebServer {
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
 
+    const requireApiKey = (req, res, next) => {
+      const apiKey = req.headers['x-api-key'] || req.query.api_key;
+      if (!apiKey || apiKey !== CONFIG.WEB_API_KEY) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
+      next();
+    };
+
     this.app.get("/qr", async (req, res) => {
       if (this.whatsAppClient.isReady) {
         return res.send(`
@@ -1525,14 +1595,19 @@ class WebServer {
       `);
     });
 
-    this.app.get("/api/payments/history", (req, res) => {
+    this.app.get("/api/payments/history", requireApiKey, (req, res) => {
       const history = this.dataManager.getAllPaymentsHistory();
       res.json({ success: true, data: history });
     });
 
-    this.app.get("/api/payments/:year/:month", (req, res) => {
+    this.app.get("/api/payments/:year/:month", requireApiKey, (req, res) => {
       const { year, month } = req.params;
-      const payments = this.dataManager.getPaymentsByMonth(parseInt(year), parseInt(month));
+      const yearNum = parseInt(year, 10);
+      const monthNum = parseInt(month, 10);
+      if (isNaN(yearNum) || isNaN(monthNum) || yearNum < 2000 || yearNum > 2100 || monthNum < 1 || monthNum > 12) {
+        return res.status(400).json({ success: false, error: 'Invalid year or month' });
+      }
+      const payments = this.dataManager.getPaymentsByMonth(yearNum, monthNum);
       res.json({
         success: true,
         data: payments.map(c => ({
@@ -1545,7 +1620,7 @@ class WebServer {
       });
     });
 
-    this.app.get("/api/payments/current", (req, res) => {
+    this.app.get("/api/payments/current", requireApiKey, (req, res) => {
       const now = new Date();
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth() + 1;
@@ -1588,6 +1663,14 @@ class WebServer {
       const growth = prevPayments > 0 ? ((currentTotal - prevPayments) / prevPayments * 100).toFixed(1) : "0";
 
       const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+      const safeHistory = JSON.stringify(history).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+      const tableRows = currentPayments.map((c, i) => {
+        const name = escapeHtml(c.name);
+        const phone = escapeHtml(c.phoneNumber);
+        const paymentDate = c.paymentDate ? new Date(c.paymentDate).toLocaleString('id-ID') : '-';
+        return `<tr><td>${i + 1}</td><td>${name}</td><td>${phone}</td><td>${paymentDate}</td><td class="status-paid">✅ Lunas</td></tr>`;
+      }).join('');
 
       res.send(`
 <!DOCTYPE html>
@@ -1655,7 +1738,7 @@ class WebServer {
     <div class="month-selector">
       <label>Bulan:</label>
       <select id="monthSelect">
-        ${monthNames.map((m, i) => `<option value="${i}" ${i === currentMonth ? 'selected' : ''}>${m}</option>`).join('')}
+        ${monthNames.map((m, i) => `<option value="${i}" ${i === currentMonth ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('')}
       </select>
       <label>Tahun:</label>
       <select id="yearSelect">
@@ -1720,24 +1803,26 @@ class WebServer {
           </tr>
         </thead>
         <tbody id="paymentTable">
-          ${currentPayments.map((c, i) => `
-          <tr>
-            <td>${i + 1}</td>
-            <td>${c.name}</td>
-            <td>${c.phoneNumber}</td>
-            <td>${c.paymentDate ? new Date(c.paymentDate).toLocaleString('id-ID') : '-'}</td>
-            <td class="status-paid">✅ Lunas</td>
-          </tr>
-          `).join('')}
+          ${tableRows}
         </tbody>
       </table>
     </div>
   </div>
 
   <script>
-    let currentData = ${JSON.stringify(history)};
+    let currentData = ${safeHistory};
     let selectedMonth = ${currentMonth};
     let selectedYear = ${currentYear};
+
+    function escapeHtml(str) {
+      if (typeof str !== "string") return str;
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '-';
+      return new Date(dateStr).toLocaleString('id-ID');
+    }
 
     function loadReport() {
       const month = document.getElementById('monthSelect').value;
@@ -1752,7 +1837,7 @@ class WebServer {
           if (res.data.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#7f8c8d;">Tidak ada data</td></tr>';
           } else {
-            tbody.innerHTML = res.data.map((c, i) => '<tr><td>' + (i+1) + '</td><td>' + c.name + '</td><td>' + c.phoneNumber + '</td><td>' + (c.paymentDate ? new Date(c.paymentDate).toLocaleString('id-ID') : '-') + '</td><td class="status-paid">✅ Lunas</td></tr>').join('');
+            tbody.innerHTML = res.data.map((c, i) => '<tr><td>' + (i+1) + '</td><td>' + escapeHtml(c.name) + '</td><td>' + escapeHtml(c.phoneNumber) + '</td><td>' + formatDate(c.paymentDate) + '</td><td class="status-paid">✅ Lunas</td></tr>').join('');
           }
         });
     }
@@ -1829,13 +1914,14 @@ class WebServer {
     });
   });
 
-  // Reset payment status every 1st of month
   cron.schedule(CONFIG.RESET_PAYMENT_SCHEDULE, async () => {
     console.log('🔄 Resetting payment status for new month...');
     const count = await dataManager.resetAllPaymentStatus();
     const now = new Date();
-    const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth();
-    const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+    const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
     const overdue = dataManager.getOverdueContacts(prevYear, prevMonth);
     const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
