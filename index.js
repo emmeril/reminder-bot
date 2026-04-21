@@ -1222,8 +1222,11 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
     const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", 
                         "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
+    const systemStartMonth = 4; // April 2026
+    const systemStartYear = 2026;
+
     const arrears = [];
-    for (let i = 1; i < currentMonth; i++) {
+    for (let i = systemStartMonth; i < currentMonth; i++) {
       const key = `${currentYear}-${String(i).padStart(2, "0")}`;
       if (pm[key]?.status !== PAYMENT_STATUS.PAID) {
         arrears.push({
@@ -1475,6 +1478,8 @@ CS Emmeril Hotspot`;
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1;
     const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    const systemStartMonth = 4;
+    const systemStartYear = 2026;
 
     let text = `📜 *RIWAYAT TAGIHAN PER KONTAK*\n\n`;
 
@@ -1483,7 +1488,7 @@ CS Emmeril Hotspot`;
       const paidMonths = [];
       const unpaidMonths = [];
 
-      for (let m = 1; m <= currentMonth; m++) {
+      for (let m = systemStartMonth; m <= currentMonth; m++) {
         const key = `${currentYear}-${String(m).padStart(2, "0")}`;
         if (pm[key]?.status === PAYMENT_STATUS.PAID) {
           paidMonths.push(monthNames[m]);
