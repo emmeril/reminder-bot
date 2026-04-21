@@ -353,6 +353,32 @@ class DataManager {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  getPaymentsByMonth(year, month) {
+    return Array.from(this.contacts.values())
+      .filter(c => {
+        if (!c.paymentDate) return false;
+        const paidDate = new Date(c.paymentDate);
+        return paidDate.getFullYear() === year && (paidDate.getMonth() + 1) === month;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  getAllPaymentsHistory() {
+    const history = {};
+    for (const contact of this.contacts.values()) {
+      if (contact.paymentDate) {
+        const paidDate = new Date(contact.paymentDate);
+        const key = `${paidDate.getFullYear()}-${String(paidDate.getMonth() + 1).padStart(2, "0")}`;
+        if (!history[key]) {
+          history[key] = { contacts: [], total: 0 };
+        }
+        history[key].contacts.push(contact);
+        history[key].total++;
+      }
+    }
+    return history;
+  }
+
   async resetAllPaymentStatus() {
     let resetCount = 0;
     for (const contact of this.contacts.values()) {
@@ -475,6 +501,7 @@ class WhatsAppClient {
       "!listkontak": this.handleListContact,
       "!bayar": this.handleBayar,
       "!statusbayar": this.handleStatusBayar,
+      "!laporan": this.handleLaporan,
       "!help": this.sendHelp,
       "!menu": this.sendHelp,
     };
@@ -1019,15 +1046,51 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
     await this.dataManager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID);
     this.clearSession(sender);
 
-    await this.sendPaymentNotification(contact);
-    msg.reply(`✅ Status pembayaran ${contact.name} diperbarui menjadi *Sudah Dibayar*.\n\nNotifikasi dikirim ke ${contact.phoneNumber}.`);
+    const contactUpdated = this.dataManager.contacts.get(contact.id);
+    const transactionId = `TRX-${Date.now()}`;
+    await this.sendPaymentNotification(contactUpdated, transactionId);
+    msg.reply(`✅ Status pembayaran ${contact.name} diperbarui menjadi *Sudah Dibayar*.\n\nID Transaksi: ${transactionId}\n\nNotifikasi dikirim ke ${contact.phoneNumber}.`);
   }
 
-  async sendPaymentNotification(contact) {
-    const message = `📢 *PEMBAYARAN DITERIMA*\n\nHalo ${contact.name}!\n\nPembayaran Anda telah diterima. Terima kasih.\n\nJika ada pertanyaan, silakan hubungi kami.`;
+  async sendPaymentNotification(contact, transactionId) {
+    const paymentDate = contact.paymentDate ? new Date(contact.paymentDate) : new Date();
+    const formattedDate = paymentDate.toLocaleString("id-ID", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const message = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 *KONFIRMASI PEMBAYARAN*
+
+Halo ${contact.name}!
+
+Terima kasih telah melakukan pembayaran.
+Berikut detail transaksi Anda:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🆔 *ID Transaksi*
+   ${transactionId}
+
+📅 *Tanggal Pembayaran*
+   ${formattedDate}
+
+💰 *Status*
+   ✅ LUNAS
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pembayaran Anda telah berhasil kami terima.
+
+Hormat kami,
+CS Emmeril Hotspot
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+
     try {
       await this.sendMessage(contact.phoneNumber, message);
-      console.log("📤 Notifikasi pembayaran terkirim:", contact.phoneNumber);
+      console.log("📤 Notifikasi pembayaran terkirim:", contact.phoneNumber, "| TRX:", transactionId);
     } catch (err) {
       console.error("❌ Gagal kirim notifikasi:", err.message);
     }
@@ -1055,6 +1118,21 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
       text += "  (tidak ada)";
     }
 
+    msg.reply(text);
+  }
+
+  async handleLaporan(msg, sender) {
+    const port = CONFIG.PORT;
+    const reportUrl = `http://localhost:${port}/report`;
+    const text = `📊 *LINK LAPORAN PEMBAYARAN*\n\n` +
+      `Klik link berikut untuk membuka dashboard laporan:\n\n` +
+      `🔗 ${reportUrl}\n\n` +
+      `Fitur:\n` +
+      `• Lihat data pembayaran per bulan\n` +
+      `• Bandingkan dengan bulan sebelumnya\n` +
+      `• Export ke Excel & PDF\n` +
+      `• Filter berdasarkan periode\n\n` +
+      `Buka di browser (Chrome/Edge/Firefox)`;
     msg.reply(text);
   }
 
@@ -1091,6 +1169,7 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
       "• !listkontak – lihat kontak",
       "• !bayar – tandai sudah lunas",
       "• !statusbayar – laporan pembayaran",
+      "• !laporan – lihat link laporan",
       "• !setadmin <no> – jadikan admin",
     ];
     const menuText = this.dataManager.isAdmin(sender) ? umum.concat(admin).join("\n") : umum.join("\n");
@@ -1265,13 +1344,17 @@ class ReminderScheduler {
 
 // ==================== EXPRESS SERVER ====================
 class WebServer {
-  constructor(whatsAppClient) {
+  constructor(whatsAppClient, dataManager) {
     this.app = express();
     this.whatsAppClient = whatsAppClient;
+    this.dataManager = dataManager;
     this.setupRoutes();
   }
 
   setupRoutes() {
+    this.app.use(express.json());
+    this.app.use(express.urlencoded({ extended: true }));
+
     this.app.get("/qr", async (req, res) => {
       if (this.whatsAppClient.isReady) {
         return res.send(`
@@ -1296,11 +1379,285 @@ class WebServer {
         </html>
       `);
     });
+
+    this.app.get("/api/payments/history", (req, res) => {
+      const history = this.dataManager.getAllPaymentsHistory();
+      res.json({ success: true, data: history });
+    });
+
+    this.app.get("/api/payments/:year/:month", (req, res) => {
+      const { year, month } = req.params;
+      const payments = this.dataManager.getPaymentsByMonth(parseInt(year), parseInt(month));
+      res.json({
+        success: true,
+        data: payments.map(c => ({
+          id: c.id,
+          name: c.name,
+          phoneNumber: c.phoneNumber,
+          paymentDate: c.paymentDate,
+          paymentStatus: c.paymentStatus,
+        })),
+      });
+    });
+
+    this.app.get("/api/payments/current", (req, res) => {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      const payments = this.dataManager.getPaymentsByMonth(currentYear, currentMonth);
+      const allHistory = this.dataManager.getAllPaymentsHistory();
+
+      const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+      const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+      const prevPayments = allHistory[`${prevYear}-${String(prevMonth).padStart(2, "0")}`]?.total || 0;
+
+      const currentTotal = payments.length;
+      const growth = prevPayments > 0 ? ((currentTotal - prevPayments) / prevPayments * 100).toFixed(1) : 0;
+
+      res.json({
+        success: true,
+        data: {
+          current: { year: currentYear, month: currentMonth, total: currentTotal, contacts: payments },
+          previous: { year: prevYear, month: prevMonth, total: prevPayments },
+          growth: parseFloat(growth),
+        },
+      });
+    });
+
+    this.app.get("/report", (req, res) => {
+      const history = this.dataManager.getAllPaymentsHistory();
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+
+      const currentPayments = this.dataManager.getPaymentsByMonth(currentYear, currentMonth);
+      const totalContacts = this.dataManager.contacts.size;
+      const paidContacts = Array.from(this.dataManager.contacts.values()).filter(c => c.paymentStatus === PAYMENT_STATUS.PAID).length;
+      const unpaidContacts = totalContacts - paidContacts;
+
+      const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+      const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+      const prevPayments = history[`${prevYear}-${String(prevMonth).padStart(2, "0")}`]?.total || 0;
+      const currentTotal = currentPayments.length;
+
+      const growth = prevPayments > 0 ? ((currentTotal - prevPayments) / prevPayments * 100).toFixed(1) : "0";
+
+      const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+      res.send(`
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Laporan Pembayaran</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f7fa; padding: 20px; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { color: #2c3e50; margin-bottom: 20px; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap: 15px; }
+    .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    select, input { padding: 10px 15px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+    button { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
+    .btn-primary { background: #3498db; color: white; }
+    .btn-primary:hover { background: #2980b9; }
+    .btn-success { background: #27ae60; color: white; }
+    .btn-success:hover { background: #219a52; }
+    .btn-danger { background: #e74c3c; color: white; }
+    .btn-danger:hover { background: #c0392b; }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px; }
+    .metric-card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+    .metric-card h3 { color: #7f8c8d; font-size: 14px; font-weight: 500; margin-bottom: 10px; }
+    .metric-card .value { font-size: 32px; font-weight: 700; color: #2c3e50; }
+    .metric-card .value.positive { color: #27ae60; }
+    .metric-card .value.negative { color: #e74c3c; }
+    .metric-card .value.neutral { color: #f39c12; }
+    .comparison { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px; }
+    .comparison-card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+    .comparison-card h3 { color: #2c3e50; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #ecf0f1; }
+    .comparison-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f5f7fa; }
+    .comparison-row:last-child { border-bottom: none; }
+    .comparison-row .label { color: #7f8c8d; }
+    .comparison-row .value { font-weight: 600; color: #2c3e50; }
+    .table-container { background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 15px; text-align: left; }
+    th { background: #34495e; color: white; font-weight: 500; }
+    tr:nth-child(even) { background: #f8f9fa; }
+    tr:hover { background: #ecf0f1; }
+    .status-paid { color: #27ae60; font-weight: 600; }
+    .status-unpaid { color: #e74c3c; font-weight: 600; }
+    .month-selector { display: flex; gap: 15px; align-items: center; margin-bottom: 20px; }
+    .history-list { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 20px; }
+    .history-month { padding: 8px 15px; background: #ecf0f1; border-radius: 20px; font-size: 12px; cursor: pointer; }
+    .history-month.active { background: #3498db; color: white; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📊 Laporan Pembayaran</h1>
+      <div class="controls">
+        <button class="btn-success" onclick="exportExcel()">📊 Export Excel</button>
+        <button class="btn-danger" onclick="exportPDF()">📄 Export PDF</button>
+      </div>
+    </div>
+
+    <div class="month-selector">
+      <label>Bulan:</label>
+      <select id="monthSelect">
+        ${monthNames.map((m, i) => `<option value="${i}" ${i === currentMonth ? 'selected' : ''}>${m}</option>`).join('')}
+      </select>
+      <label>Tahun:</label>
+      <select id="yearSelect">
+        ${Array.from({length: 5}, (_, i) => currentYear - i).map(y => `<option value="${y}" ${y === currentYear ? 'selected' : ''}>${y}</option>`).join('')}
+      </select>
+      <button class="btn-primary" onclick="loadReport()">Tampilkan</button>
+    </div>
+
+    <div class="metrics">
+      <div class="metric-card">
+        <h3>💰 Total Pembayaran Bulan Ini</h3>
+        <div class="value positive">${currentTotal}</div>
+      </div>
+      <div class="metric-card">
+        <h3>📈 Pertumbuhan (vs Bulan Lalu)</h3>
+        <div class="value ${parseFloat(growth) >= 0 ? 'positive' : 'negative'}">${growth}%</div>
+      </div>
+      <div class="metric-card">
+        <h3>✅ Sudah Dibayar</h3>
+        <div class="value">${paidContacts}</div>
+      </div>
+      <div class="metric-card">
+        <h3>⏳ Belum Dibayar</h3>
+        <div class="value negative">${unpaidContacts}</div>
+      </div>
+    </div>
+
+    <div class="comparison">
+      <div class="comparison-card">
+        <h3>📅 Periode Saat Ini (${monthNames[currentMonth]} ${currentYear})</h3>
+        <div class="comparison-row">
+          <span class="label">Total Pembayaran</span>
+          <span class="value">${currentTotal}</span>
+        </div>
+        <div class="comparison-row">
+          <span class="label">Kontak Aktif</span>
+          <span class="value">${totalContacts}</span>
+        </div>
+      </div>
+      <div class="comparison-card">
+        <h3>📆 Periode Sebelumnya (${monthNames[prevMonth]} ${prevYear})</h3>
+        <div class="comparison-row">
+          <span class="label">Total Pembayaran</span>
+          <span class="value">${prevPayments}</span>
+        </div>
+        <div class="comparison-row">
+          <span class="label">Perubahan</span>
+          <span class="value ${parseFloat(growth) >= 0 ? 'positive' : 'negative'}">${parseFloat(growth) >= 0 ? '+' : ''}${growth}%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>No</th>
+            <th>Nama</th>
+            <th>No. HP</th>
+            <th>Tanggal Bayar</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="paymentTable">
+          ${currentPayments.map((c, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${c.name}</td>
+            <td>${c.phoneNumber}</td>
+            <td>${c.paymentDate ? new Date(c.paymentDate).toLocaleString('id-ID') : '-'}</td>
+            <td class="status-paid">✅ Lunas</td>
+          </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    let currentData = ${JSON.stringify(history)};
+    let selectedMonth = ${currentMonth};
+    let selectedYear = ${currentYear};
+
+    function loadReport() {
+      const month = document.getElementById('monthSelect').value;
+      const year = document.getElementById('yearSelect').value;
+      selectedMonth = parseInt(month);
+      selectedYear = parseInt(year);
+      
+      fetch('/api/payments/' + year + '/' + month)
+        .then(r => r.json())
+        .then(res => {
+          const tbody = document.getElementById('paymentTable');
+          if (res.data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#7f8c8d;">Tidak ada data</td></tr>';
+          } else {
+            tbody.innerHTML = res.data.map((c, i) => '<tr><td>' + (i+1) + '</td><td>' + c.name + '</td><td>' + c.phoneNumber + '</td><td>' + (c.paymentDate ? new Date(c.paymentDate).toLocaleString('id-ID') : '-') + '</td><td class="status-paid">✅ Lunas</td></tr>').join('');
+          }
+        });
+    }
+
+    function exportExcel() {
+      fetch('/api/payments/' + selectedYear + '/' + selectedMonth)
+        .then(r => r.json())
+        .then(res => {
+          const data = res.data.map((c, i) => [i+1, c.name, c.phoneNumber, c.paymentDate ? new Date(c.paymentDate).toLocaleString('id-ID') : '-', 'Lunas']);
+          data.unshift(['No', 'Nama', 'No. HP', 'Tanggal Bayar', 'Status']);
+          
+          const ws = XLSX.utils.aoa_to_sheet(data);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, 'Pembayaran');
+          XLSX.writeFile(wb, 'Laporan_Pembayaran_' + selectedYear + '_' + selectedMonth + '.xlsx');
+        });
+    }
+
+    function exportPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      
+      doc.setFontSize(18);
+      doc.text('Laporan Pembayaran', 14, 20);
+      doc.setFontSize(12);
+      doc.text('Bulan: ' + selectedMonth + '/' + selectedYear, 14, 30);
+      
+      fetch('/api/payments/' + selectedYear + '/' + selectedMonth)
+        .then(r => r.json())
+        .then(res => {
+          const rows = res.data.map((c, i) => [i+1, c.name, c.phoneNumber, c.paymentDate ? new Date(c.paymentDate).toLocaleString('id-ID') : '-', 'Lunas']);
+          doc.autoTable({
+            head: [['No', 'Nama', 'No. HP', 'Tanggal Bayar', 'Status']],
+            body: rows,
+            startY: 40,
+          });
+          doc.save('Laporan_Pembayaran_' + selectedYear + '_' + selectedMonth + '.pdf');
+        });
+    }
+  </script>
+</body>
+</html>
+      `);
+    });
   }
 
   start(port) {
     this.app.listen(port, () => {
       console.log(`🌐 Web server running at http://localhost:${port}/qr`);
+      console.log(`📊 Report dashboard: http://localhost:${port}/report`);
     });
   }
 }
@@ -1314,7 +1671,7 @@ class WebServer {
   const templateManager = new TemplateManager();
   const whatsAppClient = new WhatsAppClient(dataManager, sessionManager, templateManager);
   const reminderScheduler = new ReminderScheduler(whatsAppClient, dataManager);
-  const webServer = new WebServer(whatsAppClient);
+  const webServer = new WebServer(whatsAppClient, dataManager);
 
   // Start WhatsApp
   await whatsAppClient.initialize();
