@@ -167,6 +167,38 @@ const normalizePhoneNumber = (value) => value.replace(/[^0-9]/g, "");
 
 const isValidPhoneNumber = (value) => /^628\d{7,13}$/.test(value);
 
+const collectPhoneCandidates = (...values) => {
+  const candidates = new Set();
+
+  for (const value of values) {
+    if (typeof value !== "string" || !value.trim()) continue;
+
+    const normalized = normalizePhoneNumber(value);
+    if (isValidPhoneNumber(normalized)) {
+      candidates.add(normalized);
+    }
+
+    const beforeAt = value.split("@")[0];
+    const normalizedBeforeAt = normalizePhoneNumber(beforeAt);
+    if (isValidPhoneNumber(normalizedBeforeAt)) {
+      candidates.add(normalizedBeforeAt);
+    }
+  }
+
+  return Array.from(candidates);
+};
+
+const getAdminLookupCandidates = (sender, msg = null) => {
+  return collectPhoneCandidates(
+    sender,
+    msg?.author,
+    msg?.id?.participant,
+    msg?._data?.author,
+    msg?._data?.from,
+    msg?._data?.chatId
+  );
+};
+
 // ==================== DATA MANAGER ====================
 class DataManager {
   constructor() {
@@ -324,9 +356,9 @@ class DataManager {
   }
 
   // CRUD Helpers
-  isAdmin(sender) {
-    const number = sender.split('@')[0];
-    return this.roles.get(number) === 'admin';
+  isAdmin(sender, msg = null) {
+    const candidates = getAdminLookupCandidates(sender, msg);
+    return candidates.some((number) => this.roles.get(number) === 'admin');
   }
 
   async addAdmin(number) {
@@ -810,7 +842,14 @@ return `${index + 1}. ${nama} | ${waktu}`;
         return msg.reply("❌ Tidak ada sesi yang aktif.");
       }
 
-      if (!this.dataManager.isAdmin(sender) && !ALLOWED_NON_ADMIN_COMMANDS.has(body)) {
+      if (!this.dataManager.isAdmin(sender, msg) && !ALLOWED_NON_ADMIN_COMMANDS.has(body)) {
+        const candidates = getAdminLookupCandidates(sender, msg);
+        console.log("⛔ Non-admin command ignored:", {
+          from: sender,
+          author: msg.author || null,
+          candidates,
+          body,
+        });
         return;
       }
 
@@ -1557,7 +1596,7 @@ CS Emmeril Hotspot`;
       "* !laporan – lihat link laporan",
       "* !setadmin <no> – jadikan admin",
     ];
-    const menuText = this.dataManager.isAdmin(sender) ? umum.concat(admin).join("\n") : umum.join("\n");
+    const menuText = this.dataManager.isAdmin(sender, msg) ? umum.concat(admin).join("\n") : umum.join("\n");
     msg.reply(menuText);
   }
 
