@@ -10,53 +10,18 @@
       theme: {
         extend: {
           colors: {
-            slate: {
-              50: '#f8fafc',
-              100: '#f1f5f9',
-              200: '#e2e8f0',
-              300: '#cbd5e1',
-              400: '#94a3b8',
-              500: '#64748b',
-              600: '#475569',
-              700: '#334155',
-              800: '#1e293b',
-              900: '#0f172a',
-              950: '#020617'
-            },
-            brand: {
-              primary: '#1e3a5f',
-              secondary: '#2d5a87',
-              accent: '#c4784b',
-              muted: '#8b9dc3'
-            },
-            status: {
-              success: '#16a34a',
-              warning: '#d97706',
-              error: '#dc2626',
-              info: '#0284c7'
-            }
-          },
-          fontFamily: {
-            display: ['Inter', 'system-ui', 'sans-serif'],
-            body: ['Inter', 'system-ui', 'sans-serif'],
-            mono: ['JetBrains Mono', 'ui-monospace', 'monospace']
+            sand: "#f6efe4",
+            clay: "#cc5a2e",
+            moss: "#1f7a6a",
+            ink: "#17313b",
+            haze: "#f9f6ef"
           },
           boxShadow: {
-            'elevated': '0 4px 24px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04)',
-            'floating': '0 8px 32px rgba(15, 23, 42, 0.12), 0 2px 8px rgba(15, 23, 42, 0.06)',
-            'card': '0 2px 8px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02)',
-            'glow': '0 0 40px rgba(196, 120, 75, 0.15)'
+            soft: "0 24px 60px rgba(23,49,59,.14)"
           },
-          spacing: {
-            '18': '4.5rem',
-            '22': '5.5rem',
-            '26': '6.5rem'
-          },
-          borderRadius: {
-            'xl': '1.25rem',
-            '2xl': '1.5rem',
-            '3xl': '2rem',
-            '4xl': '2.5rem'
+          fontFamily: {
+            display: ["Georgia", "serif"],
+            body: ["Georgia", "serif"]
           },
           screens: {
             'xs': '375px',
@@ -71,49 +36,124 @@
     };
   </script>
   <style>
-    /* Modern CSS Reset & Base */
+    /* Mobile-First Base Styles */
     :root {
-      --bg-primary: #f8fafc;
-      --bg-secondary: #ffffff;
-      --bg-tertiary: #f1f5f9;
-      --border-subtle: rgba(148, 163, 184, 0.15);
-      --border-default: rgba(148, 163, 184, 0.25);
-      --border-strong: rgba(148, 163, 184, 0.4);
-      --text-primary: #0f172a;
-      --text-secondary: #475569;
-      --text-muted: #64748b;
-      --text-subtle: #94a3b8;
-      --accent-primary: #1e3a5f;
-      --accent-secondary: #2d5a87;
-      --accent-gold: #c4784b;
-      --accent-gold-light: rgba(196, 120, 75, 0.12);
-      --success: #16a34a;
-      --warning: #d97706;
-      --error: #dc2626;
-      --radius-sm: 0.5rem;
-      --radius-md: 0.75rem;
-      --radius-lg: 1rem;
-      --radius-xl: 1.25rem;
-      --radius-2xl: 1.5rem;
-      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
-      --shadow-md: 0 4px 24px rgba(15, 23, 42, 0.08);
-      --shadow-lg: 0 8px 32px rgba(15, 23, 42, 0.12);
-      --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-      --transition-smooth: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+      --touch-target: 44px;
+      --border-radius-sm: 0.5rem;
+      --border-radius-md: 1rem;
+      --border-radius-lg: 1.75rem;
+      --spacing-xs: 0.5rem;
+      --spacing-sm: 1rem;
+      --spacing-md: 1.5rem;
+      --spacing-lg: 2rem;
     }
 
-    * {
-      box-sizing: border-box;
+    /* Touch-friendly tap targets */
+    .touch-target {
+      min-height: var(--touch-target);
+      min-width: var(--touch-target);
     }
 
-    html {
-      scroll-behavior: smooth;
+    /* Responsive typography using clamp() for fluid scaling */
+    .text-fluid {
+      font-size: clamp(0.875rem, 2vw, 1rem);
+    }
+    
+    .text-fluid-lg {
+      font-size: clamp(1rem, 3vw, 1.25rem);
+    }
+    
+    .text-fluid-xl {
+      font-size: clamp(1.5rem, 5vw, 2rem);
+    }
+    
+    .text-fluid-2xl {
+      font-size: clamp(1.75rem, 6vw, 2.5rem);
     }
 
-    @media (prefers-reduced-motion: reduce) {
-      html {
-        scroll-behavior: auto;
+    /* Mobile-first table wrapper */
+    .table-wrapper {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(23,49,59,0.2) transparent;
+    }
+    
+    .table-wrapper::-webkit-scrollbar {
+      height: 6px;
+    }
+    
+    .table-wrapper::-webkit-scrollbar-track {
+      background: rgba(23,49,59,0.05);
+      border-radius: 3px;
+    }
+    
+    .table-wrapper::-webkit-scrollbar-thumb {
+      background: rgba(23,49,59,0.2);
+      border-radius: 3px;
+    }
+
+    /* Mobile card view for tables */
+    @media (max-width: 639px) {
+      .mobile-card-row {
+        display: none;
       }
+      
+      .mobile-card-row.active {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 1rem;
+        border: 1px solid rgba(23,49,59,0.1);
+        border-radius: 1rem;
+        background: rgba(255,255,255,0.7);
+        margin-bottom: 0.75rem;
+      }
+      
+      .mobile-card-field {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.25rem 0;
+        border-bottom: 1px solid rgba(23,49,59,0.05);
+      }
+      
+      .mobile-card-field:last-child {
+        border-bottom: none;
+      }
+      
+      .mobile-card-label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: rgba(23,49,59,0.5);
+      }
+      
+      .mobile-card-value {
+        font-weight: 600;
+        color: rgba(23,49,59,0.8);
+        text-align: right;
+        max-width: 60%;
+        word-break: break-word;
+      }
+      
+      .mobile-card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid rgba(23,49,59,0.1);
+      }
+      
+      .mobile-card-actions .btn {
+        flex: 1;
+        min-width: 0;
+      }
+    }
+
+    /* Reduced motion preference */
+    @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
@@ -121,1421 +161,93 @@
       }
     }
 
-    /* Custom Scrollbar */
-    ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
-    }
-
-    ::-webkit-scrollbar-track {
-      background: var(--bg-tertiary);
-      border-radius: 4px;
-    }
-
-    ::-webkit-scrollbar-thumb {
-      background: var(--border-default);
-      border-radius: 4px;
-      transition: background var(--transition-fast);
-    }
-
-    ::-webkit-scrollbar-thumb:hover {
-      background: var(--border-strong);
-    }
-
-    /* Focus States */
+    /* Focus states for accessibility */
     button:focus-visible,
     a:focus-visible,
     input:focus-visible,
     textarea:focus-visible,
     select:focus-visible {
-      outline: 2px solid var(--accent-gold);
+      outline: 2px solid #cc5a2e;
       outline-offset: 2px;
     }
 
-    /* Typography Scale */
-    .text-display {
-      font-family: 'Inter', system-ui, sans-serif;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      line-height: 1.1;
-    }
-
-    .text-display-lg {
-      font-size: clamp(2rem, 5vw, 3rem);
-    }
-
-    .text-display-md {
-      font-size: clamp(1.5rem, 3vw, 2rem);
-    }
-
-    .text-title {
-      font-family: 'Inter', system-ui, sans-serif;
-      font-weight: 600;
-      letter-spacing: -0.01em;
-    }
-
-    .text-body {
-      font-family: 'Inter', system-ui, sans-serif;
-      font-weight: 400;
-      line-height: 1.6;
-    }
-
-    /* Interactive Elements */
-    .btn-primary {
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
-      padding: 0.75rem 1.5rem;
-      font-size: 0.875rem;
-      font-weight: 600;
-      border-radius: var(--radius-lg);
-      border: none;
-      cursor: pointer;
-      transition: all var(--transition-smooth);
-      overflow: hidden;
-    }
-
-    .btn-primary::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, transparent 50%);
-      opacity: 0;
-      transition: opacity var(--transition-smooth);
-    }
-
-    .btn-primary:hover::before {
-      opacity: 1;
-    }
-
-    .btn-primary:focus-visible {
-      outline: 2px solid var(--accent-gold);
-      outline-offset: 2px;
-    }
-
-    .btn-primary--gold {
-      background: linear-gradient(135deg, var(--accent-gold) 0%, #b86a3a 100%);
-      color: white;
-      box-shadow: 0 4px 16px rgba(196, 120, 75, 0.3);
-    }
-
-    .btn-primary--gold:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(196, 120, 75, 0.4);
-    }
-
-    .btn-primary--primary {
-      background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
-      color: white;
-      box-shadow: 0 4px 16px rgba(30, 58, 95, 0.25);
-    }
-
-    .btn-primary--primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(30, 58, 95, 0.35);
-    }
-
-    .btn-primary--secondary {
-      background: var(--bg-secondary);
-      color: var(--text-primary);
-      border: 1px solid var(--border-default);
-    }
-
-    .btn-primary--secondary:hover {
-      background: var(--bg-tertiary);
-      border-color: var(--border-strong);
-      transform: translateY(-1px);
-    }
-
-    .btn-primary--ghost {
-      background: transparent;
-      color: var(--text-secondary);
-    }
-
-    .btn-primary--ghost:hover {
-      background: var(--bg-tertiary);
-      color: var(--text-primary);
-    }
-
-    .btn-primary--danger {
-      background: linear-gradient(135deg, var(--error) 0%, #b91c1c 100%);
-      color: white;
-      box-shadow: 0 4px 16px rgba(220, 38, 38, 0.25);
-    }
-
-    .btn-primary--danger:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(220, 38, 38, 0.35);
-    }
-
-    /* Card Component */
-    .card {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-2xl);
-      box-shadow: var(--shadow-sm);
-      transition: all var(--transition-smooth);
-    }
-
-    .card:hover {
-      box-shadow: var(--shadow-md);
-      border-color: var(--border-default);
-    }
-
-    .card--elevated {
-      box-shadow: var(--shadow-lg);
-    }
-
-    .card--gradient {
-      background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
-    }
-
-    /* Status Badge */
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 0.25rem 0.75rem;
-      font-size: 0.75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      border-radius: 9999px;
-      transition: all var(--transition-fast);
-    }
-
-    .badge--success {
-      background: rgba(22, 163, 74, 0.12);
-      color: var(--success);
-    }
-
-    .badge--warning {
-      background: rgba(217, 119, 6, 0.12);
-      color: var(--warning);
-    }
-
-    .badge--error {
-      background: rgba(220, 38, 38, 0.12);
-      color: var(--error);
-    }
-
-    .badge--info {
-      background: rgba(2, 132, 199, 0.12);
-      color: var(--info);
-    }
-
-    /* Stat Card */
-    .stat-card {
-      position: relative;
-      padding: 1.5rem;
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-xl);
-      overflow: hidden;
-      transition: all var(--transition-smooth);
-    }
-
-    .stat-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: linear-gradient(90deg, var(--accent-gold), var(--accent-primary));
-      opacity: 0;
-      transition: opacity var(--transition-smooth);
-    }
-
-    .stat-card:hover::before {
-      opacity: 1;
-    }
-
-    .stat-card:hover {
-      transform: translateY(-4px);
-      box-shadow: var(--shadow-lg);
-      border-color: var(--border-default);
-    }
-
-    /* Table Styles */
-    .table-container {
-      overflow-x: auto;
-      overflow-y: hidden;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: thin;
-      scrollbar-color: var(--border-default) transparent;
-    }
-
-    .table-container::-webkit-scrollbar {
-      height: 6px;
-    }
-
-    .table-container::-webkit-scrollbar-track {
-      background: var(--bg-tertiary);
-      border-radius: 3px;
-    }
-
-    .table-container::-webkit-scrollbar-thumb {
-      background: var(--border-default);
-      border-radius: 3px;
-    }
-
-    .data-table {
-      width: 100%;
-      border-collapse: separate;
-      border-spacing: 0;
-    }
-
-    .data-table th {
-      padding: 1rem 1.25rem;
-      font-size: 0.75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      text-align: left;
-      color: var(--text-muted);
-      background: var(--bg-tertiary);
-      border-bottom: 2px solid var(--border-subtle);
-      white-space: nowrap;
-    }
-
-    .data-table td {
-      padding: 1rem 1.25rem;
-      font-size: 0.875rem;
-      color: var(--text-secondary);
-      border-bottom: 1px solid var(--border-subtle);
-      background: var(--bg-secondary);
-      transition: background var(--transition-fast);
-    }
-
-    .data-table tr:hover td {
-      background: var(--bg-tertiary);
-    }
-
-    .data-table tr:last-child td {
-      border-bottom: none;
-    }
-
-    /* Form Elements */
-    .form-input {
-      width: 100%;
-      padding: 0.875rem 1rem;
-      font-size: 0.875rem;
-      color: var(--text-primary);
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-default);
-      border-radius: var(--radius-lg);
-      transition: all var(--transition-fast);
-      outline: none;
-    }
-
-    .form-input:hover {
-      border-color: var(--border-strong);
-    }
-
-    .form-input:focus {
-      border-color: var(--accent-gold);
-      box-shadow: 0 0 0 3px var(--accent-gold-light);
-    }
-
-    .form-input::placeholder {
-      color: var(--text-subtle);
-    }
-
-    .form-label {
-      display: block;
-      margin-bottom: 0.5rem;
-      font-size: 0.875rem;
-      font-weight: 500;
-      color: var(--text-secondary);
-    }
-
-    .form-textarea {
-      min-height: 120px;
-      resize: vertical;
-    }
-
-    /* Mobile Card View */
-    .mobile-card {
-      display: none;
-      flex-direction: column;
-      gap: 0.75rem;
-      padding: 1.25rem;
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-xl);
-      background: var(--bg-secondary);
-      box-shadow: var(--shadow-sm);
-    }
-
-    .mobile-card--visible {
-      display: flex;
-    }
-
-    .mobile-card__field {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0.5rem 0;
-      border-bottom: 1px solid var(--border-subtle);
-    }
-
-    .mobile-card__field:last-child {
-      border-bottom: none;
-    }
-
-    .mobile-card__label {
-      font-size: 0.75rem;
-      font-weight: 500;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-muted);
-    }
-
-    .mobile-card__value {
-      font-weight: 600;
-      color: var(--text-primary);
-      text-align: right;
-      max-width: 60%;
-      word-break: break-word;
-    }
-
-    /* Animations */
-    @keyframes fadeInUp {
-      from {
-        opacity: 0;
-        transform: translateY(20px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    @keyframes slideInLeft {
-      from {
-        opacity: 0;
-        transform: translateX(-20px);
-      }
-      to {
-        opacity: 1;
-        transform: translateX(0);
-      }
-    }
-
-    .animate-fade-in-up {
-      animation: fadeInUp 0.5s ease-out forwards;
-    }
-
-    .animate-slide-in-left {
-      animation: slideInLeft 0.4s ease-out forwards;
-    }
-
-    .stagger-1 { animation-delay: 0.1s; opacity: 0; }
-    .stagger-2 { animation-delay: 0.2s; opacity: 0; }
-    .stagger-3 { animation-delay: 0.3s; opacity: 0; }
-    .stagger-4 { animation-delay: 0.4s; opacity: 0; }
-    .stagger-5 { animation-delay: 0.5s; opacity: 0; }
-
-    @media (prefers-reduced-motion: reduce) {
-      .animate-fade-in-up,
-      .animate-slide-in-left {
-        animation: none;
-        opacity: 1;
-      }
-    }
-
-    /* Section Header */
+    /* Sticky header for mobile scroll */
     .section-header {
       position: sticky;
       top: 0;
       z-index: 10;
-      background: rgba(248, 250, 252, 0.95);
-      backdrop-filter: blur(12px);
+      background: inherit;
+      backdrop-filter: blur(8px);
     }
 
-    /* Toast Notification */
-    .toast {
-      position: fixed;
-      bottom: 1.5rem;
-      right: 1.5rem;
-      z-index: 100;
-      padding: 1rem 1.5rem;
-      font-size: 0.875rem;
-      font-weight: 500;
-      color: white;
-      background: var(--text-primary);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow-lg);
-      transform: translateY(100px);
-      opacity: 0;
-      transition: all var(--transition-smooth);
+    /* Collapsible sections for mobile */
+    .collapsible-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease-out;
+    }
+    
+    .collapsible-content.active {
+      max-height: 2000px;
     }
 
-    .toast--visible {
-      transform: translateY(0);
-      opacity: 1;
+    /* Better form inputs on mobile */
+    input[type="text"],
+    input[type="datetime-local"],
+    input[type="email"],
+    textarea,
+    select {
+      font-size: 16px; /* Prevents zoom on iOS */
+      -webkit-appearance: none;
+      appearance: none;
     }
 
-    /* Empty State */
-    .empty-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 3rem 1.5rem;
-      text-align: center;
-      border: 2px dashed var(--border-default);
-      border-radius: var(--radius-2xl);
-      background: var(--bg-tertiary);
-    }
-
-    .empty-state__icon {
-      width: 3rem;
-      height: 3rem;
-      margin-bottom: 1rem;
-      color: var(--text-muted);
-      opacity: 0.5;
-    }
-
-    .empty-state__text {
-      font-size: 0.875rem;
-      color: var(--text-muted);
-    }
-
-    /* Responsive Adjustments */
-    @media (max-width: 768px) {
-      .stat-card {
-        padding: 1.25rem;
-      }
-
-      .data-table th,
-      .data-table td {
-        padding: 0.75rem;
-      }
+    /* Custom select arrow */
+    select {
+      background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+      background-position: right 0.5rem center;
+      background-repeat: no-repeat;
+      background-size: 1.5em 1.5em;
+      padding-right: 2.5rem;
     }
   </style>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
-<body class="min-h-screen bg-slate-50 font-body text-slate-900 antialiased">
+<body class="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(204,90,46,.16),transparent_34%),radial-gradient(circle_at_top_right,rgba(31,122,106,.16),transparent_28%),linear-gradient(180deg,#f7f2ea_0%,#f3ede3_50%,#e6ece6_100%)] font-body text-ink antialiased">
   <div
     x-data="dashboardApp()"
     x-init="init()"
-    class="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10"
+    class="mx-auto w-full max-w-[1400px] px-3 py-4 sm:px-4 sm:py-6 lg:px-6 lg:py-8"
   >
-    <!-- Header Section -->
-    <section class="card card--elevated animate-fade-in-up stagger-1">
-      <div class="flex flex-col gap-6 p-6 sm:p-8 lg:p-10">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-          <div class="space-y-3">
-            <span class="inline-flex items-center rounded-full bg-brand-accent/10 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-[0.15em] text-brand-accent">
-              <svg class="mr-2 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-              </svg>
-              Notification Architecture Active
-            </span>
-            <h1 class="text-display-lg text-slate-900">__DASHBOARD_TITLE__</h1>
-          </div>
-          <div class="flex flex-wrap gap-3">
-            <a href="/qr" target="_blank" rel="noreferrer" class="btn-primary btn-primary--gold">
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path>
-              </svg>
-              Connect WhatsApp
-            </a>
-            <button @click="refreshAll()" class="btn-primary btn-primary--secondary">
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-              </svg>
-              Refresh
-            </button>
-            <button @click="runScheduler()" class="btn-primary btn-primary--primary">
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
-              Run Scheduler
-            </button>
-            <button @click="logout()" class="btn-primary btn-primary--ghost">
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
-              </svg>
-              Logout
-            </button>
+    <section class="overflow-hidden rounded-2xl sm:rounded-[2rem] border border-white/70 bg-white/70 p-5 sm:p-6 lg:p-8 shadow-soft backdrop-blur-xl">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div class="max-w-3xl space-y-3">
+          <span class="inline-flex rounded-full bg-clay/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.24em] text-clay">
+            Notification-only architecture active
+          </span>
+          <div class="space-y-2">
+            <h1 class="font-display text-fluid-2xl leading-tight tracking-tight sm:text-5xl">__DASHBOARD_TITLE__</h1>
+            <p class="max-w-3xl text-fluid text-ink/65 leading-relaxed">
+              Semua kontrol bot sekarang dipusatkan di dashboard ini. Bot tidak lagi membaca perintah chat atau menyimpan state percakapan; channel WhatsApp hanya dipakai untuk mengirim alert otomatis, update status, dan broadcast operasional.
+            </p>
           </div>
         </div>
-        <p class="max-w-3xl text-slate-600">
-          Semua kontrol bot sekarang dipusatkan di dashboard ini. Bot tidak lagi membaca perintah chat atau menyimpan state percakapan; channel WhatsApp hanya dipakai untuk mengirim alert otomatis, update status, dan broadcast operasional.
-        </p>
+        <div class="flex flex-wrap gap-2 lg:gap-3">
+          <a href="/qr" target="_blank" rel="noreferrer" class="touch-target inline-flex items-center justify-center rounded-full bg-gradient-to-r from-clay to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-2">
+            Hubungkan WhatsApp
+          </a>
+          <button @click="refreshAll()" class="touch-target inline-flex items-center justify-center rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white focus:outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">
+            Refresh Dashboard
+          </button>
+          <button @click="runScheduler()" class="touch-target inline-flex items-center justify-center rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss focus:outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">
+            Run Scheduler Now
+          </button>
+          <button @click="logout()" class="touch-target inline-flex items-center justify-center rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-2">
+            Logout
+          </button>
+        </div>
       </div>
     </section>
-
-    <!-- Main Grid -->
-    <div class="mt-8 grid gap-8 lg:grid-cols-[380px_1fr]">
-      <!-- Sidebar -->
-      <aside class="space-y-6">
-        <!-- Status Cards -->
-        <section class="card card--elevated animate-fade-in-up stagger-2">
-          <div class="flex items-center justify-between border-b border-slate-100 p-6 pb-4">
-            <h2 class="text-title text-xl font-semibold text-slate-900">Status Bot</h2>
-            <template x-if="loading.status">
-              <span class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.1em] text-slate-400">
-                <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Loading
-              </span>
-            </template>
-          </div>
-          <div class="grid gap-3 p-6 pt-4">
-            <template x-for="card in statusCards" :key="card.label">
-              <div class="stat-card">
-                <div class="text-xs font-medium uppercase tracking-[0.1em] text-slate-500" x-text="card.label"></div>
-                <div class="mt-2 text-2xl font-bold text-slate-900" x-text="card.value"></div>
-              </div>
-            </template>
-          </div>
-        </section>
-
-        <!-- Manual Notification -->
-        <section class="card animate-fade-in-up stagger-3">
-          <div class="border-b border-slate-100 p-6 pb-4">
-            <h2 class="text-title text-xl font-semibold text-slate-900">Send Manual Notification</h2>
-          </div>
-          <form class="space-y-4 p-6 pt-4" @submit.prevent="sendManualNotification()">
-            <div>
-              <label class="form-label">Phone Number</label>
-              <input x-model="forms.manual.phoneNumber" class="form-input" placeholder="628xxx" required>
-            </div>
-            <div>
-              <label class="form-label">Message</label>
-              <textarea x-model="forms.manual.message" class="form-input form-textarea" placeholder="Write manual alert message..." required></textarea>
-            </div>
-            <button type="submit" class="btn-primary btn-primary--gold w-full">
-              Send Now
-            </button>
-          </form>
-        </section>
-
-        <!-- Admin Recipients -->
-        <section class="card animate-fade-in-up stagger-4">
-          <div class="border-b border-slate-100 p-6 pb-4">
-            <h2 class="text-title text-xl font-semibold text-slate-900">Admin Recipients</h2>
-          </div>
-          <form class="space-y-4 p-6 pt-4" @submit.prevent="saveRecipients()">
-            <div>
-              <label class="form-label">Admin Numbers</label>
-              <textarea x-model="forms.recipients" class="form-input form-textarea" placeholder="One number per line, format 628xxx"></textarea>
-            </div>
-            <button type="submit" class="btn-primary btn-primary--secondary w-full">Save Recipients</button>
-          </form>
-        </section>
-      </aside>
-
-      <!-- Main Content -->
-      <main class="space-y-8">
-        <!-- Contacts Section -->
-        <section class="card animate-fade-in-up stagger-3">
-          <div class="flex flex-col gap-4 border-b border-slate-100 p-6 sm:flex-row sm:items-center sm:justify-between sm:pb-4">
-            <div>
-              <h2 class="text-title text-2xl font-semibold text-slate-900">Contacts</h2>
-              <p class="mt-1 text-slate-600">Manage recipient data for notifications.</p>
-            </div>
-            <button @click="loadContacts()" class="btn-primary btn-primary--ghost">
-              <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-              </svg>
-              Reload
-            </button>
-          </div>
-          
-          <!-- Add Contact Form -->
-          <form class="grid gap-4 border-b border-slate-100 bg-slate-50/50 p-6 sm:grid-cols-[1fr_1fr_auto]" @submit.prevent="createContact()">
-            <div>
-              <label class="form-label">Name</label>
-              <input x-model="forms.contact.name" class="form-input" required>
-            </div>
-            <div>
-              <label class="form-label">WhatsApp Number</label>
-              <input x-model="forms.contact.phoneNumber" class="form-input" placeholder="628xxx" required>
-            </div>
-            <button type="submit" class="btn-primary btn-primary--gold self-end">Add Contact</button>
-          </form>
-
-          <!-- Desktop Table -->
-          <div class="hidden md:block">
-            <div class="table-container">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>WhatsApp</th>
-                    <th>Payment Status</th>
-                    <th class="text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <template x-if="!contacts.length">
-                    <tr>
-                      <td colspan="4" class="py-12">
-                        <div class="empty-state">
-                          <svg class="empty-state__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                          </svg>
-                          <span class="empty-state__text">No contacts yet.</span>
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
-                  <template x-for="contact in contacts" :key="contact.id">
-                    <tr>
-                      <td class="font-medium text-slate-900" x-text="contact.name"></td>
-                      <td class="text-slate-600" x-text="contact.phoneNumber"></td>
-                      <td>
-                        <span class="badge" :class="contact.paymentStatus === 'PAID' ? 'badge--success' : 'badge--warning'" x-text="contact.paymentStatus || 'UNPAID'"></span>
-                      </td>
-                      <td class="text-right">
-                        <div class="flex justify-end gap-2">
-                          <button @click="togglePayment(contact.id, contact.paymentStatus === 'PAID' ? 'UNPAID' : 'PAID')" class="btn-primary btn-primary--secondary px-3 py-1.5 text-xs">
-                            <span x-text="contact.paymentStatus === 'PAID' ? 'Unpaid' : 'Paid'"></span>
-                          </button>
-                          <button @click="removeContact(contact.id)" class="btn-primary btn-primary--danger px-3 py-1.5 text-xs">Delete</button>
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Mobile Cards -->
-          <div class="md:hidden space-y-3 p-6 pt-4">
-            <template x-for="contact in contacts" :key="contact.id">
-              <div class="mobile-card mobile-card--visible">
-                <div class="mobile-card__field">
-                  <span class="mobile-card__label">Name</span>
-                  <span class="mobile-card__value" x-text="contact.name"></span>
-                </div>
-                <div class="mobile-card__field">
-                  <span class="mobile-card__label">WhatsApp</span>
-                  <span class="mobile-card__value" x-text="contact.phoneNumber"></span>
-                </div>
-                <div class="mobile-card__field">
-                  <span class="mobile-card__label">Payment</span>
-                  <span class="mobile-card__value text-sm" :class="contact.paymentStatus === 'PAID' ? 'text-success' : 'text-warning'" x-text="contact.paymentStatus || 'UNPAID'"></span>
-                </div>
-                <div class="flex gap-2 pt-2">
-                  <button @click="togglePayment(contact.id, contact.paymentStatus === 'PAID' ? 'UNPAID' : 'PAID')" class="btn-primary btn-primary--secondary flex-1 text-xs">
-                    <span x-text="contact.paymentStatus === 'PAID' ? 'Unpaid' : 'Paid'"></span>
-                  </button>
-                  <button @click="removeContact(contact.id)" class="btn-primary btn-primary--danger flex-1 text-xs">Delete</button>
-                </div>
-              </div>
-            </template>
-            <div x-show="!contacts.length" class="py-8">
-              <div class="empty-state">
-                <svg class="empty-state__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                </svg>
-                <span class="empty-state__text">No contacts yet.</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Reminders Section -->
-        <section class="card animate-fade-in-up stagger-4">
-          <div class="border-b border-slate-100 p-6 pb-4">
-            <h2 class="text-title text-2xl font-semibold text-slate-900">Reminders</h2>
-            <p class="mt-1 text-slate-600">Schedule outbound notifications.</p>
-          </div>
-          
-          <form class="space-y-4 p-6 pt-4" @submit.prevent="createReminder()">
-            <div class="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label class="form-label">Contact</label>
-                <select x-model="forms.reminder.contactId" class="form-input" required>
-                  <option value="">Select contact</option>
-                  <template x-for="contact in contacts" :key="'reminder-contact-' + contact.id">
-                    <option :value="contact.id" x-text="contact.name + ' (' + contact.phoneNumber + ')'"></option>
-                  </template>
-                </select>
-              </div>
-              <div>
-                <label class="form-label">Schedule Time</label>
-                <div class="relative">
-                  <input x-model="forms.reminder.reminderDateTime" type="datetime-local" class="form-input pr-20" required>
-                  <button @click="autoFillReminderTime()" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-brand-accent-light px-2.5 py-1 text-xs font-semibold text-brand-accent transition hover:bg-brand-accent hover:text-white">
-                    Auto
-                  </button>
-                </div>
-                <div class="mt-2 flex flex-wrap gap-1.5">
-                  <button @click="setReminderTime(1)" type="button" class="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-brand-accent hover:text-brand-accent">1m</button>
-                  <button @click="setReminderTime(5)" type="button" class="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-brand-accent hover:text-brand-accent">5m</button>
-                  <button @click="setReminderTime(15)" type="button" class="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-brand-accent hover:text-brand-accent">15m</button>
-                  <button @click="setReminderTime(30)" type="button" class="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-brand-accent hover:text-brand-accent">30m</button>
-                  <button @click="setReminderTime(60)" type="button" class="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-brand-accent hover:text-brand-accent">1h</button>
-                </div>
-              </div>
-            </div>
-            <div>
-              <label class="form-label">Template (Optional)</label>
-              <input x-model="forms.reminder.templateName" class="form-input" placeholder="e.g., 1_member 100K.txt">
-            </div>
-            <div>
-              <label class="form-label">Message</label>
-              <textarea x-model="forms.reminder.message" class="form-input form-textarea" required></textarea>
-            </div>
-            <button type="submit" class="btn-primary btn-primary--gold">Create Reminder</button>
-          </form>
-
-          <!-- Desktop Table -->
-          <div class="hidden md:block">
-            <div class="table-container">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>Recipient</th>
-                    <th>Scheduled</th>
-                    <th>Template</th>
-                    <th>Message</th>
-                    <th class="text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <template x-if="!reminders.length">
-                    <tr>
-                      <td colspan="5" class="py-12">
-                        <div class="empty-state">
-                          <svg class="empty-state__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                          </svg>
-                          <span class="empty-state__text">No active reminders.</span>
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
-                  <template x-for="reminder in reminders" :key="reminder.id">
-                    <tr>
-                      <td>
-                        <div class="font-medium text-slate-900" x-text="reminder.contactName || 'Contact not found'"></div>
-                        <div class="text-sm text-slate-500" x-text="reminder.phoneNumber || '-'"></div>
-                      </td>
-                      <td class="text-slate-600" x-text="formatDateTime(reminder.reminderDateTime)"></td>
-                      <td class="text-slate-600" x-text="reminder.templateName || '-'"></td>
-                      <td class="max-w-xs truncate text-slate-600" x-text="reminder.message"></td>
-                      <td class="text-right">
-                        <button @click="removeReminder(reminder.id)" class="btn-primary btn-primary--danger px-3 py-1.5 text-xs">Delete</button>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Mobile Cards -->
-          <div class="md:hidden space-y-3 p-6 pt-4">
-            <template x-for="reminder in reminders" :key="reminder.id">
-              <div class="mobile-card mobile-card--visible">
-                <div class="mobile-card__field">
-                  <span class="mobile-card__label">Recipient</span>
-                  <span class="mobile-card__value" x-text="reminder.contactName || 'Contact not found'"></span>
-                </div>
-                <div class="mobile-card__field">
-                  <span class="mobile-card__label">Phone</span>
-                  <span class="mobile-card__value" x-text="reminder.phoneNumber || '-'"></span>
-                </div>
-                <div class="mobile-card__field">
-                  <span class="mobile-card__label">Scheduled</span>
-                  <span class="mobile-card__value" x-text="formatDateTime(reminder.reminderDateTime)"></span>
-                </div>
-                <div class="mobile-card__field">
-                  <span class="mobile-card__label">Template</span>
-                  <span class="mobile-card__value" x-text="reminder.templateName || '-'"></span>
-                </div>
-                <div class="mobile-card__field">
-                  <span class="mobile-card__label">Message</span>
-                  <span class="mobile-card__value text-right text-xs" x-text="reminder.message.length > 50 ? reminder.message.slice(0, 50) + '...' : reminder.message"></span>
-                </div>
-                <div class="flex gap-2 pt-2">
-                  <button @click="removeReminder(reminder.id)" class="btn-primary btn-primary--danger flex-1 text-xs">Delete</button>
-                </div>
-              </div>
-            </template>
-            <div x-show="!reminders.length" class="py-8">
-              <div class="empty-state">
-                <svg class="empty-state__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-                <span class="empty-state__text">No active reminders.</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Templates Section -->
-        <section class="card animate-fade-in-up stagger-5">
-          <div class="border-b border-slate-100 p-6 pb-4">
-            <h2 class="text-title text-2xl font-semibold text-slate-900">Templates</h2>
-            <p class="mt-1 text-slate-600">Manage message templates.</p>
-          </div>
-          
-          <form class="space-y-4 p-6 pt-4" @submit.prevent="createTemplate()">
-            <div class="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label class="form-label">Template Name</label>
-                <input x-model="forms.template.name" class="form-input" placeholder="billing_juni.txt" required>
-              </div>
-              <div>
-                <label class="form-label">&nbsp;</label>
-                <button type="submit" class="btn-primary btn-primary--gold w-full">Save Template</button>
-              </div>
-            </div>
-            <div>
-              <label class="form-label">Template Content</label>
-              <textarea x-model="forms.template.content" class="form-input form-textarea" placeholder="Use placeholders like {{name}} or {{date}}" required></textarea>
-            </div>
-          </form>
-
-          <!-- Desktop Table -->
-          <div class="hidden md:block">
-            <div class="table-container">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>Template</th>
-                    <th>Last Updated</th>
-                    <th>Preview</th>
-                    <th class="text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <template x-if="!templates.length">
-                    <tr>
-                      <td colspan="4" class="py-12">
-                        <div class="empty-state">
-                          <svg class="empty-state__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                          </svg>
-                          <span class="empty-state__text">No templates.</span>
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
-                  <template x-for="template in templates" :key="template.name">
-                    <tr>
-                      <td class="font-medium text-slate-900" x-text="template.name"></td>
-                      <td class="text-slate-600" x-text="formatDateTime(template.updatedAt)"></td>
-                      <td class="max-w-xs truncate text-slate-600" x-text="(template.content || '').slice(0, 120)"></td>
-                      <td class="text-right">
-                        <button @click="removeTemplate(template.name)" class="btn-primary btn-primary--danger px-3 py-1.5 text-xs">Delete</button>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Mobile Cards -->
-          <div class="md:hidden space-y-3 p-6 pt-4">
-            <template x-for="template in templates" :key="template.name">
-              <div class="mobile-card mobile-card--visible">
-                <div class="mobile-card__field">
-                  <span class="mobile-card__label">Template</span>
-                  <span class="mobile-card__value text-right" x-text="template.name"></span>
-                </div>
-                <div class="mobile-card__field">
-                  <span class="mobile-card__label">Updated</span>
-                  <span class="mobile-card__value" x-text="formatDateTime(template.updatedAt)"></span>
-                </div>
-                <div class="mobile-card__field">
-                  <span class="mobile-card__label">Preview</span>
-                  <span class="mobile-card__value text-right text-xs" x-text="(template.content || '').slice(0, 80)"></span>
-                </div>
-                <div class="flex gap-2 pt-2">
-                  <button @click="removeTemplate(template.name)" class="btn-primary btn-primary--danger flex-1 text-xs">Delete</button>
-                </div>
-              </div>
-            </template>
-            <div x-show="!templates.length" class="py-8">
-              <div class="empty-state">
-                <svg class="empty-state__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                </svg>
-                <span class="empty-state__text">No templates.</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Settings Section -->
-        <section class="card animate-fade-in-up stagger-5">
-          <div class="border-b border-slate-100 p-6 pb-4">
-            <h2 class="text-title text-2xl font-semibold text-slate-900">Settings</h2>
-            <p class="mt-1 text-slate-600">Dashboard and notification configuration.</p>
-          </div>
-          
-          <form class="space-y-6 p-6 pt-4" @submit.prevent="saveSettings()">
-            <div class="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label class="form-label">Dashboard Title</label>
-                <input x-model="forms.settings.dashboardTitle" class="form-input">
-              </div>
-              <div>
-                <label class="form-label">Company Name</label>
-                <input x-model="forms.settings.companyName" class="form-input">
-              </div>
-              <div>
-                <label class="form-label">Support Signature</label>
-                <input x-model="forms.settings.supportSignature" class="form-input">
-              </div>
-              <div>
-                <label class="form-label">Timezone</label>
-                <input x-model="forms.settings.timezone" class="form-input">
-              </div>
-            </div>
-            
-            <div class="rounded-xl border border-slate-100 bg-slate-50/50 p-4">
-              <div class="space-y-3">
-                <label class="flex cursor-pointer items-start gap-3">
-                  <input x-model="forms.settings.autoRescheduleMonthly" type="checkbox" class="mt-1 h-5 w-5 rounded border-slate-300 text-brand-accent focus:ring-brand-accent">
-                  <span class="text-sm text-slate-700">Auto-reschedule monthly reminders</span>
-                </label>
-                <label class="flex cursor-pointer items-start gap-3">
-                  <input x-model="forms.settings.notifyAdminsOnDelivery" type="checkbox" class="mt-1 h-5 w-5 rounded border-slate-300 text-brand-accent focus:ring-brand-accent">
-                  <span class="text-sm text-slate-700">Notify admins on delivery status</span>
-                </label>
-                <label class="flex cursor-pointer items-start gap-3">
-                  <input x-model="forms.settings.notifyAdminsOnConnectionChange" type="checkbox" class="mt-1 h-5 w-5 rounded border-slate-300 text-brand-accent focus:ring-brand-accent">
-                  <span class="text-sm text-slate-700">Notify admins on connection changes</span>
-                </label>
-                <label class="flex cursor-pointer items-start gap-3">
-                  <input x-model="forms.settings.notifyAdminsOnPaymentReset" type="checkbox" class="mt-1 h-5 w-5 rounded border-slate-300 text-brand-accent focus:ring-brand-accent">
-                  <span class="text-sm text-slate-700">Notify admins on monthly payment reset</span>
-                </label>
-              </div>
-            </div>
-            
-            <button type="submit" class="btn-primary btn-primary--gold">Save Settings</button>
-          </form>
-        </section>
-
-        <!-- Sent History Section -->
-        <section class="card animate-fade-in-up">
-          <div class="border-b border-slate-100 p-6 pb-4">
-            <h2 class="text-title text-2xl font-semibold text-slate-900">Sent History</h2>
-            <p class="mt-1 text-slate-600">Recent notification delivery records.</p>
-          </div>
-          
-          <!-- Desktop Table -->
-          <div class="hidden md:block">
-            <div class="table-container">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>Recipient</th>
-                    <th>Sent At</th>
-                    <th>Status</th>
-                    <th>Message</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <template x-if="!sent.length">
-                    <tr>
-                      <td colspan="4" class="py-12">
-                        <div class="empty-state">
-                          <svg class="empty-state__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
-                          </svg>
-                          <span class="empty-state__text">No delivery history.</span>
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
-                  <template x-for="item in sent" :key="item.id + '-' + item.sentAt">
-                    <tr>
-                      <td>
-                        <div class="font-medium text-slate-900" x-text="item.contactName || 'Contact not found'"></div>
-                        <div class="text-sm text-slate-500" x-text="item.phoneNumber || '-'"></div>
-                      </td>
-                      <td class="text-slate-600" x-text="formatDateTime(item.sentAt || item.reminderDateTime)"></td>
-                      <td>
-                        <span class="badge badge--success" x-text="item.deliveryStatus || 'SENT'"></span>
-                      </td>
-                      <td class="max-w-xs truncate text-slate-600" x-text="item.message"></td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Mobile Cards -->
-          <div class="md:hidden space-y-3 p-6 pt-4">
-            <template x-for="item in sent" :key="item.id + '-' + item.sentAt">
-              <div class="mobile-card mobile-card--visible">
-                <div class="mobile-card__field">
-                  <span class="mobile-card__label">Recipient</span>
-                  <span class="mobile-card__value" x-text="item.contactName || 'Contact not found'"></span>
-                </div>
-                <div class="mobile-card__field">
-                  <span class="mobile-card__label">Phone</span>
-                  <span class="mobile-card__value" x-text="item.phoneNumber || '-'"></span>
-                </div>
-                <div class="mobile-card__field">
-                  <span class="mobile-card__label">Sent At</span>
-                  <span class="mobile-card__value" x-text="formatDateTime(item.sentAt || item.reminderDateTime)"></span>
-                </div>
-                <div class="mobile-card__field">
-                  <span class="mobile-card__label">Status</span>
-                  <span class="mobile-card__value text-sm font-semibold text-success" x-text="item.deliveryStatus || 'SENT'"></span>
-                </div>
-                <div class="mobile-card__field">
-                  <span class="mobile-card__label">Message</span>
-                  <span class="mobile-card__value text-right text-xs" x-text="item.message.length > 60 ? item.message.slice(0, 60) + '...' : item.message"></span>
-                </div>
-              </div>
-            </template>
-            <div x-show="!sent.length" class="py-8">
-              <div class="empty-state">
-                <svg class="empty-state__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
-                </svg>
-                <span class="empty-state__text">No delivery history.</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Activity Log Section -->
-        <section class="card animate-fade-in-up">
-          <div class="flex flex-col gap-4 border-b border-slate-100 p-6 sm:flex-row sm:items-center sm:justify-between sm:pb-4">
-            <div>
-              <h2 class="text-title text-2xl font-semibold text-slate-900">Activity Log</h2>
-              <p class="mt-1 text-slate-600">System events and monitoring.</p>
-            </div>
-            <button @click="loadLogs()" class="btn-primary btn-primary--ghost">
-              <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-              </svg>
-              Reload
-            </button>
-          </div>
-          
-          <div class="space-y-3 p-6 pt-4">
-            <template x-if="!logs.length">
-              <div class="empty-state">
-                <svg class="empty-state__icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                </svg>
-                <span class="empty-state__text">No activity logs.</span>
-              </div>
-            </template>
-            <template x-for="entry in logs" :key="entry.id">
-              <article class="rounded-xl border border-slate-100 bg-slate-50/50 p-4 transition hover:bg-slate-100/50">
-                <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.1em] text-slate-500">
-                  <span x-text="formatDateTime(entry.timestamp)"></span>
-                  <span>•</span>
-                  <span :class="entry.level === 'error' ? 'text-red-600' : entry.level === 'warn' ? 'text-amber-600' : 'text-slate-500'" x-text="entry.level.toUpperCase()"></span>
-                  <span>•</span>
-                  <span class="text-slate-400" x-text="entry.source"></span>
-                </div>
-                <div class="mt-2 text-sm leading-relaxed text-slate-700" x-text="entry.message"></div>
-              </article>
-            </template>
-          </div>
-        </section>
-      </main>
-    </div>
-
-    <!-- Toast Notification -->
-    <div x-show="toast.show" x-transition.opacity.duration.200ms x-transition:enter-start="translate-y-3 opacity-0" x-transition:enter-end="translate-y-0 opacity-100" x-transition:leave-end="translate-y-3 opacity-0" class="toast toast--visible">
-      <span x-text="toast.message"></span>
-    </div>
-  </div>
-
-  <script>
-    function dashboardApp() {
-      return {
-        loading: {
-          status: false,
-        },
-        toast: {
-          show: false,
-          message: "",
-        },
-        contacts: [],
-        reminders: [],
-        sent: [],
-        templates: [],
-        logs: [],
-        statusCards: [],
-        summaryMetrics: [],
-        forms: {
-          manual: { phoneNumber: "", message: "" },
-          recipients: "",
-          contact: { name: "", phoneNumber: "" },
-          reminder: { contactId: "", reminderDateTime: "", templateName: "", message: "" },
-          template: { name: "", content: "" },
-          settings: {
-            dashboardTitle: "",
-            companyName: "",
-            supportSignature: "",
-            timezone: "",
-            autoRescheduleMonthly: false,
-            notifyAdminsOnDelivery: false,
-            notifyAdminsOnConnectionChange: false,
-            notifyAdminsOnPaymentReset: false,
-          },
-        },
-
-        async init() {
-          await this.refreshAll();
-          setInterval(() => this.loadStatus(), 20000);
-          setInterval(() => this.loadLogs(), 20000);
-        },
-
-        async api(path, options = {}) {
-          const response = await fetch(path, {
-            ...options,
-            credentials: "same-origin",
-            headers: {
-              "Content-Type": "application/json",
-              ...(options.headers || {}),
-            },
-          });
-
-          if (response.status === 401) {
-            window.location.href = "/login";
-            throw new Error("Unauthorized");
-          }
-
-          const payload = await response.json();
-          if (!response.ok || !payload.success) {
-            throw new Error(payload.error || "Request failed");
-          }
-
-          return payload.data;
-        },
-
-        notify(message) {
-          this.toast.message = message;
-          this.toast.show = true;
-          clearTimeout(this.toast.timer);
-          this.toast.timer = setTimeout(() => {
-            this.toast.show = false;
-          }, 2400);
-        },
-
-        formatDateTime(value) {
-          return new Date(value).toLocaleString("id-ID");
-        },
-
-        autoFillReminderTime() {
-          this.setReminderTime(5);
-          this.notify("Waktu kirim diisi otomatis (5 menit ke depan).");
-        },
-
-        setReminderTime(minutes) {
-          const now = new Date();
-          now.setMinutes(now.getMinutes() + minutes);
-          const year = now.getFullYear();
-          const month = String(now.getMonth() + 1).padStart(2, "0");
-          const day = String(now.getDate()).padStart(2, "0");
-          const hours = String(now.getHours()).padStart(2, "0");
-          const mins = String(now.getMinutes()).padStart(2, "0");
-          this.forms.reminder.reminderDateTime = `${year}-${month}-${day}T${hours}:${mins}`;
-        },
-
-        async refreshAll() {
-          await Promise.all([
-            this.loadStatus(),
-            this.loadContacts(),
-            this.loadReminders(),
-            this.loadSent(),
-            this.loadTemplates(),
-            this.loadRecipients(),
-            this.loadLogs(),
-          ]);
-        },
-
-        async loadStatus() {
-          this.loading.status = true;
-          try {
-            const data = await this.api("/api/status");
-            this.statusCards = [
-              { label: "Transport", value: data.bot.isReady ? "Online" : "Offline" },
-              { label: "QR", value: data.bot.hasQR ? "Ready to scan" : "No QR" },
-              { label: "Reconnect", value: data.bot.reconnectAttempts },
-            ];
-            this.summaryMetrics = [
-              { label: "Contacts", value: data.summary.contacts },
-              { label: "Queued reminders", value: data.summary.reminders },
-              { label: "Sent outputs", value: data.summary.sentReminders },
-              { label: "Admin recipients", value: data.summary.adminRecipients },
-              { label: "Paid contacts", value: data.summary.paidContacts },
-              { label: "Unpaid contacts", value: data.summary.unpaidContacts },
-            ];
-            this.forms.settings = {
-              dashboardTitle: data.settings.dashboardTitle || "",
-              companyName: data.settings.companyName || "",
-              supportSignature: data.settings.supportSignature || "",
-              timezone: data.settings.timezone || "",
-              autoRescheduleMonthly: Boolean(data.settings.autoRescheduleMonthly),
-              notifyAdminsOnDelivery: Boolean(data.settings.notifyAdminsOnDelivery),
-              notifyAdminsOnConnectionChange: Boolean(data.settings.notifyAdminsOnConnectionChange),
-              notifyAdminsOnPaymentReset: Boolean(data.settings.notifyAdminsOnPaymentReset),
-            };
-          } finally {
-            this.loading.status = false;
-          }
-        },
-
-        async loadContacts() {
-          this.contacts = await this.api("/api/contacts");
-        },
-
-        async loadReminders() {
-          this.reminders = await this.api("/api/reminders");
-        },
-
-        async loadSent() {
-          this.sent = (await this.api("/api/reminders/sent")).slice(0, 50);
-        },
-
-        async loadTemplates() {
-          this.templates = await this.api("/api/templates");
-        },
-
-        async loadRecipients() {
-          const recipients = await this.api("/api/admin-recipients");
-          this.forms.recipients = recipients.join("\n");
-        },
-
-        async loadLogs() {
-          this.logs = await this.api("/api/logs");
-        },
-
-        async createContact() {
-          await this.api("/api/contacts", {
-            method: "POST",
-            body: JSON.stringify(this.forms.contact),
-          });
-          this.forms.contact = { name: "", phoneNumber: "" };
-          this.notify("Contact ditambahkan.");
-          await Promise.all([this.loadContacts(), this.loadStatus()]);
-        },
-
-        async togglePayment(id, status) {
-          const result = await this.api(`/api/contacts/${id}/payment`, {
-            method: "POST",
-            body: JSON.stringify({ status }),
-          });
-          if (status === "PAID") {
-            if (result.notificationSent) {
-              this.notify(`Status pembayaran diperbarui. Bukti pembayaran terkirim (${result.transactionId}).`);
-            } else if (result.notificationError) {
-              this.notify(`Status pembayaran diperbarui, tapi notifikasi gagal: ${result.notificationError}`);
-            } else {
-              this.notify("Status pembayaran diperbarui.");
-            }
-          } else {
-            this.notify("Status pembayaran diperbarui.");
-          }
-          await Promise.all([this.loadContacts(), this.loadStatus()]);
-        },
-
-        async removeContact(id) {
-          await this.api(`/api/contacts/${id}`, { method: "DELETE" });
-          this.notify("Contact dihapus.");
-          await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
-        },
-
-        async createReminder() {
-          await this.api("/api/reminders", {
-            method: "POST",
-            body: JSON.stringify(this.forms.reminder),
-          });
-          this.forms.reminder = { contactId: "", reminderDateTime: "", templateName: "", message: "" };
-          this.notify("Reminder dibuat.");
-          await Promise.all([this.loadReminders(), this.loadStatus()]);
-        },
-
-        async removeReminder(id) {
-          await this.api(`/api/reminders/${id}`, { method: "DELETE" });
-          this.notify("Reminder dihapus.");
-          await Promise.all([this.loadReminders(), this.loadStatus()]);
-        },
-
-        async createTemplate() {
-          await this.api("/api/templates", {
-            method: "POST",
-            body: JSON.stringify(this.forms.template),
-          });
-          this.forms.template = { name: "", content: "" };
-          this.notify("Template disimpan.");
-          await this.loadTemplates();
-        },
-
-        async removeTemplate(name) {
-          await this.api(`/api/templates/${encodeURIComponent(name)}`, { method: "DELETE" });
-          this.notify("Template dihapus.");
-          await this.loadTemplates();
-        },
-
-        async saveSettings() {
-          await this.api("/api/settings", {
-            method: "PUT",
-            body: JSON.stringify(this.forms.settings),
-          });
-          this.notify("Settings diperbarui.");
-          await this.loadStatus();
-        },
-
-        async sendManualNotification() {
-          await this.api("/api/notifications/test", {
-            method: "POST",
-            body: JSON.stringify(this.forms.manual),
-          });
-          this.forms.manual = { phoneNumber: "", message: "" };
-          this.notify("Notifikasi manual terkirim.");
-          await this.loadLogs();
-        },
-
-        async saveRecipients() {
-          await this.api("/api/admin-recipients", {
-            method: "PUT",
-            body: JSON.stringify({ recipients: this.forms.recipients }),
-          });
-          this.notify("Admin recipients diperbarui.");
-          await Promise.all([this.loadRecipients(), this.loadStatus()]);
-        },
-
-        async runScheduler() {
-          await this.api("/api/scheduler/run", {
-            method: "POST",
-            body: JSON.stringify({}),
-          });
-          this.notify("Scheduler dipicu manual.");
-          await this.refreshAll();
-        },
-
-        async logout() {
-          await this.api("/api/auth/logout", {
-            method: "POST",
-            body: JSON.stringify({}),
-          });
-          window.location.href = "/login";
-        },
-      };
-    }
-  </script>
-</body>
-</html>
-
 
 <div class="mt-6 grid gap-6 xl:grid-cols-[360px,minmax(0,1fr)]">
       <aside class="space-y-6 xl:sticky xl:top-4 xl:self-start">
@@ -1772,19 +484,7 @@
               </label>
               <label class="block text-sm text-ink/60">
                 Waktu kirim
-                <div class="relative mt-2">
-                  <input x-model="forms.reminder.reminderDateTime" type="datetime-local" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay pr-12" placeholder="YYYY-MM-DD HH:mm" required>
-                  <button @click="autoFillReminderTime()" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-clay/10 px-2.5 py-1.5 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-1" title="Isi otomatis 5 menit ke depan">
-                    Auto
-                  </button>
-                </div>
-                <div class="mt-2 flex flex-wrap gap-1.5">
-                  <button @click="setReminderTime(1)" type="button" class="rounded-full border border-ink/10 bg-white px-2.5 py-1 text-xs font-semibold text-ink transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-1">1m</button>
-                  <button @click="setReminderTime(5)" type="button" class="rounded-full border border-ink/10 bg-white px-2.5 py-1 text-xs font-semibold text-ink transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-1">5m</button>
-                  <button @click="setReminderTime(15)" type="button" class="rounded-full border border-ink/10 bg-white px-2.5 py-1 text-xs font-semibold text-ink transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-1">15m</button>
-                  <button @click="setReminderTime(30)" type="button" class="rounded-full border border-ink/10 bg-white px-2.5 py-1 text-xs font-semibold text-ink transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-1">30m</button>
-                  <button @click="setReminderTime(60)" type="button" class="rounded-full border border-ink/10 bg-white px-2.5 py-1 text-xs font-semibold text-ink transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-1">1j</button>
-                </div>
+                <input x-model="forms.reminder.reminderDateTime" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay" placeholder="YYYY-MM-DD HH:mm" required>
               </label>
             </div>
             <label class="block text-sm text-ink/60">
@@ -2181,22 +881,6 @@
 
         formatDateTime(value) {
           return new Date(value).toLocaleString("id-ID");
-        },
-
-        autoFillReminderTime() {
-          this.setReminderTime(5);
-          this.notify("Waktu kirim diisi otomatis (5 menit ke depan).");
-        },
-
-        setReminderTime(minutes) {
-          const now = new Date();
-          now.setMinutes(now.getMinutes() + minutes);
-          const year = now.getFullYear();
-          const month = String(now.getMonth() + 1).padStart(2, "0");
-          const day = String(now.getDate()).padStart(2, "0");
-          const hours = String(now.getHours()).padStart(2, "0");
-          const mins = String(now.getMinutes()).padStart(2, "0");
-          this.forms.reminder.reminderDateTime = `${year}-${month}-${day}T${hours}:${mins}`;
         },
 
         async refreshAll() {
