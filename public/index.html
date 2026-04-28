@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
   <title>__DASHBOARD_TITLE__</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -22,54 +22,238 @@
           fontFamily: {
             display: ["Georgia", "serif"],
             body: ["Georgia", "serif"]
+          },
+          screens: {
+            'xs': '375px',
+            'sm': '640px',
+            'md': '768px',
+            'lg': '1024px',
+            'xl': '1280px',
+            '2xl': '1536px',
           }
         }
       }
     };
   </script>
+  <style>
+    /* Mobile-First Base Styles */
+    :root {
+      --touch-target: 44px;
+      --border-radius-sm: 0.5rem;
+      --border-radius-md: 1rem;
+      --border-radius-lg: 1.75rem;
+      --spacing-xs: 0.5rem;
+      --spacing-sm: 1rem;
+      --spacing-md: 1.5rem;
+      --spacing-lg: 2rem;
+    }
+
+    /* Touch-friendly tap targets */
+    .touch-target {
+      min-height: var(--touch-target);
+      min-width: var(--touch-target);
+    }
+
+    /* Responsive typography using clamp() for fluid scaling */
+    .text-fluid {
+      font-size: clamp(0.875rem, 2vw, 1rem);
+    }
+    
+    .text-fluid-lg {
+      font-size: clamp(1rem, 3vw, 1.25rem);
+    }
+    
+    .text-fluid-xl {
+      font-size: clamp(1.5rem, 5vw, 2rem);
+    }
+    
+    .text-fluid-2xl {
+      font-size: clamp(1.75rem, 6vw, 2.5rem);
+    }
+
+    /* Mobile-first table wrapper */
+    .table-wrapper {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(23,49,59,0.2) transparent;
+    }
+    
+    .table-wrapper::-webkit-scrollbar {
+      height: 6px;
+    }
+    
+    .table-wrapper::-webkit-scrollbar-track {
+      background: rgba(23,49,59,0.05);
+      border-radius: 3px;
+    }
+    
+    .table-wrapper::-webkit-scrollbar-thumb {
+      background: rgba(23,49,59,0.2);
+      border-radius: 3px;
+    }
+
+    /* Mobile card view for tables */
+    @media (max-width: 639px) {
+      .mobile-card-row {
+        display: none;
+      }
+      
+      .mobile-card-row.active {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 1rem;
+        border: 1px solid rgba(23,49,59,0.1);
+        border-radius: 1rem;
+        background: rgba(255,255,255,0.7);
+        margin-bottom: 0.75rem;
+      }
+      
+      .mobile-card-field {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.25rem 0;
+        border-bottom: 1px solid rgba(23,49,59,0.05);
+      }
+      
+      .mobile-card-field:last-child {
+        border-bottom: none;
+      }
+      
+      .mobile-card-label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: rgba(23,49,59,0.5);
+      }
+      
+      .mobile-card-value {
+        font-weight: 600;
+        color: rgba(23,49,59,0.8);
+        text-align: right;
+        max-width: 60%;
+        word-break: break-word;
+      }
+      
+      .mobile-card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid rgba(23,49,59,0.1);
+      }
+      
+      .mobile-card-actions .btn {
+        flex: 1;
+        min-width: 0;
+      }
+    }
+
+    /* Reduced motion preference */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* Focus states for accessibility */
+    button:focus-visible,
+    a:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    select:focus-visible {
+      outline: 2px solid #cc5a2e;
+      outline-offset: 2px;
+    }
+
+    /* Sticky header for mobile scroll */
+    .section-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: inherit;
+      backdrop-filter: blur(8px);
+    }
+
+    /* Collapsible sections for mobile */
+    .collapsible-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease-out;
+    }
+    
+    .collapsible-content.active {
+      max-height: 2000px;
+    }
+
+    /* Better form inputs on mobile */
+    input[type="text"],
+    input[type="datetime-local"],
+    input[type="email"],
+    textarea,
+    select {
+      font-size: 16px; /* Prevents zoom on iOS */
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    /* Custom select arrow */
+    select {
+      background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+      background-position: right 0.5rem center;
+      background-repeat: no-repeat;
+      background-size: 1.5em 1.5em;
+      padding-right: 2.5rem;
+    }
+  </style>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
-<body class="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(204,90,46,.16),transparent_34%),radial-gradient(circle_at_top_right,rgba(31,122,106,.16),transparent_28%),linear-gradient(180deg,#f7f2ea_0%,#f3ede3_50%,#e6ece6_100%)] font-body text-ink">
+<body class="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(204,90,46,.16),transparent_34%),radial-gradient(circle_at_top_right,rgba(31,122,106,.16),transparent_28%),linear-gradient(180deg,#f7f2ea_0%,#f3ede3_50%,#e6ece6_100%)] font-body text-ink antialiased">
   <div
     x-data="dashboardApp()"
     x-init="init()"
-    class="mx-auto w-[min(1400px,calc(100%-24px))] py-5 sm:w-[min(1400px,calc(100%-36px))] sm:py-8"
+    class="mx-auto w-full max-w-[1400px] px-3 py-4 sm:px-4 sm:py-6 lg:px-6 lg:py-8"
   >
-    <section class="overflow-hidden rounded-[2rem] border border-white/70 bg-white/70 p-6 shadow-soft backdrop-blur-xl sm:p-8">
-      <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-        <div class="max-w-3xl space-y-4">
-          <span class="inline-flex rounded-full bg-clay/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-clay">
+    <section class="overflow-hidden rounded-2xl sm:rounded-[2rem] border border-white/70 bg-white/70 p-5 sm:p-6 lg:p-8 shadow-soft backdrop-blur-xl">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div class="max-w-3xl space-y-3">
+          <span class="inline-flex rounded-full bg-clay/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.24em] text-clay">
             Notification-only architecture active
           </span>
-          <div class="space-y-3">
-            <h1 class="font-display text-4xl leading-none tracking-tight sm:text-6xl">__DASHBOARD_TITLE__</h1>
-            <p class="max-w-3xl text-sm leading-7 text-ink/65 sm:text-base">
+          <div class="space-y-2">
+            <h1 class="font-display text-fluid-2xl leading-tight tracking-tight sm:text-5xl">__DASHBOARD_TITLE__</h1>
+            <p class="max-w-3xl text-fluid text-ink/65 leading-relaxed">
               Semua kontrol bot sekarang dipusatkan di dashboard ini. Bot tidak lagi membaca perintah chat atau menyimpan state percakapan; channel WhatsApp hanya dipakai untuk mengirim alert otomatis, update status, dan broadcast operasional.
             </p>
           </div>
         </div>
-        <div class="flex flex-wrap gap-3">
-          <a href="/qr" target="_blank" rel="noreferrer" class="rounded-full bg-gradient-to-r from-clay to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
+        <div class="flex flex-wrap gap-2 lg:gap-3">
+          <a href="/qr" target="_blank" rel="noreferrer" class="touch-target inline-flex items-center justify-center rounded-full bg-gradient-to-r from-clay to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-2">
             Hubungkan WhatsApp
           </a>
-          <button @click="refreshAll()" class="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
+          <button @click="refreshAll()" class="touch-target inline-flex items-center justify-center rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white focus:outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">
             Refresh Dashboard
           </button>
-          <button @click="runScheduler()" class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">
+          <button @click="runScheduler()" class="touch-target inline-flex items-center justify-center rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss focus:outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">
             Run Scheduler Now
           </button>
-          <button @click="logout()" class="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-clay hover:text-white">
+          <button @click="logout()" class="touch-target inline-flex items-center justify-center rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-2">
             Logout
           </button>
         </div>
       </div>
     </section>
 
-    <div class="mt-6 grid gap-6 xl:grid-cols-[360px,minmax(0,1fr)]">
+<div class="mt-6 grid gap-6 xl:grid-cols-[360px,minmax(0,1fr)]">
       <aside class="space-y-6 xl:sticky xl:top-4 xl:self-start">
         <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-4 flex items-center justify-between">
-            <h2 class="font-display text-2xl">Status Bot</h2>
+            <h2 class="font-display text-xl sm:text-2xl">Status Bot</h2>
             <template x-if="loading.status">
               <span class="text-xs uppercase tracking-[0.2em] text-ink/45">Loading</span>
             </template>
@@ -78,56 +262,139 @@
             <template x-for="card in statusCards" :key="card.label">
               <div class="rounded-3xl border border-ink/8 bg-haze px-4 py-4">
                 <div class="text-xs uppercase tracking-[0.2em] text-ink/45" x-text="card.label"></div>
-                <div class="mt-2 text-2xl font-semibold" x-text="card.value"></div>
+                <div class="mt-2 text-xl sm:text-2xl font-semibold" x-text="card.value"></div>
               </div>
             </template>
           </div>
         </section>
 
         <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
-          <h2 class="font-display text-2xl">Kirim Notifikasi Manual</h2>
+          <h2 class="font-display text-xl sm:text-2xl">Kirim Notifikasi Manual</h2>
           <form class="mt-4 space-y-4" @submit.prevent="sendManualNotification()">
             <label class="block text-sm text-ink/60">
               Nomor tujuan
-              <input x-model="forms.manual.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none ring-0 transition focus:border-clay" placeholder="628xxx" required>
+              <input x-model="forms.manual.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none ring-0 transition focus:border-clay focus:ring-2 focus:ring-clay" placeholder="628xxx" required>
             </label>
             <label class="block text-sm text-ink/60">
               Pesan
-              <textarea x-model="forms.manual.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Tulis status update atau alert manual" required></textarea>
+              <textarea x-model="forms.manual.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay" placeholder="Tulis status update atau alert manual" required></textarea>
             </label>
-            <button class="w-full rounded-full bg-gradient-to-r from-clay to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20">
-              Kirim Sekarang
-            </button>
+            <button class="touch-target w-full rounded-full bg-gradient-to-r from-clay to-orange-400 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-clay/20 focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-2">Kirim Sekarang</button>
           </form>
         </section>
 
         <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
-          <h2 class="font-display text-2xl">Admin Recipients</h2>
+          <h2 class="font-display text-xl sm:text-2xl">Admin Recipients</h2>
           <form class="mt-4 space-y-4" @submit.prevent="saveRecipients()">
             <label class="block text-sm text-ink/60">
               Nomor admin
-              <textarea x-model="forms.recipients" class="mt-2 min-h-36 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Satu nomor per baris, format 628xxx"></textarea>
+              <textarea x-model="forms.recipients" class="mt-2 min-h-36 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay" placeholder="Satu nomor per baris, format 628xxx"></textarea>
             </label>
-            <button class="w-full rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
-              Simpan Recipients
-            </button>
+            <button class="touch-target w-full rounded-full border border-ink/10 bg-white px-5 py-3.5 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white focus:outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">Simpan Recipients</button>
           </form>
         </section>
       </aside>
 
       <main class="space-y-6">
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+<section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
-            <h2 class="font-display text-2xl">Overview</h2>
-            <p class="mt-1 text-sm text-ink/60">Ringkasan health bot, antrean notifikasi, dan hasil kirim.</p>
+            <h2 class="font-display text-xl sm:text-2xl">Contacts</h2>
+            <p class="mt-1 text-fluid text-ink/60">Sumber data penerima yang dikelola dari dashboard.</p>
           </div>
-          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <template x-for="metric in summaryMetrics" :key="metric.label">
-              <div class="rounded-[1.5rem] border border-ink/8 bg-gradient-to-b from-white to-haze px-4 py-5">
-                <div class="text-xs uppercase tracking-[0.2em] text-ink/45" x-text="metric.label"></div>
-                <div class="mt-3 text-3xl font-semibold" x-text="metric.value"></div>
+          <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <button @click="loadContacts()" class="touch-target inline-flex items-center justify-center rounded-full border border-ink/10 bg-white px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white focus:outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">
+              Reload
+            </button>
+          </div>
+          <form class="grid gap-4 md:grid-cols-[minmax(0,1fr),minmax(0,1fr),auto] md:items-end" @submit.prevent="createContact()">
+            <label class="block text-sm text-ink/60">
+              Nama
+              <input x-model="forms.contact.name" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay" required>
+            </label>
+            <label class="block text-sm text-ink/60">
+              Nomor WhatsApp
+              <input x-model="forms.contact.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay" placeholder="628xxx" required>
+            </label>
+            <button class="touch-target rounded-full bg-ink px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-moss focus:outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">Tambah Contact</button>
+          </form>
+          
+          <!-- Desktop Table View -->
+          <div class="hidden md:block mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
+            <div class="overflow-x-auto">
+              <table class="min-w-full text-sm">
+                <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
+                  <tr>
+                    <th class="px-4 py-3">Nama</th>
+                    <th class="px-4 py-3">No. WA</th>
+                    <th class="px-4 py-3">Status Bayar</th>
+                    <th class="px-4 py-3">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-ink/6 bg-white/70">
+                  <template x-if="!contacts.length">
+                    <tr><td colspan="4" class="px-4 py-8 text-center text-ink/45">Belum ada contact.</td></tr>
+                  </template>
+                  <template x-for="contact in contacts" :key="contact.id">
+                    <tr>
+                      <td class="px-4 py-4 font-medium" x-text="contact.name"></td>
+                      <td class="px-4 py-4 text-ink/65" x-text="contact.phoneNumber"></td>
+                      <td class="px-4 py-4">
+                        <span
+                          class="inline-flex rounded-full px-3 py-1 text-xs font-semibold"
+                          :class="contact.paymentStatus === 'PAID' ? 'bg-moss/10 text-moss' : 'bg-clay/10 text-clay'"
+                          x-text="contact.paymentStatus || 'UNPAID'"
+                        ></span>
+                      </td>
+                      <td class="px-4 py-4">
+                        <div class="flex flex-wrap gap-2">
+                          <button
+                            @click="togglePayment(contact.id, contact.paymentStatus === 'PAID' ? 'UNPAID' : 'PAID')"
+                            class="touch-target rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:bg-ink hover:text-white focus:outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2"
+                            x-text="contact.paymentStatus === 'PAID' ? 'Mark unpaid' : 'Mark paid'"
+                          ></button>
+                          <button @click="removeContact(contact.id)" class="touch-target rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-2">Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Mobile Card View -->
+          <div class="md:hidden mt-5 space-y-3" x-show="contacts.length > 0">
+            <template x-for="contact in contacts" :key="contact.id">
+              <div class="mobile-card-row active">
+                <div class="mobile-card-field">
+                  <span class="mobile-card-label">Nama</span>
+                  <span class="mobile-card-value" x-text="contact.name"></span>
+                </div>
+                <div class="mobile-card-field">
+                  <span class="mobile-card-label">No. WA</span>
+                  <span class="mobile-card-value" x-text="contact.phoneNumber"></span>
+                </div>
+                <div class="mobile-card-field">
+                  <span class="mobile-card-label">Status Bayar</span>
+                  <span
+                    class="mobile-card-value text-right"
+                    :class="contact.paymentStatus === 'PAID' ? 'text-moss' : 'text-clay'"
+                    x-text="contact.paymentStatus || 'UNPAID'"
+                  ></span>
+                </div>
+                <div class="mobile-card-actions">
+                  <button
+                    @click="togglePayment(contact.id, contact.paymentStatus === 'PAID' ? 'UNPAID' : 'PAID')"
+                    class="touch-target flex-1 rounded-lg border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:bg-ink hover:text-white focus:outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2"
+                    x-text="contact.paymentStatus === 'PAID' ? 'Mark unpaid' : 'Mark paid'"
+                  ></button>
+                  <button @click="removeContact(contact.id)" class="touch-target flex-1 rounded-lg border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-2">Delete</button>
+                </div>
               </div>
             </template>
+          </div>
+          <div x-show="!contacts.length" class="mt-5 rounded-[1.5rem] border border-dashed border-ink/15 bg-haze px-4 py-8 text-center text-ink/45">
+            Belum ada contact.
           </div>
         </section>
 
@@ -197,18 +464,18 @@
         </section>
 
         <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 class="font-display text-2xl">Reminders</h2>
-              <p class="mt-1 text-sm text-ink/60">Seluruh jadwal outbound dibuat dan diubah dari sini.</p>
-            </div>
-            <button @click="loadReminders()" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">Reload</button>
+          <div class="mb-5">
+            <h2 class="font-display text-xl sm:text-2xl">Reminders</h2>
+            <p class="mt-1 text-fluid text-ink/60">Seluruh jadwal outbound dibuat dan diubah dari sini.</p>
+          </div>
+          <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <button @click="loadReminders()" class="touch-target inline-flex items-center justify-center rounded-full border border-ink/10 bg-white px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white focus:outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">Reload</button>
           </div>
           <form class="space-y-4" @submit.prevent="createReminder()">
             <div class="grid gap-4 md:grid-cols-2">
               <label class="block text-sm text-ink/60">
                 Contact tujuan
-                <select x-model="forms.reminder.contactId" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+                <select x-model="forms.reminder.contactId" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay" required>
                   <option value="">Pilih contact</option>
                   <template x-for="contact in contacts" :key="'reminder-contact-' + contact.id">
                     <option :value="contact.id" x-text="contact.name + ' (' + contact.phoneNumber + ')'"></option>
@@ -217,20 +484,22 @@
               </label>
               <label class="block text-sm text-ink/60">
                 Waktu kirim
-                <input x-model="forms.reminder.reminderDateTime" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="YYYY-MM-DD HH:mm" required>
+                <input x-model="forms.reminder.reminderDateTime" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay" placeholder="YYYY-MM-DD HH:mm" required>
               </label>
             </div>
             <label class="block text-sm text-ink/60">
               Nama template opsional
-              <input x-model="forms.reminder.templateName" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="contoh: 1_member 100K.txt">
+              <input x-model="forms.reminder.templateName" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay" placeholder="contoh: 1_member 100K.txt">
             </label>
             <label class="block text-sm text-ink/60">
               Pesan reminder
-              <textarea x-model="forms.reminder.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required></textarea>
+              <textarea x-model="forms.reminder.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay" required></textarea>
             </label>
-            <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">Buat Reminder</button>
+            <button class="touch-target rounded-full bg-ink px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-moss focus:outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">Buat Reminder</button>
           </form>
-          <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
+          
+          <!-- Desktop Table View -->
+          <div class="hidden md:block mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
             <div class="overflow-x-auto">
               <table class="min-w-full text-sm">
                 <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
@@ -256,7 +525,7 @@
                       <td class="px-4 py-4 text-ink/65" x-text="reminder.templateName || '-'"></td>
                       <td class="px-4 py-4 text-ink/65 whitespace-pre-line" x-text="reminder.message"></td>
                       <td class="px-4 py-4">
-                        <button @click="removeReminder(reminder.id)" class="rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white">Delete</button>
+                        <button @click="removeReminder(reminder.id)" class="touch-target rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-2">Delete</button>
                       </td>
                     </tr>
                   </template>
@@ -264,25 +533,61 @@
               </table>
             </div>
           </div>
+
+          <!-- Mobile Card View -->
+          <div class="md:hidden mt-5 space-y-3" x-show="reminders.length > 0">
+            <template x-for="reminder in reminders" :key="reminder.id">
+              <div class="mobile-card-row active">
+                <div class="mobile-card-field">
+                  <span class="mobile-card-label">Tujuan</span>
+                  <span class="mobile-card-value" x-text="reminder.contactName || 'Contact tidak ditemukan'"></span>
+                </div>
+                <div class="mobile-card-field">
+                  <span class="mobile-card-label">No. WA</span>
+                  <span class="mobile-card-value" x-text="reminder.phoneNumber || '-'"></span>
+                </div>
+                <div class="mobile-card-field">
+                  <span class="mobile-card-label">Jadwal</span>
+                  <span class="mobile-card-value" x-text="formatDateTime(reminder.reminderDateTime)"></span>
+                </div>
+                <div class="mobile-card-field">
+                  <span class="mobile-card-label">Template</span>
+                  <span class="mobile-card-value" x-text="reminder.templateName || '-'"></span>
+                </div>
+                <div class="mobile-card-field">
+                  <span class="mobile-card-label">Pesan</span>
+                  <span class="mobile-card-value text-right text-xs" x-text="reminder.message.length > 50 ? reminder.message.slice(0, 50) + '...' : reminder.message"></span>
+                </div>
+                <div class="mobile-card-actions">
+                  <button @click="removeReminder(reminder.id)" class="touch-target flex-1 rounded-lg border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-2">Delete</button>
+                </div>
+              </div>
+            </template>
+          </div>
+          <div x-show="!reminders.length" class="mt-5 rounded-[1.5rem] border border-dashed border-ink/15 bg-haze px-4 py-8 text-center text-ink/45">
+            Belum ada reminder aktif.
+          </div>
         </section>
 
         <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
-            <h2 class="font-display text-2xl">Templates</h2>
-            <p class="mt-1 text-sm text-ink/60">Kelola format pesan tanpa masuk ke kode bot.</p>
+            <h2 class="font-display text-xl sm:text-2xl">Templates</h2>
+            <p class="mt-1 text-fluid text-ink/60">Kelola format pesan tanpa masuk ke kode bot.</p>
           </div>
           <form class="space-y-4" @submit.prevent="createTemplate()">
             <label class="block text-sm text-ink/60">
               Nama file template
-              <input x-model="forms.template.name" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="billing_juni.txt" required>
+              <input x-model="forms.template.name" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay" placeholder="billing_juni.txt" required>
             </label>
             <label class="block text-sm text-ink/60">
               Isi template
-              <textarea x-model="forms.template.content" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Gunakan placeholder seperti {{name}} atau {{date}}" required></textarea>
+              <textarea x-model="forms.template.content" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay" placeholder="Gunakan placeholder seperti {{name}} atau {{date}}" required></textarea>
             </label>
-            <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">Simpan Template Baru</button>
+            <button class="touch-target rounded-full bg-ink px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-moss focus:outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">Simpan Template Baru</button>
           </form>
-          <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
+          
+          <!-- Desktop Table View -->
+          <div class="hidden md:block mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
             <div class="overflow-x-auto">
               <table class="min-w-full text-sm">
                 <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
@@ -303,7 +608,7 @@
                       <td class="px-4 py-4 text-ink/65" x-text="formatDateTime(template.updatedAt)"></td>
                       <td class="px-4 py-4 text-ink/65" x-text="(template.content || '').slice(0, 120)"></td>
                       <td class="px-4 py-4">
-                        <button @click="removeTemplate(template.name)" class="rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white">Delete</button>
+                        <button @click="removeTemplate(template.name)" class="touch-target rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-2">Delete</button>
                       </td>
                     </tr>
                   </template>
@@ -311,60 +616,88 @@
               </table>
             </div>
           </div>
+
+          <!-- Mobile Card View -->
+          <div class="md:hidden mt-5 space-y-3" x-show="templates.length > 0">
+            <template x-for="template in templates" :key="template.name">
+              <div class="mobile-card-row active">
+                <div class="mobile-card-field">
+                  <span class="mobile-card-label">Template</span>
+                  <span class="mobile-card-value text-right" x-text="template.name"></span>
+                </div>
+                <div class="mobile-card-field">
+                  <span class="mobile-card-label">Update</span>
+                  <span class="mobile-card-value" x-text="formatDateTime(template.updatedAt)"></span>
+                </div>
+                <div class="mobile-card-field">
+                  <span class="mobile-card-label">Preview</span>
+                  <span class="mobile-card-value text-right text-xs" x-text="(template.content || '').slice(0, 80)"></span>
+                </div>
+                <div class="mobile-card-actions">
+                  <button @click="removeTemplate(template.name)" class="touch-target flex-1 rounded-lg border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-2">Delete</button>
+                </div>
+              </div>
+            </template>
+          </div>
+          <div x-show="!templates.length" class="mt-5 rounded-[1.5rem] border border-dashed border-ink/15 bg-haze px-4 py-8 text-center text-ink/45">
+            Belum ada template.
+          </div>
         </section>
 
         <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
-            <h2 class="font-display text-2xl">Settings</h2>
-            <p class="mt-1 text-sm text-ink/60">Konfigurasi operasional untuk perilaku dashboard dan alert.</p>
+            <h2 class="font-display text-xl sm:text-2xl">Settings</h2>
+            <p class="mt-1 text-fluid text-ink/60">Konfigurasi operasional untuk perilaku dashboard dan alert.</p>
           </div>
           <form class="space-y-4" @submit.prevent="saveSettings()">
-            <div class="grid gap-4 md:grid-cols-2">
+            <div class="grid gap-4 sm:grid-cols-2">
               <label class="block text-sm text-ink/60">
                 Judul dashboard
-                <input x-model="forms.settings.dashboardTitle" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+                <input x-model="forms.settings.dashboardTitle" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay">
               </label>
               <label class="block text-sm text-ink/60">
                 Nama perusahaan
-                <input x-model="forms.settings.companyName" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+                <input x-model="forms.settings.companyName" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay">
               </label>
               <label class="block text-sm text-ink/60">
                 Tanda tangan support
-                <input x-model="forms.settings.supportSignature" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+                <input x-model="forms.settings.supportSignature" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay">
               </label>
               <label class="block text-sm text-ink/60">
                 Timezone
-                <input x-model="forms.settings.timezone" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+                <input x-model="forms.settings.timezone" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay">
               </label>
             </div>
             <div class="grid gap-3 rounded-[1.5rem] border border-ink/8 bg-haze p-4">
               <label class="flex items-start gap-3 text-sm text-ink/75">
-                <input x-model="forms.settings.autoRescheduleMonthly" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
+                <input x-model="forms.settings.autoRescheduleMonthly" type="checkbox" class="mt-1 h-5 w-5 rounded border-ink/20 text-clay focus:ring-clay">
                 <span>Auto-reschedule reminder bulanan</span>
               </label>
               <label class="flex items-start gap-3 text-sm text-ink/75">
-                <input x-model="forms.settings.notifyAdminsOnDelivery" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
+                <input x-model="forms.settings.notifyAdminsOnDelivery" type="checkbox" class="mt-1 h-5 w-5 rounded border-ink/20 text-clay focus:ring-clay">
                 <span>Kirim update delivery ke admin recipients</span>
               </label>
               <label class="flex items-start gap-3 text-sm text-ink/75">
-                <input x-model="forms.settings.notifyAdminsOnConnectionChange" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
+                <input x-model="forms.settings.notifyAdminsOnConnectionChange" type="checkbox" class="mt-1 h-5 w-5 rounded border-ink/20 text-clay focus:ring-clay">
                 <span>Kirim alert perubahan koneksi WA</span>
               </label>
               <label class="flex items-start gap-3 text-sm text-ink/75">
-                <input x-model="forms.settings.notifyAdminsOnPaymentReset" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
+                <input x-model="forms.settings.notifyAdminsOnPaymentReset" type="checkbox" class="mt-1 h-5 w-5 rounded border-ink/20 text-clay focus:ring-clay">
                 <span>Kirim alert reset pembayaran bulanan</span>
               </label>
             </div>
-            <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">Simpan Settings</button>
+            <button class="touch-target rounded-full bg-ink px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-moss focus:outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">Simpan Settings</button>
           </form>
         </section>
 
         <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
-            <h2 class="font-display text-2xl">Sent History</h2>
-            <p class="mt-1 text-sm text-ink/60">Output notifikasi yang sudah keluar dari bot.</p>
+            <h2 class="font-display text-xl sm:text-2xl">Sent History</h2>
+            <p class="mt-1 text-fluid text-ink/60">Output notifikasi yang sudah keluar dari bot.</p>
           </div>
-          <div class="overflow-hidden rounded-[1.5rem] border border-ink/8">
+          
+          <!-- Desktop Table View -->
+          <div class="hidden md:block overflow-hidden rounded-[1.5rem] border border-ink/8">
             <div class="overflow-x-auto">
               <table class="min-w-full text-sm">
                 <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
@@ -396,15 +729,50 @@
               </table>
             </div>
           </div>
+
+          <!-- Mobile Card View -->
+          <div class="md:hidden space-y-3" x-show="sent.length > 0">
+            <template x-for="item in sent" :key="item.id + '-' + item.sentAt">
+              <div class="mobile-card-row active">
+                <div class="mobile-card-field">
+                  <span class="mobile-card-label">Tujuan</span>
+                  <span class="mobile-card-value" x-text="item.contactName || 'Contact tidak ditemukan'"></span>
+                </div>
+                <div class="mobile-card-field">
+                  <span class="mobile-card-label">No. WA</span>
+                  <span class="mobile-card-value" x-text="item.phoneNumber || '-'"></span>
+                </div>
+                <div class="mobile-card-field">
+                  <span class="mobile-card-label">Terkirim</span>
+                  <span class="mobile-card-value" x-text="formatDateTime(item.sentAt || item.reminderDateTime)"></span>
+                </div>
+                <div class="mobile-card-field">
+                  <span class="mobile-card-label">Status</span>
+                  <span
+                    class="mobile-card-value text-right text-xs font-semibold"
+                    :class="item.deliveryStatus === 'DELIVERED' ? 'text-moss' : 'text-clay'"
+                    x-text="item.deliveryStatus || 'SENT'"
+                  ></span>
+                </div>
+                <div class="mobile-card-field">
+                  <span class="mobile-card-label">Pesan</span>
+                  <span class="mobile-card-value text-right text-xs" x-text="item.message.length > 60 ? item.message.slice(0, 60) + '...' : item.message"></span>
+                </div>
+              </div>
+            </template>
+          </div>
+          <div x-show="!sent.length" class="mt-5 rounded-[1.5rem] border border-dashed border-ink/15 bg-haze px-4 py-8 text-center text-ink/45">
+            Belum ada riwayat kirim.
+          </div>
         </section>
 
         <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-5 flex items-center justify-between">
+          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 class="font-display text-2xl">Activity Log</h2>
-              <p class="mt-1 text-sm text-ink/60">Monitoring internal untuk koneksi, scheduler, API, dan delivery.</p>
+              <h2 class="font-display text-xl sm:text-2xl">Activity Log</h2>
+              <p class="mt-1 text-fluid text-ink/60">Monitoring internal untuk koneksi, scheduler, API, dan delivery.</p>
             </div>
-            <button @click="loadLogs()" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">Reload</button>
+            <button @click="loadLogs()" class="touch-target inline-flex items-center justify-center rounded-full border border-ink/10 bg-white px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white focus:outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">Reload</button>
           </div>
           <div class="space-y-3">
             <template x-if="!logs.length">
@@ -433,7 +801,7 @@
       x-transition:enter-start="translate-y-3"
       x-transition:enter-end="translate-y-0"
       x-transition:leave-end="translate-y-3"
-      class="fixed bottom-5 right-5 z-50 rounded-2xl bg-ink px-4 py-3 text-sm font-medium text-white shadow-soft"
+      class="fixed bottom-4 right-4 left-4 z-50 rounded-2xl bg-ink px-5 py-4 text-sm font-medium text-white shadow-soft sm:bottom-5 sm:right-5 sm:left-auto sm:max-w-sm sm:px-4 sm:py-3"
       x-text="toast.message"
     ></div>
   </div>
