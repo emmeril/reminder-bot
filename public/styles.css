@@ -1,0 +1,95 @@
+/* Small responsive tweaks to improve mobile layout */
+
+/* Ensure action buttons become full-width on small screens */
+.responsive-actions > * {
+  min-width: 140px;
+}
+
+@media (max-width: 640px) {
+  .responsive-actions {
+    display: flex !important;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .responsive-actions > * {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Slight horizontal padding on very small screens for the main app container */
+  .app-container {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+/* Hide elements with x-cloak until Alpine initializes */
+[x-cloak] { display: none !important; }
+
+/* Table -> card layout on small screens */
+@media (max-width: 640px) {
+  table.min-w-full thead {
+    display: none;
+  }
+  table.min-w-full, table.min-w-full tbody, table.min-w-full tr, table.min-w-full td {
+    display: block;
+    width: 100%;
+  }
+  table.min-w-full tr {
+    margin-bottom: 0.75rem;
+    border-radius: 0.75rem;
+    background: rgba(255,255,255,0.9);
+    box-shadow: 0 6px 18px rgba(23,49,59,0.06);
+    border: 1px solid rgba(23,49,59,0.04);
+    overflow: hidden;
+  }
+  table.min-w-full td {
+    padding-left: 0.9rem !important;
+    padding-right: 0.9rem !important;
+    padding-top: 0.6rem !important;
+    padding-bottom: 0.6rem !important;
+    border-bottom: none !important;
+  }
+  table.min-w-full td:first-child {
+    font-weight: 600;
+    padding-top: 0.8rem !important;
+  }
+  table.min-w-full td:not(:first-child) {
+    color: rgba(23,49,59,0.65);
+    font-size: 0.95rem;
+  }
+}
+
+/* Hamburger button tweaks */
+button[aria-label="Toggle actions"] {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+/* Reduce section padding and font sizes on small screens for compactness */
+@media (max-width: 480px) {
+  .rounded\[1.75rem\] {
+    padding: 0.75rem !important;
+  }
+  h1 {
+    font-size: 1.6rem !important;
+  }
+  h2 {
+    font-size: 1.05rem !important;
+  }
+  .min-h-32 {
+    min-height: 6rem !important;
+  }
+  .px-4 {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+}
+
+/* Make table rows more readable on small screens by increasing row spacing */
+@media (max-width: 640px) {
+  table.min-w-full td, table.min-w-full th {
+    padding-top: 0.6rem !important;
+    padding-bottom: 0.6rem !important;
+  }
+}

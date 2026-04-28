@@ -27,13 +27,14 @@
       }
     };
   </script>
+  <link rel="stylesheet" href="styles.css">
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body class="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(204,90,46,.16),transparent_34%),radial-gradient(circle_at_top_right,rgba(31,122,106,.16),transparent_28%),linear-gradient(180deg,#f7f2ea_0%,#f3ede3_50%,#e6ece6_100%)] font-body text-ink">
   <div
     x-data="dashboardApp()"
     x-init="init()"
-    class="mx-auto w-[min(1400px,calc(100%-24px))] py-5 sm:w-[min(1400px,calc(100%-36px))] sm:py-8"
+    class="app-container mx-auto w-[min(1400px,calc(100%-24px))] py-5 sm:w-[min(1400px,calc(100%-36px))] sm:py-8"
   >
     <section class="overflow-hidden rounded-[2rem] border border-white/70 bg-white/70 p-6 shadow-soft backdrop-blur-xl sm:p-8">
       <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
@@ -48,7 +49,9 @@
             </p>
           </div>
         </div>
-        <div class="flex flex-wrap gap-3">
+        <div class="flex items-center justify-end gap-3">
+          <button @click="showActions = !showActions" class="sm:hidden inline-flex items-center justify-center h-10 w-10 rounded-full border border-ink/10 bg-white text-ink shadow-sm" aria-label="Toggle actions">☰</button>
+          <div x-show="showActions" x-cloak class="flex flex-wrap gap-3 responsive-actions">
           <a href="/qr" target="_blank" rel="noreferrer" class="rounded-full bg-gradient-to-r from-clay to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
             Hubungkan WhatsApp
           </a>
@@ -456,6 +459,7 @@
           show: false,
           message: "",
         },
+        showActions: false,
         contacts: [],
         reminders: [],
         sent: [],
@@ -482,6 +486,8 @@
         },
 
         async init() {
+          // show actions on larger screens by default
+          this.showActions = window.innerWidth >= 640;
           await this.refreshAll();
           setInterval(() => this.loadStatus(), 20000);
           setInterval(() => this.loadLogs(), 20000);
