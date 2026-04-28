@@ -11,6 +11,7 @@ const CONFIG = {
   PORT: process.env.PORT || 3025,
   DB_PATH: path.join(__dirname, "database"),
   TEMPLATE_PATH: path.join(__dirname, "templates"),
+  WA_AUTH_PATH: path.join(__dirname, "wwebjs_auth"),
   AUTO_SAVE_INTERVAL: 24 * 60 * 60 * 1000,
   BACKUP_INTERVAL: 24 * 60 * 60 * 1000,
   SESSION_TIMEOUT: 60 * 60 * 1000,
@@ -18,12 +19,34 @@ const CONFIG = {
   MAX_RECONNECT_ATTEMPTS: 10,
   MIN_RECONNECT_INTERVAL: 30000,
   RECONNECT_DELAY: 5000,
+  WA_WEB_VERSION_URL:
+    process.env.WA_WEB_VERSION_URL ||
+    "https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1033090211-alpha.html",
   CRON_SCHEDULE: "*/1 * * * *",
   RESET_PAYMENT_SCHEDULE: "0 0 1 * *",
   MAX_LOCK_WAIT: 10000,
   LOCK_POLL_INTERVAL: 50,
   WEB_API_KEY: process.env.WEB_API_KEY || "dev-key-change-in-production",
 };
+
+const WA_STATES = {
+  CONNECTED: "CONNECTED",
+  OPENING: "OPENING",
+  PAIRING: "PAIRING",
+  UNPAIRED: "UNPAIRED",
+  UNPAIRED_IDLE: "UNPAIRED_IDLE",
+  CONFLICT: "CONFLICT",
+  TIMEOUT: "TIMEOUT",
+  UNLAUNCHED: "UNLAUNCHED",
+};
+
+const WA_DISCONNECT_REASONS = new Set(["UNAUTHORIZED", "CONFLICT"]);
+const WA_CRITICAL_STATES = new Set([
+  WA_STATES.CONFLICT,
+  WA_STATES.TIMEOUT,
+  WA_STATES.UNPAIRED,
+  WA_STATES.UNPAIRED_IDLE,
+]);
 
 const COMMANDS = {
   HELP: "!help",
@@ -635,11 +658,13 @@ class WhatsAppClient {
     this.sessionManager = sessionManager;
     this.templateManager = templateManager;
     this.client = null;
+    this.state = WA_STATES.UNLAUNCHED;
     this.currentQR = null;
     this.isReady = false;
     this.isReconnecting = false;
     this.reconnectAttempts = 0;
     this.lastReconnectTime = null;
+    this.lastActivity = null;
     this.reconnectTimer = null;
     this.keepAliveTimer = null;
   }
@@ -751,12 +776,11 @@ return `${index + 1}. ${nama} | ${waktu}`;
     }
 
     return new Client({
-      authStrategy: new LocalAuth({ dataPath: CONFIG.DB_PATH }),
+      authStrategy: new LocalAuth({ dataPath: CONFIG.WA_AUTH_PATH }),
       puppeteer: puppeteerOptions,
       webVersionCache: {
         type: "remote",
-        remotePath:
-          "https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1031490220-alpha.html",
+        remotePath: CONFIG.WA_WEB_VERSION_URL,
       },
     });
   }
@@ -768,6 +792,7 @@ return `${index + 1}. ${nama} | ${waktu}`;
 
     this.client.on("qr", (qr) => {
       this.currentQR = qr;
+      this.state = WA_STATES.PAIRING;
       this.isReady = false;
       this.reconnectAttempts = 0;
       this.isReconnecting = false;
@@ -776,6 +801,7 @@ return `${index + 1}. ${nama} | ${waktu}`;
     });
 
     this.client.on("authenticated", () => {
+      this.state = WA_STATES.OPENING;
       console.log("🔐 WhatsApp authenticated");
       this.reconnectAttempts = 0;
       this.isReconnecting = false;
@@ -783,46 +809,54 @@ return `${index + 1}. ${nama} | ${waktu}`;
 
     this.client.on("auth_failure", (msg) => {
       console.error("❌ Auth failure:", msg);
+      this.state = WA_STATES.UNPAIRED;
       this.isReady = false;
       this.scheduleReconnect();
     });
 
     this.client.on("ready", () => {
       console.log("✅ WhatsApp ready");
+      this.state = WA_STATES.CONNECTED;
       this.isReady = true;
       this.currentQR = null;
       this.reconnectAttempts = 0;
       this.isReconnecting = false;
       this.lastReconnectTime = null;
+      this.lastActivity = Date.now();
     });
 
     this.client.on("change_state", (state) => {
       console.log("📡 WA STATE:", state);
-      if (state === "CONNECTED") {
+      this.state = state;
+      if ([WA_STATES.CONNECTED, WA_STATES.OPENING, WA_STATES.PAIRING].includes(state)) {
+        this.lastActivity = Date.now();
+      }
+      if (state === WA_STATES.CONNECTED) {
         this.isReady = true;
         this.reconnectAttempts = 0;
         this.isReconnecting = false;
       }
-      if (["DISCONNECTED", "CONFLICT"].includes(state)) {
+      if (WA_CRITICAL_STATES.has(state) || state === "DISCONNECTED") {
         this.isReady = false;
         this.scheduleReconnect();
       }
     });
 
-    this.client.on("disconnected", (reason) => {
+    this.client.on("disconnected", async (reason) => {
       console.log("❌ WhatsApp disconnected:", reason);
+      this.state = WA_STATES.UNPAIRED;
       this.isReady = false;
       this.currentQR = null;
-      if (["UNAUTHORIZED", "CONFLICT"].includes(reason)) {
-        const sessionPath = path.join(CONFIG.DB_PATH, ".wwebjs_auth");
-        fs.rm(sessionPath, { recursive: true, force: true }).catch(() => {});
+      this.lastActivity = Date.now();
+      if (WA_DISCONNECT_REASONS.has(reason)) {
+        await fs.rm(CONFIG.WA_AUTH_PATH, { recursive: true, force: true }).catch(() => {});
       }
       this.scheduleReconnect();
     });
 
     this.client.on("error", (error) => {
       console.error("❌ WhatsApp error:", error.message);
-      if (!this.isReady && !this.isReconnecting) {
+      if (!this.isReconnecting && WA_CRITICAL_STATES.has(this.state)) {
         this.scheduleReconnect();
       }
     });
@@ -1645,23 +1679,21 @@ CS Emmeril Hotspot`;
 
   // ========== CLIENT LIFECYCLE ==========
   scheduleReconnect() {
-    clearTimeout(this.reconnectTimer);
+    if (this.isReconnecting || this.reconnectAttempts >= CONFIG.MAX_RECONNECT_ATTEMPTS) {
+      if (this.reconnectAttempts >= CONFIG.MAX_RECONNECT_ATTEMPTS) {
+        console.error("ðŸ›‘ Max reconnect attempts reached");
+      }
+      return false;
+    }
 
     const now = Date.now();
     if (this.lastReconnectTime && now - this.lastReconnectTime < CONFIG.MIN_RECONNECT_INTERVAL) {
       const waitTime = CONFIG.MIN_RECONNECT_INTERVAL - (now - this.lastReconnectTime);
       console.log(`⏳ Wait ${Math.ceil(waitTime / 1000)}s before reconnect`);
-      if (!this.isReconnecting) {
-        this.isReconnecting = true;
-        this.reconnectTimer = setTimeout(() => {
-          this.isReconnecting = false;
-          this.scheduleReconnect();
-        }, waitTime);
-      }
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = setTimeout(() => this.scheduleReconnect(), waitTime);
       return false;
     }
-
-    if (this.isReconnecting) return false;
 
     if (this.reconnectAttempts >= CONFIG.MAX_RECONNECT_ATTEMPTS) {
       console.error("🛑 Max reconnect attempts reached");
@@ -1671,6 +1703,7 @@ CS Emmeril Hotspot`;
     this.reconnectAttempts++;
     this.lastReconnectTime = now;
     this.isReconnecting = true;
+    this.state = WA_STATES.TIMEOUT;
 
     const delay = Math.min(30000, CONFIG.RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts));
     console.log(`🔄 Reconnect in ${delay / 1000}s (${this.reconnectAttempts}/${CONFIG.MAX_RECONNECT_ATTEMPTS})`);
@@ -1730,6 +1763,234 @@ CS Emmeril Hotspot`;
   async sendMessage(phoneNumber, message) {
     if (!this.isReady) throw new Error("WhatsApp not ready");
     await this.client.sendMessage(`${phoneNumber}@c.us`, message);
+  }
+
+  createClient() {
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    const puppeteerOptions = {
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--no-zygote",
+        "--disable-gpu",
+        "--disable-software-rasterizer",
+        "--disable-features=VizDisplayCompositor",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+        "--max-old-space-size=512",
+      ],
+      ignoreHTTPSErrors: true,
+    };
+
+    if (executablePath) {
+      puppeteerOptions.executablePath = executablePath;
+    }
+
+    return new Client({
+      authStrategy: new LocalAuth({ dataPath: CONFIG.WA_AUTH_PATH }),
+      puppeteer: puppeteerOptions,
+      webVersionCache: {
+        type: "remote",
+        remotePath: CONFIG.WA_WEB_VERSION_URL,
+      },
+    });
+  }
+
+  setupEvents() {
+    if (!this.client) return;
+
+    this.client.removeAllListeners();
+
+    this.client.on("qr", (qr) => {
+      this.currentQR = qr;
+      this.state = WA_STATES.PAIRING;
+      this.isReady = false;
+      console.log("QR code generated");
+      qrcode.generate(qr, { small: true });
+    });
+
+    this.client.on("authenticated", () => {
+      this.state = WA_STATES.OPENING;
+      this.reconnectAttempts = 0;
+      this.isReconnecting = false;
+      console.log("WhatsApp authenticated");
+    });
+
+    this.client.on("auth_failure", (msg) => {
+      this.state = WA_STATES.UNPAIRED;
+      this.isReady = false;
+      console.error("Auth failure:", msg);
+      this.scheduleReconnect();
+    });
+
+    this.client.on("ready", () => {
+      this.state = WA_STATES.CONNECTED;
+      this.isReady = true;
+      this.currentQR = null;
+      this.reconnectAttempts = 0;
+      this.isReconnecting = false;
+      this.lastReconnectTime = null;
+      this.lastActivity = Date.now();
+      console.log("WhatsApp ready");
+    });
+
+    this.client.on("change_state", (state) => {
+      this.state = state;
+      console.log("WA STATE:", state);
+
+      if ([WA_STATES.CONNECTED, WA_STATES.OPENING, WA_STATES.PAIRING].includes(state)) {
+        this.lastActivity = Date.now();
+      }
+
+      if (state === WA_STATES.CONNECTED) {
+        this.isReady = true;
+        this.reconnectAttempts = 0;
+        this.isReconnecting = false;
+      }
+
+      if (WA_CRITICAL_STATES.has(state) || state === "DISCONNECTED") {
+        this.isReady = false;
+        this.scheduleReconnect();
+      }
+    });
+
+    this.client.on("disconnected", async (reason) => {
+      this.state = WA_STATES.UNPAIRED;
+      this.isReady = false;
+      this.currentQR = null;
+      this.lastActivity = Date.now();
+      console.log("WhatsApp disconnected:", reason);
+
+      if (WA_DISCONNECT_REASONS.has(reason)) {
+        await fs.rm(CONFIG.WA_AUTH_PATH, { recursive: true, force: true }).catch(() => {});
+      }
+
+      this.scheduleReconnect();
+    });
+
+    this.client.on("error", (error) => {
+      console.error("WhatsApp error:", error.message);
+      if (!this.isReconnecting && WA_CRITICAL_STATES.has(this.state)) {
+        this.scheduleReconnect();
+      }
+    });
+
+    this.client.on("message", this.handleMessage.bind(this));
+  }
+
+  scheduleReconnect() {
+    if (this.isReconnecting || this.reconnectAttempts >= CONFIG.MAX_RECONNECT_ATTEMPTS) {
+      if (this.reconnectAttempts >= CONFIG.MAX_RECONNECT_ATTEMPTS) {
+        console.error("Max reconnect attempts reached");
+      }
+      return false;
+    }
+
+    const now = Date.now();
+    if (this.lastReconnectTime && now - this.lastReconnectTime < CONFIG.MIN_RECONNECT_INTERVAL) {
+      const waitTime = CONFIG.MIN_RECONNECT_INTERVAL - (now - this.lastReconnectTime);
+      console.log(`Wait ${Math.ceil(waitTime / 1000)}s before reconnect`);
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = setTimeout(() => this.scheduleReconnect(), waitTime);
+      return false;
+    }
+
+    this.reconnectAttempts++;
+    this.lastReconnectTime = now;
+    this.isReconnecting = true;
+    this.state = WA_STATES.TIMEOUT;
+
+    const delay = Math.min(30000, CONFIG.RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts));
+    console.log(`Reconnect in ${delay / 1000}s (${this.reconnectAttempts}/${CONFIG.MAX_RECONNECT_ATTEMPTS})`);
+
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(() => this.performReconnect(), delay);
+    return true;
+  }
+
+  async performReconnect() {
+    try {
+      if (this.client) {
+        await this.client.destroy().catch(() => {});
+        this.client = null;
+      }
+
+      this.client = this.createClient();
+      this.setupEvents();
+      await this.client.initialize();
+    } catch (error) {
+      console.error("Reconnect failed:", error.message);
+      this.isReconnecting = false;
+      this.scheduleReconnect();
+    } finally {
+      setTimeout(() => {
+        if (!this.isReady) this.isReconnecting = false;
+      }, 15000);
+    }
+  }
+
+  async initialize() {
+    if (!this.client) {
+      this.client = this.createClient();
+      this.setupEvents();
+    }
+
+    try {
+      await this.client.initialize();
+    } catch (error) {
+      console.error("Failed to initialize WhatsApp:", error.message);
+      this.isReconnecting = false;
+      this.scheduleReconnect();
+    }
+  }
+
+  startKeepAlive() {
+    if (this.keepAliveTimer) return;
+
+    this.keepAliveTimer = setInterval(async () => {
+      if (!this.client || this.isReconnecting) return;
+
+      try {
+        const currentState = await this.client.getState();
+        if (
+          currentState !== WA_STATES.CONNECTED ||
+          !this.client.pupPage ||
+          this.client.pupPage.isClosed()
+        ) {
+          throw new Error("WhatsApp page not healthy");
+        }
+
+        this.state = currentState;
+        this.lastActivity = Date.now();
+        this.isReady = true;
+        this.reconnectAttempts = 0;
+        console.log("WA keep-alive OK");
+      } catch (error) {
+        console.log("WA keep-alive failed");
+        this.isReady = false;
+        this.state = WA_STATES.TIMEOUT;
+        this.scheduleReconnect();
+      }
+    }, CONFIG.KEEP_ALIVE_INTERVAL);
+  }
+
+  async sendMessage(phoneNumber, message) {
+    if (this.state !== WA_STATES.CONNECTED || !this.isReady) {
+      throw new Error(`WhatsApp not ready (state: ${this.state})`);
+    }
+
+    if (!this.client?.pupPage || this.client.pupPage.isClosed()) {
+      throw new Error("WhatsApp client page not available");
+    }
+
+    await this.client.getState();
+    await this.client.sendMessage(`${phoneNumber}@c.us`, message);
+    this.lastActivity = Date.now();
   }
 }
 
