@@ -2,8 +2,10 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>__DASHBOARD_TITLE__</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
+  <title>__DASHBOARD_TITLE__ · Control Center</title>
+  <meta name="theme-color" content="#17313b">
+  <!-- Tailwind + custom responsiveness enhancements -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -17,686 +19,323 @@
             haze: "#f9f6ef"
           },
           boxShadow: {
-            soft: "0 24px 60px rgba(23,49,59,.14)"
+            soft: "0 24px 60px rgba(23,49,59,.14)",
+            card: "0 12px 32px rgba(23,49,59,.08)"
           },
           fontFamily: {
             display: ["Georgia", "serif"],
-            body: ["Georgia", "serif"]
+            body: ["Inter", "system-ui", "Georgia", "serif"]
+          },
+          screens: {
+            'xs': '480px',
           }
         }
       }
     };
   </script>
+  <!-- Inter font for better readability on small screens -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+  <style>
+    /* additional touch/scroll improvements */
+    * {
+      -webkit-tap-highlight-color: rgba(204, 90, 46, 0.12);
+    }
+    .sticky-nav {
+      scrollbar-width: thin;
+    }
+    .sticky-nav::-webkit-scrollbar {
+      height: 3px;
+    }
+    .card-hover {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    @media (hover: hover) {
+      .card-hover:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 24px 48px rgba(23,49,59,0.12);
+      }
+    }
+    /* fluid typography */
+    @media (max-width: 640px) {
+      .fluid-heading {
+        font-size: clamp(1.75rem, 7vw, 2.5rem);
+      }
+      .responsive-table td, .responsive-table th {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+      }
+    }
+    /* better button tap target */
+    .touch-action {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    /* scroll behavior smooth */
+    html {
+      scroll-behavior: smooth;
+    }
+  </style>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
-<body class="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(204,90,46,.16),transparent_34%),radial-gradient(circle_at_top_right,rgba(31,122,106,.16),transparent_28%),linear-gradient(180deg,#f7f2ea_0%,#f3ede3_50%,#e6ece6_100%)] font-body text-ink">
-  <div
-    x-data="dashboardApp()"
-    x-init="init()"
-    class="mx-auto w-[min(1400px,calc(100%-24px))] py-5 sm:w-[min(1400px,calc(100%-36px))] sm:py-8"
-  >
-    <section class="overflow-hidden rounded-[2rem] border border-white/70 bg-white/70 p-6 shadow-soft backdrop-blur-xl sm:p-8">
-      <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-        <div class="max-w-3xl space-y-4">
-          <span class="inline-flex rounded-full bg-clay/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-clay">
-            Notification-only architecture active
-          </span>
-          <div class="space-y-3">
-            <h1 class="font-display text-4xl leading-none tracking-tight sm:text-6xl">__DASHBOARD_TITLE__</h1>
-            <p class="max-w-3xl text-sm leading-7 text-ink/65 sm:text-base">
-              Semua kontrol bot sekarang dipusatkan di dashboard ini. Bot tidak lagi membaca perintah chat atau menyimpan state percakapan; channel WhatsApp hanya dipakai untuk mengirim alert otomatis, update status, dan broadcast operasional.
-            </p>
-          </div>
-        </div>
-        <div class="flex flex-wrap gap-3">
-          <a href="/qr" target="_blank" rel="noreferrer" class="rounded-full bg-gradient-to-r from-clay to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
-            Hubungkan WhatsApp
-          </a>
-          <button @click="refreshAll()" class="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
-            Refresh Dashboard
-          </button>
-          <button @click="runScheduler()" class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">
-            Run Scheduler Now
-          </button>
-          <button @click="logout()" class="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-clay hover:text-white">
-            Logout
-          </button>
-        </div>
+<body class="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(204,90,46,.12),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(31,122,106,.10),transparent_28%),linear-gradient(180deg,#f7f2ea_0%,#f3ede3_50%,#e6ece6_100%)] font-body text-ink antialiased">
+
+<div
+  x-data="dashboardApp()"
+  x-init="init()"
+  class="mx-auto w-full max-w-[1600px] px-4 sm:px-6 lg:px-8 py-5 sm:py-8"
+>
+  <!-- header hero card (glassmorph) -->
+  <header class="rounded-[2rem] border border-white/70 bg-white/70 p-5 sm:p-7 shadow-soft backdrop-blur-xl transition-all">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div class="space-y-3 flex-1 min-w-[180px]">
+        <span class="inline-flex rounded-full bg-clay/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-clay">
+          Notification-only architecture
+        </span>
+        <h1 class="font-display text-3xl xs:text-4xl sm:text-5xl lg:text-6xl leading-[1.2] tracking-tight text-ink fluid-heading">
+          __DASHBOARD_TITLE__
+        </h1>
+        <p class="text-sm sm:text-base text-ink/65 max-w-2xl leading-relaxed">
+          Pusat kontrol terpusat untuk alert otomatis, monitoring pengiriman, dan manajemen kontak. Bot hanya mengirim notifikasi — semua pengaturan dari sini.
+        </p>
       </div>
-    </section>
-
-    <div class="mt-6 grid gap-6 xl:grid-cols-[360px,minmax(0,1fr)]">
-      <aside class="space-y-6 xl:sticky xl:top-4 xl:self-start">
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-4 flex items-center justify-between">
-            <h2 class="font-display text-2xl">Status Bot</h2>
-            <template x-if="loading.status">
-              <span class="text-xs uppercase tracking-[0.2em] text-ink/45">Loading</span>
-            </template>
-          </div>
-          <div class="grid gap-3">
-            <template x-for="card in statusCards" :key="card.label">
-              <div class="rounded-3xl border border-ink/8 bg-haze px-4 py-4">
-                <div class="text-xs uppercase tracking-[0.2em] text-ink/45" x-text="card.label"></div>
-                <div class="mt-2 text-2xl font-semibold" x-text="card.value"></div>
-              </div>
-            </template>
-          </div>
-        </section>
-
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
-          <h2 class="font-display text-2xl">Kirim Notifikasi Manual</h2>
-          <form class="mt-4 space-y-4" @submit.prevent="sendManualNotification()">
-            <label class="block text-sm text-ink/60">
-              Nomor tujuan
-              <input x-model="forms.manual.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none ring-0 transition focus:border-clay" placeholder="628xxx" required>
-            </label>
-            <label class="block text-sm text-ink/60">
-              Pesan
-              <textarea x-model="forms.manual.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Tulis status update atau alert manual" required></textarea>
-            </label>
-            <button class="w-full rounded-full bg-gradient-to-r from-clay to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20">
-              Kirim Sekarang
-            </button>
-          </form>
-        </section>
-
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
-          <h2 class="font-display text-2xl">Admin Recipients</h2>
-          <form class="mt-4 space-y-4" @submit.prevent="saveRecipients()">
-            <label class="block text-sm text-ink/60">
-              Nomor admin
-              <textarea x-model="forms.recipients" class="mt-2 min-h-36 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Satu nomor per baris, format 628xxx"></textarea>
-            </label>
-            <button class="w-full rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
-              Simpan Recipients
-            </button>
-          </form>
-        </section>
-      </aside>
-
-      <main class="space-y-6">
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-5">
-            <h2 class="font-display text-2xl">Overview</h2>
-            <p class="mt-1 text-sm text-ink/60">Ringkasan health bot, antrean notifikasi, dan hasil kirim.</p>
-          </div>
-          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <template x-for="metric in summaryMetrics" :key="metric.label">
-              <div class="rounded-[1.5rem] border border-ink/8 bg-gradient-to-b from-white to-haze px-4 py-5">
-                <div class="text-xs uppercase tracking-[0.2em] text-ink/45" x-text="metric.label"></div>
-                <div class="mt-3 text-3xl font-semibold" x-text="metric.value"></div>
-              </div>
-            </template>
-          </div>
-        </section>
-
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 class="font-display text-2xl">Contacts</h2>
-              <p class="mt-1 text-sm text-ink/60">Sumber data penerima yang dikelola dari dashboard.</p>
-            </div>
-            <button @click="loadContacts()" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
-              Reload
-            </button>
-          </div>
-          <form class="grid gap-4 md:grid-cols-[minmax(0,1fr),minmax(0,1fr),auto] md:items-end" @submit.prevent="createContact()">
-            <label class="block text-sm text-ink/60">
-              Nama
-              <input x-model="forms.contact.name" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
-            </label>
-            <label class="block text-sm text-ink/60">
-              Nomor WhatsApp
-              <input x-model="forms.contact.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="628xxx" required>
-            </label>
-            <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">Tambah Contact</button>
-          </form>
-          <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
-            <div class="overflow-x-auto">
-              <table class="min-w-full text-sm">
-                <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
-                  <tr>
-                    <th class="px-4 py-3">Nama</th>
-                    <th class="px-4 py-3">No. WA</th>
-                    <th class="px-4 py-3">Status Bayar</th>
-                    <th class="px-4 py-3">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-ink/6 bg-white/70">
-                  <template x-if="!contacts.length">
-                    <tr><td colspan="4" class="px-4 py-8 text-center text-ink/45">Belum ada contact.</td></tr>
-                  </template>
-                  <template x-for="contact in contacts" :key="contact.id">
-                    <tr>
-                      <td class="px-4 py-4 font-medium" x-text="contact.name"></td>
-                      <td class="px-4 py-4 text-ink/65" x-text="contact.phoneNumber"></td>
-                      <td class="px-4 py-4">
-                        <span
-                          class="inline-flex rounded-full px-3 py-1 text-xs font-semibold"
-                          :class="contact.paymentStatus === 'PAID' ? 'bg-moss/10 text-moss' : 'bg-clay/10 text-clay'"
-                          x-text="contact.paymentStatus || 'UNPAID'"
-                        ></span>
-                      </td>
-                      <td class="px-4 py-4">
-                        <div class="flex flex-wrap gap-2">
-                          <button
-                            @click="togglePayment(contact.id, contact.paymentStatus === 'PAID' ? 'UNPAID' : 'PAID')"
-                            class="rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:bg-ink hover:text-white"
-                            x-text="contact.paymentStatus === 'PAID' ? 'Mark unpaid' : 'Mark paid'"
-                          ></button>
-                          <button @click="removeContact(contact.id)" class="rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white">Delete</button>
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 class="font-display text-2xl">Reminders</h2>
-              <p class="mt-1 text-sm text-ink/60">Seluruh jadwal outbound dibuat dan diubah dari sini.</p>
-            </div>
-            <button @click="loadReminders()" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">Reload</button>
-          </div>
-          <form class="space-y-4" @submit.prevent="createReminder()">
-            <div class="grid gap-4 md:grid-cols-2">
-              <label class="block text-sm text-ink/60">
-                Contact tujuan
-                <select x-model="forms.reminder.contactId" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
-                  <option value="">Pilih contact</option>
-                  <template x-for="contact in contacts" :key="'reminder-contact-' + contact.id">
-                    <option :value="contact.id" x-text="contact.name + ' (' + contact.phoneNumber + ')'"></option>
-                  </template>
-                </select>
-              </label>
-              <label class="block text-sm text-ink/60">
-                Waktu kirim
-                <input x-model="forms.reminder.reminderDateTime" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="YYYY-MM-DD HH:mm" required>
-              </label>
-            </div>
-            <label class="block text-sm text-ink/60">
-              Nama template opsional
-              <input x-model="forms.reminder.templateName" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="contoh: 1_member 100K.txt">
-            </label>
-            <label class="block text-sm text-ink/60">
-              Pesan reminder
-              <textarea x-model="forms.reminder.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required></textarea>
-            </label>
-            <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">Buat Reminder</button>
-          </form>
-          <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
-            <div class="overflow-x-auto">
-              <table class="min-w-full text-sm">
-                <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
-                  <tr>
-                    <th class="px-4 py-3">Tujuan</th>
-                    <th class="px-4 py-3">Jadwal</th>
-                    <th class="px-4 py-3">Template</th>
-                    <th class="px-4 py-3">Pesan</th>
-                    <th class="px-4 py-3">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-ink/6 bg-white/70">
-                  <template x-if="!reminders.length">
-                    <tr><td colspan="5" class="px-4 py-8 text-center text-ink/45">Belum ada reminder aktif.</td></tr>
-                  </template>
-                  <template x-for="reminder in reminders" :key="reminder.id">
-                    <tr>
-                      <td class="px-4 py-4">
-                        <div class="font-medium" x-text="reminder.contactName || 'Contact tidak ditemukan'"></div>
-                        <div class="text-xs text-ink/50" x-text="reminder.phoneNumber || '-'"></div>
-                      </td>
-                      <td class="px-4 py-4 text-ink/65" x-text="formatDateTime(reminder.reminderDateTime)"></td>
-                      <td class="px-4 py-4 text-ink/65" x-text="reminder.templateName || '-'"></td>
-                      <td class="px-4 py-4 text-ink/65 whitespace-pre-line" x-text="reminder.message"></td>
-                      <td class="px-4 py-4">
-                        <button @click="removeReminder(reminder.id)" class="rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white">Delete</button>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-5">
-            <h2 class="font-display text-2xl">Templates</h2>
-            <p class="mt-1 text-sm text-ink/60">Kelola format pesan tanpa masuk ke kode bot.</p>
-          </div>
-          <form class="space-y-4" @submit.prevent="createTemplate()">
-            <label class="block text-sm text-ink/60">
-              Nama file template
-              <input x-model="forms.template.name" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="billing_juni.txt" required>
-            </label>
-            <label class="block text-sm text-ink/60">
-              Isi template
-              <textarea x-model="forms.template.content" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Gunakan placeholder seperti {{name}} atau {{date}}" required></textarea>
-            </label>
-            <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">Simpan Template Baru</button>
-          </form>
-          <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
-            <div class="overflow-x-auto">
-              <table class="min-w-full text-sm">
-                <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
-                  <tr>
-                    <th class="px-4 py-3">Template</th>
-                    <th class="px-4 py-3">Update</th>
-                    <th class="px-4 py-3">Preview</th>
-                    <th class="px-4 py-3">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-ink/6 bg-white/70">
-                  <template x-if="!templates.length">
-                    <tr><td colspan="4" class="px-4 py-8 text-center text-ink/45">Belum ada template.</td></tr>
-                  </template>
-                  <template x-for="template in templates" :key="template.name">
-                    <tr>
-                      <td class="px-4 py-4 font-medium" x-text="template.name"></td>
-                      <td class="px-4 py-4 text-ink/65" x-text="formatDateTime(template.updatedAt)"></td>
-                      <td class="px-4 py-4 text-ink/65" x-text="(template.content || '').slice(0, 120)"></td>
-                      <td class="px-4 py-4">
-                        <button @click="removeTemplate(template.name)" class="rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white">Delete</button>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-5">
-            <h2 class="font-display text-2xl">Settings</h2>
-            <p class="mt-1 text-sm text-ink/60">Konfigurasi operasional untuk perilaku dashboard dan alert.</p>
-          </div>
-          <form class="space-y-4" @submit.prevent="saveSettings()">
-            <div class="grid gap-4 md:grid-cols-2">
-              <label class="block text-sm text-ink/60">
-                Judul dashboard
-                <input x-model="forms.settings.dashboardTitle" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
-              </label>
-              <label class="block text-sm text-ink/60">
-                Nama perusahaan
-                <input x-model="forms.settings.companyName" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
-              </label>
-              <label class="block text-sm text-ink/60">
-                Tanda tangan support
-                <input x-model="forms.settings.supportSignature" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
-              </label>
-              <label class="block text-sm text-ink/60">
-                Timezone
-                <input x-model="forms.settings.timezone" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
-              </label>
-            </div>
-            <div class="grid gap-3 rounded-[1.5rem] border border-ink/8 bg-haze p-4">
-              <label class="flex items-start gap-3 text-sm text-ink/75">
-                <input x-model="forms.settings.autoRescheduleMonthly" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
-                <span>Auto-reschedule reminder bulanan</span>
-              </label>
-              <label class="flex items-start gap-3 text-sm text-ink/75">
-                <input x-model="forms.settings.notifyAdminsOnDelivery" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
-                <span>Kirim update delivery ke admin recipients</span>
-              </label>
-              <label class="flex items-start gap-3 text-sm text-ink/75">
-                <input x-model="forms.settings.notifyAdminsOnConnectionChange" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
-                <span>Kirim alert perubahan koneksi WA</span>
-              </label>
-              <label class="flex items-start gap-3 text-sm text-ink/75">
-                <input x-model="forms.settings.notifyAdminsOnPaymentReset" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
-                <span>Kirim alert reset pembayaran bulanan</span>
-              </label>
-            </div>
-            <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">Simpan Settings</button>
-          </form>
-        </section>
-
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-5">
-            <h2 class="font-display text-2xl">Sent History</h2>
-            <p class="mt-1 text-sm text-ink/60">Output notifikasi yang sudah keluar dari bot.</p>
-          </div>
-          <div class="overflow-hidden rounded-[1.5rem] border border-ink/8">
-            <div class="overflow-x-auto">
-              <table class="min-w-full text-sm">
-                <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
-                  <tr>
-                    <th class="px-4 py-3">Tujuan</th>
-                    <th class="px-4 py-3">Terkirim</th>
-                    <th class="px-4 py-3">Status</th>
-                    <th class="px-4 py-3">Pesan</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-ink/6 bg-white/70">
-                  <template x-if="!sent.length">
-                    <tr><td colspan="4" class="px-4 py-8 text-center text-ink/45">Belum ada riwayat kirim.</td></tr>
-                  </template>
-                  <template x-for="item in sent" :key="item.id + '-' + item.sentAt">
-                    <tr>
-                      <td class="px-4 py-4">
-                        <div class="font-medium" x-text="item.contactName || 'Contact tidak ditemukan'"></div>
-                        <div class="text-xs text-ink/50" x-text="item.phoneNumber || '-'"></div>
-                      </td>
-                      <td class="px-4 py-4 text-ink/65" x-text="formatDateTime(item.sentAt || item.reminderDateTime)"></td>
-                      <td class="px-4 py-4">
-                        <span class="inline-flex rounded-full bg-moss/10 px-3 py-1 text-xs font-semibold text-moss" x-text="item.deliveryStatus || 'SENT'"></span>
-                      </td>
-                      <td class="px-4 py-4 text-ink/65 whitespace-pre-line" x-text="item.message"></td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-5 flex items-center justify-between">
-            <div>
-              <h2 class="font-display text-2xl">Activity Log</h2>
-              <p class="mt-1 text-sm text-ink/60">Monitoring internal untuk koneksi, scheduler, API, dan delivery.</p>
-            </div>
-            <button @click="loadLogs()" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">Reload</button>
-          </div>
-          <div class="space-y-3">
-            <template x-if="!logs.length">
-              <div class="rounded-[1.5rem] border border-dashed border-ink/15 bg-haze px-4 py-8 text-center text-ink/45">Belum ada activity log.</div>
-            </template>
-            <template x-for="entry in logs" :key="entry.id">
-              <article class="rounded-[1.5rem] border border-ink/8 bg-white/85 px-4 py-4">
-                <div class="text-xs uppercase tracking-[0.18em] text-ink/45">
-                  <span x-text="formatDateTime(entry.timestamp)"></span>
-                  <span> · </span>
-                  <span x-text="entry.level.toUpperCase()"></span>
-                  <span> · </span>
-                  <span x-text="entry.source"></span>
-                </div>
-                <div class="mt-2 text-sm leading-6 text-ink/80" x-text="entry.message"></div>
-              </article>
-            </template>
-          </div>
-        </section>
-      </main>
+      <!-- Action buttons group - mobile optimized flex wrap -->
+      <div class="flex flex-wrap gap-2 sm:gap-3 items-center justify-end w-full sm:w-auto">
+        <a href="/qr" target="_blank" class="touch-action rounded-full bg-gradient-to-r from-clay to-orange-400 px-4 sm:px-5 py-2.5 sm:py-3 text-sm font-semibold text-white shadow-md shadow-clay/20 transition-all hover:scale-[1.02] active:scale-95">
+          📱 Hubungkan WA
+        </a>
+        <button @click="refreshAll()" class="touch-action rounded-full border border-ink/10 bg-white/90 px-4 sm:px-5 py-2.5 sm:py-3 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white active:scale-95 backdrop-blur-sm">
+          🔄 Refresh
+        </button>
+        <button @click="runScheduler()" class="touch-action rounded-full bg-ink px-4 sm:px-5 py-2.5 sm:py-3 text-sm font-semibold text-white transition hover:bg-moss active:scale-95">
+          ⚡ Run Scheduler
+        </button>
+        <button @click="logout()" class="touch-action rounded-full border border-ink/10 bg-white/90 px-4 sm:px-5 py-2.5 sm:py-3 text-sm font-semibold text-ink transition hover:bg-clay hover:text-white active:scale-95">
+          🚪 Logout
+        </button>
+      </div>
     </div>
+  </header>
 
-    <div
-      x-show="toast.show"
-      x-transition.opacity.duration.200ms
-      x-transition:enter-start="translate-y-3"
-      x-transition:enter-end="translate-y-0"
-      x-transition:leave-end="translate-y-3"
-      class="fixed bottom-5 right-5 z-50 rounded-2xl bg-ink px-4 py-3 text-sm font-medium text-white shadow-soft"
-      x-text="toast.message"
-    ></div>
+  <!-- Sticky Navigation Menu (responsive anchor links) - touch optimized -->
+  <div class="sticky top-3 z-20 mt-4 sm:mt-6 w-full overflow-x-auto rounded-2xl bg-white/80 backdrop-blur-xl border border-white/70 shadow-card py-2 px-2 sticky-nav">
+    <nav class="flex gap-1 sm:gap-3 justify-start md:justify-center min-w-max mx-auto">
+      <a href="#summary-section" class="whitespace-nowrap px-4 py-2.5 rounded-full text-sm font-medium bg-ink/5 text-ink/80 hover:bg-clay hover:text-white transition-all touch-action">📊 Ringkasan</a>
+      <a href="#contacts-section" class="whitespace-nowrap px-4 py-2.5 rounded-full text-sm font-medium bg-ink/5 text-ink/80 hover:bg-clay hover:text-white transition-all touch-action">👥 Kontak</a>
+      <a href="#reminders-section" class="whitespace-nowrap px-4 py-2.5 rounded-full text-sm font-medium bg-ink/5 text-ink/80 hover:bg-clay hover:text-white transition-all touch-action">⏰ Reminder</a>
+      <a href="#templates-section" class="whitespace-nowrap px-4 py-2.5 rounded-full text-sm font-medium bg-ink/5 text-ink/80 hover:bg-clay hover:text-white transition-all touch-action">📄 Template</a>
+      <a href="#settings-section" class="whitespace-nowrap px-4 py-2.5 rounded-full text-sm font-medium bg-ink/5 text-ink/80 hover:bg-clay hover:text-white transition-all touch-action">⚙️ Pengaturan</a>
+      <a href="#history-section" class="whitespace-nowrap px-4 py-2.5 rounded-full text-sm font-medium bg-ink/5 text-ink/80 hover:bg-clay hover:text-white transition-all touch-action">📜 History</a>
+      <a href="#logs-section" class="whitespace-nowrap px-4 py-2.5 rounded-full text-sm font-medium bg-ink/5 text-ink/80 hover:bg-clay hover:text-white transition-all touch-action">📋 Log</a>
+    </nav>
   </div>
 
-  <script>
-    function dashboardApp() {
-      return {
-        loading: {
-          status: false,
-        },
-        toast: {
-          show: false,
-          message: "",
-        },
-        contacts: [],
-        reminders: [],
-        sent: [],
-        templates: [],
-        logs: [],
-        statusCards: [],
-        summaryMetrics: [],
-        forms: {
-          manual: { phoneNumber: "", message: "" },
-          recipients: "",
-          contact: { name: "", phoneNumber: "" },
-          reminder: { contactId: "", reminderDateTime: "", templateName: "", message: "" },
-          template: { name: "", content: "" },
-          settings: {
-            dashboardTitle: "",
-            companyName: "",
-            supportSignature: "",
-            timezone: "",
-            autoRescheduleMonthly: false,
-            notifyAdminsOnDelivery: false,
-            notifyAdminsOnConnectionChange: false,
-            notifyAdminsOnPaymentReset: false,
-          },
-        },
+  <!-- 2-COLUMN RESPONSIVE GRID (fluid, mobile-first) -->
+  <div class="mt-6 grid gap-6 lg:grid-cols-[360px,minmax(0,1fr)] xl:gap-8">
+    <!-- SIDEBAR (left) - Stacks first on mobile -->
+    <aside class="space-y-6 lg:sticky lg:top-24 self-start">
+      <!-- Status card -->
+      <section class="rounded-2xl sm:rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-card backdrop-blur-xl">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="font-display text-xl sm:text-2xl">Status Bot</h2>
+          <template x-if="loading.status"><span class="animate-pulse text-xs text-ink/45">⏳</span></template>
+        </div>
+        <div class="grid gap-3">
+          <template x-for="card in statusCards" :key="card.label">
+            <div class="rounded-2xl bg-haze/90 border border-ink/8 px-4 py-3 flex justify-between items-center">
+              <span class="text-xs uppercase tracking-wider text-ink/50" x-text="card.label"></span>
+              <span class="text-xl font-semibold" x-text="card.value"></span>
+            </div>
+          </template>
+        </div>
+      </section>
 
-        async init() {
-          await this.refreshAll();
-          setInterval(() => this.loadStatus(), 20000);
-          setInterval(() => this.loadLogs(), 20000);
-        },
+      <!-- Manual notification -->
+      <section class="rounded-2xl sm:rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-card backdrop-blur-xl">
+        <h2 class="font-display text-xl sm:text-2xl">📨 Kirim Notifikasi Manual</h2>
+        <form class="mt-4 space-y-4" @submit.prevent="sendManualNotification()">
+          <label class="block text-sm font-medium text-ink/70">
+            Nomor tujuan (628xxx)
+            <input x-model="forms.manual.phoneNumber" type="tel" inputmode="numeric" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-base outline-none focus:border-clay focus:ring-1 focus:ring-clay/30" placeholder="628123456789" required>
+          </label>
+          <label class="block text-sm font-medium text-ink/70">
+            Isi pesan
+            <textarea x-model="forms.manual.message" rows="4" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-base outline-none focus:border-clay" placeholder="Tulis pesan broadcast / alert ..." required></textarea>
+          </label>
+          <button type="submit" class="w-full touch-action rounded-full bg-gradient-to-r from-clay to-orange-400 py-3 text-sm font-semibold text-white shadow-md active:scale-95 transition">Kirim Sekarang</button>
+        </form>
+      </section>
 
-        async api(path, options = {}) {
-          const response = await fetch(path, {
-            ...options,
-            credentials: "same-origin",
-            headers: {
-              "Content-Type": "application/json",
-              ...(options.headers || {}),
-            },
-          });
+      <!-- Admin recipients -->
+      <section class="rounded-2xl sm:rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-card backdrop-blur-xl">
+        <h2 class="font-display text-xl sm:text-2xl">👑 Admin Recipients</h2>
+        <form class="mt-4 space-y-4" @submit.prevent="saveRecipients()">
+          <label class="block text-sm font-medium text-ink/70">
+            Daftar nomor admin (satu per baris)
+            <textarea x-model="forms.recipients" rows="5" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-base outline-none focus:border-clay" placeholder="628511234567&#10;628812345678"></textarea>
+          </label>
+          <button class="w-full touch-action rounded-full border border-ink/20 bg-white py-3 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white active:scale-95">Simpan Recipients</button>
+        </form>
+      </section>
+    </aside>
 
-          if (response.status === 401) {
-            window.location.href = "/login";
-            throw new Error("Unauthorized");
-          }
+    <!-- MAIN CONTENT (fluid grid) -->
+    <main class="space-y-6">
+      <!-- Summary metrics (grid responsive) -->
+      <section id="summary-section" class="scroll-mt-20 rounded-2xl sm:rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-card backdrop-blur-xl">
+        <div class="mb-5">
+          <h2 class="font-display text-xl sm:text-2xl">📈 Overview & KPI</h2>
+          <p class="text-sm text-ink/60">Status ringkasan operasional bot dan notifikasi</p>
+        </div>
+        <div class="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+          <template x-for="metric in summaryMetrics" :key="metric.label">
+            <div class="rounded-xl bg-gradient-to-br from-white to-haze/70 border border-ink/8 p-4 shadow-sm card-hover">
+              <div class="text-xs uppercase tracking-wider text-ink/50" x-text="metric.label"></div>
+              <div class="mt-2 text-2xl sm:text-3xl font-bold tracking-tight" x-text="metric.value"></div>
+            </div>
+          </template>
+        </div>
+      </section>
 
-          const payload = await response.json();
-          if (!response.ok || !payload.success) {
-            throw new Error(payload.error || "Request failed");
-          }
+      <!-- Contacts section -->
+      <section id="contacts-section" class="scroll-mt-20 rounded-2xl sm:rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-card backdrop-blur-xl">
+        <div class="flex flex-wrap justify-between items-center gap-3 mb-5">
+          <div><h2 class="font-display text-xl sm:text-2xl">📇 Daftar Kontak</h2><p class="text-sm text-ink/60">Kelola penerima & status pembayaran</p></div>
+          <button @click="loadContacts()" class="touch-action rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold">🔄 Reload</button>
+        </div>
+        <form class="grid gap-4 sm:grid-cols-[1fr,1fr,auto] items-end" @submit.prevent="createContact()">
+          <label class="block text-sm font-medium">Nama <input x-model="forms.contact.name" class="mt-1 w-full rounded-xl border border-ink/10 bg-white px-4 py-3" required></label>
+          <label class="block text-sm font-medium">Nomor WA <input x-model="forms.contact.phoneNumber" class="mt-1 w-full rounded-xl border border-ink/10 bg-white px-4 py-3" placeholder="628xxx" required></label>
+          <button class="touch-action rounded-full bg-ink py-3 px-5 text-white font-semibold hover:bg-moss transition">+ Tambah Kontak</button>
+        </form>
+        <div class="mt-5 overflow-x-auto rounded-xl border border-ink/8">
+          <table class="min-w-full text-sm responsive-table">
+            <thead class="bg-ink/5 text-xs uppercase tracking-wider">
+              <tr><th class="px-4 py-3 text-left">Nama</th><th class="px-4 py-3 text-left">Nomor</th><th class="px-4 py-3 text-left">Status</th><th class="px-4 py-3 text-left">Aksi</th></tr>
+            </thead>
+            <tbody class="divide-y divide-ink/6 bg-white/80">
+              <template x-if="!contacts.length"><tr><td colspan="4" class="px-4 py-8 text-center text-ink/45">Belum ada kontak</td></tr></template>
+              <template x-for="contact in contacts" :key="contact.id">
+                <tr class="hover:bg-ink/5 transition">
+                  <td class="px-4 py-3 font-medium" x-text="contact.name"></td>
+                  <td class="px-4 py-3 text-ink/70" x-text="contact.phoneNumber"></td>
+                  <td class="px-4 py-3"><span class="inline-flex rounded-full px-3 py-1 text-xs font-bold" :class="contact.paymentStatus === 'PAID' ? 'bg-moss/15 text-moss' : 'bg-clay/10 text-clay'" x-text="contact.paymentStatus || 'UNPAID'"></span></td>
+                  <td class="px-4 py-3 flex flex-wrap gap-2">
+                    <button @click="togglePayment(contact.id, contact.paymentStatus === 'PAID' ? 'UNPAID' : 'PAID')" class="touch-action rounded-full border px-3 py-1.5 text-xs font-semibold bg-white hover:bg-ink hover:text-white" x-text="contact.paymentStatus === 'PAID' ? 'Mark unpaid' : 'Bayar'"></button>
+                    <button @click="removeContact(contact.id)" class="touch-action rounded-full border border-clay/30 bg-clay/5 px-3 py-1.5 text-xs font-semibold text-clay hover:bg-clay hover:text-white">hapus</button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-          return payload.data;
-        },
+      <!-- Reminders -->
+      <section id="reminders-section" class="scroll-mt-20 rounded-2xl sm:rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-card">
+        <div class="flex justify-between items-center flex-wrap gap-2 mb-4"><h2 class="font-display text-xl sm:text-2xl">⏰ Antrean Reminder</h2><button @click="loadReminders()" class="touch-action rounded-full border px-4 py-2 text-sm">⟳ Refresh</button></div>
+        <form @submit.prevent="createReminder()" class="space-y-4">
+          <div class="grid gap-4 md:grid-cols-2"><label>Kontak<select x-model="forms.reminder.contactId" class="w-full rounded-xl border p-3" required><option value="">Pilih contact</option><template x-for="c in contacts"><option :value="c.id" x-text="c.name + ' ('+c.phoneNumber+')'"></option></template></select></label><label>Waktu kirim (YYYY-MM-DD HH:mm)<input x-model="forms.reminder.reminderDateTime" class="w-full rounded-xl border p-3" placeholder="2026-05-20 09:00" required></label></div>
+          <label>Template (opsional)<input x-model="forms.reminder.templateName" class="w-full rounded-xl border p-3" placeholder="tagihan_bulanan.txt"></label>
+          <label>Pesan reminder<textarea x-model="forms.reminder.message" rows="3" class="w-full rounded-xl border p-3" required></textarea></label>
+          <button class="touch-action rounded-full bg-ink py-3 text-white font-semibold w-full md:w-auto md:px-8 hover:bg-moss">Buat Reminder</button>
+        </form>
+        <div class="mt-5 overflow-x-auto rounded-xl border"><table class="min-w-full text-sm"><thead class="bg-ink/5"><tr><th class="px-4 py-3">Tujuan</th><th class="px-4 py-3">Jadwal</th><th class="px-4 py-3">Pesan</th><th class="px-4 py-3">Aksi</th></tr></thead><tbody><template x-if="!reminders.length"><tr><td colspan="4" class="px-4 py-8 text-center text-ink/45">Tidak ada reminder aktif</td></tr></template><template x-for="rem in reminders"><tr><td class="px-4 py-3" x-text="rem.contactName || '—'"></td><td class="px-4 py-3" x-text="formatDateTime(rem.reminderDateTime)"></td><td class="px-4 py-3 max-w-xs truncate" x-text="rem.message.slice(0,60)"></td><td class="px-4 py-3"><button @click="removeReminder(rem.id)" class="touch-action rounded-full bg-clay/10 px-3 py-1.5 text-xs font-semibold text-clay">hapus</button></td></tr></template></tbody></table></div>
+      </section>
 
-        notify(message) {
-          this.toast.message = message;
-          this.toast.show = true;
-          clearTimeout(this.toast.timer);
-          this.toast.timer = setTimeout(() => {
-            this.toast.show = false;
-          }, 2400);
-        },
+      <!-- Templates -->
+      <section id="templates-section" class="scroll-mt-20 rounded-2xl sm:rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-card">
+        <div><h2 class="font-display text-xl sm:text-2xl">📁 Template Pesan</h2><p class="text-sm text-ink/60">Gunakan placeholder {{name}} , {{date}}</p></div>
+        <form @submit.prevent="createTemplate()" class="mt-4 space-y-3"><input x-model="forms.template.name" placeholder="nama_template.txt" class="w-full rounded-xl border p-3" required><textarea x-model="forms.template.content" rows="3" placeholder="Isi template..." class="w-full rounded-xl border p-3" required></textarea><button class="touch-action rounded-full bg-ink py-2.5 px-5 text-white">Simpan Template</button></form>
+        <div class="mt-5 overflow-x-auto"><table class="min-w-full text-sm"><thead><tr><th class="px-4 py-2">Nama</th><th class="px-4 py-2">Preview</th><th class="px-4 py-2">Aksi</th></tr></thead><tbody><template x-for="tpl in templates"><tr><td class="px-4 py-2 font-mono text-xs" x-text="tpl.name"></td><td class="px-4 py-2 text-xs truncate max-w-[180px]" x-text="tpl.content.slice(0,70)"></td><td class="px-4 py-2"><button @click="removeTemplate(tpl.name)" class="touch-action rounded-full bg-clay/10 px-3 py-1.5 text-xs">hapus</button></td></tr></template></tbody></table></div>
+      </section>
 
-        formatDateTime(value) {
-          return new Date(value).toLocaleString("id-ID");
-        },
+      <!-- Settings -->
+      <section id="settings-section" class="scroll-mt-20 rounded-2xl sm:rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-card">
+        <h2 class="font-display text-xl sm:text-2xl">⚙️ Konfigurasi Sistem</h2>
+        <form @submit.prevent="saveSettings()" class="mt-4 space-y-4">
+          <div class="grid gap-4 sm:grid-cols-2"><label>Judul Dashboard <input x-model="forms.settings.dashboardTitle" class="w-full rounded-xl border p-3"></label><label>Perusahaan <input x-model="forms.settings.companyName" class="w-full rounded-xl border p-3"></label><label>Signature <input x-model="forms.settings.supportSignature" class="w-full rounded-xl border p-3"></label><label>Timezone <input x-model="forms.settings.timezone" class="w-full rounded-xl border p-3"></label></div>
+          <div class="space-y-2 bg-haze/60 p-4 rounded-2xl"><label class="flex items-center gap-3"><input x-model="forms.settings.autoRescheduleMonthly" type="checkbox" class="w-5 h-5"> Auto-reschedule bulanan</label><label class="flex items-center gap-3"><input x-model="forms.settings.notifyAdminsOnDelivery" type="checkbox"> Notifikasi delivery</label><label class="flex items-center gap-3"><input x-model="forms.settings.notifyAdminsOnConnectionChange" type="checkbox"> Alert koneksi WA</label><label class="flex items-center gap-3"><input x-model="forms.settings.notifyAdminsOnPaymentReset" type="checkbox"> Alert reset pembayaran</label></div>
+          <button class="touch-action rounded-full bg-ink py-3 px-8 text-white font-semibold">Simpan Pengaturan</button>
+        </form>
+      </section>
 
-        async refreshAll() {
-          await Promise.all([
-            this.loadStatus(),
-            this.loadContacts(),
-            this.loadReminders(),
-            this.loadSent(),
-            this.loadTemplates(),
-            this.loadRecipients(),
-            this.loadLogs(),
-          ]);
-        },
+      <!-- Sent History -->
+      <section id="history-section" class="scroll-mt-20 rounded-2xl sm:rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-card">
+        <div class="flex justify-between items-center"><h2 class="font-display text-xl sm:text-2xl">📬 Riwayat Terkirim</h2><button @click="loadSent()" class="text-sm underline">refresh</button></div>
+        <div class="mt-3 overflow-x-auto rounded-xl"><table class="min-w-full text-sm"><thead><tr><th class="px-4 py-2">Penerima</th><th class="px-4 py-2">Waktu Kirim</th><th class="px-4 py-2">Pesan</th></tr></thead><tbody><template x-if="!sent.length"><tr><td colspan="3" class="px-4 py-6 text-center">Belum ada history</td></tr></template><template x-for="item in sent"><tr><td class="px-4 py-2" x-text="item.contactName || item.phoneNumber"></td><td class="px-4 py-2 text-xs" x-text="formatDateTime(item.sentAt)"></td><td class="px-4 py-2 text-xs truncate max-w-[200px]" x-text="item.message"></td></tr></template></tbody></table></div>
+      </section>
 
-        async loadStatus() {
-          this.loading.status = true;
-          try {
-            const data = await this.api("/api/status");
-            this.statusCards = [
-              { label: "Transport", value: data.bot.isReady ? "Online" : "Offline" },
-              { label: "QR", value: data.bot.hasQR ? "Ready to scan" : "No QR" },
-              { label: "Reconnect", value: data.bot.reconnectAttempts },
-            ];
-            this.summaryMetrics = [
-              { label: "Contacts", value: data.summary.contacts },
-              { label: "Queued reminders", value: data.summary.reminders },
-              { label: "Sent outputs", value: data.summary.sentReminders },
-              { label: "Admin recipients", value: data.summary.adminRecipients },
-              { label: "Paid contacts", value: data.summary.paidContacts },
-              { label: "Unpaid contacts", value: data.summary.unpaidContacts },
-            ];
-            this.forms.settings = {
-              dashboardTitle: data.settings.dashboardTitle || "",
-              companyName: data.settings.companyName || "",
-              supportSignature: data.settings.supportSignature || "",
-              timezone: data.settings.timezone || "",
-              autoRescheduleMonthly: Boolean(data.settings.autoRescheduleMonthly),
-              notifyAdminsOnDelivery: Boolean(data.settings.notifyAdminsOnDelivery),
-              notifyAdminsOnConnectionChange: Boolean(data.settings.notifyAdminsOnConnectionChange),
-              notifyAdminsOnPaymentReset: Boolean(data.settings.notifyAdminsOnPaymentReset),
-            };
-          } finally {
-            this.loading.status = false;
-          }
-        },
+      <!-- Activity Log -->
+      <section id="logs-section" class="scroll-mt-20 rounded-2xl sm:rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-card mb-6">
+        <div class="flex justify-between items-center flex-wrap"><h2 class="font-display text-xl sm:text-2xl">📋 Activity Log</h2><button @click="loadLogs()" class="touch-action rounded-full border px-4 py-2 text-sm">⟳ reload</button></div>
+        <div class="space-y-3 mt-4 max-h-[500px] overflow-y-auto pr-1">
+          <template x-if="!logs.length"><div class="text-center text-ink/45 p-6">Belum ada aktivitas tercatat</div></template>
+          <template x-for="log in logs" :key="log.id">
+            <div class="rounded-xl border border-ink/8 bg-white/80 p-3"><div class="text-xs text-ink/50 flex flex-wrap gap-2"><span x-text="formatDateTime(log.timestamp)"></span><span class="font-mono" :class="log.level==='error'?'text-clay':'text-moss'" x-text="log.level.toUpperCase()"></span><span x-text="log.source"></span></div><div class="mt-1 text-sm" x-text="log.message"></div></div>
+          </template>
+        </div>
+      </section>
+    </main>
+  </div>
 
-        async loadContacts() {
-          this.contacts = await this.api("/api/contacts");
-        },
+  <!-- Toast notification (touch optimised) -->
+  <div x-show="toast.show" x-transition.opacity.duration.200 x-transition:enter-start="translate-y-4" x-transition:enter-end="translate-y-0" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 rounded-2xl bg-ink/90 backdrop-blur-lg text-white px-5 py-3 text-sm font-medium shadow-xl max-w-[90vw] text-center" x-text="toast.message"></div>
+</div>
 
-        async loadReminders() {
-          this.reminders = await this.api("/api/reminders");
-        },
-
-        async loadSent() {
-          this.sent = (await this.api("/api/reminders/sent")).slice(0, 50);
-        },
-
-        async loadTemplates() {
-          this.templates = await this.api("/api/templates");
-        },
-
-        async loadRecipients() {
-          const recipients = await this.api("/api/admin-recipients");
-          this.forms.recipients = recipients.join("\n");
-        },
-
-        async loadLogs() {
-          this.logs = await this.api("/api/logs");
-        },
-
-        async createContact() {
-          await this.api("/api/contacts", {
-            method: "POST",
-            body: JSON.stringify(this.forms.contact),
-          });
-          this.forms.contact = { name: "", phoneNumber: "" };
-          this.notify("Contact ditambahkan.");
-          await Promise.all([this.loadContacts(), this.loadStatus()]);
-        },
-
-        async togglePayment(id, status) {
-          const result = await this.api(`/api/contacts/${id}/payment`, {
-            method: "POST",
-            body: JSON.stringify({ status }),
-          });
-          if (status === "PAID") {
-            if (result.notificationSent) {
-              this.notify(`Status pembayaran diperbarui. Bukti pembayaran terkirim (${result.transactionId}).`);
-            } else if (result.notificationError) {
-              this.notify(`Status pembayaran diperbarui, tapi notifikasi gagal: ${result.notificationError}`);
-            } else {
-              this.notify("Status pembayaran diperbarui.");
-            }
-          } else {
-            this.notify("Status pembayaran diperbarui.");
-          }
-          await Promise.all([this.loadContacts(), this.loadStatus()]);
-        },
-
-        async removeContact(id) {
-          await this.api(`/api/contacts/${id}`, { method: "DELETE" });
-          this.notify("Contact dihapus.");
-          await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
-        },
-
-        async createReminder() {
-          await this.api("/api/reminders", {
-            method: "POST",
-            body: JSON.stringify(this.forms.reminder),
-          });
-          this.forms.reminder = { contactId: "", reminderDateTime: "", templateName: "", message: "" };
-          this.notify("Reminder dibuat.");
-          await Promise.all([this.loadReminders(), this.loadStatus()]);
-        },
-
-        async removeReminder(id) {
-          await this.api(`/api/reminders/${id}`, { method: "DELETE" });
-          this.notify("Reminder dihapus.");
-          await Promise.all([this.loadReminders(), this.loadStatus()]);
-        },
-
-        async createTemplate() {
-          await this.api("/api/templates", {
-            method: "POST",
-            body: JSON.stringify(this.forms.template),
-          });
-          this.forms.template = { name: "", content: "" };
-          this.notify("Template disimpan.");
-          await this.loadTemplates();
-        },
-
-        async removeTemplate(name) {
-          await this.api(`/api/templates/${encodeURIComponent(name)}`, { method: "DELETE" });
-          this.notify("Template dihapus.");
-          await this.loadTemplates();
-        },
-
-        async saveSettings() {
-          await this.api("/api/settings", {
-            method: "PUT",
-            body: JSON.stringify(this.forms.settings),
-          });
-          this.notify("Settings diperbarui.");
-          await this.loadStatus();
-        },
-
-        async sendManualNotification() {
-          await this.api("/api/notifications/test", {
-            method: "POST",
-            body: JSON.stringify(this.forms.manual),
-          });
-          this.forms.manual = { phoneNumber: "", message: "" };
-          this.notify("Notifikasi manual terkirim.");
-          await this.loadLogs();
-        },
-
-        async saveRecipients() {
-          await this.api("/api/admin-recipients", {
-            method: "PUT",
-            body: JSON.stringify({ recipients: this.forms.recipients }),
-          });
-          this.notify("Admin recipients diperbarui.");
-          await Promise.all([this.loadRecipients(), this.loadStatus()]);
-        },
-
-        async runScheduler() {
-          await this.api("/api/scheduler/run", {
-            method: "POST",
-            body: JSON.stringify({}),
-          });
-          this.notify("Scheduler dipicu manual.");
-          await this.refreshAll();
-        },
-
-        async logout() {
-          await this.api("/api/auth/logout", {
-            method: "POST",
-            body: JSON.stringify({}),
-          });
-          window.location.href = "/login";
-        },
-      };
-    }
-  </script>
+<script>
+  function dashboardApp() {
+    return {
+      loading: { status: false },
+      toast: { show: false, message: "", timer: null },
+      contacts: [],
+      reminders: [],
+      sent: [],
+      templates: [],
+      logs: [],
+      statusCards: [],
+      summaryMetrics: [],
+      forms: {
+        manual: { phoneNumber: "", message: "" },
+        recipients: "",
+        contact: { name: "", phoneNumber: "" },
+        reminder: { contactId: "", reminderDateTime: "", templateName: "", message: "" },
+        template: { name: "", content: "" },
+        settings: { dashboardTitle: "", companyName: "", supportSignature: "", timezone: "", autoRescheduleMonthly: false, notifyAdminsOnDelivery: false, notifyAdminsOnConnectionChange: false, notifyAdminsOnPaymentReset: false },
+      },
+      async init() { await this.refreshAll(); setInterval(() => this.loadStatus(), 20000); setInterval(() => this.loadLogs(), 25000); },
+      async api(path, options={}) {
+        const res = await fetch(path, { ...options, credentials: "same-origin", headers: { "Content-Type": "application/json", ...(options.headers||{}) } });
+        if (res.status === 401) { window.location.href = "/login"; throw new Error("Unauthorized"); }
+        const json = await res.json();
+        if (!res.ok || !json.success) throw new Error(json.error || "Request failed");
+        return json.data;
+      },
+      notify(msg) { this.toast.message = msg; this.toast.show = true; clearTimeout(this.toast.timer); this.toast.timer = setTimeout(() => { this.toast.show = false; }, 2600); },
+      formatDateTime(v) { return new Date(v).toLocaleString("id-ID"); },
+      async refreshAll() { await Promise.all([this.loadStatus(), this.loadContacts(), this.loadReminders(), this.loadSent(), this.loadTemplates(), this.loadRecipients(), this.loadLogs()]); },
+      async loadStatus() { this.loading.status=true; try { const d=await this.api("/api/status"); this.statusCards=[{label:"Transport", value:d.bot.isReady?"Online ✅":"Offline ❌"},{label:"QR Code", value:d.bot.hasQR?"Ready to scan":"Tidak aktif"},{label:"Reconnect Attempts", value:d.bot.reconnectAttempts}]; this.summaryMetrics=[{label:"Contacts", value:d.summary.contacts},{label:"Queued", value:d.summary.reminders},{label:"Sent", value:d.summary.sentReminders},{label:"Admin Recipients", value:d.summary.adminRecipients},{label:"Paid", value:d.summary.paidContacts},{label:"Unpaid", value:d.summary.unpaidContacts}]; this.forms.settings={...d.settings, autoRescheduleMonthly:!!d.settings.autoRescheduleMonthly, notifyAdminsOnDelivery:!!d.settings.notifyAdminsOnDelivery, notifyAdminsOnConnectionChange:!!d.settings.notifyAdminsOnConnectionChange, notifyAdminsOnPaymentReset:!!d.settings.notifyAdminsOnPaymentReset}; } finally { this.loading.status=false; } },
+      async loadContacts() { this.contacts = await this.api("/api/contacts"); },
+      async loadReminders() { this.reminders = await this.api("/api/reminders"); },
+      async loadSent() { this.sent = (await this.api("/api/reminders/sent")).slice(0,50); },
+      async loadTemplates() { this.templates = await this.api("/api/templates"); },
+      async loadRecipients() { const r = await this.api("/api/admin-recipients"); this.forms.recipients = r.join("\n"); },
+      async loadLogs() { this.logs = await this.api("/api/logs"); },
+      async createContact() { await this.api("/api/contacts",{method:"POST",body:JSON.stringify(this.forms.contact)}); this.forms.contact={name:"",phoneNumber:""}; this.notify("Kontak ditambahkan"); await this.loadContacts(); },
+      async togglePayment(id,status){ const res=await this.api(`/api/contacts/${id}/payment`,{method:"POST",body:JSON.stringify({status})}); this.notify(status==="PAID"?"✅ Pembayaran dicatat & notifikasi dikirim":"Status diubah"); await this.loadContacts(); },
+      async removeContact(id){ await this.api(`/api/contacts/${id}`,{method:"DELETE"}); this.notify("Kontak dihapus"); await Promise.all([this.loadContacts(), this.loadReminders()]); },
+      async createReminder(){ await this.api("/api/reminders",{method:"POST",body:JSON.stringify(this.forms.reminder)}); this.forms.reminder={contactId:"",reminderDateTime:"",templateName:"",message:""}; this.notify("Reminder ditambahkan"); await this.loadReminders(); },
+      async removeReminder(id){ await this.api(`/api/reminders/${id}`,{method:"DELETE"}); this.notify("Reminder dihapus"); await this.loadReminders(); },
+      async createTemplate(){ await this.api("/api/templates",{method:"POST",body:JSON.stringify(this.forms.template)}); this.forms.template={name:"",content:""}; this.notify("Template tersimpan"); await this.loadTemplates(); },
+      async removeTemplate(name){ await this.api(`/api/templates/${encodeURIComponent(name)}`,{method:"DELETE"}); this.notify("Template dihapus"); await this.loadTemplates(); },
+      async saveSettings(){ await this.api("/api/settings",{method:"PUT",body:JSON.stringify(this.forms.settings)}); this.notify("Pengaturan diperbarui"); await this.loadStatus(); },
+      async sendManualNotification(){ await this.api("/api/notifications/test",{method:"POST",body:JSON.stringify(this.forms.manual)}); this.forms.manual={phoneNumber:"",message:""}; this.notify("Notifikasi terkirim"); await this.loadLogs(); },
+      async saveRecipients(){ const recipients=this.forms.recipients.split(/\r?\n|,/).map(n=>n.trim()).filter(n=>n); await this.api("/api/admin-recipients",{method:"PUT",body:JSON.stringify({recipients})}); this.notify("Admin recipients diperbarui"); await this.loadRecipients(); },
+      async runScheduler(){ await this.api("/api/scheduler/run",{method:"POST"}); this.notify("Scheduler dijalankan manual"); await this.refreshAll(); },
+      async logout(){ await this.api("/api/auth/logout",{method:"POST"}); window.location.href="/login"; },
+    };
+  }
+</script>
 </body>
 </html>
