@@ -484,7 +484,19 @@
               </label>
               <label class="block text-sm text-ink/60">
                 Waktu kirim
-                <input x-model="forms.reminder.reminderDateTime" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay" placeholder="YYYY-MM-DD HH:mm" required>
+                <div class="relative mt-2">
+                  <input x-model="forms.reminder.reminderDateTime" type="datetime-local" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay pr-12" placeholder="YYYY-MM-DD HH:mm" required>
+                  <button @click="autoFillReminderTime()" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-clay/10 px-2.5 py-1.5 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-1" title="Isi otomatis 5 menit ke depan">
+                    Auto
+                  </button>
+                </div>
+                <div class="mt-2 flex flex-wrap gap-1.5">
+                  <button @click="setReminderTime(1)" type="button" class="rounded-full border border-ink/10 bg-white px-2.5 py-1 text-xs font-semibold text-ink transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-1">1m</button>
+                  <button @click="setReminderTime(5)" type="button" class="rounded-full border border-ink/10 bg-white px-2.5 py-1 text-xs font-semibold text-ink transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-1">5m</button>
+                  <button @click="setReminderTime(15)" type="button" class="rounded-full border border-ink/10 bg-white px-2.5 py-1 text-xs font-semibold text-ink transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-1">15m</button>
+                  <button @click="setReminderTime(30)" type="button" class="rounded-full border border-ink/10 bg-white px-2.5 py-1 text-xs font-semibold text-ink transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-1">30m</button>
+                  <button @click="setReminderTime(60)" type="button" class="rounded-full border border-ink/10 bg-white px-2.5 py-1 text-xs font-semibold text-ink transition hover:bg-clay hover:text-white focus:outline-none focus:ring-2 focus:ring-clay focus:ring-offset-1">1j</button>
+                </div>
               </label>
             </div>
             <label class="block text-sm text-ink/60">
@@ -881,6 +893,22 @@
 
         formatDateTime(value) {
           return new Date(value).toLocaleString("id-ID");
+        },
+
+        autoFillReminderTime() {
+          this.setReminderTime(5);
+          this.notify("Waktu kirim diisi otomatis (5 menit ke depan).");
+        },
+
+        setReminderTime(minutes) {
+          const now = new Date();
+          now.setMinutes(now.getMinutes() + minutes);
+          const year = now.getFullYear();
+          const month = String(now.getMonth() + 1).padStart(2, "0");
+          const day = String(now.getDate()).padStart(2, "0");
+          const hours = String(now.getHours()).padStart(2, "0");
+          const mins = String(now.getMinutes()).padStart(2, "0");
+          this.forms.reminder.reminderDateTime = `${year}-${month}-${day}T${hours}:${mins}`;
         },
 
         async refreshAll() {
