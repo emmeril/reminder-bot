@@ -356,9 +356,13 @@ class DataManager {
   }
 
   // CRUD Helpers
+  hasAdminRole(numbers = []) {
+    return numbers.some((number) => this.roles.get(number) === 'admin');
+  }
+
   isAdmin(sender, msg = null) {
     const candidates = getAdminLookupCandidates(sender, msg);
-    return candidates.some((number) => this.roles.get(number) === 'admin');
+    return this.hasAdminRole(candidates);
   }
 
   async addAdmin(number) {
@@ -834,6 +838,8 @@ return `${index + 1}. ${nama} | ${waktu}`;
     const session = this.sessionManager.getSession(sender);
 
     try {
+      const adminCandidates = await this.resolveAdminCandidates(msg);
+
       if (body === "!cancel") {
         if (session) {
           this.clearSession(sender);
@@ -842,12 +848,11 @@ return `${index + 1}. ${nama} | ${waktu}`;
         return msg.reply("❌ Tidak ada sesi yang aktif.");
       }
 
-      if (!this.dataManager.isAdmin(sender, msg) && !ALLOWED_NON_ADMIN_COMMANDS.has(body)) {
-        const candidates = getAdminLookupCandidates(sender, msg);
+      if (!this.dataManager.hasAdminRole(adminCandidates) && !ALLOWED_NON_ADMIN_COMMANDS.has(body)) {
         console.log("⛔ Non-admin command ignored:", {
           from: sender,
           author: msg.author || null,
-          candidates,
+          candidates: adminCandidates,
           body,
         });
         return;
@@ -870,6 +875,44 @@ return `${index + 1}. ${nama} | ${waktu}`;
       console.error('❌ Error in message handler:', error);
       msg.reply("❌ Terjadi error internal. Silakan coba lagi.");
     }
+  }
+
+  async resolveAdminCandidates(msg) {
+    const candidates = new Set(getAdminLookupCandidates(msg.from, msg));
+
+    try {
+      const contact = await msg.getContact();
+      for (const candidate of collectPhoneCandidates(
+        contact?.number,
+        contact?.userid,
+        contact?.phoneNumber,
+        contact?.id?._serialized,
+        contact?.id?.user
+      )) {
+        candidates.add(candidate);
+      }
+    } catch (error) {
+      console.log("⚠️ Failed to resolve contact number:", error.message);
+    }
+
+    try {
+      const chat = await msg.getChat();
+      for (const candidate of collectPhoneCandidates(
+        chat?.id?._serialized,
+        chat?.id?.user,
+        chat?.contact?.number,
+        chat?.contact?.userid,
+        chat?.contact?.phoneNumber,
+        chat?.contact?.id?._serialized,
+        chat?.contact?.id?.user
+      )) {
+        candidates.add(candidate);
+      }
+    } catch (error) {
+      console.log("⚠️ Failed to resolve chat number:", error.message);
+    }
+
+    return Array.from(candidates);
   }
 
   // ========== REMINDER HANDLERS ==========
