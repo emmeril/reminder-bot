@@ -254,10 +254,10 @@
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white/70">
-                  <template x-if="!reminders.length">
-                    <tr><td colspan="5" class="px-4 py-8 text-center text-ink/45">Belum ada reminder aktif.</td></tr>
+                  <template x-if="!filteredReminders().length">
+                    <tr><td colspan="5" class="px-4 py-8 text-center text-ink/45">Belum ada reminder yang cocok.</td></tr>
                   </template>
-                  <template x-for="reminder in reminders" :key="reminder.id">
+                  <template x-for="reminder in pagedReminders()" :key="reminder.id">
                     <tr>
                       <td class="px-4 py-4">
                         <div class="font-medium" x-text="reminder.contactName || 'Contact tidak ditemukan'"></div>
@@ -484,6 +484,12 @@
             notifyAdminsOnPaymentReset: false,
           },
         },
+        // reminders UI state: search, filter and pagination
+        remindersSearchQuery: '',
+        remindersFilterTemplate: '',
+        remindersPage: 1,
+        remindersPageSize: 10,
+        remindersTotalPages: 1,
 
         async init() {
           // show actions on larger screens by default
@@ -579,7 +585,35 @@
 
         async loadReminders() {
           this.reminders = await this.api("/api/reminders");
+          this.remindersPage = 1;
         },
+
+        filteredReminders() {
+          let list = (this.reminders || []).slice();
+          const q = (this.remindersSearchQuery || '').toLowerCase().trim();
+          if (this.remindersFilterTemplate) {
+            list = list.filter((r) => (r.templateName || '') === this.remindersFilterTemplate);
+          }
+          if (q) {
+            list = list.filter((r) => {
+              const hay = ((r.contactName || '') + ' ' + (r.phoneNumber || '') + ' ' + (r.templateName || '') + ' ' + (r.message || '')).toLowerCase();
+              return hay.includes(q);
+            });
+          }
+          return list;
+        },
+
+        pagedReminders() {
+          const filtered = this.filteredReminders();
+          this.remindersTotalPages = Math.max(1, Math.ceil(filtered.length / (this.remindersPageSize || 1)));
+          if (this.remindersPage > this.remindersTotalPages) this.remindersPage = this.remindersTotalPages;
+          const start = (this.remindersPage - 1) * this.remindersPageSize;
+          return filtered.slice(start, start + this.remindersPageSize);
+        },
+
+        setRemindersPage(n) { this.remindersPage = Math.max(1, Math.min(this.remindersTotalPages, Number(n) || 1)); },
+        nextRemindersPage() { if (this.remindersPage < this.remindersTotalPages) this.remindersPage++; },
+        prevRemindersPage() { if (this.remindersPage > 1) this.remindersPage--; },
 
         async loadSent() {
           this.sent = (await this.api("/api/reminders/sent")).slice(0, 50);
