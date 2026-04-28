@@ -1,4 +1,5 @@
 const fs = require("fs/promises");
+const fsSync = require("fs");
 const path = require("path");
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
@@ -44,6 +45,40 @@ const COMMANDS = {
   RIWAYAT_TAGIHAN: "!riwayattagihan",
   SET_ADMIN: "!setadmin",
 };
+
+function resolveChromeExecutablePath() {
+  const envCandidates = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    process.env.CHROME_PATH,
+    process.env.CHROMIUM_PATH,
+  ].filter(Boolean);
+
+  for (const candidate of envCandidates) {
+    if (fsSync.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  if (process.platform !== "linux") {
+    return null;
+  }
+
+  const linuxCandidates = [
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/snap/bin/chromium",
+  ];
+
+  for (const candidate of linuxCandidates) {
+    if (fsSync.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
 
 const ALLOWED_NON_ADMIN_COMMANDS = new Set([COMMANDS.HELP, COMMANDS.MENU]);
 
@@ -689,7 +724,7 @@ return `${index + 1}. ${nama} | ${waktu}`;
   }
 
   createClient() {
-    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    const executablePath = resolveChromeExecutablePath();
     const puppeteerOptions = {
       headless: true,
       args: [
@@ -712,6 +747,11 @@ return `${index + 1}. ${nama} | ${waktu}`;
 
     if (executablePath) {
       puppeteerOptions.executablePath = executablePath;
+      console.log(`Using Chrome executable: ${executablePath}`);
+    } else {
+      console.warn(
+        "No system Chrome/Chromium found; Puppeteer will use its bundled browser"
+      );
     }
 
     return new Client({
