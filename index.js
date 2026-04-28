@@ -487,6 +487,10 @@ class DataManager {
     return Array.from(this.contacts.values()).sort((a, b) => a.name.localeCompare(b.name, "id-ID"));
   }
 
+  getContacts() {
+    return Array.from(this.contacts.values());
+  }
+
   getSortedReminders() {
     return Array.from(this.reminders.values())
       .map((reminder) => this.hydrateReminder(reminder))
