@@ -208,7 +208,7 @@
             <div class="grid gap-4 md:grid-cols-2">
               <label class="block text-sm text-ink/60">
                 Contact tujuan
-                <select x-model="forms.reminder.contactId" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+                <select x-model="forms.reminder.contactId" @change="onReminderContactChange()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
                   <option value="">Pilih contact</option>
                   <template x-for="contact in contacts" :key="'reminder-contact-' + contact.id">
                     <option :value="contact.id" x-text="contact.name + ' (' + contact.phoneNumber + ')'"></option>
@@ -217,12 +217,20 @@
               </label>
               <label class="block text-sm text-ink/60">
                 Waktu kirim
-                <input x-model="forms.reminder.reminderDateTime" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="YYYY-MM-DD HH:mm" required>
+                <div class="mt-2 grid grid-cols-2 gap-2">
+                  <input type="date" x-model="forms.reminder.reminderDate" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+                  <input type="time" x-model="forms.reminder.reminderTime" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+                </div>
               </label>
             </div>
             <label class="block text-sm text-ink/60">
-              Nama template opsional
-              <input x-model="forms.reminder.templateName" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="contoh: 1_member 100K.txt">
+              Template (opsional)
+              <select x-model="forms.reminder.templateName" @change="applySelectedTemplate()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+                <option value="">-- Tidak memakai template --</option>
+                <template x-for="t in templates" :key="t.name">
+                  <option :value="t.name" x-text="t.name"></option>
+                </template>
+              </select>
             </label>
             <label class="block text-sm text-ink/60">
               Pesan reminder
@@ -459,7 +467,7 @@
           manual: { phoneNumber: "", message: "" },
           recipients: "",
           contact: { name: "", phoneNumber: "" },
-          reminder: { contactId: "", reminderDateTime: "", templateName: "", message: "" },
+          reminder: { contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
           template: { name: "", content: "" },
           settings: {
             dashboardTitle: "",
@@ -619,12 +627,51 @@
           await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
         },
 
+        applyTemplateContent(templateContent, contact, dateIso) {
+          let msg = String(templateContent || "");
+          if (contact && contact.name) {
+            msg = msg.replace(/{{\s*name\s*}}/gi, contact.name);
+          }
+          if (dateIso) {
+            try {
+              msg = msg.replace(/{{\s*date\s*}}/gi, new Date(dateIso).toLocaleString('id-ID'));
+            } catch {}
+          }
+          return msg;
+        },
+
+        applySelectedTemplate() {
+          const name = this.forms.reminder.templateName;
+          if (!name) return;
+          const tpl = this.templates.find((t) => t.name === name);
+          if (!tpl) return;
+          const contact = this.contacts.find((c) => c.id === this.forms.reminder.contactId) || null;
+          const dateIso = (this.forms.reminder.reminderDate && this.forms.reminder.reminderTime) ? `${this.forms.reminder.reminderDate}T${this.forms.reminder.reminderTime}:00` : null;
+          this.forms.reminder.message = this.applyTemplateContent(tpl.content, contact, dateIso);
+        },
+        onReminderContactChange() {
+          if (this.forms.reminder.templateName) {
+            this.applySelectedTemplate();
+          }
+        },
+
         async createReminder() {
+          const date = this.forms.reminder.reminderDate;
+          const time = this.forms.reminder.reminderTime || '00:00';
+          if (!date) return this.notify('Pilih tanggal pengiriman');
+          const datetime = `${date} ${time}`;
+
           await this.api("/api/reminders", {
             method: "POST",
-            body: JSON.stringify(this.forms.reminder),
+            body: JSON.stringify({
+              contactId: this.forms.reminder.contactId,
+              reminderDateTime: datetime,
+              message: this.forms.reminder.message,
+              templateName: this.forms.reminder.templateName,
+            }),
           });
-          this.forms.reminder = { contactId: "", reminderDateTime: "", templateName: "", message: "" };
+
+          this.forms.reminder = { contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" };
           this.notify("Reminder dibuat.");
           await Promise.all([this.loadReminders(), this.loadStatus()]);
         },
