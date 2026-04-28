@@ -1197,6 +1197,31 @@ class NotificationBot {
     return results;
   }
 
+  async sendContactBroadcast(title, body, options = {}) {
+    const contacts = this.dataManager.getContacts();
+    if (contacts.length === 0) return [];
+
+    const message = `*${title}*\n\n${body}`;
+    const results = [];
+
+    for (const contact of contacts) {
+      try {
+        await this.sendMessage(contact.phoneNumber, message);
+        results.push({ phoneNumber: contact.phoneNumber, name: contact.name, status: "sent" });
+      } catch (error) {
+        results.push({ phoneNumber: contact.phoneNumber, name: contact.name, status: "failed", error: error.message });
+      }
+    }
+
+    const successCount = results.filter(r => r.status === "sent").length;
+    const failedCount = results.filter(r => r.status === "failed").length;
+    
+    if (!options.silentLog) {
+      this.activityLog.push("info", "broadcast", `${title} dikirim ke ${successCount} contact(s), ${failedCount} gagal`);
+    }
+    return results;
+  }
+
   async sendPaymentNotification(contact, transactionId, paymentType = "DEFAULT") {
     const paymentDate = contact.paymentDate ? new Date(contact.paymentDate) : new Date();
     const formattedDate = paymentDate.toLocaleString("id-ID", {
@@ -1650,6 +1675,13 @@ class WebServer {
       const body = sanitizeMultilineText(req.body.message);
       if (!body) throw new Error("Pesan broadcast wajib diisi.");
       return this.notificationBot.sendAdminBroadcast(title, body);
+    }));
+
+    this.app.post("/api/notifications/broadcast", requireApiAuth, handleApi(async (req) => {
+      const title = sanitizeInput(req.body.title) || "Pengumuman";
+      const body = sanitizeMultilineText(req.body.message);
+      if (!body) throw new Error("Pesan broadcast wajib diisi.");
+      return this.notificationBot.sendContactBroadcast(title, body);
     }));
 
     this.app.post("/api/scheduler/run", requireApiAuth, handleApi(async () => {

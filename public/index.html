@@ -105,6 +105,24 @@
         </section>
 
         <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+          <h2 class="font-display text-2xl">Broadcast ke Semua Contact</h2>
+          <p class="mt-1 text-sm text-ink/60">Kirim pesan ke semua customer sekaligus.</p>
+          <form class="mt-4 space-y-4" @submit.prevent="sendBroadcast()">
+            <label class="block text-sm text-ink/60">
+              Judul
+              <input x-model="forms.broadcast.title" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none ring-0 transition focus:border-clay" placeholder="Pengumuman" required>
+            </label>
+            <label class="block text-sm text-ink/60">
+              Pesan
+              <textarea x-model="forms.broadcast.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Tulis pesan broadcast..." required></textarea>
+            </label>
+            <button type="submit" class="w-full rounded-full bg-gradient-to-r from-moss to-green-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20">
+              Kirim Broadcast
+            </button>
+          </form>
+        </section>
+
+        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
           <h2 class="font-display text-2xl">Admin Recipients</h2>
           <form class="mt-4 space-y-4" @submit.prevent="saveRecipients()">
             <label class="block text-sm text-ink/60">
@@ -469,6 +487,7 @@
         summaryMetrics: [],
         forms: {
           manual: { phoneNumber: "", message: "" },
+          broadcast: { title: "", message: "" },
           recipients: "",
           contact: { name: "", phoneNumber: "" },
           reminder: { contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
@@ -720,6 +739,18 @@
           });
           this.forms.manual = { phoneNumber: "", message: "" };
           this.notify("Notifikasi manual terkirim.");
+          await this.loadLogs();
+        },
+
+        async sendBroadcast() {
+          const response = await this.api("/api/notifications/broadcast", {
+            method: "POST",
+            body: JSON.stringify(this.forms.broadcast),
+          });
+          const successCount = response.filter(r => r.status === "sent").length;
+          const failedCount = response.filter(r => r.status === "failed").length;
+          this.forms.broadcast = { title: "", message: "" };
+          this.notify(`Broadcast terkirim: ${successCount} berhasil, ${failedCount} gagal.`);
           await this.loadLogs();
         },
 
