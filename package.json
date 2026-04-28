@@ -10,6 +10,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "dotenv": "^17.4.2",
     "express": "^5.1.0",
     "node-cron": "^4.1.1",
     "qrcode": "^1.5.4",

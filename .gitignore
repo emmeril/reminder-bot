@@ -1,6 +1,7 @@
 .wwebjs_auth
 # Ignore the authentication file for the WebAssembly Binary Editor (wwbejs)
 .wwebjs_cache
+.env
 node_modules
 pnpm-lock.yaml
 pnpm-workspace.yaml

@@ -1,50 +1,186 @@
+require("dotenv").config();
+
 const fs = require("fs/promises");
 const fsSync = require("fs");
 const path = require("path");
-const { Client, LocalAuth } = require("whatsapp-web.js");
-const qrcode = require("qrcode-terminal");
-const QRCode = require("qrcode");
 const express = require("express");
 const cron = require("node-cron");
 const crypto = require("crypto");
+const qrcode = require("qrcode-terminal");
+const QRCode = require("qrcode");
+const { Client, LocalAuth } = require("whatsapp-web.js");
 
 const CONFIG = {
-  PORT: process.env.PORT || 3025,
+  PORT: Number(process.env.PORT || 3025),
   DB_PATH: path.join(__dirname, "database"),
   TEMPLATE_PATH: path.join(__dirname, "templates"),
+  PUBLIC_PATH: path.join(__dirname, "public"),
   AUTO_SAVE_INTERVAL: 24 * 60 * 60 * 1000,
   BACKUP_INTERVAL: 24 * 60 * 60 * 1000,
-  SESSION_TIMEOUT: 60 * 60 * 1000,
   KEEP_ALIVE_INTERVAL: 5 * 60 * 1000,
   MAX_RECONNECT_ATTEMPTS: 10,
-  MIN_RECONNECT_INTERVAL: 30000,
-  RECONNECT_DELAY: 5000,
+  MIN_RECONNECT_INTERVAL: 30_000,
+  RECONNECT_DELAY: 5_000,
   CRON_SCHEDULE: "*/1 * * * *",
   RESET_PAYMENT_SCHEDULE: "0 0 1 * *",
-  MAX_LOCK_WAIT: 10000,
+  MAX_LOCK_WAIT: 10_000,
   LOCK_POLL_INTERVAL: 50,
   WEB_API_KEY: process.env.WEB_API_KEY || "dev-key-change-in-production",
+  AUTH_USERNAME: process.env.AUTH_USERNAME || "admin",
+  AUTH_PASSWORD: process.env.AUTH_PASSWORD || "admin123",
+  SESSION_COOKIE_NAME: "reminder_bot_session",
+  SESSION_TTL: 24 * 60 * 60 * 1000,
+  SESSION_SECRET: process.env.SESSION_SECRET || "change-this-session-secret",
+  LOG_LIMIT: 250,
 };
 
-const COMMANDS = {
-  HELP: "!help",
-  MENU: "!menu",
-  CANCEL: "!cancel",
-  ADD_REMINDER: "!addreminder",
-  EDIT_REMINDER: "!editreminder",
-  DELETE_REMINDER: "!deletereminder",
-  LIST_REMINDER: "!listreminder",
-  ADD_CONTACT: "!addkontak",
-  EDIT_CONTACT: "!editkontak",
-  DELETE_CONTACT: "!deletekontak",
-  LIST_CONTACT: "!listkontak",
-  BAYAR: "!bayar",
-  STATUS_BAYAR: "!statusbayar",
-  LAPORAN: "!laporan",
-  TUNGGAKAN: "!tunggakan",
-  RIWAYAT_TAGIHAN: "!riwayattagihan",
-  SET_ADMIN: "!setadmin",
+const MONTH_NAMES = [
+  "",
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+];
+
+const PAYMENT_STATUS = {
+  PAID: "PAID",
+  UNPAID: "UNPAID",
 };
+
+const DEFAULT_SETTINGS = {
+  dashboardTitle: "Reminder Bot Control Center",
+  companyName: "Emmeril Hotspot",
+  supportSignature: "CS Emmeril Hotspot",
+  timezone: "Asia/Jakarta",
+  autoRescheduleMonthly: true,
+  notifyAdminsOnDelivery: true,
+  notifyAdminsOnConnectionChange: true,
+  notifyAdminsOnPaymentReset: true,
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const generateId = () => `${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+
+function escapeHtml(value) {
+  if (typeof value !== "string") return value;
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function sanitizeInput(value) {
+  if (typeof value !== "string") return "";
+  return value.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim();
+}
+
+function sanitizeMultilineText(value) {
+  if (typeof value !== "string") return "";
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, "")
+    .trim();
+}
+
+function parseCookies(cookieHeader) {
+  const cookies = {};
+  if (!cookieHeader) return cookies;
+
+  for (const part of String(cookieHeader).split(";")) {
+    const [rawKey, ...rawValue] = part.trim().split("=");
+    if (!rawKey) continue;
+    cookies[rawKey] = decodeURIComponent(rawValue.join("=") || "");
+  }
+
+  return cookies;
+}
+
+function serializeCookie(name, value, options = {}) {
+  const parts = [`${name}=${encodeURIComponent(value)}`];
+  if (options.maxAge !== undefined) parts.push(`Max-Age=${options.maxAge}`);
+  if (options.path) parts.push(`Path=${options.path}`);
+  if (options.httpOnly) parts.push("HttpOnly");
+  if (options.sameSite) parts.push(`SameSite=${options.sameSite}`);
+  if (options.secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
+function normalizePhoneNumber(value) {
+  return sanitizeInput(String(value || "")).replace(/[^0-9]/g, "");
+}
+
+function isValidPhoneNumber(value) {
+  return /^628\d{7,13}$/.test(value);
+}
+
+function parseDateTimeInput(input) {
+  const match = sanitizeInput(input).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/);
+  if (!match) return null;
+
+  const [, year, month, day, hour, minute] = match;
+  const yearNum = Number(year);
+  const monthNum = Number(month);
+  const dayNum = Number(day);
+  const hourNum = Number(hour);
+  const minuteNum = Number(minute);
+
+  if (monthNum < 1 || monthNum > 12) return null;
+  if (dayNum < 1 || dayNum > 31) return null;
+  if (hourNum < 0 || hourNum > 23) return null;
+  if (minuteNum < 0 || minuteNum > 59) return null;
+
+  const maxDays = new Date(yearNum, monthNum, 0).getDate();
+  if (dayNum > maxDays) return null;
+
+  const date = new Date(yearNum, monthNum - 1, dayNum, hourNum, minuteNum);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function formatDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateTime(date) {
+  return new Date(date).toLocaleString("id-ID", {
+    dateStyle: "long",
+    timeStyle: "short",
+    timeZone: "Asia/Jakarta",
+  });
+}
+
+function addMonthsSafely(dateValue, monthsToAdd) {
+  const source = new Date(dateValue);
+  const targetMonthIndex = source.getMonth() + monthsToAdd;
+  const year = source.getFullYear() + Math.floor(targetMonthIndex / 12);
+  const month = ((targetMonthIndex % 12) + 12) % 12;
+  const lastDayOfTargetMonth = new Date(year, month + 1, 0).getDate();
+  const day = Math.min(source.getDate(), lastDayOfTargetMonth);
+
+  return new Date(
+    year,
+    month,
+    day,
+    source.getHours(),
+    source.getMinutes(),
+    source.getSeconds(),
+    source.getMilliseconds()
+  );
+}
 
 function resolveChromeExecutablePath() {
   const envCandidates = [
@@ -80,135 +216,104 @@ function resolveChromeExecutablePath() {
   return null;
 }
 
-const ALLOWED_NON_ADMIN_COMMANDS = new Set([COMMANDS.HELP, COMMANDS.MENU]);
+class ActivityLog {
+  constructor(limit = CONFIG.LOG_LIMIT) {
+    this.limit = limit;
+    this.entries = [];
+  }
 
-function escapeHtml(str) {
-  if (typeof str !== "string") return str;
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+  push(level, source, message, meta = null) {
+    const entry = {
+      id: generateId(),
+      level,
+      source,
+      message,
+      meta,
+      timestamp: new Date().toISOString(),
+    };
+
+    this.entries.unshift(entry);
+    if (this.entries.length > this.limit) {
+      this.entries.length = this.limit;
+    }
+
+    const line = `[${entry.timestamp}] [${level}] [${source}] ${message}`;
+    if (level === "error") {
+      console.error(line);
+    } else {
+      console.log(line);
+    }
+    return entry;
+  }
+
+  list() {
+    return this.entries;
+  }
 }
 
-function sanitizeInput(str) {
-  if (typeof str !== "string") return "";
-  return str.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim();
+class AuthManager {
+  constructor(activityLog) {
+    this.activityLog = activityLog;
+    this.sessions = new Map();
+  }
+
+  cleanupExpiredSessions() {
+    const now = Date.now();
+    for (const [token, session] of this.sessions.entries()) {
+      if (session.expiresAt <= now) {
+        this.sessions.delete(token);
+      }
+    }
+  }
+
+  validateCredentials(username, password) {
+    return username === CONFIG.AUTH_USERNAME && password === CONFIG.AUTH_PASSWORD;
+  }
+
+  createSession(username) {
+    this.cleanupExpiredSessions();
+    const token = crypto
+      .createHmac("sha256", CONFIG.SESSION_SECRET)
+      .update(`${username}:${Date.now()}:${crypto.randomBytes(16).toString("hex")}`)
+      .digest("hex");
+
+    const session = {
+      username,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + CONFIG.SESSION_TTL,
+    };
+
+    this.sessions.set(token, session);
+    return { token, session };
+  }
+
+  getSession(token) {
+    if (!token) return null;
+    this.cleanupExpiredSessions();
+    const session = this.sessions.get(token);
+    if (!session) return null;
+    if (session.expiresAt <= Date.now()) {
+      this.sessions.delete(token);
+      return null;
+    }
+    session.expiresAt = Date.now() + CONFIG.SESSION_TTL;
+    return session;
+  }
+
+  destroySession(token) {
+    if (!token) return;
+    this.sessions.delete(token);
+  }
 }
 
-// ==================== UTILITY FUNCTIONS ====================
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-const SESSION_STEPS = {
-  ADD_REMINDER_CONTACT: "add-1",
-  ADD_REMINDER_TEMPLATE: "add-2",
-  ADD_REMINDER_CUSTOM: "add-3-custom",
-  ADD_REMINDER_DATE: "add-4",
-  EDIT_REMINDER_SELECT: "edit-reminder-select",
-  EDIT_REMINDER_DATE: "edit-reminder-tanggal",
-  EDIT_REMINDER_MESSAGE: "edit-reminder-pesan",
-  EDIT_REMINDER_TEMPLATE: "edit-reminder-template",
-  EDIT_REMINDER_CUSTOM: "edit-reminder-custom",
-  DELETE_REMINDER_SELECT: "delete-reminder-select",
-  ADD_CONTACT_NAME: "add-kontak-nama",
-  ADD_CONTACT_NUMBER: "add-kontak-nomor",
-  EDIT_CONTACT_SELECT: "edit-kontak-select",
-  EDIT_CONTACT_NAME: "edit-kontak-nama",
-  EDIT_CONTACT_NUMBER: "edit-kontak-nomor",
-  DELETE_CONTACT_SELECT: "delete-kontak-select",
-  BAYAR_SELECT: "bayar-select",
-  BAYAR_CONFIRM_ARREARS: "bayar-confirm-arrears",
-};
-
-const generateId = () => `${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
-
-const PAYMENT_STATUS = {
-  PAID: "PAID",
-  UNPAID: "UNPAID",
-};
-
-const getPaymentEmoji = (status) => status === PAYMENT_STATUS.PAID ? "✅" : "⏳";
-const getPaymentLabel = (status) => status === PAYMENT_STATUS.PAID ? "Sudah Dibayar" : "Belum Dibayar";
-
-const parseDateTimeInput = (input) => {
-  const match = sanitizeInput(input).match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/);
-  if (!match) return null;
-
-  const [, year, month, day, hour, minute] = match;
-  const yearNum = parseInt(year, 10);
-  const monthNum = parseInt(month, 10);
-  const dayNum = parseInt(day, 10);
-  const hourNum = parseInt(hour, 10);
-  const minuteNum = parseInt(minute, 10);
-
-  if (monthNum < 1 || monthNum > 12) return null;
-  if (dayNum < 1 || dayNum > 31) return null;
-  if (hourNum < 0 || hourNum > 23) return null;
-  if (minuteNum < 0 || minuteNum > 59) return null;
-
-  const maxDays = new Date(yearNum, monthNum, 0).getDate();
-  if (dayNum > maxDays) return null;
-
-  const date = new Date(yearNum, monthNum - 1, dayNum, hourNum, minuteNum);
-  if (Number.isNaN(date.getTime())) return null;
-
-  const tanggal = `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-  const jam = `${String(hourNum).padStart(2, '0')}:${String(minuteNum).padStart(2, '0')}`;
-
-  return { tanggal, jam, date };
-};
-
-const addMonthsSafely = (date, monthsToAdd) => {
-  const source = new Date(date);
-  const targetMonthIndex = source.getMonth() + monthsToAdd;
-  const year = source.getFullYear() + Math.floor(targetMonthIndex / 12);
-  const month = ((targetMonthIndex % 12) + 12) % 12;
-  const lastDayOfTargetMonth = new Date(year, month + 1, 0).getDate();
-  const day = Math.min(source.getDate(), lastDayOfTargetMonth);
-
-  return new Date(
-    year,
-    month,
-    day,
-    source.getHours(),
-    source.getMinutes(),
-    source.getSeconds(),
-    source.getMilliseconds()
-  );
-};
-
-const formatDate = (date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const formatDateTime = (date) => {
-  return date.toLocaleString("id-ID", {
-    dateStyle: "long",
-    timeStyle: "short",
-    timeZone: "Asia/Jakarta",
-  });
-};
-
-const parseSelectionIndex = (value) => {
-  const index = Number.parseInt(value, 10) - 1;
-  return Number.isNaN(index) ? null : index;
-};
-
-const normalizePhoneNumber = (value) => value.replace(/[^0-9]/g, "");
-
-const isValidPhoneNumber = (value) => /^628\d{7,13}$/.test(value);
-
-// ==================== DATA MANAGER ====================
 class DataManager {
-  constructor() {
+  constructor(activityLog) {
+    this.activityLog = activityLog;
     this.contacts = new Map();
     this.reminders = new Map();
     this.sentReminders = new Map();
     this.roles = new Map();
+    this.settings = { ...DEFAULT_SETTINGS };
     this.fileLocks = new Map();
     this.initDirectories();
   }
@@ -216,6 +321,11 @@ class DataManager {
   async initDirectories() {
     await fs.mkdir(CONFIG.DB_PATH, { recursive: true });
     await fs.mkdir(CONFIG.TEMPLATE_PATH, { recursive: true });
+    await fs.mkdir(CONFIG.PUBLIC_PATH, { recursive: true });
+  }
+
+  getPath(filename) {
+    return path.join(CONFIG.DB_PATH, filename);
   }
 
   async acquireLock(filePath) {
@@ -233,30 +343,21 @@ class DataManager {
     this.fileLocks.delete(filePath);
   }
 
-  // Atomic write with retry
   async atomicWrite(filePath, data, maxRetries = 3) {
     await this.acquireLock(filePath);
-    const tempPath = filePath + '.tmp';
-    const backupPath = filePath + '.bak';
+    const tempPath = `${filePath}.tmp`;
+    const backupPath = `${filePath}.bak`;
 
     try {
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
         try {
-          // Backup existing file
           await fs.copyFile(filePath, backupPath).catch(() => {});
-          
-          // Write to temp file
           await fs.writeFile(tempPath, JSON.stringify(data, null, 2));
-          
-          // Verify
-          const verify = await fs.readFile(tempPath, 'utf-8');
-          JSON.parse(verify);
-          
-          // Atomic rename
+          JSON.parse(await fs.readFile(tempPath, "utf-8"));
           await fs.rename(tempPath, filePath);
           return;
         } catch (error) {
-          console.error(`❌ Write attempt ${attempt} failed:`, error.message);
+          this.activityLog.push("error", "storage", `Write attempt ${attempt} failed for ${path.basename(filePath)}`, { error: error.message });
           await fs.copyFile(backupPath, filePath).catch(() => {});
           if (attempt === maxRetries) throw error;
           await sleep(100 * attempt);
@@ -268,33 +369,18 @@ class DataManager {
     }
   }
 
-  // Load data
-  async loadAll() {
-    console.log('📂 Loading data...');
-    this.contacts = await this.loadMapFromFile(this.getPath('contacts.json'), 'id');
-    this.reminders = await this.loadMapFromFile(this.getPath('reminders.json'), 'id');
-    this.sentReminders = await this.loadMapFromFile(this.getPath('sent_reminders.json'), 'id');
-    this.roles = await this.loadRoles();
-    console.log(`✅ Data loaded: ${this.contacts.size} contacts, ${this.reminders.size} reminders, ${this.roles.size} roles`);
-  }
-
-  getPath(filename) {
-    return path.join(CONFIG.DB_PATH, filename);
-  }
-
   async loadMapFromFile(filePath, keyField) {
     try {
-      const raw = await fs.readFile(filePath, 'utf-8');
+      const raw = await fs.readFile(filePath, "utf-8");
       if (!raw.trim()) return new Map();
       const arr = JSON.parse(raw);
       if (!Array.isArray(arr)) return new Map();
-      return new Map(arr.filter(item => item && item[keyField]).map(item => [item[keyField], item]));
+      return new Map(arr.filter((item) => item && item[keyField]).map((item) => [String(item[keyField]), item]));
     } catch (error) {
-      if (error.code === 'ENOENT') return new Map();
-      console.error(`❌ Error loading ${filePath}:`, error.message);
-      // Attempt recovery from backup
+      if (error.code === "ENOENT") return new Map();
+      this.activityLog.push("error", "storage", `Failed to load ${path.basename(filePath)}`, { error: error.message });
       try {
-        const backup = filePath + '.bak';
+        const backup = `${filePath}.bak`;
         await fs.copyFile(backup, filePath);
         return this.loadMapFromFile(filePath, keyField);
       } catch {
@@ -305,201 +391,457 @@ class DataManager {
 
   async loadRoles() {
     try {
-      const raw = await fs.readFile(this.getPath('roles.json'), 'utf-8');
+      const raw = await fs.readFile(this.getPath("roles.json"), "utf-8");
       if (!raw.trim()) return new Map();
-      const obj = JSON.parse(raw);
-      return new Map(Object.entries(obj));
+      return new Map(Object.entries(JSON.parse(raw)));
     } catch (error) {
-      if (error.code === 'ENOENT') return new Map();
-      console.error("❌ Error loading roles:", error.message);
+      if (error.code === "ENOENT") return new Map();
+      this.activityLog.push("error", "storage", "Failed to load roles.json", { error: error.message });
       return new Map();
     }
   }
 
-  // Save data
+  async loadSettings() {
+    try {
+      const raw = await fs.readFile(this.getPath("settings.json"), "utf-8");
+      if (!raw.trim()) return { ...DEFAULT_SETTINGS };
+      return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    } catch (error) {
+      if (error.code === "ENOENT") return { ...DEFAULT_SETTINGS };
+      this.activityLog.push("error", "storage", "Failed to load settings.json", { error: error.message });
+      return { ...DEFAULT_SETTINGS };
+    }
+  }
+
+  async loadAll() {
+    this.activityLog.push("info", "boot", "Loading persisted data");
+    this.contacts = await this.loadMapFromFile(this.getPath("contacts.json"), "id");
+    this.reminders = await this.loadMapFromFile(this.getPath("reminders.json"), "id");
+    this.sentReminders = await this.loadMapFromFile(this.getPath("sent_reminders.json"), "id");
+    this.roles = await this.loadRoles();
+    this.settings = await this.loadSettings();
+    await this.normalizeReminderRelations();
+    this.activityLog.push("info", "boot", "Data load complete", {
+      contacts: this.contacts.size,
+      reminders: this.reminders.size,
+      sentReminders: this.sentReminders.size,
+      adminRecipients: this.getAdminRecipients().length,
+    });
+  }
+
   async saveContacts() {
-    await this.atomicWrite(this.getPath('contacts.json'), Array.from(this.contacts.values()));
+    await this.atomicWrite(this.getPath("contacts.json"), Array.from(this.contacts.values()));
   }
 
   async saveReminders() {
-    await this.atomicWrite(this.getPath('reminders.json'), Array.from(this.reminders.values()));
+    await this.atomicWrite(this.getPath("reminders.json"), Array.from(this.reminders.values()));
   }
 
   async saveSentReminders() {
-    await this.atomicWrite(this.getPath('sent_reminders.json'), Array.from(this.sentReminders.values()));
+    await this.atomicWrite(this.getPath("sent_reminders.json"), Array.from(this.sentReminders.values()));
   }
 
   async saveRoles() {
-    await this.atomicWrite(this.getPath('roles.json'), Object.fromEntries(this.roles));
+    await this.atomicWrite(this.getPath("roles.json"), Object.fromEntries(this.roles));
+  }
+
+  async saveSettings() {
+    await this.atomicWrite(this.getPath("settings.json"), this.settings);
   }
 
   async saveAll() {
-    console.log('🔄 Auto-saving data...');
     await Promise.all([
       this.saveContacts(),
       this.saveReminders(),
       this.saveSentReminders(),
       this.saveRoles(),
+      this.saveSettings(),
     ]);
-    console.log('✅ Auto-save completed');
   }
 
-  // Backup
   async createBackup() {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupDir = path.join(CONFIG.DB_PATH, 'backups', timestamp);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backupDir = path.join(CONFIG.DB_PATH, "backups", timestamp);
     await fs.mkdir(backupDir, { recursive: true });
-    const files = ['contacts.json', 'reminders.json', 'sent_reminders.json', 'roles.json'];
-    await Promise.all(files.map(async file => {
-      const src = this.getPath(file);
-      const dest = path.join(backupDir, file);
-      await fs.copyFile(src, dest).catch(() => {});
-    }));
-    console.log(`💾 Backup created: ${backupDir}`);
-  }
 
-  // CRUD Helpers
-  isAdmin(sender) {
-    const number = sender.split('@')[0];
-    return this.roles.get(number) === 'admin';
-  }
+    const files = [
+      "contacts.json",
+      "reminders.json",
+      "sent_reminders.json",
+      "roles.json",
+      "settings.json",
+    ];
 
-  async addAdmin(number) {
-    this.roles.set(number, 'admin');
-    await this.saveRoles();
-  }
-
-  async addContact(contact) {
-    this.contacts.set(contact.id, contact);
-    await this.saveContacts();
-  }
-
-  async updateContact(id, data) {
-    const contact = this.contacts.get(id);
-    if (!contact) throw new Error('Contact not found');
-    Object.assign(contact, data);
-    await this.saveContacts();
-  }
-
-  async deleteContact(id) {
-    this.contacts.delete(id);
-    await this.saveContacts();
-  }
-
-  async addReminder(reminder) {
-    this.reminders.set(reminder.id, reminder);
-    await this.saveReminders();
-  }
-
-  async updateReminder(id, data) {
-    const reminder = this.reminders.get(id);
-    if (!reminder) throw new Error('Reminder not found');
-    Object.assign(reminder, data);
-    await this.saveReminders();
-  }
-
-  async deleteReminder(id) {
-    this.reminders.delete(id);
-    await this.saveReminders();
-  }
-
-  async moveToSent(id) {
-    const reminder = this.reminders.get(id);
-    if (reminder) {
-      this.sentReminders.set(id, reminder);
-      this.reminders.delete(id);
-      await Promise.all([this.saveReminders(), this.saveSentReminders()]);
-    }
-  }
-
-  getSortedReminders() {
-    return Array.from(this.reminders.values()).sort(
-      (a, b) => new Date(a.reminderDateTime) - new Date(b.reminderDateTime)
+    await Promise.all(
+      files.map(async (file) => {
+        const src = this.getPath(file);
+        const dest = path.join(backupDir, file);
+        await fs.copyFile(src, dest).catch(() => {});
+      })
     );
+
+    this.activityLog.push("info", "storage", "Backup created", { backupDir });
   }
 
   getSortedContacts() {
-    return Array.from(this.contacts.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(this.contacts.values()).sort((a, b) => a.name.localeCompare(b.name, "id-ID"));
   }
 
-  findContactByPhone(phone) {
-    return Array.from(this.contacts.values()).find(c => c.phoneNumber === phone);
+  getSortedReminders() {
+    return Array.from(this.reminders.values())
+      .map((reminder) => this.hydrateReminder(reminder))
+      .sort((a, b) => new Date(a.reminderDateTime) - new Date(b.reminderDateTime));
+  }
+
+  getSentReminders() {
+    return Array.from(this.sentReminders.values())
+      .map((reminder) => this.hydrateReminder(reminder))
+      .sort((a, b) => new Date(b.sentAt || b.reminderDateTime) - new Date(a.sentAt || a.reminderDateTime));
+  }
+
+  getDashboardSummary() {
+    const contacts = this.getSortedContacts();
+    const reminders = this.getSortedReminders();
+    const sentReminders = this.getSentReminders();
+    const paid = contacts.filter((contact) => contact.paymentStatus === PAYMENT_STATUS.PAID).length;
+    const unpaid = contacts.length - paid;
+    return {
+      contacts: contacts.length,
+      reminders: reminders.length,
+      sentReminders: sentReminders.length,
+      paidContacts: paid,
+      unpaidContacts: unpaid,
+      adminRecipients: this.getAdminRecipients().length,
+      nextReminderAt: reminders[0]?.reminderDateTime || null,
+    };
+  }
+
+  findContactByPhone(phoneNumber) {
+    return Array.from(this.contacts.values()).find((contact) => contact.phoneNumber === phoneNumber);
   }
 
   hasContactPhone(phoneNumber, excludeId = null) {
     return Array.from(this.contacts.values()).some(
-      contact => contact.phoneNumber === phoneNumber && contact.id !== excludeId
+      (contact) => contact.phoneNumber === phoneNumber && String(contact.id) !== String(excludeId)
     );
   }
 
-  async updatePaymentStatus(id, status) {
-    const contact = this.contacts.get(id);
-    if (!contact) throw new Error('Contact not found');
+  getContact(id) {
+    return this.contacts.get(String(id)) || null;
+  }
+
+  getReminder(id) {
+    return this.reminders.get(String(id)) || null;
+  }
+
+  getResolvedReminderContact(reminder) {
+    if (reminder?.contactId) {
+      const contact = this.getContact(reminder.contactId);
+      if (contact) return contact;
+    }
+
+    if (reminder?.phoneNumber) {
+      return this.findContactByPhone(reminder.phoneNumber) || null;
+    }
+
+    return null;
+  }
+
+  hydrateReminder(reminder) {
+    const contact = this.getResolvedReminderContact(reminder);
+    return {
+      ...reminder,
+      contactId: reminder.contactId || contact?.id || null,
+      contactName: contact?.name || reminder.contactName || null,
+      phoneNumber: contact?.phoneNumber || reminder.phoneNumber || null,
+    };
+  }
+
+  async normalizeReminderRelations() {
+    let hasChanges = false;
+
+    for (const reminder of this.reminders.values()) {
+      const contact = this.getResolvedReminderContact(reminder);
+      if (contact) {
+        if (String(reminder.contactId || "") !== String(contact.id)) {
+          reminder.contactId = String(contact.id);
+          hasChanges = true;
+        }
+        if (reminder.phoneNumber !== contact.phoneNumber) {
+          reminder.phoneNumber = contact.phoneNumber;
+          hasChanges = true;
+        }
+        if (reminder.contactName !== contact.name) {
+          reminder.contactName = contact.name;
+          hasChanges = true;
+        }
+      }
+    }
+
+    if (hasChanges) {
+      await this.saveReminders();
+    }
+  }
+
+  async addContact(payload) {
+    const name = sanitizeInput(payload.name);
+    const phoneNumber = normalizePhoneNumber(payload.phoneNumber);
+
+    if (!name) throw new Error("Nama kontak wajib diisi.");
+    if (!isValidPhoneNumber(phoneNumber)) throw new Error("Nomor kontak harus berformat 628xxx.");
+    if (this.hasContactPhone(phoneNumber)) throw new Error("Nomor kontak sudah digunakan.");
+
+    const contact = {
+      id: String(payload.id || generateId()),
+      name,
+      phoneNumber,
+      paymentStatus: payload.paymentStatus || PAYMENT_STATUS.UNPAID,
+      paymentDate: payload.paymentStatus === PAYMENT_STATUS.PAID ? new Date().toISOString() : null,
+      paymentMonths: payload.paymentMonths || {},
+    };
+
+    this.contacts.set(contact.id, contact);
+    await this.saveContacts();
+    return contact;
+  }
+
+  async updateContact(id, payload) {
+    const contact = this.getContact(id);
+    if (!contact) throw new Error("Kontak tidak ditemukan.");
+    const previousPhone = contact.phoneNumber;
+
+    const nextName = payload.name !== undefined ? sanitizeInput(payload.name) : contact.name;
+    const nextPhone = payload.phoneNumber !== undefined ? normalizePhoneNumber(payload.phoneNumber) : contact.phoneNumber;
+
+    if (!nextName) throw new Error("Nama kontak wajib diisi.");
+    if (!isValidPhoneNumber(nextPhone)) throw new Error("Nomor kontak harus berformat 628xxx.");
+    if (this.hasContactPhone(nextPhone, id)) throw new Error("Nomor kontak sudah digunakan.");
+
+    contact.name = nextName;
+    contact.phoneNumber = nextPhone;
+
+    for (const reminder of this.reminders.values()) {
+      if (String(reminder.contactId) === String(id) || reminder.phoneNumber === previousPhone) {
+        reminder.contactId = String(contact.id);
+        reminder.phoneNumber = contact.phoneNumber;
+        reminder.contactName = contact.name;
+      }
+    }
+
+    await Promise.all([this.saveContacts(), this.saveReminders()]);
+    return contact;
+  }
+
+  async deleteContact(id) {
+    const contact = this.getContact(id);
+    if (!contact) throw new Error("Kontak tidak ditemukan.");
+
+    this.contacts.delete(String(id));
+
+    const relatedReminderIds = Array.from(this.reminders.values())
+      .filter((reminder) => String(reminder.contactId) === String(contact.id) || reminder.phoneNumber === contact.phoneNumber)
+      .map((reminder) => String(reminder.id));
+
+    for (const reminderId of relatedReminderIds) {
+      this.reminders.delete(reminderId);
+    }
+
+    await Promise.all([this.saveContacts(), this.saveReminders()]);
+    return { deletedContact: contact, deletedReminders: relatedReminderIds.length };
+  }
+
+  async addReminder(payload) {
+    const contact = this.getContact(payload.contactId);
+    const message = sanitizeMultilineText(payload.message);
+    const reminderDate = payload.reminderDateTime instanceof Date
+      ? payload.reminderDateTime
+      : new Date(payload.reminderDateTime);
+
+    if (!contact) throw new Error("Contact reminder tidak ditemukan.");
+    if (!message) throw new Error("Isi reminder wajib diisi.");
+    if (Number.isNaN(reminderDate.getTime())) throw new Error("Tanggal reminder tidak valid.");
+
+    const reminder = {
+      id: String(payload.id || generateId()),
+      contactId: String(contact.id),
+      contactName: contact.name,
+      phoneNumber: contact.phoneNumber,
+      reminderDateTime: reminderDate.toISOString(),
+      message,
+      templateName: payload.templateName ? sanitizeInput(payload.templateName) : null,
+      createdAt: payload.createdAt || new Date().toISOString(),
+    };
+
+    this.reminders.set(reminder.id, reminder);
+    await this.saveReminders();
+    return this.hydrateReminder(reminder);
+  }
+
+  async updateReminder(id, payload) {
+    const reminder = this.getReminder(id);
+    if (!reminder) throw new Error("Reminder tidak ditemukan.");
+
+    if (payload.contactId !== undefined) {
+      const contact = this.getContact(payload.contactId);
+      if (!contact) throw new Error("Contact reminder tidak ditemukan.");
+      reminder.contactId = String(contact.id);
+      reminder.contactName = contact.name;
+      reminder.phoneNumber = contact.phoneNumber;
+    }
+
+    if (payload.message !== undefined) {
+      const message = sanitizeMultilineText(payload.message);
+      if (!message) throw new Error("Isi reminder wajib diisi.");
+      reminder.message = message;
+    }
+
+    if (payload.reminderDateTime !== undefined) {
+      const reminderDate = payload.reminderDateTime instanceof Date
+        ? payload.reminderDateTime
+        : new Date(payload.reminderDateTime);
+      if (Number.isNaN(reminderDate.getTime())) throw new Error("Tanggal reminder tidak valid.");
+      reminder.reminderDateTime = reminderDate.toISOString();
+    }
+
+    if (payload.templateName !== undefined) {
+      reminder.templateName = payload.templateName ? sanitizeInput(payload.templateName) : null;
+    }
+
+    await this.saveReminders();
+    return this.hydrateReminder(reminder);
+  }
+
+  async deleteReminder(id) {
+    const reminder = this.getReminder(id);
+    if (!reminder) throw new Error("Reminder tidak ditemukan.");
+    this.reminders.delete(String(id));
+    await this.saveReminders();
+    return reminder;
+  }
+
+  async moveToSent(id, extras = {}) {
+    const reminder = this.getReminder(id);
+    if (!reminder) return null;
+
+    const sentReminder = {
+      ...this.hydrateReminder(reminder),
+      sentAt: extras.sentAt || new Date().toISOString(),
+      deliveryStatus: extras.deliveryStatus || "SENT",
+    };
+
+    this.sentReminders.set(String(id), sentReminder);
+    this.reminders.delete(String(id));
+    await Promise.all([this.saveReminders(), this.saveSentReminders()]);
+    return sentReminder;
+  }
+
+  getAdminRecipients() {
+    return Array.from(this.roles.entries())
+      .filter(([, role]) => role === "admin")
+      .map(([phoneNumber]) => phoneNumber)
+      .sort();
+  }
+
+  async setAdminRecipients(numbers) {
+    this.roles = new Map();
+    for (const number of numbers) {
+      this.roles.set(number, "admin");
+    }
+    await this.saveRoles();
+    return this.getAdminRecipients();
+  }
+
+  getSettings() {
+    return { ...DEFAULT_SETTINGS, ...this.settings };
+  }
+
+  async updateSettings(payload) {
+    const current = this.getSettings();
+    this.settings = {
+      ...current,
+      dashboardTitle: payload.dashboardTitle !== undefined ? sanitizeInput(payload.dashboardTitle) || current.dashboardTitle : current.dashboardTitle,
+      companyName: payload.companyName !== undefined ? sanitizeInput(payload.companyName) || current.companyName : current.companyName,
+      supportSignature: payload.supportSignature !== undefined ? sanitizeInput(payload.supportSignature) || current.supportSignature : current.supportSignature,
+      timezone: payload.timezone !== undefined ? sanitizeInput(payload.timezone) || current.timezone : current.timezone,
+      autoRescheduleMonthly: payload.autoRescheduleMonthly !== undefined ? Boolean(payload.autoRescheduleMonthly) : current.autoRescheduleMonthly,
+      notifyAdminsOnDelivery: payload.notifyAdminsOnDelivery !== undefined ? Boolean(payload.notifyAdminsOnDelivery) : current.notifyAdminsOnDelivery,
+      notifyAdminsOnConnectionChange: payload.notifyAdminsOnConnectionChange !== undefined ? Boolean(payload.notifyAdminsOnConnectionChange) : current.notifyAdminsOnConnectionChange,
+      notifyAdminsOnPaymentReset: payload.notifyAdminsOnPaymentReset !== undefined ? Boolean(payload.notifyAdminsOnPaymentReset) : current.notifyAdminsOnPaymentReset,
+    };
+    await this.saveSettings();
+    return this.getSettings();
+  }
+
+  getContactsByStatus(status) {
+    return this.getSortedContacts().filter((contact) => contact.paymentStatus === status);
+  }
+
+  getPaymentsByMonth(year, month) {
+    return this.getSortedContacts().filter((contact) => {
+      if (!contact.paymentDate) return false;
+      const paidDate = new Date(contact.paymentDate);
+      return paidDate.getFullYear() === year && paidDate.getMonth() + 1 === month;
+    });
+  }
+
+  getAllPaymentsHistory() {
+    const history = {};
+    for (const contact of this.contacts.values()) {
+      if (!contact.paymentDate) continue;
+      const paidDate = new Date(contact.paymentDate);
+      const key = `${paidDate.getFullYear()}-${String(paidDate.getMonth() + 1).padStart(2, "0")}`;
+      if (!history[key]) {
+        history[key] = { contacts: [], total: 0 };
+      }
+      history[key].contacts.push(contact);
+      history[key].total += 1;
+    }
+    return history;
+  }
+
+  getPaymentMonthStatus(contactId) {
+    const contact = this.getContact(contactId);
+    return contact?.paymentMonths || {};
+  }
+
+  async updatePaymentStatus(contactId, status) {
+    const contact = this.getContact(contactId);
+    if (!contact) throw new Error("Kontak tidak ditemukan.");
+    if (![PAYMENT_STATUS.PAID, PAYMENT_STATUS.UNPAID].includes(status)) {
+      throw new Error("Status pembayaran tidak valid.");
+    }
+
     contact.paymentStatus = status;
     contact.paymentDate = status === PAYMENT_STATUS.PAID ? new Date().toISOString() : null;
     await this.saveContacts();
     return contact;
   }
 
-  getContactsByStatus(status) {
-    return Array.from(this.contacts.values())
-      .filter(c => c.paymentStatus === status)
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  getPaymentsByMonth(year, month) {
-    return Array.from(this.contacts.values())
-      .filter(c => {
-        if (!c.paymentDate) return false;
-        const paidDate = new Date(c.paymentDate);
-        return paidDate.getFullYear() === year && (paidDate.getMonth() + 1) === month;
-      })
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  getAllPaymentsHistory() {
-    const history = {};
-    const paymentMonths = this.getPaymentMonths();
-    for (const contact of this.contacts.values()) {
-      if (contact.paymentDate) {
-        const paidDate = new Date(contact.paymentDate);
-        const key = `${paidDate.getFullYear()}-${String(paidDate.getMonth() + 1).padStart(2, "0")}`;
-        if (!history[key]) {
-          history[key] = { contacts: [], total: 0 };
-        }
-        history[key].contacts.push(contact);
-        history[key].total++;
-      }
-    }
-    return history;
-  }
-
-  getPaymentMonths() {
-    return this.paymentMonths || {};
-  }
-
-  getPaymentMonthStatus(contactId) {
-    const contact = this.contacts.get(contactId);
-    if (!contact || !contact.paymentMonths) return {};
-    return contact.paymentMonths;
-  }
-
   async setPaymentForMonth(contactId, year, month, status) {
-    const contact = this.contacts.get(contactId);
-    if (!contact) return;
-    if (!contact.paymentMonths) contact.paymentMonths = {};
+    const contact = this.getContact(contactId);
+    if (!contact) throw new Error("Kontak tidak ditemukan.");
+    if (![PAYMENT_STATUS.PAID, PAYMENT_STATUS.UNPAID].includes(status)) {
+      throw new Error("Status pembayaran tidak valid.");
+    }
+
+    if (!contact.paymentMonths) {
+      contact.paymentMonths = {};
+    }
+
     const key = `${year}-${String(month).padStart(2, "0")}`;
     contact.paymentMonths[key] = {
-      status: status,
-      paidDate: status === PAYMENT_STATUS.PAID ? new Date().toISOString() : null
+      status,
+      paidDate: status === PAYMENT_STATUS.PAID ? new Date().toISOString() : null,
     };
+
     const now = new Date();
-    const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
     if (year === currentYear && month === currentMonth) {
       contact.paymentStatus = status;
       contact.paymentDate = status === PAYMENT_STATUS.PAID ? new Date().toISOString() : null;
     }
+
     await this.saveContacts();
     return contact;
   }
@@ -509,23 +851,21 @@ class DataManager {
     const prevYear = month === 1 ? year - 1 : year;
     const prevKey = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
     const currentKey = `${year}-${String(month).padStart(2, "0")}`;
-    
-    return Array.from(this.contacts.values()).filter(contact => {
-      const pm = contact.paymentMonths || {};
-      const prevStatus = pm[prevKey]?.status;
-      const currStatus = pm[currentKey]?.status;
-      const now = new Date();
-      const systemStartMonth = 4; // April 2026 - bulan sistem diimplementasikan
-      const systemStartYear = 2026;
-      
-      // Jika bulan sebelum sistem dimulai, dianggap LUNAS (tidak valid untuk perhitungan)
-      const isPrevBeforeSystem = prevYear < systemStartYear || (prevYear === systemStartYear && prevMonth < systemStartMonth);
-      if (isPrevBeforeSystem) return false;
-      
-      // Untuk bulan saat sistem dimulai dan setelahnya
-      const isPrevUnpaid = !prevStatus || prevStatus !== PAYMENT_STATUS.PAID;
-      const isCurrUnpaid = !currStatus || currStatus !== PAYMENT_STATUS.PAID;
-      return isPrevUnpaid || isCurrUnpaid;
+    const systemStartYear = 2026;
+    const systemStartMonth = 4;
+
+    return this.getSortedContacts().filter((contact) => {
+      const paymentMonths = contact.paymentMonths || {};
+      const prevStatus = paymentMonths[prevKey]?.status;
+      const currStatus = paymentMonths[currentKey]?.status;
+      const prevBeforeSystem = prevYear < systemStartYear
+        || (prevYear === systemStartYear && prevMonth < systemStartMonth);
+
+      if (prevBeforeSystem) {
+        return currStatus !== PAYMENT_STATUS.PAID;
+      }
+
+      return prevStatus !== PAYMENT_STATUS.PAID || currStatus !== PAYMENT_STATUS.PAID;
     });
   }
 
@@ -535,104 +875,103 @@ class DataManager {
       if (contact.paymentStatus === PAYMENT_STATUS.PAID) {
         contact.paymentStatus = PAYMENT_STATUS.UNPAID;
         contact.paymentDate = null;
-        resetCount++;
+        resetCount += 1;
       }
     }
+
     if (resetCount > 0) {
       await this.saveContacts();
-      console.log(`🔄 Reset payment status for ${resetCount} contacts to UNPAID`);
     }
+
     return resetCount;
   }
 }
 
-// ==================== SESSION MANAGER ====================
-class SessionManager {
-  constructor() {
-    this.sessions = new Map();
-  }
-
-  createSession(sender, data) {
-    this.sessions.set(sender, {
-      ...structuredClone(data),
-      lastActivity: Date.now(),
-    });
-  }
-
-  getSession(sender) {
-    const session = this.sessions.get(sender);
-    if (session) session.lastActivity = Date.now();
-    return session;
-  }
-
-  deleteSession(sender) {
-    this.sessions.delete(sender);
-  }
-
-  cleanupStaleSessions() {
-    const now = Date.now();
-    for (const [sender, session] of this.sessions.entries()) {
-      if (now - session.lastActivity > CONFIG.SESSION_TIMEOUT) {
-        this.sessions.delete(sender);
-        console.log(`🧹 Cleaned up stale session for ${sender}`);
-      }
-    }
-  }
-}
-
-// ==================== TEMPLATE MANAGER ====================
 class TemplateManager {
-  constructor() {
-    this.cache = null;
-    this.cacheTime = 0;
-    this.CACHE_TTL = 60000; // 1 menit
+  constructor(activityLog) {
+    this.activityLog = activityLog;
   }
 
-  async loadTemplates() {
-    const now = Date.now();
-    if (this.cache && now - this.cacheTime < this.CACHE_TTL) {
-      return this.cache;
+  sanitizeFileName(name) {
+    const clean = sanitizeInput(name).replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-");
+    if (!clean) {
+      throw new Error("Nama template wajib diisi.");
+    }
+    return clean.endsWith(".txt") ? clean : `${clean}.txt`;
+  }
+
+  getTemplatePath(name) {
+    return path.join(CONFIG.TEMPLATE_PATH, this.sanitizeFileName(name));
+  }
+
+  async listTemplates() {
+    const files = await fs.readdir(CONFIG.TEMPLATE_PATH).catch(() => []);
+    const templates = [];
+
+    for (const file of files.sort()) {
+      const fullPath = path.join(CONFIG.TEMPLATE_PATH, file);
+      try {
+        const content = await fs.readFile(fullPath, "utf-8");
+        templates.push({
+          name: file,
+          content,
+          updatedAt: (await fs.stat(fullPath)).mtime.toISOString(),
+        });
+      } catch (error) {
+        this.activityLog.push("error", "templates", `Failed to load template ${file}`, { error: error.message });
+      }
     }
 
-    try {
-      const files = await fs.readdir(CONFIG.TEMPLATE_PATH);
-      const templates = [];
-      for (const file of files) {
-        try {
-          const content = await fs.readFile(path.join(CONFIG.TEMPLATE_PATH, file), 'utf-8');
-          templates.push({
-            name: file.replace(/^\d+_/, '').replace('.txt', ''),
-            content,
-          });
-        } catch (error) {
-          console.error(`❌ Error loading template ${file}:`, error.message);
-        }
-      }
-      this.cache = templates;
-      this.cacheTime = now;
-      return templates;
-    } catch (error) {
-      console.error("❌ Error loading templates:", error.message);
-      return [];
+    return templates;
+  }
+
+  async createTemplate(name, content) {
+    const fileName = this.sanitizeFileName(name);
+    const templatePath = path.join(CONFIG.TEMPLATE_PATH, fileName);
+
+    if (fsSync.existsSync(templatePath)) {
+      throw new Error("Template dengan nama tersebut sudah ada.");
     }
+
+    const safeContent = sanitizeMultilineText(content);
+    await fs.writeFile(templatePath, safeContent);
+    return { name: fileName, content: safeContent };
+  }
+
+  async updateTemplate(name, content) {
+    const templatePath = this.getTemplatePath(name);
+    if (!fsSync.existsSync(templatePath)) {
+      throw new Error("Template tidak ditemukan.");
+    }
+
+    const safeContent = sanitizeMultilineText(content);
+    await fs.writeFile(templatePath, safeContent);
+    return { name: path.basename(templatePath), content: safeContent };
+  }
+
+  async deleteTemplate(name) {
+    const templatePath = this.getTemplatePath(name);
+    if (!fsSync.existsSync(templatePath)) {
+      throw new Error("Template tidak ditemukan.");
+    }
+    await fs.unlink(templatePath);
+    return path.basename(templatePath);
   }
 
   applyTemplate(template, variables) {
-    let message = template;
+    let message = String(template || "");
     for (const [key, value] of Object.entries(variables)) {
-      const sanitizedValue = typeof value === 'string' ? value.replace(/[*_`~]/g, '\\$&') : value;
-      message = message.replace(new RegExp(`{{${key}}}`, 'gi'), sanitizedValue);
+      const safeValue = typeof value === "string" ? value.replace(/[*_`~]/g, "\\$&") : String(value);
+      message = message.replace(new RegExp(`{{${key}}}`, "gi"), safeValue);
     }
     return message;
   }
 }
 
-// ==================== WHATSAPP CLIENT ====================
-class WhatsAppClient {
-  constructor(dataManager, sessionManager, templateManager) {
+class NotificationBot {
+  constructor(dataManager, activityLog) {
     this.dataManager = dataManager;
-    this.sessionManager = sessionManager;
-    this.templateManager = templateManager;
+    this.activityLog = activityLog;
     this.client = null;
     this.currentQR = null;
     this.isReady = false;
@@ -641,86 +980,6 @@ class WhatsAppClient {
     this.lastReconnectTime = null;
     this.reconnectTimer = null;
     this.keepAliveTimer = null;
-  }
-
-  getCommandHandlers() {
-    return {
-      "!addreminder": this.handleAddReminder,
-      "!editreminder": this.handleEditReminder,
-      "!deletereminder": this.handleDeleteReminder,
-      "!listreminder": this.handleListReminder,
-      "!addkontak": this.handleAddContact,
-      "!editkontak": this.handleEditContact,
-      "!deletekontak": this.handleDeleteContact,
-      "!listkontak": this.handleListContact,
-      "!bayar": this.handleBayar,
-      "!statusbayar": this.handleStatusBayar,
-      "!laporan": this.handleLaporan,
-      "!tunggakan": this.handleTunggakan,
-      "!riwayattagihan": this.handleRiwayatTagihan,
-      "!help": this.sendHelp,
-      "!menu": this.sendHelp,
-    };
-  }
-
-  getSessionHandlers() {
-    return {
-      [SESSION_STEPS.ADD_REMINDER_CONTACT]: this.handleAddReminderStep1,
-      [SESSION_STEPS.ADD_REMINDER_TEMPLATE]: this.handleAddReminderStep2,
-      [SESSION_STEPS.ADD_REMINDER_CUSTOM]: this.handleAddReminderStep3,
-      [SESSION_STEPS.ADD_REMINDER_DATE]: this.handleAddReminderStep4,
-      [SESSION_STEPS.EDIT_REMINDER_SELECT]: this.handleEditReminderSelect,
-      [SESSION_STEPS.EDIT_REMINDER_DATE]: this.handleEditReminderDate,
-      [SESSION_STEPS.EDIT_REMINDER_MESSAGE]: this.handleEditReminderMessageOption,
-      [SESSION_STEPS.EDIT_REMINDER_TEMPLATE]: this.handleEditReminderTemplate,
-      [SESSION_STEPS.EDIT_REMINDER_CUSTOM]: this.handleEditReminderCustom,
-      [SESSION_STEPS.DELETE_REMINDER_SELECT]: this.handleDeleteReminderSelect,
-      [SESSION_STEPS.ADD_CONTACT_NAME]: this.handleAddContactName,
-      [SESSION_STEPS.ADD_CONTACT_NUMBER]: this.handleAddContactNumber,
-      [SESSION_STEPS.EDIT_CONTACT_SELECT]: this.handleEditContactSelect,
-      [SESSION_STEPS.EDIT_CONTACT_NAME]: this.handleEditContactName,
-      [SESSION_STEPS.EDIT_CONTACT_NUMBER]: this.handleEditContactNumber,
-      [SESSION_STEPS.DELETE_CONTACT_SELECT]: this.handleDeleteContactSelect,
-      [SESSION_STEPS.BAYAR_SELECT]: this.handleBayarSelect,
-      [SESSION_STEPS.BAYAR_CONFIRM_ARREARS]: this.handleBayarConfirmArrears,
-    };
-  }
-
-  parseListSelection(body, items) {
-    const index = parseSelectionIndex(body);
-    if (index === null) return null;
-    return items[index] || null;
-  }
-
-  formatReminderDisplay(reminder, index, withMessage = false) {
-    const kontak = this.dataManager.findContactByPhone(reminder.phoneNumber);
-    const nama = kontak ? kontak.name : reminder.phoneNumber;
-    const waktu = formatDateTime(new Date(reminder.reminderDateTime));
-
-    if (!withMessage) {
-return `${index + 1}. ${nama} | ${waktu}`;
-    }
-
-    return `${index + 1}. ${nama} - ${waktu} WIB\n   💬 ${reminder.message}`;
-  }
-
-  formatContactDisplay(contact, index, multiline = false) {
-    const status = contact.paymentStatus || PAYMENT_STATUS.UNPAID;
-    const label = getPaymentLabel(status);
-    const emoji = getPaymentEmoji(status);
-    if (multiline) {
-      return `${index + 1}. ${contact.name}\n   📞 ${contact.phoneNumber}\n   ${emoji} ${label}`;
-    }
-
-    return `${index + 1}. ${contact.name} | ${contact.phoneNumber} | ${emoji} ${label}`;
-  }
-
-  createSession(sender, data) {
-    this.sessionManager.createSession(sender, data);
-  }
-
-  clearSession(sender) {
-    this.sessionManager.deleteSession(sender);
   }
 
   createClient() {
@@ -747,11 +1006,7 @@ return `${index + 1}. ${nama} | ${waktu}`;
 
     if (executablePath) {
       puppeteerOptions.executablePath = executablePath;
-      console.log(`Using Chrome executable: ${executablePath}`);
-    } else {
-      console.warn(
-        "No system Chrome/Chromium found; Puppeteer will use its bundled browser"
-      );
+      this.activityLog.push("info", "whatsapp", `Using Chrome executable ${executablePath}`);
     }
 
     return new Client({
@@ -759,15 +1014,26 @@ return `${index + 1}. ${nama} | ${waktu}`;
       puppeteer: puppeteerOptions,
       webVersionCache: {
         type: "remote",
-        remotePath:
-          "https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1033090211-alpha.html",
+        remotePath: "https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1033090211-alpha.html",
       },
     });
   }
 
+  async initialize() {
+    if (this.client) {
+      try {
+        await this.client.destroy();
+      } catch {}
+    }
+
+    this.client = this.createClient();
+    this.setupEvents();
+    await this.client.initialize();
+    this.activityLog.push("info", "whatsapp", "WhatsApp client initialization started");
+  }
+
   setupEvents() {
     if (!this.client) return;
-
     this.client.removeAllListeners();
 
     this.client.on("qr", (qr) => {
@@ -775,591 +1041,163 @@ return `${index + 1}. ${nama} | ${waktu}`;
       this.isReady = false;
       this.reconnectAttempts = 0;
       this.isReconnecting = false;
-      console.log("📲 QR code generated");
+      this.activityLog.push("info", "whatsapp", "QR code generated");
       qrcode.generate(qr, { small: true });
     });
 
     this.client.on("authenticated", () => {
-      console.log("🔐 WhatsApp authenticated");
+      this.activityLog.push("info", "whatsapp", "WhatsApp authenticated");
       this.reconnectAttempts = 0;
       this.isReconnecting = false;
     });
 
-    this.client.on("auth_failure", (msg) => {
-      console.error("❌ Auth failure:", msg);
+    this.client.on("auth_failure", async (message) => {
       this.isReady = false;
+      this.activityLog.push("error", "whatsapp", "Authentication failed", { message });
+      await this.notifyAdminsIfEnabled("Perubahan status bot", `Autentikasi WhatsApp gagal.\n\nDetail:\n${message}`);
       this.scheduleReconnect();
     });
 
-    this.client.on("ready", () => {
-      console.log("✅ WhatsApp ready");
+    this.client.on("ready", async () => {
       this.isReady = true;
       this.currentQR = null;
       this.reconnectAttempts = 0;
       this.isReconnecting = false;
       this.lastReconnectTime = null;
+      this.activityLog.push("info", "whatsapp", "WhatsApp ready");
+      await this.notifyAdminsIfEnabled(
+        "Bot kembali online",
+        "Transport WhatsApp siap mengirim notifikasi dari dashboard dan scheduler."
+      );
     });
 
-    this.client.on("change_state", (state) => {
-      console.log("📡 WA STATE:", state);
+    this.client.on("change_state", async (state) => {
+      this.activityLog.push("info", "whatsapp", `WA state changed to ${state}`);
       if (state === "CONNECTED") {
         this.isReady = true;
         this.reconnectAttempts = 0;
         this.isReconnecting = false;
-      }
-      if (["DISCONNECTED", "CONFLICT"].includes(state)) {
-        this.isReady = false;
-        this.scheduleReconnect();
-      }
-    });
-
-    this.client.on("disconnected", (reason) => {
-      console.log("❌ WhatsApp disconnected:", reason);
-      this.isReady = false;
-      this.currentQR = null;
-      if (["UNAUTHORIZED", "CONFLICT"].includes(reason)) {
-        const sessionPath = path.join(CONFIG.DB_PATH, ".wwebjs_auth");
-        fs.rm(sessionPath, { recursive: true, force: true }).catch(() => {});
-      }
-      this.scheduleReconnect();
-    });
-
-    this.client.on("error", (error) => {
-      console.error("❌ WhatsApp error:", error.message);
-      if (!this.isReady && !this.isReconnecting) {
-        this.scheduleReconnect();
-      }
-    });
-
-    this.client.on("message", this.handleMessage.bind(this));
-  }
-
-  async handleMessage(msg) {
-    if (msg.from === 'status@broadcast') return;
-
-    const sender = msg.from;
-    const body = msg.body.trim();
-    const session = this.sessionManager.getSession(sender);
-
-    try {
-      if (body === "!cancel") {
-        if (session) {
-          this.clearSession(sender);
-          return msg.reply("✅ Sesi saat ini dibatalkan.");
-        }
-        return msg.reply("❌ Tidak ada sesi yang aktif.");
-      }
-
-      if (!this.dataManager.isAdmin(sender) && !ALLOWED_NON_ADMIN_COMMANDS.has(body)) {
         return;
       }
 
-      const commandHandler = this.getCommandHandlers()[body];
-      if (commandHandler) {
-        return commandHandler.call(this, msg, sender);
-      }
-
-      if (body.startsWith("!setadmin ")) return this.handleSetAdmin(msg, sender, body);
-
-      if (session) {
-        const sessionHandler = this.getSessionHandlers()[session.step];
-        if (sessionHandler) {
-          return sessionHandler.call(this, msg, sender, body, session);
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error in message handler:', error);
-      msg.reply("❌ Terjadi error internal. Silakan coba lagi.");
-    }
-  }
-
-  // ========== REMINDER HANDLERS ==========
-  async handleAddReminder(msg, sender) {
-    const contacts = this.dataManager.getSortedContacts();
-    if (contacts.length === 0) {
-      return msg.reply("📭 Tidak ada kontak. Tambahkan kontak dulu dengan !addkontak.");
-    }
-    const list = contacts.map((c, i) => `${i + 1}. ${c.name}`).join("\n");
-    this.createSession(sender, { step: SESSION_STEPS.ADD_REMINDER_CONTACT, contactList: contacts });
-    msg.reply(`📇 Kontak tersedia:\n${list}\n\nKetik nomor kontak:`);
-  }
-
-  async handleAddReminderStep1(msg, sender, body, session) {
-    const index = parseSelectionIndex(body);
-    if (index === null) return msg.reply("❌ Nomor kontak tidak valid.");
-    const contact = index === null ? null : session.contactList[index];
-    if (!contact) return msg.reply("❌ Nomor kontak tidak valid.");
-
-    const templates = await this.templateManager.loadTemplates();
-    const list = templates.map((t, i) => `${i + 1}. ${t.name}`).join("\n");
-    this.createSession(sender, {
-      step: SESSION_STEPS.ADD_REMINDER_TEMPLATE,
-      kontak: contact,
-      templateOptions: templates,
-    });
-    msg.reply(`📄 Pilih Template atau Custom:\n${list}\n${templates.length + 1}. ✏️ Ketik manual (Custom)\n\nKetik angka pilihan:`);
-  }
-
-  async handleAddReminderStep2(msg, sender, body, session) {
-    const idx = Number.parseInt(body, 10);
-    if (Number.isNaN(idx)) return msg.reply("❌ Pilihan tidak valid.");
-    const templates = session.templateOptions;
-    if (idx >= 1 && idx <= templates.length) {
-      session.template = templates[idx - 1].content;
-      this.createSession(sender, { ...session, step: SESSION_STEPS.ADD_REMINDER_DATE });
-      return msg.reply("📅 Ketik tanggal & jam (format: YYYY-MM-DD HH:mm):");
-    }
-    if (idx === templates.length + 1) {
-      this.createSession(sender, { ...session, step: SESSION_STEPS.ADD_REMINDER_CUSTOM });
-      return msg.reply("✏️ Ketik pesan custom Anda:");
-    }
-    msg.reply("❌ Pilihan tidak valid.");
-  }
-
-  async handleAddReminderStep3(msg, sender, body, session) {
-    session.template = body;
-    this.createSession(sender, { ...session, step: SESSION_STEPS.ADD_REMINDER_DATE });
-    msg.reply("📅 Ketik tanggal & jam (format: YYYY-MM-DD HH:mm):");
-  }
-
-  async handleAddReminderStep4(msg, sender, body, session) {
-    const parsed = parseDateTimeInput(body);
-    if (!parsed) return msg.reply("❌ Format waktu salah. Gunakan YYYY-MM-DD HH:mm.");
-
-    const { tanggal, jam, date: dt } = parsed;
-    if (dt.getTime() <= Date.now()) {
-      return msg.reply("❌ Waktu reminder harus di masa depan.");
-    }
-
-    const bulan = dt.toLocaleString("id-ID", { month: "long" });
-    const { kontak, template } = session;
-    const finalMessage = this.templateManager.applyTemplate(template, {
-      nama: kontak.name,
-      tanggal,
-      bulan,
-    });
-
-    const reminder = {
-      id: generateId(),
-      phoneNumber: kontak.phoneNumber,
-      reminderDateTime: dt,
-      message: finalMessage,
-    };
-
-    await this.dataManager.addReminder(reminder);
-    this.clearSession(sender);
-    msg.reply(`✅ Reminder disimpan untuk ${kontak.name} pada ${tanggal} ${jam}`);
-  }
-
-  async handleEditReminder(msg, sender) {
-    const sorted = this.dataManager.getSortedReminders();
-    if (sorted.length === 0) return msg.reply("📭 Tidak ada reminder.");
-
-    const list = sorted.map((r, i) => this.formatReminderDisplay(r, i)).join("\n");
-
-    this.createSession(sender, { step: SESSION_STEPS.EDIT_REMINDER_SELECT, list: sorted });
-    msg.reply(`✏️ Pilih reminder yang ingin diedit:\n${list}\n\nKetik nomor:`);
-  }
-
-  async handleEditReminderSelect(msg, sender, body, session) {
-    const index = parseSelectionIndex(body);
-    if (index === null) return msg.reply("❌ Nomor tidak valid.");
-    const selected = index === null ? null : session.list[index];
-    if (!selected) return msg.reply("❌ Nomor tidak valid.");
-
-    this.createSession(sender, {
-      ...session,
-      selectedReminder: selected,
-      step: SESSION_STEPS.EDIT_REMINDER_DATE,
-    });
-    msg.reply("📅 Masukkan tanggal & jam baru (format: YYYY-MM-DD HH:mm):");
-  }
-
-  async handleEditReminderDate(msg, sender, body, session) {
-    const parsed = parseDateTimeInput(body);
-    if (!parsed) return msg.reply("❌ Format waktu salah. Gunakan YYYY-MM-DD HH:mm.");
-
-    const { date: dt } = parsed;
-    if (dt.getTime() <= Date.now()) {
-      return msg.reply("❌ Waktu reminder harus di masa depan.");
-    }
-
-    session.newDate = dt;
-    this.createSession(sender, { ...session, step: SESSION_STEPS.EDIT_REMINDER_MESSAGE });
-    msg.reply("📩 Ganti isi pesan?\n1. Pakai template\n2. Ketik manual\n3. Tidak usah ganti\n\nKetik 1 / 2 / 3:");
-  }
-
-  async handleEditReminderMessageOption(msg, sender, body, session) {
-    const option = body;
-    if (option === '1') {
-      const templates = await this.templateManager.loadTemplates();
-      const list = templates.map((t, i) => `${i + 1}. ${t.name}`).join("\n");
-      this.createSession(sender, { ...session, step: SESSION_STEPS.EDIT_REMINDER_TEMPLATE, templateOptions: templates });
-      return msg.reply(`📄 Pilih Template:\n${list}\n\nKetik nomor:`);
-    }
-    if (option === '2') {
-      this.createSession(sender, { ...session, step: SESSION_STEPS.EDIT_REMINDER_CUSTOM });
-      return msg.reply("✏️ Ketik pesan baru:");
-    }
-    if (option === '3') {
-      await this.updateReminder(msg, session.selectedReminder, session.newDate, null, sender);
-    } else {
-      msg.reply("❌ Pilih 1 / 2 / 3.");
-    }
-  }
-
-  async handleEditReminderTemplate(msg, sender, body, session) {
-    const idx = parseSelectionIndex(body);
-    if (idx === null) return msg.reply("❌ Template tidak valid.");
-    const template = session.templateOptions[idx];
-    if (!template) return msg.reply("❌ Template tidak valid.");
-
-    const reminder = session.selectedReminder;
-    const kontak = this.dataManager.findContactByPhone(reminder.phoneNumber);
-    const tanggal = formatDate(session.newDate);
-    const bulan = session.newDate.toLocaleString("id-ID", { month: "long" });
-    const newMessage = this.templateManager.applyTemplate(template.content, {
-      nama: kontak?.name || reminder.phoneNumber,
-      tanggal,
-      bulan,
-    });
-
-    await this.updateReminder(msg, reminder, session.newDate, newMessage, sender);
-  }
-
-  async handleEditReminderCustom(msg, sender, body, session) {
-    const reminder = session.selectedReminder;
-    const kontak = this.dataManager.findContactByPhone(reminder.phoneNumber);
-    const tanggal = formatDate(session.newDate);
-    const bulan = session.newDate.toLocaleString("id-ID", { month: "long" });
-    const newMessage = this.templateManager.applyTemplate(body, {
-      nama: kontak?.name || reminder.phoneNumber,
-      tanggal,
-      bulan,
-    });
-
-    await this.updateReminder(msg, reminder, session.newDate, newMessage, sender);
-  }
-
-  async updateReminder(msg, reminder, newDate, newMessage, sender) {
-    reminder.reminderDateTime = newDate;
-    if (newMessage) reminder.message = newMessage;
-    await this.dataManager.updateReminder(reminder.id, reminder);
-    this.clearSession(sender);
-    msg.reply(`✅ Reminder berhasil diperbarui ke ${formatDateTime(newDate)}`);
-  }
-
-  async handleDeleteReminder(msg, sender) {
-    const sorted = this.dataManager.getSortedReminders();
-    if (sorted.length === 0) return msg.reply("📭 Tidak ada reminder.");
-
-    const list = sorted.map((r, i) => this.formatReminderDisplay(r, i)).join("\n");
-
-    this.createSession(sender, { step: SESSION_STEPS.DELETE_REMINDER_SELECT, list: sorted });
-    msg.reply(`🗑️ Reminder yang tersedia:\n${list}\n\nKetik nomor reminder yang ingin dihapus:`);
-  }
-
-  async handleDeleteReminderSelect(msg, sender, body, session) {
-    const index = parseSelectionIndex(body);
-    if (index === null) return msg.reply("❌ Nomor tidak valid.");
-    const selected = index === null ? null : session.list[index];
-    if (!selected) return msg.reply("❌ Nomor tidak valid.");
-
-    await this.dataManager.deleteReminder(selected.id);
-    this.clearSession(sender);
-    msg.reply(`✅ Reminder berhasil dihapus.`);
-  }
-
-  async handleListReminder(msg) {
-    const sorted = this.dataManager.getSortedReminders();
-    if (sorted.length === 0) return msg.reply("📭 Belum ada reminder.");
-
-    const list = sorted.map((r, i) => {
-      const kontak = this.dataManager.findContactByPhone(r.phoneNumber);
-      const nama = kontak ? kontak.name : r.phoneNumber;
-      const waktu = formatDateTime(new Date(r.reminderDateTime));
-      return `${i + 1}. ${nama} - ${waktu} WIB\n   💬 ${r.message}`;
-    }).join("\n\n");
-
-    msg.reply(`📌 Reminder Aktif:\n\n${list}`);
-  }
-
-  // ========== CONTACT HANDLERS ==========
-  async handleAddContact(msg, sender) {
-    this.createSession(sender, { step: SESSION_STEPS.ADD_CONTACT_NAME });
-    msg.reply("📝 Masukkan nama kontak:");
-  }
-
-  async handleAddContactName(msg, sender, body, session) {
-    this.createSession(sender, { ...structuredClone(session), nama: body, step: SESSION_STEPS.ADD_CONTACT_NUMBER });
-    msg.reply("📞 Masukkan nomor HP (format 628xxx):");
-  }
-
-  async handleAddContactNumber(msg, sender, body, session) {
-    const nomor = normalizePhoneNumber(body);
-    if (!isValidPhoneNumber(nomor)) return msg.reply("❌ Nomor tidak valid!");
-    if (this.dataManager.hasContactPhone(nomor)) {
-return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
-    }
-
-    const newContact = {
-      id: generateId(),
-      name: session.nama,
-      phoneNumber: nomor,
-      paymentStatus: PAYMENT_STATUS.UNPAID,
-    };
-    await this.dataManager.addContact(newContact);
-    this.clearSession(sender);
-    msg.reply(`✅ Kontak berhasil ditambahkan:\n${newContact.name} | ${newContact.phoneNumber}\n⏳ Status: Belum Dibayar`);
-  }
-
-  async handleEditContact(msg, sender) {
-    const contacts = this.dataManager.getSortedContacts();
-    if (contacts.length === 0) return msg.reply("📭 Tidak ada kontak.");
-
-    const list = contacts.map((c, i) => this.formatContactDisplay(c, i)).join("\n");
-    this.createSession(sender, { step: SESSION_STEPS.EDIT_CONTACT_SELECT, list: contacts });
-    msg.reply(`✏️ Kontak tersedia:\n${list}\n\nKetik nomor kontak yang ingin diedit:`);
-  }
-
-  async handleEditContactSelect(msg, sender, body, session) {
-    const index = parseSelectionIndex(body);
-    if (index === null) return msg.reply("❌ Nomor tidak valid.");
-    const selected = index === null ? null : session.list[index];
-    if (!selected) return msg.reply("❌ Nomor tidak valid.");
-
-    this.createSession(sender, {
-      ...session,
-      kontak: selected,
-      step: SESSION_STEPS.EDIT_CONTACT_NAME,
-    });
-    msg.reply(`✏️ Nama saat ini: ${selected.name}\nMasukkan nama baru:`);
-  }
-
-  async handleEditContactName(msg, sender, body, session) {
-    this.createSession(sender, { ...structuredClone(session), newName: body, step: SESSION_STEPS.EDIT_CONTACT_NUMBER });
-    msg.reply("📞 Masukkan nomor HP baru (format: 628xxx):");
-  }
-
-  async handleEditContactNumber(msg, sender, body, session) {
-    const nomor = normalizePhoneNumber(body);
-    if (!isValidPhoneNumber(nomor)) return msg.reply("❌ Nomor tidak valid!");
-    if (this.dataManager.hasContactPhone(nomor, session.kontak.id)) {
-      return msg.reply("❌ Nomor ini sudah dipakai kontak lain.");
-    }
-
-    const kontak = session.kontak;
-    kontak.name = session.newName;
-    kontak.phoneNumber = nomor;
-    await this.dataManager.updateContact(kontak.id, kontak);
-    this.clearSession(sender);
-    msg.reply(`✅ Kontak berhasil diperbarui:\n${kontak.name} | ${kontak.phoneNumber}`);
-  }
-
-  async handleDeleteContact(msg, sender) {
-    const contacts = this.dataManager.getSortedContacts();
-    if (contacts.length === 0) return msg.reply("📭 Tidak ada kontak.");
-
-    const list = contacts.map((c, i) => this.formatContactDisplay(c, i)).join("\n");
-    this.createSession(sender, { step: SESSION_STEPS.DELETE_CONTACT_SELECT, list: contacts });
-    msg.reply(`🗑️ Kontak tersedia:\n${list}\n\nKetik nomor kontak yang ingin dihapus:`);
-  }
-
-  async handleDeleteContactSelect(msg, sender, body, session) {
-    const index = parseSelectionIndex(body);
-    if (index === null) return msg.reply("❌ Nomor tidak valid.");
-    const selected = index === null ? null : session.list[index];
-    if (!selected) return msg.reply("❌ Nomor tidak valid.");
-
-    await this.dataManager.deleteContact(selected.id);
-    this.clearSession(sender);
-    msg.reply(`✅ Kontak '${selected.name}' berhasil dihapus.`);
-  }
-
-  async handleListContact(msg) {
-    const contacts = this.dataManager.getSortedContacts();
-    if (contacts.length === 0) return msg.reply("📭 Belum ada kontak.");
-
-    const list = contacts.map((c, i) => this.formatContactDisplay(c, i, true)).join("\n\n");
-    msg.reply(`📇 Daftar Kontak:\n\n${list}`);
-  }
-
-  async handleBayar(msg, sender) {
-    const contacts = this.dataManager.getSortedContacts();
-    if (contacts.length === 0) return msg.reply("📭 Tidak ada kontak.");
-
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
-    const currKey = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
-
-    const contactsWithArrears = contacts.filter(c => {
-      const pm = c.paymentMonths || {};
-      const currPaid = pm[currKey]?.status === PAYMENT_STATUS.PAID;
-      return !currPaid;
-    });
-
-    if (contactsWithArrears.length === 0) return msg.reply("✅ Semua kontak sudah lunas bulan ini!");
-
-    const list = contactsWithArrears.map((c, i) => {
-      const arrears = this.getArrearsForContact(c);
-      const badge = arrears.length > 0 ? ` (⚠️${arrears.length} tunggakan)` : '';
-      return `${i + 1}. ${c.name}${badge} | ${c.phoneNumber}`;
-    }).join("\n");
-
-    this.createSession(sender, { step: SESSION_STEPS.BAYAR_SELECT, contactList: contactsWithArrears });
-    msg.reply(`💳 Pilih kontak yang sudah BAYAR:\n${list}\n\nKetik nomor:\n\n💡 Tanda (⚠️n) = memiliki n bulan tunggakan`);
-  }
-
-  async handleBayarSelect(msg, sender, body, session) {
-    const index = parseSelectionIndex(body);
-    if (index === null) return msg.reply("❌ Nomor tidak valid.");
-    const contact = session.contactList[index];
-    if (!contact) return msg.reply("❌ Nomor tidak valid.");
-    if (contact.paymentStatus === PAYMENT_STATUS.PAID) {
-      return msg.reply("❌ Kontak ini sudah lunas.");
-    }
-
-    const arrears = this.getArrearsForContact(contact);
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
-    const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-
-    if (arrears.length > 0) {
-      const arrearsText = arrears.map(a => 
-        `  - ${a.monthName} ${a.year}`
-      ).join("\n");
-
-      this.createSession(sender, { 
-        step: SESSION_STEPS.BAYAR_CONFIRM_ARREARS,
-        contact: contact,
-        arrears: arrears
-      });
-
-      return msg.reply(
-        `⚠️ *KONFIRMASI PEMBAYARAN*\n\n` +
-        `${contact.name} memiliki tunggakan:\n${arrearsText}\n\n` +
-        `Pembayaran saat ini akan dialokasikan ke tunggakan TERTAUA dulu.\n\n` +
-        `Pilih:\n1. Bayar tunggakan saja\n2. Bayar tunggakan + bulan ini\n3. Bayar bulan ini saja (tunggakan tetap ada)\n\nKetik 1/2/3:`
-      );
-    }
-
-    await this.dataManager.setPaymentForMonth(contact.id, currentYear, currentMonth, PAYMENT_STATUS.PAID);
-    this.clearSession(sender);
-
-    const contactUpdated = this.dataManager.contacts.get(contact.id);
-    const transactionId = `TRX-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
-    await this.sendPaymentNotification(contactUpdated, transactionId);
-    msg.reply(`✅ Status pembayaran ${contact.name} diperbarui menjadi *Sudah Dibayar*.\n\nID Transaksi: ${transactionId}\n\nNotifikasi dikirim ke ${contact.phoneNumber}.`);
-  }
-
-  getArrearsForContact(contact) {
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
-    const pm = contact.paymentMonths || {};
-    const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", 
-                        "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-
-    const systemStartMonth = 4; // April 2026
-    const systemStartYear = 2026;
-
-    const arrears = [];
-    for (let i = systemStartMonth; i < currentMonth; i++) {
-      const key = `${currentYear}-${String(i).padStart(2, "0")}`;
-      if (pm[key]?.status !== PAYMENT_STATUS.PAID) {
-        arrears.push({
-          key,
-          month: i,
-          monthName: monthNames[i],
-          year: currentYear
-        });
-      }
-    }
-    return arrears.sort((a, b) => a.month - b.month);
-  }
-
-  async handleBayarConfirmArrears(msg, sender, body, session) {
-    const choice = body.trim();
-    const { contact, arrears } = session;
-    
-    if (!['1', '2', '3'].includes(choice)) {
-      return msg.reply("❌ Pilih 1, 2, atau 3.");
-    }
-    
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
-    const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", 
-                        "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-    const currentMonthName = monthNames[currentMonth];
-    const transactionId = `TRX-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
-
-    if (choice === '1') {
-      for (const monthData of arrears) {
-        const [year, month] = monthData.key.split('-');
-        await this.dataManager.setPaymentForMonth(
-          contact.id, 
-          parseInt(year), 
-          parseInt(month), 
-          PAYMENT_STATUS.PAID
+      if (["DISCONNECTED", "CONFLICT"].includes(state)) {
+        this.isReady = false;
+        await this.notifyAdminsIfEnabled(
+          "Transport WA terganggu",
+          `State WhatsApp berubah menjadi ${state}. Bot akan mencoba reconnect otomatis.`
         );
+        this.scheduleReconnect();
       }
-      
-      this.clearSession(sender);
-      const contactUpdated = this.dataManager.contacts.get(contact.id);
-      await this.sendPaymentNotification(contactUpdated, transactionId, 'ARREARS-ONLY');
-      
-      return msg.reply(
-        `✅ Tunggakan ${contact.name} telah dicatat lunas.\n\n` +
-        `Tunggakan yang lunas:\n${arrears.map(a => `  ✓ ${a.monthName}`).join('\n')}\n\n` +
-        `Catatan: Bulan ${currentMonthName} ${currentYear} BELUM lunas.\n\n` +
-        `ID Transaksi: ${transactionId}`
+    });
+
+    this.client.on("disconnected", async (reason) => {
+      this.isReady = false;
+      this.currentQR = null;
+      this.activityLog.push("error", "whatsapp", "WhatsApp disconnected", { reason });
+      if (["UNAUTHORIZED", "CONFLICT"].includes(reason)) {
+        const sessionPath = path.join(CONFIG.DB_PATH, ".wwebjs_auth");
+        await fs.rm(sessionPath, { recursive: true, force: true }).catch(() => {});
+      }
+      await this.notifyAdminsIfEnabled(
+        "WhatsApp terputus",
+        `Koneksi terputus dengan alasan: ${reason}. Bot akan mencoba pemulihan otomatis.`
       );
-    }
-    
-    if (choice === '2') {
-      for (const monthData of arrears) {
-        const [year, month] = monthData.key.split('-');
-        await this.dataManager.setPaymentForMonth(
-          contact.id, 
-          parseInt(year), 
-          parseInt(month), 
-          PAYMENT_STATUS.PAID
+      this.scheduleReconnect();
+    });
+
+    this.client.on("error", async (error) => {
+      this.activityLog.push("error", "whatsapp", "WhatsApp runtime error", { error: error.message });
+      if (!this.isReady && !this.isReconnecting) {
+        await this.notifyAdminsIfEnabled(
+          "Error transport WA",
+          `Terjadi error pada transport WhatsApp:\n${error.message}`
         );
+        this.scheduleReconnect();
       }
-      await this.dataManager.setPaymentForMonth(contact.id, currentYear, currentMonth, PAYMENT_STATUS.PAID);
-      
-      this.clearSession(sender);
-      const contactUpdated = this.dataManager.contacts.get(contact.id);
-      await this.sendPaymentNotification(contactUpdated, transactionId, 'FULL-PAID');
-      
-      return msg.reply(
-        `✅ Semua tagihan ${contact.name} LUNAS!\n\n` +
-        `Tunggakan yang lunas:\n${arrears.map(a => `  ✓ ${a.monthName}`).join('\n')}\n  ✓ ${currentMonthName} (bulan ini)\n\n` +
-        `ID Transaksi: ${transactionId}`
-      );
-    }
-    
-    if (choice === '3') {
-      await this.dataManager.setPaymentForMonth(contact.id, currentYear, currentMonth, PAYMENT_STATUS.PAID);
-      
-      this.clearSession(sender);
-      const contactUpdated = this.dataManager.contacts.get(contact.id);
-      await this.sendPaymentNotification(contactUpdated, transactionId, 'CURRENT-ONLY');
-      
-      return msg.reply(
-        `⚠️ *PEMBAYARAN BULAN INI SAJA*\n\n` +
-        `Bulan ${currentMonthName} ${currentYear} sudah lunas.\n` +
-        `Tunggakan ${arrears.length} bulan tetap ADA:\n${arrears.map(a => `  • ${a.monthName}`).join('\n')}\n\n` +
-        `Silakan bayar tunggakan segera untuk menghindari suspend.\n\n` +
-        `ID Transaksi: ${transactionId}`
-      );
-    }
+    });
+
   }
 
-  async sendPaymentNotification(contact, transactionId, paymentType = 'DEFAULT') {
+  scheduleReconnect() {
+    if (this.isReconnecting) return;
+    if (this.reconnectAttempts >= CONFIG.MAX_RECONNECT_ATTEMPTS) {
+      this.activityLog.push("error", "whatsapp", "Maximum reconnect attempts reached");
+      return;
+    }
+
+    const now = Date.now();
+    if (this.lastReconnectTime && now - this.lastReconnectTime < CONFIG.MIN_RECONNECT_INTERVAL) {
+      const waitMs = CONFIG.MIN_RECONNECT_INTERVAL - (now - this.lastReconnectTime);
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = setTimeout(() => this.scheduleReconnect(), waitMs);
+      return;
+    }
+
+    this.isReconnecting = true;
+    this.reconnectAttempts += 1;
+    this.lastReconnectTime = now;
+
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(async () => {
+      try {
+        this.activityLog.push("info", "whatsapp", `Reconnect attempt ${this.reconnectAttempts}/${CONFIG.MAX_RECONNECT_ATTEMPTS}`);
+        await this.initialize();
+      } catch (error) {
+        this.activityLog.push("error", "whatsapp", "Reconnect failed", { error: error.message });
+      } finally {
+        this.isReconnecting = false;
+      }
+    }, CONFIG.RECONNECT_DELAY);
+  }
+
+  startKeepAlive() {
+    clearInterval(this.keepAliveTimer);
+    this.keepAliveTimer = setInterval(async () => {
+      if (!this.client) return;
+      try {
+        await this.client.getState();
+      } catch {
+        this.isReady = false;
+        this.activityLog.push("error", "whatsapp", "Keep-alive failed");
+        this.scheduleReconnect();
+      }
+    }, CONFIG.KEEP_ALIVE_INTERVAL);
+  }
+
+  async sendMessage(phoneNumber, message) {
+    if (!this.isReady || !this.client) {
+      throw new Error("WhatsApp not ready");
+    }
+    const normalized = normalizePhoneNumber(phoneNumber);
+    if (!isValidPhoneNumber(normalized)) {
+      throw new Error("Invalid target phone number");
+    }
+    await this.client.sendMessage(`${normalized}@c.us`, String(message));
+  }
+
+  async sendAdminBroadcast(title, body, options = {}) {
+    const recipients = this.dataManager.getAdminRecipients();
+    if (recipients.length === 0) return [];
+
+    const message = `*${title}*\n\n${body}`;
+    const results = [];
+
+    for (const phoneNumber of recipients) {
+      try {
+        await this.sendMessage(phoneNumber, message);
+        results.push({ phoneNumber, status: "sent" });
+      } catch (error) {
+        results.push({ phoneNumber, status: "failed", error: error.message });
+      }
+    }
+
+    if (!options.silentLog) {
+      this.activityLog.push("info", "broadcast", `${title} dikirim ke ${recipients.length} admin recipient(s)`);
+    }
+    return results;
+  }
+
+  async sendPaymentNotification(contact, transactionId, paymentType = "DEFAULT") {
     const paymentDate = contact.paymentDate ? new Date(contact.paymentDate) : new Date();
     const formattedDate = paymentDate.toLocaleString("id-ID", {
       day: "2-digit",
@@ -1372,16 +1210,15 @@ return msg.reply("❌ Nomor ini sudah terdaftar sebagai kontak.");
     let statusText = "LUNAS";
     let noteText = "Pembayaran Anda telah berhasil kami terima.";
 
-    if (paymentType === 'ARREARS-ONLY') {
+    if (paymentType === "ARREARS-ONLY") {
       noteText = "Pembayaran tunggakan telah kami terima. Catatan: Bulan ini masih belum lunas.";
-    } else if (paymentType === 'CURRENT-ONLY') {
+    } else if (paymentType === "CURRENT-ONLY") {
       noteText = "Pembayaran bulan ini telah kami terima. Namun Anda masih memiliki tunggakan bulan sebelumnya. Silakan lunasi agar layanan tidak terputus.";
-    } else if (paymentType === 'FULL-PAID') {
+    } else if (paymentType === "FULL-PAID") {
       noteText = "Semua tagihan (tunggakan + bulan ini) telah lunas. Terima kasih atas kelancarannya!";
     }
 
-    const message = 
-`*BUKTI PEMBAYARAN EMMERIL HOTSPOT*
+    const message = `*BUKTI PEMBAYARAN EMMERIL HOTSPOT*
 
 Halo ${contact.name}!
 
@@ -1402,361 +1239,119 @@ ${noteText}
 Hormat kami,
 CS Emmeril Hotspot`;
 
-    try {
-      await this.sendMessage(contact.phoneNumber, message);
-      console.log("📤 Notifikasi pembayaran terkirim:", contact.phoneNumber, "| TRX:", transactionId);
-    } catch (err) {
-      console.error("❌ Gagal kirim notifikasi:", err.message);
-    }
+    await this.sendMessage(contact.phoneNumber, message);
+    this.activityLog.push("info", "payment", `Notifikasi pembayaran terkirim ke ${contact.phoneNumber}`, {
+      transactionId,
+      contactId: contact.id,
+    });
+    return { phoneNumber: contact.phoneNumber, transactionId };
   }
 
-  async handleStatusBayar(msg) {
-    const contacts = this.dataManager.getSortedContacts();
-    if (contacts.length === 0) return msg.reply("📭 Belum ada kontak.");
-
-    const paid = contacts.filter(c => c.paymentStatus === PAYMENT_STATUS.PAID);
-    const unpaid = contacts.filter(c => c.paymentStatus !== PAYMENT_STATUS.PAID);
-
-    let text = "📊 *LAPORAN PEMBAYARAN*\n\n";
-    text += `✅ *Sudah Dibayar* (${paid.length}):\n`;
-    if (paid.length > 0) {
-      text += paid.map(c => `  * ${c.name}`).join("\n") + "\n\n";
-    } else {
-      text += "  (tidak ada)\n\n";
-    }
-
-    text += `⏳ *Belum Dibayar* (${unpaid.length}):\n`;
-    if (unpaid.length > 0) {
-      text += unpaid.map(c => `  * ${c.name}`).join("\n");
-    } else {
-      text += "  (tidak ada)";
-    }
-
-    msg.reply(text);
+  async notifyAdminsIfEnabled(title, body) {
+    const settings = this.dataManager.getSettings();
+    if (!settings.notifyAdminsOnConnectionChange) return [];
+    if (!this.isReady && title !== "Perubahan status bot") return [];
+    return this.sendAdminBroadcast(title, body, { silentLog: true });
   }
 
-  async handleLaporan(msg, sender) {
-    const port = CONFIG.PORT;
-    const reportUrl = `http://localhost:${port}/report`;
-    const text = `📊 *LINK LAPORAN PEMBAYARAN*\n\n` +
-      `Klik link berikut untuk membuka dashboard laporan:\n\n` +
-      `🔗 ${reportUrl}\n\n` +
-      `Fitur:\n` +
-      `* Lihat data pembayaran per bulan\n` +
-      `* Bandingkan dengan bulan sebelumnya\n` +
-      `* Export ke Excel & PDF\n` +
-      `* Filter berdasarkan periode\n\n` +
-      `Buka di browser (Chrome/Edge/Firefox)`;
-    msg.reply(text);
-  }
-
-  async handleTunggakan(msg, sender) {
-    const contacts = this.dataManager.getSortedContacts();
-    if (contacts.length === 0) return msg.reply("📭 Belum ada kontak.");
-
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
-    const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
-    const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
-    const prevKey = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
-    const currKey = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
-
-    const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-    const systemStartMonth = 4;
-    const systemStartYear = 2026;
-    const isPrevBeforeSystem = prevYear < systemStartYear || (prevYear === systemStartYear && prevMonth < systemStartMonth);
-
-    const overdue = [];
-    for (const contact of contacts) {
-      const pm = contact.paymentMonths || {};
-      const currPaid = pm[currKey]?.status === PAYMENT_STATUS.PAID;
-      const prevPaid = pm[prevKey]?.status === PAYMENT_STATUS.PAID;
-      
-      const reasons = [];
-      if (!currPaid) reasons.push(`${monthNames[currentMonth]}`);
-      if (!prevPaid && !isPrevBeforeSystem) reasons.push(`${monthNames[prevMonth]}`);
-      
-      if (reasons.length > 0) {
-        overdue.push({ contact, reasons: reasons.join(", "), currPaid, prevPaid });
-      }
-    }
-
-    if (overdue.length === 0) {
-      return msg.reply(`🎉 *SEMUA TAGIHAN LUNAS!*\n\nSemua kontak sudah membayar untuk bulan ${monthNames[currentMonth]} ${currentYear}.`);
-    }
-
-    let text = `⚠️ *LAPORAN TUNGGAKAN*\n`;
-    text += `📅 Periode: ${monthNames[currentMonth]} ${currentYear}\n\n`;
-    text += `Catatan: Bulan sebelum sistem dimulai (sebelum April 2026) tidak dihitung.\n\n`;
-    text += `Terdapat ${overdue.length} kontak dengan tagihan belum lunas:\n\n`;
-    text += overdue.map((o, i) => {
-      const indicator = o.currPaid ? "🟡" : "🔴";
-      const status = o.currPaid ? "(Bulan ini LUNAS) " : "(Bulan ini BELUM) ";
-      return `${indicator} ${o.contact.name}\n   ${status}Belum: ${o.reasons}`;
-    }).join("\n\n");
-
-    text += `\n\n━━━━━━━━━━━━━━━━━━━━\n`;
-    text += `📋 *KETERANGAN:*\n`;
-    text += `🔴 = Tunggakan berat (bulan ini + sebelumnya)\n`;
-    text += `🟡 = Tunggakan ringan (bulan sebelumnya saja)\n\n`;
-    text += `💡 *CARA MENGATASI:*\n`;
-    text += `Gunakan !bayar lalu pilih kontak.\n`;
-    text += `Sistem akan menawarkan 3 opsi:\n`;
-    text += `  1. Bayar tunggakan saja\n`;
-    text += `  2. Bayar tunggakan + bulan ini\n`;
-    text += `  3. Bayar bulan ini saja\n`;
-
-    msg.reply(text);
-  }
-
-  async handleRiwayatTagihan(msg, sender) {
-    const contacts = this.dataManager.getSortedContacts();
-    if (contacts.length === 0) return msg.reply("📭 Belum ada kontak.");
-
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
-    const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-    const systemStartMonth = 4;
-    const systemStartYear = 2026;
-
-    let text = `📜 *RIWAYAT TAGIHAN PER KONTAK*\n\n`;
-
-    for (const contact of contacts.slice(0, 10)) {
-      const pm = contact.paymentMonths || {};
-      const paidMonths = [];
-      const unpaidMonths = [];
-
-      for (let m = systemStartMonth; m <= currentMonth; m++) {
-        const key = `${currentYear}-${String(m).padStart(2, "0")}`;
-        if (pm[key]?.status === PAYMENT_STATUS.PAID) {
-          paidMonths.push(monthNames[m]);
-        } else {
-          unpaidMonths.push(monthNames[m]);
-        }
-      }
-
-      if (paidMonths.length > 0 || unpaidMonths.length > 0) {
-        text += `📱 ${contact.name}\n`;
-        if (paidMonths.length > 0) {
-          text += `   ✅ Lunas: ${paidMonths.map(m => m.slice(0, 3)).join(", ")}\n`;
-        }
-        if (unpaidMonths.length > 0) {
-          text += `   ⏳ Belum: ${unpaidMonths.map(m => m.slice(0, 3)).join(", ")}\n`;
-        }
-        text += `\n`;
-      } else {
-        text += `📱 ${contact.name}\n   ⏳ Belum ada pembayaran\n\n`;
-      }
-    }
-
-    if (contacts.length > 10) {
-      text += `\n...dan ${contacts.length - 10} kontak lainnya.\n`;
-    }
-
-    text += `\n\nGunakan !laporan untuk melihat detail lengkap di web.`;
-    msg.reply(text);
-  }
-
-  async handleSetAdmin(msg, sender, body) {
-    const rawNumber = body.split(' ')[1];
-    if (!rawNumber) return msg.reply("❌ Format salah. Gunakan: !setadmin 628xxx");
-
-    const newAdminNumber = normalizePhoneNumber(rawNumber);
-    if (!isValidPhoneNumber(newAdminNumber)) {
-      return msg.reply("❌ Nomor admin tidak valid. Gunakan format 628xxx.");
-    }
-
-    await this.dataManager.addAdmin(newAdminNumber);
-    msg.reply(`✅ ${newAdminNumber} sekarang menjadi admin.`);
-  }
-
-  async sendHelp(msg, sender) {
-    const umum = [
-      "📖 *Menu Bantuan*",
-      "",
-      "* !help / !menu – tampilkan bantuan",
-      "* !cancel – batalkan proses",
-    ];
-    const admin = [
-      "",
-      "🛠️ *Perintah Admin:*",
-      "* !addreminder – tambah reminder",
-      "* !editreminder – ubah reminder",
-      "* !deletereminder – hapus reminder",
-      "* !listreminder – lihat reminder",
-      "* !addkontak – tambah kontak",
-      "* !editkontak – ubah kontak",
-      "* !deletekontak – hapus kontak",
-      "* !listkontak – lihat kontak",
-      "* !bayar – tandai sudah lunas",
-      "* !statusbayar – laporan pembayaran",
-      "* !tunggakan – cek tunggakan",
-      "* !riwayattagihan – riwayat tagihan",
-      "* !laporan – lihat link laporan",
-      "* !setadmin <no> – jadikan admin",
-    ];
-    const menuText = this.dataManager.isAdmin(sender) ? umum.concat(admin).join("\n") : umum.join("\n");
-    msg.reply(menuText);
-  }
-
-  // ========== CLIENT LIFECYCLE ==========
-  scheduleReconnect() {
-    clearTimeout(this.reconnectTimer);
-
-    const now = Date.now();
-    if (this.lastReconnectTime && now - this.lastReconnectTime < CONFIG.MIN_RECONNECT_INTERVAL) {
-      const waitTime = CONFIG.MIN_RECONNECT_INTERVAL - (now - this.lastReconnectTime);
-      console.log(`⏳ Wait ${Math.ceil(waitTime / 1000)}s before reconnect`);
-      if (!this.isReconnecting) {
-        this.isReconnecting = true;
-        this.reconnectTimer = setTimeout(() => {
-          this.isReconnecting = false;
-          this.scheduleReconnect();
-        }, waitTime);
-      }
-      return false;
-    }
-
-    if (this.isReconnecting) return false;
-
-    if (this.reconnectAttempts >= CONFIG.MAX_RECONNECT_ATTEMPTS) {
-      console.error("🛑 Max reconnect attempts reached");
-      return false;
-    }
-
-    this.reconnectAttempts++;
-    this.lastReconnectTime = now;
-    this.isReconnecting = true;
-
-    const delay = Math.min(30000, CONFIG.RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts));
-    console.log(`🔄 Reconnect in ${delay / 1000}s (${this.reconnectAttempts}/${CONFIG.MAX_RECONNECT_ATTEMPTS})`);
-
-    clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = setTimeout(async () => {
-      try {
-        if (this.client) {
-          await this.client.destroy().catch(() => {});
-          this.client = null;
-        }
-        this.client = this.createClient();
-        this.setupEvents();
-        await this.client.initialize();
-      } catch (err) {
-        console.error("❌ Reconnect failed:", err.message);
-        this.isReconnecting = false;
-        this.scheduleReconnect();
-      } finally {
-        setTimeout(() => {
-          if (!this.isReady) this.isReconnecting = false;
-        }, 15000);
-      }
-    }, delay);
-    return true;
-  }
-
-  async initialize() {
-    if (!this.client) {
-      this.client = this.createClient();
-      this.setupEvents();
-    }
-    try {
-      await this.client.initialize();
-    } catch (error) {
-      console.error("❌ Failed to initialize WhatsApp:", error.message);
-      this.scheduleReconnect();
-    }
-  }
-
-  startKeepAlive() {
-    if (this.keepAliveTimer) return;
-    this.keepAliveTimer = setInterval(async () => {
-      if (!this.client || !this.isReady) return;
-      try {
-        await this.client.getState();
-        this.reconnectAttempts = 0;
-        console.log("💓 WA keep-alive OK");
-      } catch {
-        console.log("💔 WA keep-alive failed");
-        this.isReady = false;
-        this.scheduleReconnect();
-      }
-    }, CONFIG.KEEP_ALIVE_INTERVAL);
-  }
-
-  async sendMessage(phoneNumber, message) {
-    if (!this.isReady) throw new Error("WhatsApp not ready");
-    await this.client.sendMessage(`${phoneNumber}@c.us`, message);
+  getStatus() {
+    return {
+      isReady: this.isReady,
+      hasQR: Boolean(this.currentQR),
+      reconnectAttempts: this.reconnectAttempts,
+      isReconnecting: this.isReconnecting,
+      adminRecipients: this.dataManager.getAdminRecipients(),
+    };
   }
 }
 
-// ==================== REMINDER SCHEDULER ====================
 class ReminderScheduler {
-  constructor(whatsAppClient, dataManager) {
-    this.whatsAppClient = whatsAppClient;
+  constructor(notificationBot, dataManager, activityLog) {
+    this.notificationBot = notificationBot;
     this.dataManager = dataManager;
+    this.activityLog = activityLog;
     this.isProcessing = false;
+  }
+
+  buildNextReminder(reminder) {
+    const nextDate = addMonthsSafely(reminder.reminderDateTime, 1);
+    const nextDateText = formatDate(nextDate);
+    const nextMonthName = nextDate.toLocaleString("id-ID", { month: "long" });
+    const nextMessage = reminder.message
+      .replace(/\d{4}-\d{2}-\d{2}/, nextDateText)
+      .replace(/bulan\s+\w+/gi, `bulan ${nextMonthName}`);
+
+    return {
+      contactId: reminder.contactId,
+      reminderDateTime: nextDate,
+      message: nextMessage,
+      templateName: reminder.templateName || null,
+    };
   }
 
   async processDueReminders() {
     if (this.isProcessing) {
-      console.log('⏳ Skip cron - previous run still processing');
+      this.activityLog.push("info", "scheduler", "Skipping run because previous cycle is still processing");
       return;
     }
 
-    if (!this.whatsAppClient.isReady) {
-      console.log('⏳ Skip cron - WhatsApp not ready');
+    if (!this.notificationBot.isReady) {
+      this.activityLog.push("info", "scheduler", "Skipping run because WhatsApp is not ready");
       return;
     }
 
     this.isProcessing = true;
+
     try {
       const now = Date.now();
-      const due = Array.from(this.dataManager.reminders.entries()).filter(
-        ([, r]) => new Date(r.reminderDateTime).getTime() <= now
+      const dueReminders = this.dataManager.getSortedReminders().filter(
+        (reminder) => new Date(reminder.reminderDateTime).getTime() <= now
       );
 
-      if (due.length === 0) return;
+      if (dueReminders.length === 0) {
+        return;
+      }
 
-      console.log(`⏰ Processing ${due.length} due reminders...`);
+      this.activityLog.push("info", "scheduler", `Processing ${dueReminders.length} due reminder(s)`);
 
-      for (const [id, reminder] of due) {
+      for (const reminder of dueReminders) {
         try {
-          await this.whatsAppClient.sendMessage(reminder.phoneNumber, reminder.message);
-          console.log("📤 Reminder terkirim:", reminder.phoneNumber);
+          const targetPhoneNumber = reminder.phoneNumber;
+          await this.notificationBot.sendMessage(targetPhoneNumber, reminder.message);
+          const sentReminder = await this.dataManager.moveToSent(reminder.id, {
+            sentAt: new Date().toISOString(),
+            deliveryStatus: "SENT",
+          });
 
-          for (const [nomor, role] of this.dataManager.roles.entries()) {
-            if (role === "admin" && nomor !== reminder.phoneNumber) {
-              await this.whatsAppClient.sendMessage(
-                nomor,
-                `📥 Reminder terkirim ke ${reminder.phoneNumber}:\n\n${reminder.message}`
-              ).catch(() => {});
-            }
+          this.activityLog.push("info", "delivery", `Reminder sent to ${targetPhoneNumber}`, {
+            reminderId: reminder.id,
+          });
+
+          if (this.dataManager.getSettings().notifyAdminsOnDelivery) {
+            await this.notificationBot.sendAdminBroadcast(
+              "Reminder terkirim",
+              `Tujuan: ${reminder.contactName || targetPhoneNumber} (${targetPhoneNumber})\nJadwal: ${formatDateTime(reminder.reminderDateTime)}\n\n${reminder.message}`,
+              { silentLog: true }
+            );
           }
 
-          await this.dataManager.moveToSent(id);
+          if (this.dataManager.getSettings().autoRescheduleMonthly) {
+            const nextReminder = this.buildNextReminder(reminder);
+            await this.dataManager.addReminder(nextReminder);
+          }
 
-          const next = addMonthsSafely(reminder.reminderDateTime, 1);
-          const nextDate = formatDate(next);
-          const bulan = next.toLocaleString("id-ID", { month: "long" });
-
-          const newMessage = reminder.message
-            .replace(/\d{4}-\d{2}-\d{2}/, nextDate)
-            .replace(/bulan \w+/gi, `bulan ${bulan}`);
-
-          const newReminder = {
-            id: generateId(),
+          if (!sentReminder) {
+            this.activityLog.push("error", "delivery", "Sent reminder could not be archived", {
+              reminderId: reminder.id,
+            });
+          }
+        } catch (error) {
+          this.activityLog.push("error", "delivery", `Failed to send reminder ${reminder.id}`, {
+            error: error.message,
             phoneNumber: reminder.phoneNumber,
-            reminderDateTime: next,
-            message: newMessage,
-          };
-          await this.dataManager.addReminder(newReminder);
-        } catch (err) {
-          console.error("❌ Gagal kirim:", err.message);
-          if (err.message.includes('closed') || err.message.includes('disconnected')) {
-            console.log('🔁 Connection error, triggering reconnect...');
-            this.whatsAppClient.scheduleReconnect();
+          });
+          if (String(error.message).toLowerCase().includes("not ready")) {
+            this.notificationBot.scheduleReconnect();
             break;
           }
         }
@@ -1767,432 +1362,457 @@ class ReminderScheduler {
   }
 }
 
-// ==================== EXPRESS SERVER ====================
 class WebServer {
-  constructor(whatsAppClient, dataManager) {
+  constructor(notificationBot, dataManager, templateManager, activityLog, reminderScheduler, authManager) {
     this.app = express();
-    this.whatsAppClient = whatsAppClient;
+    this.notificationBot = notificationBot;
     this.dataManager = dataManager;
+    this.templateManager = templateManager;
+    this.activityLog = activityLog;
+    this.reminderScheduler = reminderScheduler;
+    this.authManager = authManager;
     this.setupRoutes();
   }
 
   setupRoutes() {
-    this.app.use(express.json());
+    this.app.use(express.json({ limit: "1mb" }));
     this.app.use(express.urlencoded({ extended: true }));
+    this.app.use("/public", express.static(CONFIG.PUBLIC_PATH));
 
-    const requireApiKey = (req, res, next) => {
-      const apiKey = req.headers['x-api-key'] || req.query.api_key;
-      if (!apiKey || apiKey !== CONFIG.WEB_API_KEY) {
-        return res.status(401).json({ success: false, error: 'Unauthorized' });
-      }
-      next();
+    const hasApiKeyAccess = (req) => {
+      const apiKey = req.headers["x-api-key"] || req.query.api_key;
+      return Boolean(apiKey && apiKey === CONFIG.WEB_API_KEY);
     };
 
-    this.app.get("/qr", async (req, res) => {
-      if (this.whatsAppClient.isReady) {
+    const readSession = (req) => {
+      const cookies = parseCookies(req.headers.cookie);
+      const token = cookies[CONFIG.SESSION_COOKIE_NAME];
+      const session = this.authManager.getSession(token);
+      return { token, session };
+    };
+
+    const requireApiAuth = (req, res, next) => {
+      if (hasApiKeyAccess(req)) return next();
+
+      const { session } = readSession(req);
+      if (!session) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      req.authSession = session;
+      return next();
+    };
+
+    const requirePageAuth = (req, res, next) => {
+      if (hasApiKeyAccess(req)) return next();
+
+      const { session } = readSession(req);
+      if (!session) {
+        return res.redirect("/login");
+      }
+
+      req.authSession = session;
+      return next();
+    };
+
+    const handleApi = (handler) => async (req, res) => {
+      try {
+        const data = await handler(req, res);
+        if (!res.headersSent) {
+          res.json({ success: true, data });
+        }
+      } catch (error) {
+        this.activityLog.push("error", "api", error.message);
+        if (!res.headersSent) {
+          res.status(400).json({ success: false, error: error.message });
+        }
+      }
+    };
+
+    this.app.get("/", (req, res) => res.redirect("/dashboard"));
+    this.app.get("/login", async (req, res, next) => {
+      try {
+        const { session } = readSession(req);
+        if (session) {
+          return res.redirect("/dashboard");
+        }
+        res.send(await this.renderLoginPage());
+      } catch (error) {
+        next(error);
+      }
+    });
+
+    this.app.post("/api/auth/login", handleApi(async (req, res) => {
+      const username = sanitizeInput(req.body.username);
+      const password = String(req.body.password || "");
+
+      if (!this.authManager.validateCredentials(username, password)) {
+        this.activityLog.push("error", "auth", `Login gagal untuk user ${username || "(kosong)"}`);
+        res.status(401);
+        throw new Error("Username atau password salah.");
+      }
+
+      const { token, session } = this.authManager.createSession(username);
+      res.setHeader("Set-Cookie", serializeCookie(CONFIG.SESSION_COOKIE_NAME, token, {
+        path: "/",
+        httpOnly: true,
+        sameSite: "Lax",
+        maxAge: Math.floor(CONFIG.SESSION_TTL / 1000),
+      }));
+
+      this.activityLog.push("info", "auth", `Login sukses untuk user ${username}`);
+      return {
+        username: session.username,
+        expiresAt: new Date(session.expiresAt).toISOString(),
+      };
+    }));
+
+    this.app.post("/api/auth/logout", handleApi(async (req, res) => {
+      const { token, session } = readSession(req);
+      this.authManager.destroySession(token);
+      res.setHeader("Set-Cookie", serializeCookie(CONFIG.SESSION_COOKIE_NAME, "", {
+        path: "/",
+        httpOnly: true,
+        sameSite: "Lax",
+        maxAge: 0,
+      }));
+
+      if (session) {
+        this.activityLog.push("info", "auth", `Logout untuk user ${session.username}`);
+      }
+
+      return { loggedOut: true };
+    }));
+
+    this.app.get("/api/auth/me", requireApiAuth, handleApi(async (req) => ({
+      username: req.authSession.username,
+      expiresAt: new Date(req.authSession.expiresAt).toISOString(),
+      usingApiKey: hasApiKeyAccess(req),
+    })));
+
+    this.app.get("/dashboard", requirePageAuth, async (req, res, next) => {
+      try {
+        res.send(await this.renderDashboard());
+      } catch (error) {
+        next(error);
+      }
+    });
+    this.app.get("/qr", requirePageAuth, async (req, res) => {
+      if (this.notificationBot.isReady) {
         return res.send(`
-          <html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#f2f2f2;font-family:sans-serif;">
-            <div style="font-size:1.5rem;color:#28a745;">✅ WhatsApp sudah terhubung.</div>
+          <html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#f4f5ef;font-family:Georgia,serif;">
+            <div style="padding:28px 34px;border-radius:20px;background:white;box-shadow:0 20px 60px rgba(0,0,0,.12);color:#204b57;font-size:1.3rem;">
+              WhatsApp sudah terhubung dan siap mengirim notifikasi.
+            </div>
           </body></html>
         `);
       }
-      if (!this.whatsAppClient.currentQR) {
-        return res.send("⏳ Menunggu QR code...");
+
+      if (!this.notificationBot.currentQR) {
+        return res.send("Menunggu QR code...");
       }
-      const qrImage = await QRCode.toDataURL(this.whatsAppClient.currentQR);
-      res.send(`
+
+      const qrImage = await QRCode.toDataURL(this.notificationBot.currentQR);
+      return res.send(`
         <html>
-          <head><title>Scan QR</title><meta http-equiv="refresh" content="15"></head>
-          <body style="text-align:center;font-family:sans-serif;">
-            <h1>Scan QR WhatsApp</h1>
-            <img src="${qrImage}" style="max-width:300px;border:8px solid #fff;border-radius:10px;">
-            <p>Scan dengan WhatsApp.</p>
-            <p>Reconnect attempts: ${this.whatsAppClient.reconnectAttempts}/${CONFIG.MAX_RECONNECT_ATTEMPTS}</p>
+          <head><meta http-equiv="refresh" content="15"><title>Scan QR</title></head>
+          <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(135deg,#f4efe4,#dce7e2);font-family:Georgia,serif;">
+            <div style="background:white;padding:28px;border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,.12);text-align:center;max-width:420px;">
+              <h1 style="margin-top:0;color:#204b57;">Hubungkan Transport WhatsApp</h1>
+              <img src="${qrImage}" style="max-width:320px;width:100%;border-radius:18px;">
+              <p>Scan QR ini dari WhatsApp untuk mengaktifkan channel notifikasi.</p>
+              <p>Reconnect attempts: ${this.notificationBot.reconnectAttempts}/${CONFIG.MAX_RECONNECT_ATTEMPTS}</p>
+            </div>
           </body>
         </html>
       `);
     });
 
-    this.app.get("/api/payments/history", requireApiKey, (req, res) => {
-      const history = this.dataManager.getAllPaymentsHistory();
-      res.json({ success: true, data: history });
-    });
+    this.app.get("/api/status", requireApiAuth, handleApi(async () => ({
+      bot: this.notificationBot.getStatus(),
+      summary: this.dataManager.getDashboardSummary(),
+      settings: this.dataManager.getSettings(),
+      scheduler: { isProcessing: this.reminderScheduler.isProcessing },
+    })));
 
-    this.app.get("/api/payments/:year/:month", requireApiKey, (req, res) => {
-      const { year, month } = req.params;
-      const yearNum = parseInt(year, 10);
-      const monthNum = parseInt(month, 10);
-      if (isNaN(yearNum) || isNaN(monthNum) || yearNum < 2000 || yearNum > 2100 || monthNum < 1 || monthNum > 12) {
-        return res.status(400).json({ success: false, error: 'Invalid year or month' });
+    this.app.get("/api/logs", requireApiAuth, handleApi(async () => this.activityLog.list()));
+
+    this.app.get("/api/contacts", requireApiAuth, handleApi(async () => this.dataManager.getSortedContacts()));
+    this.app.post("/api/contacts", requireApiAuth, handleApi(async (req) => this.dataManager.addContact(req.body)));
+    this.app.put("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.dataManager.updateContact(req.params.id, req.body)));
+    this.app.delete("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.dataManager.deleteContact(req.params.id)));
+
+    this.app.post("/api/contacts/:id/payment", requireApiAuth, handleApi(async (req) => {
+      const status = sanitizeInput(req.body.status).toUpperCase();
+      const updatedContact = await this.dataManager.updatePaymentStatus(req.params.id, status);
+
+      if (status !== PAYMENT_STATUS.PAID) {
+        return {
+          contact: updatedContact,
+          notificationSent: false,
+        };
       }
-      const payments = this.dataManager.getPaymentsByMonth(yearNum, monthNum);
-      res.json({
-        success: true,
-        data: payments.map(c => ({
-          id: c.id,
-          name: c.name,
-          phoneNumber: c.phoneNumber,
-          paymentDate: c.paymentDate,
-          paymentStatus: c.paymentStatus,
-        })),
-      });
-    });
 
-    this.app.get("/api/payments/current", requireApiKey, (req, res) => {
+      const transactionId = `TRX-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+
+      try {
+        await this.notificationBot.sendPaymentNotification(updatedContact, transactionId);
+        return {
+          contact: updatedContact,
+          transactionId,
+          notificationSent: true,
+        };
+      } catch (error) {
+        this.activityLog.push("error", "payment", `Status paid tersimpan tapi notifikasi gagal dikirim ke ${updatedContact.phoneNumber}`, {
+          error: error.message,
+          transactionId,
+          contactId: updatedContact.id,
+        });
+
+        return {
+          contact: updatedContact,
+          transactionId,
+          notificationSent: false,
+          notificationError: error.message,
+        };
+      }
+    }));
+
+    this.app.post("/api/contacts/:id/payment-month", requireApiAuth, handleApi(async (req) => {
+      const year = Number(req.body.year);
+      const month = Number(req.body.month);
+      const status = sanitizeInput(req.body.status).toUpperCase();
+      if (!year || !month) throw new Error("Year dan month wajib diisi.");
+      return this.dataManager.setPaymentForMonth(req.params.id, year, month, status);
+    }));
+
+    this.app.get("/api/reminders", requireApiAuth, handleApi(async () => this.dataManager.getSortedReminders()));
+    this.app.post("/api/reminders", requireApiAuth, handleApi(async (req) => {
+      const when = parseDateTimeInput(req.body.reminderDateTime);
+      if (!when) throw new Error("Format reminderDateTime harus YYYY-MM-DD HH:mm.");
+      if (when.getTime() <= Date.now()) throw new Error("Reminder harus dijadwalkan di masa depan.");
+      return this.dataManager.addReminder({
+        contactId: req.body.contactId,
+        reminderDateTime: when,
+        message: req.body.message,
+        templateName: req.body.templateName,
+      });
+    }));
+    this.app.put("/api/reminders/:id", requireApiAuth, handleApi(async (req) => {
+      const payload = { ...req.body };
+      if (payload.reminderDateTime !== undefined) {
+        const when = parseDateTimeInput(payload.reminderDateTime);
+        if (!when) throw new Error("Format reminderDateTime harus YYYY-MM-DD HH:mm.");
+        payload.reminderDateTime = when;
+      }
+      return this.dataManager.updateReminder(req.params.id, payload);
+    }));
+    this.app.delete("/api/reminders/:id", requireApiAuth, handleApi(async (req) => this.dataManager.deleteReminder(req.params.id)));
+    this.app.get("/api/reminders/sent", requireApiAuth, handleApi(async () => this.dataManager.getSentReminders()));
+
+    this.app.get("/api/templates", requireApiAuth, handleApi(async () => this.templateManager.listTemplates()));
+    this.app.post("/api/templates", requireApiAuth, handleApi(async (req) => this.templateManager.createTemplate(req.body.name, req.body.content)));
+    this.app.put("/api/templates/:name", requireApiAuth, handleApi(async (req) => this.templateManager.updateTemplate(req.params.name, req.body.content)));
+    this.app.delete("/api/templates/:name", requireApiAuth, handleApi(async (req) => this.templateManager.deleteTemplate(req.params.name)));
+
+    this.app.get("/api/settings", requireApiAuth, handleApi(async () => this.dataManager.getSettings()));
+    this.app.put("/api/settings", requireApiAuth, handleApi(async (req) => this.dataManager.updateSettings(req.body)));
+
+    this.app.get("/api/admin-recipients", requireApiAuth, handleApi(async () => this.dataManager.getAdminRecipients()));
+    this.app.put("/api/admin-recipients", requireApiAuth, handleApi(async (req) => {
+      const recipients = Array.isArray(req.body.recipients)
+        ? req.body.recipients.map(normalizePhoneNumber).filter(Boolean)
+        : String(req.body.recipients || "")
+            .split(/\r?\n|,/)
+            .map(normalizePhoneNumber)
+            .filter(Boolean);
+
+      const invalid = recipients.filter((phoneNumber) => !isValidPhoneNumber(phoneNumber));
+      if (invalid.length > 0) {
+        throw new Error(`Nomor admin tidak valid: ${invalid.join(", ")}`);
+      }
+
+      return this.dataManager.setAdminRecipients([...new Set(recipients)]);
+    }));
+
+    this.app.post("/api/notifications/test", requireApiAuth, handleApi(async (req) => {
+      const phoneNumber = normalizePhoneNumber(req.body.phoneNumber);
+      const message = sanitizeMultilineText(req.body.message);
+      if (!isValidPhoneNumber(phoneNumber)) throw new Error("Nomor tujuan tidak valid.");
+      if (!message) throw new Error("Pesan notifikasi wajib diisi.");
+      await this.notificationBot.sendMessage(phoneNumber, message);
+      this.activityLog.push("info", "manual", `Manual notification sent to ${phoneNumber}`);
+      return { phoneNumber, status: "sent" };
+    }));
+
+    this.app.post("/api/notifications/admin-broadcast", requireApiAuth, handleApi(async (req) => {
+      const title = sanitizeInput(req.body.title) || "Status Bot";
+      const body = sanitizeMultilineText(req.body.message);
+      if (!body) throw new Error("Pesan broadcast wajib diisi.");
+      return this.notificationBot.sendAdminBroadcast(title, body);
+    }));
+
+    this.app.post("/api/scheduler/run", requireApiAuth, handleApi(async () => {
+      await this.reminderScheduler.processDueReminders();
+      return { queued: true };
+    }));
+
+    this.app.get("/api/payments/history", requireApiAuth, handleApi(async () => this.dataManager.getAllPaymentsHistory()));
+    this.app.get("/api/payments/current", requireApiAuth, handleApi(async () => {
       const now = new Date();
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth() + 1;
       const payments = this.dataManager.getPaymentsByMonth(currentYear, currentMonth);
       const allHistory = this.dataManager.getAllPaymentsHistory();
-
       const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
       const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
       const prevPayments = allHistory[`${prevYear}-${String(prevMonth).padStart(2, "0")}`]?.total || 0;
+      const growth = prevPayments > 0 ? Number((((payments.length - prevPayments) / prevPayments) * 100).toFixed(1)) : 0;
 
-      const currentTotal = payments.length;
-      const growth = prevPayments > 0 ? ((currentTotal - prevPayments) / prevPayments * 100).toFixed(1) : 0;
+      return {
+        current: { year: currentYear, month: currentMonth, total: payments.length, contacts: payments },
+        previous: { year: prevYear, month: prevMonth, total: prevPayments },
+        growth,
+      };
+    }));
 
-      res.json({
-        success: true,
-        data: {
-          current: { year: currentYear, month: currentMonth, total: currentTotal, contacts: payments },
-          previous: { year: prevYear, month: prevMonth, total: prevPayments },
-          growth: parseFloat(growth),
-        },
-      });
-    });
+    this.app.get("/api/payments/:year/:month", requireApiAuth, handleApi(async (req) => {
+      const year = Number(req.params.year);
+      const month = Number(req.params.month);
+      if (!year || !month || year < 2000 || year > 2100 || month < 1 || month > 12) {
+        throw new Error("Invalid year or month");
+      }
 
-    this.app.get("/report", (req, res) => {
-      const history = this.dataManager.getAllPaymentsHistory();
-      const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth() + 1;
-
-      const currentPayments = this.dataManager.getPaymentsByMonth(currentYear, currentMonth);
-      const totalContacts = this.dataManager.contacts.size;
-      const paidContacts = Array.from(this.dataManager.contacts.values()).filter(c => c.paymentStatus === PAYMENT_STATUS.PAID).length;
-      const unpaidContacts = totalContacts - paidContacts;
-
-      const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
-      const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
-      const prevPayments = history[`${prevYear}-${String(prevMonth).padStart(2, "0")}`]?.total || 0;
-      const currentTotal = currentPayments.length;
-
-      const growth = prevPayments > 0 ? ((currentTotal - prevPayments) / prevPayments * 100).toFixed(1) : "0";
-
-      const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-
-      const safeHistory = JSON.stringify(history).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
-      const tableRows = currentPayments.map((c, i) => {
-        const name = escapeHtml(c.name);
-        const phone = escapeHtml(c.phoneNumber);
-        const paymentDate = c.paymentDate ? new Date(c.paymentDate).toLocaleString('id-ID') : '-';
-        return `<tr><td>${i + 1}</td><td>${name}</td><td>${phone}</td><td>${paymentDate}</td><td class="status-paid">✅ Lunas</td></tr>`;
-      }).join('');
-
-      res.send(`
-<!DOCTYPE html>
-<html lang="id">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Laporan Pembayaran</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f7fa; padding: 20px; }
-    .container { max-width: 1200px; margin: 0 auto; }
-    h1 { color: #2c3e50; margin-bottom: 20px; }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap: 15px; }
-    .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    select, input { padding: 10px 15px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
-    button { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
-    .btn-primary { background: #3498db; color: white; }
-    .btn-primary:hover { background: #2980b9; }
-    .btn-success { background: #27ae60; color: white; }
-    .btn-success:hover { background: #219a52; }
-    .btn-danger { background: #e74c3c; color: white; }
-    .btn-danger:hover { background: #c0392b; }
-    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px; }
-    .metric-card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
-    .metric-card h3 { color: #7f8c8d; font-size: 14px; font-weight: 500; margin-bottom: 10px; }
-    .metric-card .value { font-size: 32px; font-weight: 700; color: #2c3e50; }
-    .metric-card .value.positive { color: #27ae60; }
-    .metric-card .value.negative { color: #e74c3c; }
-    .metric-card .value.neutral { color: #f39c12; }
-    .comparison { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px; }
-    .comparison-card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
-    .comparison-card h3 { color: #2c3e50; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #ecf0f1; }
-    .comparison-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f5f7fa; }
-    .comparison-row:last-child { border-bottom: none; }
-    .comparison-row .label { color: #7f8c8d; }
-    .comparison-row .value { font-weight: 600; color: #2c3e50; }
-    .table-container { background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); overflow: hidden; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 15px; text-align: left; }
-    th { background: #34495e; color: white; font-weight: 500; }
-    tr:nth-child(even) { background: #f8f9fa; }
-    tr:hover { background: #ecf0f1; }
-    .status-paid { color: #27ae60; font-weight: 600; }
-    .status-unpaid { color: #e74c3c; font-weight: 600; }
-    .month-selector { display: flex; gap: 15px; align-items: center; margin-bottom: 20px; }
-    .history-list { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 20px; }
-    .history-month { padding: 8px 15px; background: #ecf0f1; border-radius: 20px; font-size: 12px; cursor: pointer; }
-    .history-month.active { background: #3498db; color: white; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>📊 Laporan Pembayaran</h1>
-      <div class="controls">
-        <button class="btn-success" onclick="exportExcel()">📊 Export Excel</button>
-        <button class="btn-danger" onclick="exportPDF()">📄 Export PDF</button>
-      </div>
-    </div>
-
-    <div class="month-selector">
-      <label>Bulan:</label>
-      <select id="monthSelect">
-        ${monthNames.map((m, i) => `<option value="${i}" ${i === currentMonth ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('')}
-      </select>
-      <label>Tahun:</label>
-      <select id="yearSelect">
-        ${Array.from({length: 5}, (_, i) => currentYear - i).map(y => `<option value="${y}" ${y === currentYear ? 'selected' : ''}>${y}</option>`).join('')}
-      </select>
-      <button class="btn-primary" onclick="loadReport()">Tampilkan</button>
-    </div>
-
-    <div class="metrics">
-      <div class="metric-card">
-        <h3>💰 Total Pembayaran Bulan Ini</h3>
-        <div class="value positive">${currentTotal}</div>
-      </div>
-      <div class="metric-card">
-        <h3>📈 Pertumbuhan (vs Bulan Lalu)</h3>
-        <div class="value ${parseFloat(growth) >= 0 ? 'positive' : 'negative'}">${growth}%</div>
-      </div>
-      <div class="metric-card">
-        <h3>✅ Sudah Dibayar</h3>
-        <div class="value">${paidContacts}</div>
-      </div>
-      <div class="metric-card">
-        <h3>⏳ Belum Dibayar</h3>
-        <div class="value negative">${unpaidContacts}</div>
-      </div>
-    </div>
-
-    <div class="comparison">
-      <div class="comparison-card">
-        <h3>📅 Periode Saat Ini (${monthNames[currentMonth]} ${currentYear})</h3>
-        <div class="comparison-row">
-          <span class="label">Total Pembayaran</span>
-          <span class="value">${currentTotal}</span>
-        </div>
-        <div class="comparison-row">
-          <span class="label">Kontak Aktif</span>
-          <span class="value">${totalContacts}</span>
-        </div>
-      </div>
-      <div class="comparison-card">
-        <h3>📆 Periode Sebelumnya (${monthNames[prevMonth]} ${prevYear})</h3>
-        <div class="comparison-row">
-          <span class="label">Total Pembayaran</span>
-          <span class="value">${prevPayments}</span>
-        </div>
-        <div class="comparison-row">
-          <span class="label">Perubahan</span>
-          <span class="value ${parseFloat(growth) >= 0 ? 'positive' : 'negative'}">${parseFloat(growth) >= 0 ? '+' : ''}${growth}%</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="table-container">
-      <table>
-        <thead>
-          <tr>
-            <th>No</th>
-            <th>Nama</th>
-            <th>No. HP</th>
-            <th>Tanggal Bayar</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="paymentTable">
-          ${tableRows}
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <script>
-    let currentData = ${safeHistory};
-    let selectedMonth = ${currentMonth};
-    let selectedYear = ${currentYear};
-
-    function escapeHtml(str) {
-      if (typeof str !== "string") return str;
-      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-    }
-
-    function formatDate(dateStr) {
-      if (!dateStr) return '-';
-      return new Date(dateStr).toLocaleString('id-ID');
-    }
-
-    function loadReport() {
-      const month = document.getElementById('monthSelect').value;
-      const year = document.getElementById('yearSelect').value;
-      selectedMonth = parseInt(month);
-      selectedYear = parseInt(year);
-      
-      fetch('/api/payments/' + year + '/' + month)
-        .then(r => r.json())
-        .then(res => {
-          const tbody = document.getElementById('paymentTable');
-          if (res.data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#7f8c8d;">Tidak ada data</td></tr>';
-          } else {
-            tbody.innerHTML = res.data.map((c, i) => '<tr><td>' + (i+1) + '</td><td>' + escapeHtml(c.name) + '</td><td>' + escapeHtml(c.phoneNumber) + '</td><td>' + formatDate(c.paymentDate) + '</td><td class="status-paid">✅ Lunas</td></tr>').join('');
-          }
-        });
-    }
-
-    function exportExcel() {
-      fetch('/api/payments/' + selectedYear + '/' + selectedMonth)
-        .then(r => r.json())
-        .then(res => {
-          const data = res.data.map((c, i) => [i+1, c.name, c.phoneNumber, c.paymentDate ? new Date(c.paymentDate).toLocaleString('id-ID') : '-', 'Lunas']);
-          data.unshift(['No', 'Nama', 'No. HP', 'Tanggal Bayar', 'Status']);
-          
-          const ws = XLSX.utils.aoa_to_sheet(data);
-          const wb = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(wb, ws, 'Pembayaran');
-          XLSX.writeFile(wb, 'Laporan_Pembayaran_' + selectedYear + '_' + selectedMonth + '.xlsx');
-        });
-    }
-
-    function exportPDF() {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      
-      doc.setFontSize(18);
-      doc.text('Laporan Pembayaran', 14, 20);
-      doc.setFontSize(12);
-      doc.text('Bulan: ' + selectedMonth + '/' + selectedYear, 14, 30);
-      
-      fetch('/api/payments/' + selectedYear + '/' + selectedMonth)
-        .then(r => r.json())
-        .then(res => {
-          const rows = res.data.map((c, i) => [i+1, c.name, c.phoneNumber, c.paymentDate ? new Date(c.paymentDate).toLocaleString('id-ID') : '-', 'Lunas']);
-          doc.autoTable({
-            head: [['No', 'Nama', 'No. HP', 'Tanggal Bayar', 'Status']],
-            body: rows,
-            startY: 40,
-          });
-          doc.save('Laporan_Pembayaran_' + selectedYear + '_' + selectedMonth + '.pdf');
-        });
-    }
-  </script>
-</body>
-</html>
-      `);
-    });
+      return this.dataManager.getPaymentsByMonth(year, month).map((contact) => ({
+        id: contact.id,
+        name: contact.name,
+        phoneNumber: contact.phoneNumber,
+        paymentDate: contact.paymentDate,
+        paymentStatus: contact.paymentStatus,
+      }));
+    }));
   }
 
-  start(port) {
-    this.app.listen(port, () => {
-      console.log(`🌐 Web server running at http://localhost:${port}/qr`);
-      console.log(`📊 Report dashboard: http://localhost:${port}/report`);
+  async renderDashboard() {
+    const title = escapeHtml(this.dataManager.getSettings().dashboardTitle);
+    const templatePath = path.join(CONFIG.PUBLIC_PATH, "index.html");
+    const html = await fs.readFile(templatePath, "utf-8");
+
+    return html.replace(/__DASHBOARD_TITLE__/g, title);
+  }
+
+  async renderLoginPage() {
+    const title = escapeHtml(this.dataManager.getSettings().dashboardTitle);
+    const templatePath = path.join(CONFIG.PUBLIC_PATH, "login.html");
+    const html = await fs.readFile(templatePath, "utf-8");
+    return html.replace(/__DASHBOARD_TITLE__/g, title);
+  }
+
+  start() {
+    this.app.listen(CONFIG.PORT, () => {
+      this.activityLog.push("info", "web", `Dashboard running at http://localhost:${CONFIG.PORT}/dashboard`);
+      this.activityLog.push("info", "web", `QR page running at http://localhost:${CONFIG.PORT}/qr`);
     });
   }
 }
 
-// ==================== MAIN ====================
+async function sendMonthlyResetNotification(notificationBot, dataManager, activityLog) {
+  const count = await dataManager.resetAllPaymentStatus();
+  const settings = dataManager.getSettings();
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+  const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+  const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+  const overdue = dataManager.getOverdueContacts(prevYear, prevMonth);
+
+  activityLog.push("info", "billing", `Monthly payment status reset completed for ${count} contact(s)`);
+
+  if (!settings.notifyAdminsOnPaymentReset || !notificationBot.isReady) {
+    return;
+  }
+
+  let body = `Status pembayaran bulan ${MONTH_NAMES[currentMonth]} ${currentYear} telah direset.\n\nKontak yang direset: ${count}.`;
+  if (overdue.length > 0) {
+    body += `\n\nMasih ada ${overdue.length} kontak dengan tunggakan dari periode sebelumnya:\n${overdue.slice(0, 8).map((item, index) => `${index + 1}. ${item.name}`).join("\n")}`;
+    if (overdue.length > 8) {
+      body += `\n...dan ${overdue.length - 8} lainnya.`;
+    }
+  } else {
+    body += "\n\nTidak ada tunggakan dari periode sebelumnya.";
+  }
+
+  await notificationBot.sendAdminBroadcast("Reset pembayaran bulanan", body);
+}
+
 (async () => {
-  const dataManager = new DataManager();
+  const activityLog = new ActivityLog();
+  const authManager = new AuthManager(activityLog);
+  const dataManager = new DataManager(activityLog);
+  const templateManager = new TemplateManager(activityLog);
+  const notificationBot = new NotificationBot(dataManager, activityLog);
+
   await dataManager.loadAll();
 
-  const sessionManager = new SessionManager();
-  const templateManager = new TemplateManager();
-  const whatsAppClient = new WhatsAppClient(dataManager, sessionManager, templateManager);
-  const reminderScheduler = new ReminderScheduler(whatsAppClient, dataManager);
-  const webServer = new WebServer(whatsAppClient, dataManager);
+  const reminderScheduler = new ReminderScheduler(notificationBot, dataManager, activityLog);
+  const webServer = new WebServer(
+    notificationBot,
+    dataManager,
+    templateManager,
+    activityLog,
+    reminderScheduler,
+    authManager
+  );
 
-  // Start WhatsApp
-  await whatsAppClient.initialize();
-  whatsAppClient.startKeepAlive();
+  await notificationBot.initialize();
+  notificationBot.startKeepAlive();
 
-  // Start cron job
   cron.schedule(CONFIG.CRON_SCHEDULE, () => {
-    reminderScheduler.processDueReminders().catch(error => {
-      console.error('❌ Cron job failed:', error.message);
+    reminderScheduler.processDueReminders().catch((error) => {
+      activityLog.push("error", "scheduler", `Cron execution failed: ${error.message}`);
     });
   });
 
-  cron.schedule(CONFIG.RESET_PAYMENT_SCHEDULE, async () => {
-    console.log('🔄 Resetting payment status for new month...');
-    const count = await dataManager.resetAllPaymentStatus();
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
-    const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
-    const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
-    const overdue = dataManager.getOverdueContacts(prevYear, prevMonth);
-    const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-
-    for (const [nomor, role] of dataManager.roles.entries()) {
-      if (role === "admin") {
-        let notif = `📢 *RESET PEMBAYARAN*\n\nStatus pembayaran telah direset untuk bulan baru.\n\n`;
-        if (overdue.length > 0) {
-          notif += `⚠️ *${overdue.length} TAGIHAN BELUM LUNAS* dari bulan ${monthNames[prevMonth]}:\n\n`;
-          notif += overdue.slice(0, 5).map((o, i) => `${i + 1}. ${o.name}`).join("\n");
-          if (overdue.length > 5) notif += `\n...dan ${overdue.length - 5} lainnya`;
-        } else {
-          notif += `✅ Semua tagihan bulan lalu sudah lunas!`;
-        }
-        try {
-          await whatsAppClient.sendMessage(nomor, notif);
-        } catch (e) { /* ignore */ }
-      }
-    }
+  cron.schedule(CONFIG.RESET_PAYMENT_SCHEDULE, () => {
+    sendMonthlyResetNotification(notificationBot, dataManager, activityLog).catch((error) => {
+      activityLog.push("error", "billing", `Monthly reset failed: ${error.message}`);
+    });
   });
 
-  // Auto-save dan backup berkala
   setInterval(() => {
-    dataManager.saveAll().catch(error => {
-      console.error('❌ Auto-save failed:', error.message);
+    dataManager.saveAll().catch((error) => {
+      activityLog.push("error", "storage", `Auto-save failed: ${error.message}`);
     });
   }, CONFIG.AUTO_SAVE_INTERVAL);
+
   setInterval(() => {
-    dataManager.createBackup().catch(error => {
-      console.error('❌ Backup failed:', error.message);
+    dataManager.createBackup().catch((error) => {
+      activityLog.push("error", "storage", `Backup failed: ${error.message}`);
     });
   }, CONFIG.BACKUP_INTERVAL);
 
-  // Cleanup session setiap jam
-  setInterval(() => sessionManager.cleanupStaleSessions(), 60 * 60 * 1000);
+  setInterval(() => {
+    authManager.cleanupExpiredSessions();
+  }, 60 * 60 * 1000);
 
-  // Graceful shutdown
-  process.on('SIGINT', async () => {
-    console.log('\n🔄 Menyimpan data sebelum shutdown...');
+  process.on("SIGINT", async () => {
+    activityLog.push("info", "shutdown", "Saving data before shutdown");
     await dataManager.saveAll();
     process.exit(0);
   });
 
-  process.on('uncaughtException', async (err) => {
-    console.error('❌ Uncaught Exception:', err);
+  process.on("uncaughtException", async (error) => {
+    activityLog.push("error", "runtime", `Uncaught exception: ${error.message}`);
     await dataManager.saveAll();
     process.exit(1);
   });
 
-  process.on('unhandledRejection', async (reason) => {
-    console.error('❌ Unhandled Rejection:', reason);
+  process.on("unhandledRejection", async (reason) => {
+    const message = reason instanceof Error ? reason.message : String(reason);
+    activityLog.push("error", "runtime", `Unhandled rejection: ${message}`);
     await dataManager.saveAll();
     process.exit(1);
   });
 
-  webServer.start(CONFIG.PORT);
+  webServer.start();
 })();
