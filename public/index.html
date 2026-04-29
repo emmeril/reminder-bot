@@ -173,6 +173,19 @@
             </label>
             <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">Tambah Contact</button>
           </form>
+          <div class="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr),180px,140px]">
+            <input x-model="filters.contacts.search" @input="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama atau nomor WA">
+            <select x-model="filters.contacts.status" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+              <option value="ALL">Semua status</option>
+              <option value="PAID">Paid</option>
+              <option value="UNPAID">Unpaid</option>
+            </select>
+            <select x-model.number="filters.contacts.pageSize" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+              <template x-for="size in pageSizes" :key="'contacts-size-' + size">
+                <option :value="size" x-text="size + ' / page'"></option>
+              </template>
+            </select>
+          </div>
           <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
             <div class="overflow-x-auto">
               <table class="min-w-full text-sm">
@@ -185,10 +198,10 @@
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white/70">
-                  <template x-if="!contacts.length">
-                    <tr><td colspan="4" class="px-4 py-8 text-center text-ink/45">Belum ada contact.</td></tr>
+                  <template x-if="!filteredContacts.length">
+                    <tr><td colspan="4" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada contact yang cocok.' : 'Belum ada contact.'"></td></tr>
                   </template>
-                  <template x-for="contact in contacts" :key="contact.id">
+                  <template x-for="contact in paginatedContacts" :key="contact.id">
                     <tr>
                       <td class="px-4 py-4 font-medium" x-text="contact.name"></td>
                       <td class="px-4 py-4 text-ink/65" x-text="contact.phoneNumber"></td>
@@ -213,6 +226,14 @@
                   </template>
                 </tbody>
               </table>
+            </div>
+          </div>
+          <div class="mt-4 flex flex-col gap-3 text-sm text-ink/60 sm:flex-row sm:items-center sm:justify-between">
+            <div x-text="paginationLabel('contacts', filteredContacts.length)"></div>
+            <div class="flex items-center gap-2">
+              <button @click="setPage('contacts', filters.contacts.page - 1)" :disabled="filters.contacts.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Prev</button>
+              <span class="px-2" x-text="filters.contacts.page + ' / ' + totalPages('contacts', filteredContacts.length)"></span>
+              <button @click="setPage('contacts', filters.contacts.page + 1)" :disabled="filters.contacts.page >= totalPages('contacts', filteredContacts.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Next</button>
             </div>
           </div>
         </section>
@@ -259,6 +280,20 @@
             </label>
             <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">Buat Reminder</button>
           </form>
+          <div class="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr),180px,140px]">
+            <input x-model="filters.reminders.search" @input="resetPage('reminders')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari tujuan, nomor, template, atau pesan">
+            <select x-model="filters.reminders.schedule" @change="resetPage('reminders')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+              <option value="ALL">Semua jadwal</option>
+              <option value="TODAY">Hari ini</option>
+              <option value="UPCOMING">Akan datang</option>
+              <option value="OVERDUE">Terlambat</option>
+            </select>
+            <select x-model.number="filters.reminders.pageSize" @change="resetPage('reminders')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+              <template x-for="size in pageSizes" :key="'reminders-size-' + size">
+                <option :value="size" x-text="size + ' / page'"></option>
+              </template>
+            </select>
+          </div>
           <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
             <div class="overflow-x-auto">
               <table class="min-w-full text-sm">
@@ -272,10 +307,10 @@
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white/70">
-                  <template x-if="!reminders.length">
-                    <tr><td colspan="5" class="px-4 py-8 text-center text-ink/45">Belum ada reminder aktif.</td></tr>
+                  <template x-if="!filteredReminders.length">
+                    <tr><td colspan="5" class="px-4 py-8 text-center text-ink/45" x-text="reminders.length ? 'Tidak ada reminder yang cocok.' : 'Belum ada reminder aktif.'"></td></tr>
                   </template>
-                  <template x-for="reminder in reminders" :key="reminder.id">
+                  <template x-for="reminder in paginatedReminders" :key="reminder.id">
                     <tr>
                       <td class="px-4 py-4">
                         <div class="font-medium" x-text="reminder.contactName || 'Contact tidak ditemukan'"></div>
@@ -291,6 +326,14 @@
                   </template>
                 </tbody>
               </table>
+            </div>
+          </div>
+          <div class="mt-4 flex flex-col gap-3 text-sm text-ink/60 sm:flex-row sm:items-center sm:justify-between">
+            <div x-text="paginationLabel('reminders', filteredReminders.length)"></div>
+            <div class="flex items-center gap-2">
+              <button @click="setPage('reminders', filters.reminders.page - 1)" :disabled="filters.reminders.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Prev</button>
+              <span class="px-2" x-text="filters.reminders.page + ' / ' + totalPages('reminders', filteredReminders.length)"></span>
+              <button @click="setPage('reminders', filters.reminders.page + 1)" :disabled="filters.reminders.page >= totalPages('reminders', filteredReminders.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Next</button>
             </div>
           </div>
         </section>
@@ -393,6 +436,19 @@
             <h2 class="font-display text-2xl">Sent History</h2>
             <p class="mt-1 text-sm text-ink/60">Output notifikasi yang sudah keluar dari bot.</p>
           </div>
+          <div class="mb-5 grid gap-3 lg:grid-cols-[minmax(0,1fr),180px,140px]">
+            <input x-model="filters.sent.search" @input="resetPage('sent')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari tujuan, nomor, status, atau pesan">
+            <select x-model="filters.sent.status" @change="resetPage('sent')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+              <option value="ALL">Semua status</option>
+              <option value="SENT">Sent</option>
+              <option value="FAILED">Failed</option>
+            </select>
+            <select x-model.number="filters.sent.pageSize" @change="resetPage('sent')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+              <template x-for="size in pageSizes" :key="'sent-size-' + size">
+                <option :value="size" x-text="size + ' / page'"></option>
+              </template>
+            </select>
+          </div>
           <div class="overflow-hidden rounded-[1.5rem] border border-ink/8">
             <div class="overflow-x-auto">
               <table class="min-w-full text-sm">
@@ -405,10 +461,10 @@
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white/70">
-                  <template x-if="!sent.length">
-                    <tr><td colspan="4" class="px-4 py-8 text-center text-ink/45">Belum ada riwayat kirim.</td></tr>
+                  <template x-if="!filteredSent.length">
+                    <tr><td colspan="4" class="px-4 py-8 text-center text-ink/45" x-text="sent.length ? 'Tidak ada riwayat yang cocok.' : 'Belum ada riwayat kirim.'"></td></tr>
                   </template>
-                  <template x-for="item in sent" :key="item.id + '-' + item.sentAt">
+                  <template x-for="item in paginatedSent" :key="item.id + '-' + item.sentAt">
                     <tr>
                       <td class="px-4 py-4">
                         <div class="font-medium" x-text="item.contactName || 'Contact tidak ditemukan'"></div>
@@ -423,6 +479,14 @@
                   </template>
                 </tbody>
               </table>
+            </div>
+          </div>
+          <div class="mt-4 flex flex-col gap-3 text-sm text-ink/60 sm:flex-row sm:items-center sm:justify-between">
+            <div x-text="paginationLabel('sent', filteredSent.length)"></div>
+            <div class="flex items-center gap-2">
+              <button @click="setPage('sent', filters.sent.page - 1)" :disabled="filters.sent.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Prev</button>
+              <span class="px-2" x-text="filters.sent.page + ' / ' + totalPages('sent', filteredSent.length)"></span>
+              <button @click="setPage('sent', filters.sent.page + 1)" :disabled="filters.sent.page >= totalPages('sent', filteredSent.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Next</button>
             </div>
           </div>
         </section>
@@ -486,6 +550,12 @@
         statusCards: [],
         summaryMetrics: [],
         settingsDirty: false,
+        pageSizes: [10, 25, 50, 100],
+        filters: {
+          contacts: { search: "", status: "ALL", page: 1, pageSize: 10 },
+          reminders: { search: "", schedule: "ALL", page: 1, pageSize: 10 },
+          sent: { search: "", status: "ALL", page: 1, pageSize: 10 },
+        },
         forms: {
           manual: { phoneNumber: "", message: "" },
           broadcast: { title: "", message: "" },
@@ -554,6 +624,95 @@
           return new Date(value).toLocaleString("id-ID");
         },
 
+        searchMatches(item, fields, search) {
+          const needle = String(search || "").trim().toLowerCase();
+          if (!needle) return true;
+          return fields.some((field) => String(item[field] || "").toLowerCase().includes(needle));
+        },
+
+        isToday(value) {
+          const date = new Date(value);
+          if (Number.isNaN(date.getTime())) return false;
+          const today = new Date();
+          return date.getFullYear() === today.getFullYear()
+            && date.getMonth() === today.getMonth()
+            && date.getDate() === today.getDate();
+        },
+
+        get filteredContacts() {
+          return this.contacts.filter((contact) => {
+            const status = String(contact.paymentStatus || "UNPAID").toUpperCase();
+            if (this.filters.contacts.status !== "ALL" && status !== this.filters.contacts.status) return false;
+            return this.searchMatches(contact, ["name", "phoneNumber", "paymentStatus"], this.filters.contacts.search);
+          });
+        },
+
+        get filteredReminders() {
+          const now = Date.now();
+          return this.reminders.filter((reminder) => {
+            const reminderTime = new Date(reminder.reminderDateTime).getTime();
+            const schedule = this.filters.reminders.schedule;
+            if (schedule === "TODAY" && !this.isToday(reminder.reminderDateTime)) return false;
+            if (schedule === "UPCOMING" && (!Number.isFinite(reminderTime) || reminderTime < now)) return false;
+            if (schedule === "OVERDUE" && (!Number.isFinite(reminderTime) || reminderTime >= now)) return false;
+            return this.searchMatches(reminder, ["contactName", "phoneNumber", "templateName", "message", "reminderDateTime"], this.filters.reminders.search);
+          });
+        },
+
+        get filteredSent() {
+          return this.sent.filter((item) => {
+            const status = String(item.deliveryStatus || "SENT").toUpperCase();
+            if (this.filters.sent.status !== "ALL" && status !== this.filters.sent.status) return false;
+            return this.searchMatches(item, ["contactName", "phoneNumber", "deliveryStatus", "message", "sentAt", "reminderDateTime"], this.filters.sent.search);
+          });
+        },
+
+        get paginatedContacts() {
+          return this.paginate(this.filteredContacts, "contacts");
+        },
+
+        get paginatedReminders() {
+          return this.paginate(this.filteredReminders, "reminders");
+        },
+
+        get paginatedSent() {
+          return this.paginate(this.filteredSent, "sent");
+        },
+
+        paginate(items, key) {
+          this.clampPage(key, items.length);
+          const pageSize = this.filters[key].pageSize;
+          const start = (this.filters[key].page - 1) * pageSize;
+          return items.slice(start, start + pageSize);
+        },
+
+        totalPages(key, total) {
+          return Math.max(1, Math.ceil(total / this.filters[key].pageSize));
+        },
+
+        clampPage(key, total) {
+          const max = this.totalPages(key, total);
+          if (this.filters[key].page > max) this.filters[key].page = max;
+          if (this.filters[key].page < 1) this.filters[key].page = 1;
+        },
+
+        setPage(key, page) {
+          this.filters[key].page = Math.min(Math.max(1, page), this.totalPages(key, this[`filtered${key[0].toUpperCase()}${key.slice(1)}`].length));
+        },
+
+        resetPage(key) {
+          this.filters[key].page = 1;
+        },
+
+        paginationLabel(key, total) {
+          this.clampPage(key, total);
+          if (!total) return "Menampilkan 0 data";
+          const pageSize = this.filters[key].pageSize;
+          const start = (this.filters[key].page - 1) * pageSize + 1;
+          const end = Math.min(total, start + pageSize - 1);
+          return `Menampilkan ${start}-${end} dari ${total} data`;
+        },
+
         async refreshAll() {
           await Promise.all([
             this.loadStatus(),
@@ -602,14 +761,17 @@
 
         async loadContacts() {
           this.contacts = await this.api("/api/contacts");
+          this.clampPage("contacts", this.filteredContacts.length);
         },
 
         async loadReminders() {
           this.reminders = await this.api("/api/reminders");
+          this.clampPage("reminders", this.filteredReminders.length);
         },
 
         async loadSent() {
-          this.sent = (await this.api("/api/reminders/sent")).slice(0, 50);
+          this.sent = await this.api("/api/reminders/sent");
+          this.clampPage("sent", this.filteredSent.length);
         },
 
         async loadTemplates() {
