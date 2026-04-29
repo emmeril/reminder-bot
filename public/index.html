@@ -162,6 +162,41 @@
               Reload
             </button>
           </div>
+          <div class="mb-6 rounded-[1.25rem] border border-moss/15 bg-moss/[0.04] p-4">
+            <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 class="text-base font-semibold text-ink">Registrasi Pelanggan MikroTik</h3>
+                <p class="mt-1 text-sm text-ink/60">Membuat user hotspot, menyimpan data pelanggan, dan menambahkan contact dashboard.</p>
+              </div>
+              <button type="button" @click="loadMikrotikProfiles()" class="rounded-full border border-moss/20 bg-white px-4 py-2 text-sm font-semibold text-moss transition hover:bg-moss hover:text-white">
+                Load Profile
+              </button>
+            </div>
+            <form class="grid gap-4 xl:grid-cols-[minmax(0,1fr),minmax(0,1fr),220px,190px,auto] xl:items-end" @submit.prevent="registerMikrotikCustomer()">
+              <label class="block text-sm text-ink/60">
+                Nama pelanggan
+                <input x-model="forms.mikrotikCustomer.name" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" required>
+              </label>
+              <label class="block text-sm text-ink/60">
+                Nomor WhatsApp
+                <input x-model="forms.mikrotikCustomer.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="628xxx" required>
+              </label>
+              <label class="block text-sm text-ink/60">
+                Profile hotspot
+                <input x-model="forms.mikrotikCustomer.profile" list="mikrotik-profiles" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="Pilih/ketik profile" required>
+                <datalist id="mikrotik-profiles">
+                  <template x-for="profile in mikrotikProfiles" :key="profile.name">
+                    <option :value="profile.name" x-text="profile.rateLimit ? profile.name + ' - ' + profile.rateLimit : profile.name"></option>
+                  </template>
+                </datalist>
+              </label>
+              <label class="flex items-center gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink">
+                <input type="checkbox" x-model="forms.mikrotikCustomer.sendCredentials" class="h-4 w-4 accent-moss">
+                Kirim akun WA
+              </label>
+              <button class="rounded-full bg-moss px-5 py-3 text-sm font-semibold text-white transition hover:bg-ink">Registrasi</button>
+            </form>
+          </div>
           <form class="grid gap-4 md:grid-cols-[minmax(0,1fr),minmax(0,1fr),auto] md:items-end" @submit.prevent="createContact()">
             <label class="block text-sm text-ink/60">
               Nama
@@ -543,6 +578,7 @@
         },
         showActions: false,
         contacts: [],
+        mikrotikProfiles: [],
         reminders: [],
         sent: [],
         templates: [],
@@ -561,6 +597,7 @@
           broadcast: { title: "", message: "" },
           recipients: "",
           contact: { name: "", phoneNumber: "" },
+          mikrotikCustomer: { name: "", phoneNumber: "", profile: "", sendCredentials: true },
           reminder: { contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
           template: { name: "", content: "" },
           settings: {
@@ -764,6 +801,11 @@
           this.clampPage("contacts", this.filteredContacts.length);
         },
 
+        async loadMikrotikProfiles() {
+          this.mikrotikProfiles = await this.api("/api/mikrotik/profiles");
+          this.notify(`${this.mikrotikProfiles.length} profile MikroTik dimuat.`);
+        },
+
         async loadReminders() {
           this.reminders = await this.api("/api/reminders");
           this.clampPage("reminders", this.filteredReminders.length);
@@ -795,6 +837,24 @@
           this.forms.contact = { name: "", phoneNumber: "" };
           this.notify("Contact ditambahkan.");
           await Promise.all([this.loadContacts(), this.loadStatus()]);
+        },
+
+        async registerMikrotikCustomer() {
+          const result = await this.api("/api/mikrotik/customers", {
+            method: "POST",
+            body: JSON.stringify(this.forms.mikrotikCustomer),
+          });
+          this.forms.mikrotikCustomer = { name: "", phoneNumber: "", profile: "", sendCredentials: true };
+
+          if (result.notification?.sent) {
+            this.notify(`Pelanggan dibuat: ${result.username}. Akun terkirim ke WhatsApp.`);
+          } else if (result.notification?.error) {
+            this.notify(`Pelanggan dibuat: ${result.username}. WA belum terkirim: ${result.notification.error}`);
+          } else {
+            this.notify(`Pelanggan dibuat: ${result.username}.`);
+          }
+
+          await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
         },
 
         async togglePayment(id, status) {

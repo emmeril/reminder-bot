@@ -1,0 +1,3024 @@
+require("dotenv").config();
+const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js");
+const { RouterOSClient } = require("routeros-client");
+const express = require("express");
+const QRCode = require("qrcode");
+const fs = require("fs");
+const path = require("path");
+const ExcelJS = require('exceljs');
+const { CronJob } = require('cron');
+
+// ==================== KONSTANTA & KONFIGURASI ====================
+const MIN_RECONNECT_INTERVAL = 10000; // 10 detik
+const MAX_RECONNECT_ATTEMPTS = 10;
+const RECONNECT_DELAY = 1000;
+const COMMAND_PREFIX = "#";
+const BULK_SEND_CONCURRENCY = 5;
+const BULK_SEND_DELAY_MS = 250;
+const BASE_DIR = __dirname;
+const resolveAppPath = (...segments) => path.join(BASE_DIR, ...segments);
+const EXCEL_FOLDER = resolveAppPath('excel_reports');
+const CACHE_TTL = 5000; // 5 detik untuk cache file
+const APP_TIMEZONE = 'Asia/Jakarta';
+const VALID_PROFILE_DURATIONS = new Set(["1m","5m","10m","15m","30m","1h","2h","3h","4h","6h","8h","12h","1d","7d","30d"]);
+const BANDWIDTH_LIMIT_REGEX = /^\d+[kMgG]?$/i;
+const WWEBJS_AUTH_DIR = resolveAppPath('wwebjs_auth');
+
+// File JSON
+const ADMIN_FILE = resolveAppPath('admin_list.json');
+const HARGA_FILE = resolveAppPath('harga_profil.json');
+const REKAP_FILE = resolveAppPath('rekap_pendapatan.json');
+const AUTO_REKAP_FILE = resolveAppPath('auto_rekap_setting.json');
+const DURASI_PROFILE_FILE = resolveAppPath('durasi_profile.json');
+const HISTORY_FILE = resolveAppPath('history_user.json');
+const PELANGGAN_FILE = resolveAppPath('pelanggan.json');
+const INFO_FILE = resolveAppPath('info_broadcast.json');
+
+// MikroTik configs
+const mikrotikConfigs = {
+  primary: {
+    host: process.env.IP_MIKROTIK,
+    user: process.env.USER_MIKROTIK,
+    password: process.env.PASSWORD_MIKROTIK,
+    port: process.env.PORT_MIKROTIK,
+    timeout: 30000,
+    keepalive: true,
+  },
+  backup: {
+    host: process.env.IP_MIKROTIK_BACKUP,
+    user: process.env.USER_MIKROTIK,
+    password: process.env.PASSWORD_MIKROTIK,
+    port: process.env.PORT_MIKROTIK_BACKUP,
+    timeout: 30000,
+    keepalive: true,
+  }
+};
+
+// ==================== STATE MANAGEMENT ====================
+const state = {
+  previousNetwatchStatus: {},
+  apDownSince: {},
+  currentQR: null,
+  isReady: false,
+  restartCount: 0,
+  maxRestarts: 10,
+  autoRekapEnabled: false,
+  lastRekapData: null,
+  autoRekapInterval: null,
+  autoBackupInterval: null,
+  syncPelangganEnabled: true,
+  lastSyncTime: null,
+  syncPelangganInterval: null,
+  reconnectAttempts: 0,
+  isReconnecting: false,
+  lastReconnectTime: null,
+  reconnectTimer: null,
+  keepAliveTimer: null,
+  waState: null,
+  infoConfirmations: new Map(),
+  // Cache untuk file I/O
+  cache: {
+    adminList: { data: null, timestamp: 0 },
+    hargaProfil: { data: null, timestamp: 0 },
+    rekap: { data: null, timestamp: 0 },
+    durasiProfile: { data: null, timestamp: 0 },
+    pelanggan: { data: null, timestamp: 0 },
+    history: { data: null, timestamp: 0 },
+    autoRekap: { data: null, timestamp: 0 },
+    info: { data: null, timestamp: 0 }
+  }
+};
+
+let cronJobNotifikasi = null;
+let cronJobResetAkun = null;
+let client = null;
+const app = express();
+const PORT = process.env.PORT || 3000;
+const adminNumber = process.env.ADMIN_NUMBER;
+
+const ensureDirectoryExists = (directoryPath) => {
+  if (!fs.existsSync(directoryPath)) {
+    fs.mkdirSync(directoryPath, { recursive: true });
+  }
+};
+
+const getPuppeteerExecutablePath = () => {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+
+  if (process.platform === 'linux') {
+    return '/usr/bin/chromium';
+  }
+
+  return undefined;
+};
+
+// Buat folder Excel jika belum ada
+ensureDirectoryExists(EXCEL_FOLDER);
+
+// ==================== HELPER FUNCTIONS ====================
+const getNamaBulan = (bulanAngka) => {
+  const bulan = [
+    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+  ];
+  return bulan[bulanAngka] || "Tidak Diketahui";
+};
+
+const formatDuration = (milliseconds) => {
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const seconds = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const minutes = totalMinutes % 60;
+  const hours = Math.floor(totalMinutes / 60);
+  let formatted = "";
+  if (hours > 0) formatted += `${hours} jam `;
+  if (minutes > 0) formatted += `${minutes} menit `;
+  if (seconds > 0 || formatted === "") formatted += `${seconds} detik`;
+  return formatted.trim();
+};
+
+const generateRandomString = (length = 5) => {
+  return Math.random().toString(36).substring(2, 2 + length);
+};
+
+const splitArgs = (args = "") => {
+  const trimmed = args.trim();
+  return trimmed ? trimmed.split(/\s+/) : [];
+};
+
+const parsePositiveInt = (rawValue, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) => {
+  const value = Number.parseInt(String(rawValue ?? "").trim(), 10);
+  if (!Number.isFinite(value) || value < min || value > max) {
+    return null;
+  }
+  return value;
+};
+
+const pad2 = (value) => String(value).padStart(2, '0');
+
+const formatPeriodeTanggal = ({ hari, bulan, tahun }) => `${pad2(hari)}-${pad2(bulan)}-${tahun}`;
+
+const formatPeriodeBulanan = ({ bulan, tahun }) => `${pad2(bulan)}-${tahun}`;
+
+const getHourInTimezone = (dateInput, timeZone = APP_TIMEZONE) => {
+  const dateObj = new Date(dateInput);
+  if (Number.isNaN(dateObj.getTime())) return null;
+  const hourValue = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    hour12: false
+  }).format(dateObj);
+  const hour = Number(hourValue);
+  return Number.isInteger(hour) ? hour : null;
+};
+
+const isValidDateValue = (hari, bulan, tahun) => {
+  if (!Number.isInteger(hari) || !Number.isInteger(bulan) || !Number.isInteger(tahun)) return false;
+  if (tahun < 1970 || tahun > 9999) return false;
+  if (bulan < 1 || bulan > 12) return false;
+  const lastDay = new Date(tahun, bulan, 0).getDate();
+  return hari >= 1 && hari <= lastDay;
+};
+
+const getDatePartsInTimezone = (dateInput, timeZone = APP_TIMEZONE) => {
+  const dateObj = new Date(dateInput);
+  if (Number.isNaN(dateObj.getTime())) return null;
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+  const parts = formatter.formatToParts(dateObj);
+  const dayPart = parts.find((part) => part.type === 'day')?.value;
+  const monthPart = parts.find((part) => part.type === 'month')?.value;
+  const yearPart = parts.find((part) => part.type === 'year')?.value;
+  const hari = Number(dayPart);
+  const bulan = Number(monthPart);
+  const tahun = Number(yearPart);
+  if (!isValidDateValue(hari, bulan, tahun)) return null;
+  return { hari, bulan, tahun };
+};
+
+const formatDateKeyInTimezone = (dateInput, timeZone = APP_TIMEZONE) => {
+  const dateParts = getDatePartsInTimezone(dateInput, timeZone);
+  if (!dateParts) return null;
+  const { tahun, bulan, hari } = dateParts;
+  return `${tahun}-${pad2(bulan)}-${pad2(hari)}`;
+};
+
+const parseDurationToMilliseconds = (duration) => {
+  const normalized = String(duration || "").trim().toLowerCase();
+  const match = normalized.match(/^(\d+)([mhd])$/);
+  if (!match) return null;
+  const amount = Number(match[1]);
+  const unit = match[2];
+  if (!Number.isInteger(amount) || amount <= 0) return null;
+  if (unit === 'm') return amount * 60 * 1000;
+  if (unit === 'h') return amount * 60 * 60 * 1000;
+  if (unit === 'd') return amount * 24 * 60 * 60 * 1000;
+  return null;
+};
+
+const inferDurationFromProfileName = (profileName) => {
+  const normalized = String(profileName || "").trim().toLowerCase();
+  if (!normalized) return null;
+
+  // Pola: angka diikuti langsung oleh m/h/d (tanpa spasi) dan batas kata
+  let match = normalized.match(/(\d+)([mhd])\b/);
+  if (match) return `${Number(match[1])}${match[2]}`;
+
+  // Pola: angka, spasi opsional, m/h/d, dengan batas kata sebelumnya
+  match = normalized.match(/\b(\d+)\s*([mhd])\b/);
+  if (match) return `${Number(match[1])}${match[2]}`;
+
+  // Deteksi kata jam/j/hour/hours
+  match = normalized.match(/(\d+)\s*[-_ ]?(jam|j|hour|hours)\b/);
+  if (match) return `${Number(match[1])}h`;
+
+  // Deteksi kata hari/day/days
+  match = normalized.match(/(\d+)\s*[-_ ]?(hari|day|days)\b/);
+  if (match) return `${Number(match[1])}d`;
+
+  // Deteksi kata menit/min/mnt/minute/minutes
+  match = normalized.match(/(\d+)\s*[-_ ]?(menit|min|mnt|minute|minutes)\b/);
+  if (match) return `${Number(match[1])}m`;
+
+  // Deteksi bulan (30 hari)
+  match = normalized.match(/(\d+)\s*[-_ ]?(bulan|month|months)\b/);
+  if (match) return `${Number(match[1]) * 30}d`;
+
+  // Deteksi minggu (7 hari)
+  match = normalized.match(/(\d+)\s*[-_ ]?(minggu|week|weeks)\b/);
+  if (match) return `${Number(match[1]) * 7}d`;
+
+  // Fallback terakhir: ambil angka di akhir nama (misal "free1") dan asumsikan jam
+  match = normalized.match(/(\d+)$/);
+  if (match) return `${Number(match[1])}h`;
+
+  return null;
+};
+
+const getDurationValueForProfile = (profile, durasiProfile) => {
+  const stored = durasiProfile?.[profile];
+  if (parseDurationToMilliseconds(stored)) return stored;
+
+  const inferred = inferDurationFromProfileName(profile);
+  if (parseDurationToMilliseconds(inferred)) return inferred;
+
+  return null;
+};
+
+const inferTanggalAktifFromExpired = (tanggalExpired, profile, durasiProfile) => {
+  if (!tanggalExpired || !profile) return null;
+  const expiredDate = new Date(tanggalExpired);
+  if (Number.isNaN(expiredDate.getTime())) return null;
+  const durationRaw = getDurationValueForProfile(profile, durasiProfile);
+  const durationMs = parseDurationToMilliseconds(durationRaw);
+  if (!durationMs) return null;
+  return new Date(expiredDate.getTime() - durationMs).toISOString();
+};
+
+const getComparableHistoryTime = (entry) => {
+  const expiredTs = entry?.tanggalExpired ? new Date(entry.tanggalExpired).getTime() : NaN;
+  if (Number.isFinite(expiredTs)) return expiredTs;
+  const aktifTs = entry?.tanggalAktif ? new Date(entry.tanggalAktif).getTime() : NaN;
+  if (Number.isFinite(aktifTs)) return aktifTs;
+  const dicatatTs = entry?.tanggalDicatat ? new Date(entry.tanggalDicatat).getTime() : NaN;
+  if (Number.isFinite(dicatatTs)) return dicatatTs;
+  return 0;
+};
+
+const buildLatestHistoryMapByName = (historyUsers = [], normalizeKey = false) => {
+  const latestMap = new Map();
+  historyUsers.forEach((entry) => {
+    const rawName = String(entry?.name || "").trim();
+    if (!rawName) return;
+    const key = normalizeKey ? rawName.toLowerCase() : rawName;
+    const current = latestMap.get(key);
+    if (!current || getComparableHistoryTime(entry) > getComparableHistoryTime(current)) {
+      latestMap.set(key, entry);
+    }
+  });
+  return latestMap;
+};
+
+const resolveTanggalAktifState = (userData, existingEntry, durasiProfile, fallbackTimestamp) => {
+  if (userData?.tanggalAktif) {
+    return {
+      tanggalAktif: userData.tanggalAktif,
+      tanggalAktifSource: userData.tanggalAktifSource || existingEntry?.tanggalAktifSource || 'manual'
+    };
+  }
+
+  if (existingEntry?.tanggalAktif && existingEntry?.tanggalAktifSource && existingEntry.tanggalAktifSource !== 'fallback') {
+    return {
+      tanggalAktif: existingEntry.tanggalAktif,
+      tanggalAktifSource: existingEntry.tanggalAktifSource
+    };
+  }
+
+  const inferred = inferTanggalAktifFromExpired(userData?.tanggalExpired, userData?.profile, durasiProfile);
+  if (inferred) {
+    return { tanggalAktif: inferred, tanggalAktifSource: 'calculated' };
+  }
+
+  return {
+    tanggalAktif: existingEntry?.tanggalAktif || fallbackTimestamp,
+    tanggalAktifSource: 'fallback'
+  };
+};
+
+const resolveTanggalAktifForRekap = (user, durasiProfile) => {
+  if (!user) return null;
+
+  // Prioritaskan perhitungan ulang dari tanggal expired jika ada
+  if (user.tanggalExpired) {
+    const inferred = inferTanggalAktifFromExpired(user.tanggalExpired, user.profile, durasiProfile);
+    if (inferred) return inferred;
+  }
+
+  // Fallback ke tanggal aktif yang tersimpan (jika tidak bisa dihitung ulang)
+  if (user.tanggalAktif) return user.tanggalAktif;
+
+  return null;
+};
+
+const parseCommandPayload = (fullCommand = "") => {
+  const trimmed = fullCommand.trim();
+  if (!trimmed || !trimmed.startsWith(COMMAND_PREFIX)) {
+    return null;
+  }
+  const spaceIndex = trimmed.indexOf(" ");
+  const command = (spaceIndex === -1 ? trimmed.slice(1) : trimmed.slice(1, spaceIndex)).toLowerCase();
+  const args = spaceIndex === -1 ? "" : trimmed.slice(spaceIndex + 1).trim();
+  return { command, args };
+};
+
+const parseRekapArgs = (args = "") => {
+  const normalized = String(args || "").trim().toLowerCase();
+  if (normalized === "harian") return { mode: "harian" };
+  if (normalized === "bulanan") return { mode: "bulanan" };
+
+  if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(normalized)) {
+    const [hari, bulan, tahun] = normalized.split("-").map(Number);
+    if (!isValidDateValue(hari, bulan, tahun)) return null;
+    return { mode: "spesifik", tanggal: formatPeriodeTanggal({ hari, bulan, tahun }) };
+  }
+
+  if (/^\d{1,2}-\d{4}$/.test(normalized)) {
+    const [bulan, tahun] = normalized.split("-").map(Number);
+    if (!Number.isInteger(bulan) || bulan < 1 || bulan > 12) return null;
+    if (!Number.isInteger(tahun) || tahun < 1970 || tahun > 9999) return null;
+    return { mode: "spesifik", bulan, tahun };
+  }
+
+  return null;
+};
+
+const formatUsernameFromNama = (nama) => {
+  return nama.toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '');
+};
+
+const buildHotspotEmailFromNomer = (nomer) => {
+  const normalized = String(nomer || "").replace(/\D/g, "");
+  if (!normalized) return "";
+  return `${normalized}@localhost.local`;
+};
+
+const parseTanggalKomentar = (comment) => {
+  if (!comment) return null;
+  const regex1 = /(\w{3})\/(\d{1,2})\/(\d{4}) (\d{1,2}):(\d{2}):(\d{2})/i;
+  const regex2 = /(\d{1,2})\/(\w{3})\/(\d{4}) (\d{1,2}):(\d{2}):(\d{2})/i;
+  let match = comment.match(regex1);
+  let format = 1;
+  if (!match) {
+    match = comment.match(regex2);
+    format = 2;
+  }
+  if (!match) return null;
+  try {
+    const bulanMap = {
+      'jan': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'may': 4, 'jun': 5,
+      'jul': 6, 'aug': 7, 'sep': 8, 'oct': 9, 'nov': 10, 'dec': 11
+    };
+    let bulan, hari, tahun, jam, menit, detik;
+    if (format === 1) {
+      bulan = bulanMap[match[1].toLowerCase()];
+      hari = Number.parseInt(match[2], 10);
+      tahun = Number.parseInt(match[3], 10);
+    } else {
+      hari = Number.parseInt(match[1], 10);
+      bulan = bulanMap[match[2].toLowerCase()];
+      tahun = Number.parseInt(match[3], 10);
+    }
+    jam = Number.parseInt(match[4], 10);
+    menit = Number.parseInt(match[5], 10);
+    detik = Number.parseInt(match[6], 10);
+    if (!Number.isInteger(bulan)) return null;
+    const parsedDate = new Date(tahun, bulan, hari, jam, menit, detik);
+    if (Number.isNaN(parsedDate.getTime())) return null;
+    return parsedDate;
+  } catch (error) {
+    console.error('Error parsing tanggal:', error);
+    return null;
+  }
+};
+
+const formatCronNextRun = (cronJob) => {
+  try {
+    if (!cronJob) return null;
+    const nextRunRaw = cronJob.nextDate();
+    if (nextRunRaw && typeof nextRunRaw.toJSDate === 'function') {
+      return nextRunRaw.toJSDate().toLocaleString('id-ID', { timeZone: APP_TIMEZONE });
+    }
+    if (nextRunRaw instanceof Date) {
+      return nextRunRaw.toLocaleString('id-ID', { timeZone: APP_TIMEZONE });
+    }
+    return String(nextRunRaw);
+  } catch (error) {
+    console.error('[Cron] Gagal format jadwal berikutnya:', error);
+    return null;
+  }
+};
+
+const dapatkanInfoTagihan = (profile, tanggalExpired) => {
+  try {
+    const hargaProfil = bacaHargaProfil();
+    const harga = hargaProfil[profile];
+    if (!harga) return null;
+    const tanggal = new Date(tanggalExpired);
+    const namaBulan = getNamaBulan(tanggal.getMonth());
+    const tanggalFormat = tanggal.toLocaleDateString('id-ID');
+    const hargaFormatted = harga.toLocaleString('id-ID');
+    return { bulan: namaBulan, tanggal: tanggalFormat, harga, hargaFormatted };
+  } catch (error) {
+    console.error('Error mendapatkan info tagihan:', error);
+    return null;
+  }
+};
+
+// ==================== FILE I/O DENGAN CACHE ====================
+const readJSON = (file, cacheKey, defaultData) => {
+  const now = Date.now();
+  const cache = state.cache[cacheKey];
+  if (cache && cache.data !== null && (now - cache.timestamp) < CACHE_TTL) {
+    return cache.data;
+  }
+  try {
+    if (fs.existsSync(file)) {
+      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+      state.cache[cacheKey] = { data, timestamp: now };
+      return data;
+    }
+  } catch (error) {
+    console.error(`Error membaca ${file}:`, error);
+  }
+  state.cache[cacheKey] = { data: defaultData, timestamp: now };
+  return defaultData;
+};
+
+const writeJSON = (file, cacheKey, data) => {
+  try {
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+    state.cache[cacheKey] = { data, timestamp: Date.now() };
+    return true;
+  } catch (error) {
+    console.error(`Error menyimpan ${file}:`, error);
+    return false;
+  }
+};
+
+const bacaAdminList = () => readJSON(ADMIN_FILE, 'adminList', adminNumber ? [adminNumber] : []);
+const simpanAdminList = (data) => writeJSON(ADMIN_FILE, 'adminList', data);
+const bacaHargaProfil = () => readJSON(HARGA_FILE, 'hargaProfil', {});
+const simpanHargaProfil = (data) => writeJSON(HARGA_FILE, 'hargaProfil', data);
+const bacaDurasiProfile = () => readJSON(DURASI_PROFILE_FILE, 'durasiProfile', {});
+const simpanDurasiProfile = (data) => writeJSON(DURASI_PROFILE_FILE, 'durasiProfile', data);
+const bacaRekapPendapatan = () => readJSON(REKAP_FILE, 'rekap', {});
+const simpanRekapPendapatan = (data) => writeJSON(REKAP_FILE, 'rekap', data);
+const bacaAutoRekapSetting = () => readJSON(AUTO_REKAP_FILE, 'autoRekap', { enabled: false, interval: 1 });
+const simpanAutoRekapSetting = (data) => writeJSON(AUTO_REKAP_FILE, 'autoRekap', data);
+const bacaHistoryUser = () => readJSON(HISTORY_FILE, 'history', []);
+const simpanHistoryUser = (data) => writeJSON(HISTORY_FILE, 'history', data);
+const bacaPelanggan = () => readJSON(PELANGGAN_FILE, 'pelanggan', []);
+const simpanPelanggan = (data) => writeJSON(PELANGGAN_FILE, 'pelanggan', data);
+const bacaRiwayatInfo = () => readJSON(INFO_FILE, 'info', []);
+const simpanRiwayatInfo = (data) => writeJSON(INFO_FILE, 'info', data);
+
+// ==================== HISTORY MANAGEMENT ====================
+const upsertHistoryUsers = (entries, existingHistory = null) => {
+  const history = Array.isArray(existingHistory) ? existingHistory : bacaHistoryUser();
+  const durasiProfile = bacaDurasiProfile();
+  const buildTransactionKey = (user) => {
+    const name = String(user?.name || "").trim();
+    if (!name) return null;
+    const expired = user?.tanggalExpired ? new Date(user.tanggalExpired) : null;
+    if (expired && !Number.isNaN(expired.getTime())) {
+      return `${name}__${expired.toISOString()}`;
+    }
+    return null;
+  };
+
+  const transactionToIndex = new Map();
+  history.forEach((user, index) => {
+    const key = buildTransactionKey(user);
+    if (key) transactionToIndex.set(key, index);
+  });
+
+  let inserted = 0;
+  let updated = 0;
+
+  entries.forEach((userData) => {
+    if (!userData?.name) return;
+    const transactionKey = buildTransactionKey(userData);
+
+    if (transactionKey && transactionToIndex.has(transactionKey)) {
+      const index = transactionToIndex.get(transactionKey);
+      const oldTanggalDicatat = history[index].tanggalDicatat || new Date().toISOString();
+      const aktifState = resolveTanggalAktifState(userData, history[index], durasiProfile, oldTanggalDicatat);
+      history[index] = { ...history[index], ...userData, ...aktifState, tanggalDicatat: oldTanggalDicatat };
+      updated++;
+      return;
+    }
+
+    if (!transactionKey) {
+      const fallbackIndex = history.findIndex((item) => item?.name === userData.name && !item?.tanggalExpired);
+      if (fallbackIndex !== -1) {
+        const oldTanggalDicatat = history[fallbackIndex].tanggalDicatat || new Date().toISOString();
+        const aktifState = resolveTanggalAktifState(userData, history[fallbackIndex], durasiProfile, oldTanggalDicatat);
+        history[fallbackIndex] = { ...history[fallbackIndex], ...userData, ...aktifState, tanggalDicatat: oldTanggalDicatat };
+        updated++;
+        return;
+      }
+    }
+
+    const tanggalDicatat = new Date().toISOString();
+    const aktifState = resolveTanggalAktifState(userData, null, durasiProfile, tanggalDicatat);
+    history.push({ ...userData, ...aktifState, tanggalDicatat });
+    if (transactionKey) {
+      transactionToIndex.set(transactionKey, history.length - 1);
+    }
+    inserted++;
+  });
+
+  return { history, inserted, updated, changed: inserted > 0 || updated > 0 };
+};
+
+const tambahKeHistory = (userData) => {
+  const { history, inserted, updated, changed } = upsertHistoryUsers([userData]);
+  if (!changed) return true;
+  if (inserted > 0) {
+    console.log(`[History] Tambah data baru untuk ${userData.name}`);
+  } else if (updated > 0) {
+    console.log(`[History] Update data untuk ${userData.name}`);
+  }
+  return simpanHistoryUser(history);
+};
+
+// ==================== MIKROTIK CONNECTION ====================
+const tryConnectToMikrotik = async (config, label) => {
+  try {
+    console.log(`[INFO] Mencoba koneksi ke MikroTik ${label}`);
+    const client = new RouterOSClient(config);
+    const connection = await client.connect();
+    await connection.menu("/system/identity").getOnly();
+    console.log(`[SUCCESS] Terhubung ke MikroTik ${label}`);
+    return { client, connection };
+  } catch (error) {
+    console.warn(`[WARN] Gagal terhubung ke MikroTik ${label}: ${error.message}`);
+    return null;
+  }
+};
+
+const connectToMikrotikWithRetry = async (retryCount = 0) => {
+  let result = await tryConnectToMikrotik(mikrotikConfigs.primary, "primary");
+  if (!result) {
+    result = await tryConnectToMikrotik(mikrotikConfigs.backup, "backup");
+  }
+  if (!result) {
+    if (retryCount < 5) {
+      const delay = Math.pow(2, retryCount) * 1000;
+      console.error(`[ERROR] Gagal terhubung. Mencoba lagi dalam ${delay / 1000} detik...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return connectToMikrotikWithRetry(retryCount + 1);
+    } else {
+      console.error("[FATAL] Gagal terhubung ke kedua MikroTik setelah beberapa percobaan.");
+      return null;
+    }
+  }
+  return result;
+};
+
+const executeWithMikrotik = async (operation, errorMessage = "Terjadi kesalahan") => {
+  let connectionObj = null;
+  try {
+    connectionObj = await connectToMikrotikWithRetry();
+    if (!connectionObj) throw new Error("Gagal terhubung ke MikroTik");
+    const result = await operation(connectionObj.connection);
+    return result;
+  } catch (error) {
+    console.error(`${errorMessage}:`, error);
+    throw error;
+  } finally {
+    if (connectionObj && connectionObj.client) {
+      connectionObj.client.close();
+      console.log("Koneksi MikroTik ditutup.");
+    }
+  }
+};
+
+// ==================== MIKROTIK OPERATIONS ====================
+const mikrotikOperations = {
+  async getActiveHotspotUsers(chatId) {
+    return executeWithMikrotik(async (conn) => {
+      const activeUsers = await conn.menu("/ip/hotspot/active").print();
+      if (!activeUsers || activeUsers.length === 0) {
+        return client.sendMessage(chatId, "Tidak ada user hotspot aktif.");
+      }
+      let message = `*User Hotspot Aktif (${activeUsers.length} User):*\n\n`;
+      activeUsers.forEach(user => {
+        message += `*User:* ${user.user}\n`;
+        message += `*Address:* ${user.address}\n`;
+        message += `*MAC Address:* ${user["mac-address"] || "-"}\n`;
+        message += `*Comment:* ${user.comment || "-"}\n`;
+        message += "---\n";
+      });
+      await client.sendMessage(chatId, message);
+    }, "Gagal mengambil data user aktif");
+  },
+
+  async getNetwatchStatus(chatId, manualFetch = false) {
+    return executeWithMikrotik(async (conn) => {
+      const netwatchData = await conn.menu("/tool/netwatch").print();
+      const currentNetwatchStatus = {};
+      const now = new Date();
+      if (!netwatchData || netwatchData.length === 0) {
+        if (manualFetch) await client.sendMessage(chatId, "Tidak ada entri Netwatch.");
+        return;
+      }
+      let upCount = 0, downCount = 0;
+      const upApList = [], downApList = [];
+      netwatchData.forEach(entry => {
+        currentNetwatchStatus[entry.host] = entry.status;
+        if (entry.status === "up") {
+          upCount++;
+          upApList.push({ host: entry.host, comment: entry.comment || "-" });
+        } else if (entry.status === "down") {
+          downCount++;
+          downApList.push({ host: entry.host, comment: entry.comment || "-" });
+          if (state.previousNetwatchStatus[entry.host] === "up") {
+            state.apDownSince[entry.host] = now;
+          }
+        }
+      });
+      // Hitung durasi down yang sudah pulih
+      for (const host in state.previousNetwatchStatus) {
+        if (state.previousNetwatchStatus[host] === "down" && currentNetwatchStatus[host] === "up" && state.apDownSince[host]) {
+          delete state.apDownSince[host];
+        }
+      }
+      if (manualFetch) {
+        let message = `*Status Netwatch AP (${netwatchData.length} AP):*\n\n`;
+        message += `*AP Up:* ${upCount}\n*AP Down:* ${downCount}\n\n`;
+        if (upCount > 0) {
+          message += `*AP Yang Up:*\n`;
+          upApList.forEach(ap => {
+            message += `*Host:* ${ap.host}\n${ap.comment ? `*Comment:* ${ap.comment}\n` : ''}\n`;
+          });
+        }
+        if (downCount > 0) {
+          message += `*AP Yang Down:*\n`;
+          downApList.forEach(ap => {
+            message += `*Host:* ${ap.host}\n${ap.comment ? `*Comment:* ${ap.comment}\n` : ''}\n`;
+          });
+        }
+        await client.sendMessage(chatId, message);
+      }
+      state.previousNetwatchStatus = currentNetwatchStatus;
+    }, "Gagal mengambil status Netwatch");
+  },
+
+  async getTotalUserProfileCounts(chatId) {
+    return executeWithMikrotik(async (conn) => {
+      const users = await conn.menu("/ip/hotspot/user").print();
+      if (!users || users.length === 0) {
+        return client.sendMessage(chatId, "Tidak ada user hotspot.");
+      }
+      const profileCounts = {};
+      users.forEach(user => profileCounts[user.profile] = (profileCounts[user.profile] || 0) + 1);
+      let message = "*Jumlah User Hotspot per Profile:*\n\n";
+      for (const profile in profileCounts) {
+        message += `*Profile:* ${profile}\n*Total User:* ${profileCounts[profile]}\n\n`;
+      }
+      await client.sendMessage(chatId, message);
+    }, "Gagal mengambil jumlah user per profile");
+  },
+
+  async findUserByName(chatId, searchTerm) {
+    return executeWithMikrotik(async (conn) => {
+      const users = await conn.menu("/ip/hotspot/user").print();
+      if (!users || users.length === 0) {
+        return client.sendMessage(chatId, "Tidak ada user hotspot.");
+      }
+      const searchResults = users.filter(user => user.name && user.name.toLowerCase().includes(searchTerm.toLowerCase()));
+      if (searchResults.length === 0) {
+        return client.sendMessage(chatId, `Tidak ditemukan user dengan nama "${searchTerm}".`);
+      }
+      let message = `*Hasil Pencarian "${searchTerm}" (${searchResults.length} User):*\n\n`;
+      searchResults.forEach(user => {
+        message += `*Nama:* ${user.name}\n*Password:* ${user.password || "-"}\n*Comment:* ${user.comment || "-"}\n*Profile:* ${user.profile || "-"}\n---\n`;
+      });
+      await client.sendMessage(chatId, message);
+    }, "Gagal mencari user");
+  },
+
+  async getHotspotProfiles(chatId) {
+    return executeWithMikrotik(async (conn) => {
+      const profiles = await conn.menu("/ip/hotspot/user/profile").print();
+      if (!profiles || profiles.length === 0) {
+        return client.sendMessage(chatId, "Tidak ada profile hotspot.");
+      }
+      const hargaProfil = bacaHargaProfil();
+      const durasiProfile = bacaDurasiProfile();
+      let message = "*Profile Hotspot yang Tersedia:*\n\n";
+      profiles.forEach(profile => {
+        const harga = hargaProfil[profile.name] ? `- Rp ${hargaProfil[profile.name].toLocaleString('id-ID')}` : '';
+        const durasi = durasiProfile[profile.name] ? `- ${durasiProfile[profile.name]}` : '';
+        const rateLimit = profile['rate-limit'] ? `- Limit: ${profile['rate-limit']}` : '';
+        message += `- ${profile.name} ${harga} ${durasi} ${rateLimit}\n`;
+      });
+      message += `\nUsage: \`#adduser <username> <password> <profile>\``;
+      await client.sendMessage(chatId, message);
+    }, "Gagal mengambil profile hotspot");
+  },
+
+  async addUserToHotspot(chatId, username, password, profile) {
+    return executeWithMikrotik(async (conn) => {
+      const addResult = await conn.menu("/ip/hotspot/user").add({ name: username, password, profile });
+      if (addResult && !addResult["!trap"]) {
+        await client.sendMessage(chatId, `User "${username}" berhasil ditambahkan dengan profile "${profile}".`);
+      } else {
+        const errorMsg = addResult?.["!trap"]?.[0]?.message || "Error tidak diketahui";
+        await client.sendMessage(chatId, `Gagal menambahkan user "${username}": ${errorMsg}`);
+      }
+    }, "Gagal menambahkan user");
+  },
+
+  async generateBulkUsers(chatId, profileName, count, usernamePrefix = "") {
+    return executeWithMikrotik(async (conn) => {
+      const randomBatchId = Math.floor(Math.random() * 1000).toString().padStart(3, "0");
+      const now = new Date();
+      const day = String(now.getDate()).padStart(2, "0");
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const year = String(now.getFullYear()).slice(-2);
+      const commentTemplate = `up-${randomBatchId}-${month}.${day}.${year}-${profileName}`;
+
+      let successCount = 0, errorCount = 0;
+      const errors = [], successUsers = [];
+
+      for (let i = 1; i <= count; i++) {
+        const randomUsername = usernamePrefix + generateRandomString();
+        const randomPassword = generateRandomString();
+        try {
+          const addResult = await conn.menu("/ip/hotspot/user").add({
+            name: randomUsername,
+            password: randomPassword,
+            profile: profileName,
+            comment: commentTemplate,
+          });
+          if (addResult && !addResult["!trap"]) {
+            successCount++;
+            successUsers.push({ username: randomUsername, password: randomPassword });
+          } else {
+            errorCount++;
+            errors.push(`Error menambah user ${randomUsername}: ${addResult?.["!trap"]?.[0]?.message || "Unknown"}`);
+          }
+        } catch (error) {
+          errorCount++;
+          errors.push(`Exception menambah user ${randomUsername}: ${error.message}`);
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      if (successCount > 0) {
+        try {
+          const filepath = await buatFileExcelGenerate(successUsers, profileName, successCount, usernamePrefix);
+          const media = MessageMedia.fromFilePath(filepath);
+          await client.sendMessage(chatId, media, {
+            caption: `*HASIL GENERATE USER - ${profileName}*\n\n` +
+              `Berhasil: ${successCount} user\nGagal: ${errorCount} user\n` +
+              `Profile: ${profileName}\nPrefix: ${usernamePrefix || 'Tidak ada'}\n` +
+              `Template: ${commentTemplate}\n\n*File berisi daftar username dan password.*`
+          });
+          setTimeout(() => fs.unlink(filepath, (err) => err && console.error('Gagal hapus file Excel:', err)), 30000);
+        } catch (error) {
+          console.error('Error membuat file Excel generate:', error);
+          let message = `*Ringkasan Pembuatan User:*\n\nBerhasil: ${successCount} user dengan template '${commentTemplate}'\nGagal: ${errorCount} user\n\n`;
+          if (errorCount > 0) {
+            message += `*Kesalahan:*\n${errors.slice(0, 10).map(e => `- ${e}`).join('\n')}`;
+            if (errors.length > 10) message += `\nLihat log server untuk semua kesalahan.`;
+          }
+          await client.sendMessage(chatId, message);
+        }
+      } else {
+        let message = `*Gagal Membuat User:*\n\nTidak ada user yang berhasil dibuat\nProfile: ${profileName}\nPrefix: ${usernamePrefix || 'Tidak ada'}\n\n`;
+        if (errorCount > 0) {
+          message += `*Kesalahan:*\n${errors.slice(0, 5).map(e => `- ${e}`).join('\n')}`;
+        }
+        await client.sendMessage(chatId, message);
+      }
+    }, "Gagal membuat user secara massal");
+  },
+
+  async addHotspotProfile(chatId, profileName, duration, rxLimit = null, txLimit = null, lockMode = "lock") {
+    return executeWithMikrotik(async (conn) => {
+      const profileScriptLock = `:put (",remc,667,${duration},1000,,Enable,"); {:local comment [ /ip hotspot user get [/ip hotspot user find where name="$user"] comment]; :local ucode [:pick $comment 0 2]; :if ($ucode = "vc" or $ucode = "up" or $comment = "") do={ :local date [ /system clock get date ];:local year [ :pick $date 7 11 ];:local month [ :pick $date 0 3 ]; /sys sch add name="$user" disable=no start-date=$date interval="${duration}"; :delay 5s; :local exp [ /sys sch get [ /sys sch find where name="$user" ] next-run]; :local getxp [len $exp]; :if ($getxp = 15) do={ :local d [:pick $exp 0 6]; :local t [:pick $exp 7 16]; :local s ("/"); :local exp ("$d$s$year $t"); /ip hotspot user set comment="$exp" [find where name="$user"];}; :if ($getxp = 8) do={ /ip hotspot user set comment="$date $exp" [find where name="$user"];}; :if ($getxp > 15) do={ /ip hotspot user set comment="$exp" [find where name="$user"];};:delay 5s; /sys sch remove [find where name="$user"]; :local mac $"mac-address"; :local time [/system clock get time ]; /system script add name="$date-|-$time-|-$user-|-667-|-$address-|-$mac-|-${duration}-|-${profileName}-|-$comment" owner="$month$year" source="$date" comment="mikhmon"; [:local mac $"mac-address"; /ip hotspot user set mac-address=$mac [find where name=$user]]}}`;
+      const profileScriptUnlock = `:put (",remc,100000,${duration},100000,,Disable,"); {:local comment [ /ip hotspot user get [/ip hotspot user find where name="$user"] comment]; :local ucode [:pick $comment 0 2]; :if ($ucode = "vc" or $ucode = "up" or $comment = "") do={ :local date [ /system clock get date ];:local year [ :pick $date 7 11 ];:local month [ :pick $date 0 3 ]; /sys sch add name="$user" disable=no start-date=$date interval="${duration}"; :delay 5s; :local exp [ /sys sch get [ /sys sch find where name="$user" ] next-run]; :local getxp [len $exp]; :if ($getxp = 15) do={ :local d [:pick $exp 0 6]; :local t [:pick $exp 7 16]; :local s ("/"); :local exp ("$d$s$year $t"); /ip hotspot user set comment="$exp" [find where name="$user"];}; :if ($getxp = 8) do={ /ip hotspot user set comment="$date $exp" [find where name="$user"];}; :if ($getxp > 15) do={ /ip hotspot user set comment="$exp" [find where name="$user"];};:delay 5s; /sys sch remove [find where name="$user"]; :local mac $"mac-address"; :local time [/system clock get time ]; /system script add name="$date-|-$time-|-$user-|-100000-|-$address-|-$mac-|-${duration}-|-${profileName}-|-$comment" owner="$month$year" source="$date" comment="mikhmon"}}`;
+      const profileScript = lockMode === "lock" ? profileScriptLock : profileScriptUnlock;
+      const profileData = { name: profileName, "on-login": profileScript };
+      if (rxLimit && txLimit) profileData['rate-limit'] = `${rxLimit}/${txLimit}`;
+      const addResult = await conn.menu("/ip/hotspot/user/profile").add(profileData);
+      if (addResult && !addResult["!trap"]) {
+        const durasiProfile = bacaDurasiProfile();
+        durasiProfile[profileName] = duration;
+        simpanDurasiProfile(durasiProfile);
+        await this.ensureMonitorScheduler(conn);
+        let successMessage = `Profil "${profileName}" berhasil dibuat dengan durasi ${duration}.`;
+        if (rxLimit && txLimit) successMessage += `\nLimit: ${rxLimit} download / ${txLimit} upload`;
+        successMessage += `\nMAC Address: ${lockMode === "lock" ? 'LOCK' : 'UNLOCK'}`;
+        await client.sendMessage(chatId, successMessage);
+      } else {
+        const errorMsg = addResult?.["!trap"]?.[0]?.message || "Error tidak diketahui";
+        await client.sendMessage(chatId, `Gagal membuat profil "${profileName}": ${errorMsg}`);
+      }
+    }, "Gagal membuat profil hotspot");
+  },
+
+  async ensureMonitorScheduler(conn) {
+    try {
+      const existingSchedulers = await conn.menu("/system/scheduler").print();
+      const monitorExists = existingSchedulers.some(s => s.name === "monitor");
+      if (!monitorExists) {
+        const monitorScript = `# Fungsi untuk mengonversi tanggal ke format YYYYMMDD
+:local dateint do={ :local montharray {"jan";"feb";"mar";"apr";"may";"jun";"jul";"aug";"sep";"oct";"nov";"dec"}; :local days [:pick $d 4 6]; :local month [:pick $d 0 3]; :local year [:pick $d 7 11]; :local monthint ([:find $montharray $month] + 1); :if ([:len $monthint] = 1) do={ :set monthint ("0" . $monthint); } :return [:tonum ("$year$monthint$days")]; };
+:local timeint do={ :local hours [:pick $t 0 2]; :local minutes [:pick $t 3 5]; :return ($hours * 60 + $minutes); };
+:local date [/system clock get date]; :local time [/system clock get time]; :local today [$dateint d=$date]; :local curtime [$timeint t=$time];
+:foreach i in=[/ip hotspot user find] do={ :local comment [/ip hotspot user get $i comment]; :local name [/ip hotspot user get $i name]; :if (([:pick $comment 3] = "/") and ([:pick $comment 6] = "/")) do={ :local expd [$dateint d=$comment]; :local expt [$timeint t=[:pick $comment 12 17]]; :if (($expd < $today) or ($expd = $today and $expt <= $curtime)) do={ /ip hotspot user remove $i; /ip hotspot active remove [find where user=$name]; } } }`;
+        await conn.menu("/system/script").add({ name: "monitor", source: monitorScript });
+        await conn.menu("/system/scheduler").add({ name: "monitor", interval: "00:01:00", onEvent: "/system script run monitor" });
+        console.log("Scheduler monitor berhasil dibuat.");
+      } else {
+        console.log("Scheduler monitor sudah ada.");
+      }
+    } catch (error) {
+      console.error("Error ensuring monitor scheduler:", error);
+    }
+  },
+
+  async setHargaProfil(chatId, profileName, harga) {
+    const hargaProfil = bacaHargaProfil();
+    const hargaValue = Number.parseInt(String(harga), 10);
+    hargaProfil[profileName] = hargaValue;
+    if (simpanHargaProfil(hargaProfil)) {
+      await client.sendMessage(chatId, `Harga profil "${profileName}" berhasil disetel: Rp ${hargaValue.toLocaleString('id-ID')}`);
+    } else {
+      await client.sendMessage(chatId, `Gagal menyimpan harga profil "${profileName}"`);
+    }
+  },
+
+  async backupUserHistory(chatId) {
+    return executeWithMikrotik(async (conn) => {
+      const users = await conn.menu("/ip/hotspot/user").print();
+      const historyCandidates = [];
+      if (users && users.length > 0) {
+        users.forEach(user => {
+          const expiredDate = parseExpiredDateFromComment(user.comment);
+          if (expiredDate) {
+            historyCandidates.push({
+              name: user.name,
+              profile: user.profile,
+              comment: user.comment,
+              tanggalExpired: expiredDate.toISOString(),
+              password: user.password || '',
+            });
+          }
+        });
+      }
+
+      if (historyCandidates.length === 0) {
+        console.log("[Backup] Tidak ada data valid untuk dibackup.");
+        return { changed: false, inserted: 0, updated: 0, reason: 'no_valid_data' };
+      }
+
+      const { history, inserted, updated, changed } = upsertHistoryUsers(historyCandidates);
+      if (changed && simpanHistoryUser(history)) {
+        console.log(`[Backup] ${inserted} user baru, ${updated} user diupdate.`);
+        return { changed: true, inserted, updated, reason: 'saved' };
+      }
+      if (changed) {
+        return { changed: true, inserted, updated, reason: 'save_failed' };
+      }
+      return { changed: false, inserted, updated, reason: 'no_changes' };
+    }, "Gagal melakukan backup history");
+  },
+
+  async getRekapPendapatan(chatId, options = {}) {
+    const { mode = 'bulanan', tanggal = null, bulan = null, tahun = null, isAutoCheck = false } = options;
+    try {
+      const result = prosesRekapDariHistory({ mode, tanggal, bulan, tahun, isAutoCheck });
+      if (result.error) {
+        if (!isAutoCheck) await client.sendMessage(chatId, result.error);
+        return;
+      }
+      const rekapData = result.data;
+      if (isAutoCheck) {
+        let message = `*REKAP AUTO CHECK - ${new Date().toLocaleString('id-ID')}*\n\n`;
+        const keys = Object.keys(rekapData);
+        if (keys.length === 0) {
+          console.log(`[AutoRekap] Tidak ada data untuk periode ini.`);
+          return;
+        }
+        if (state.lastRekapData) {
+          const currentTotal = Object.values(rekapData).reduce((sum, d) => sum + d.totalPendapatan, 0);
+          const previousTotal = Object.values(state.lastRekapData).reduce((sum, d) => sum + d.totalPendapatan, 0);
+          if (currentTotal === previousTotal) {
+            console.log(`[AutoRekap] Tidak ada perubahan dalam pendapatan.`);
+            return;
+          }
+        }
+        keys.forEach(key => {
+          const data = rekapData[key];
+          message += `*Periode:* ${data.periode}\nTotal User: ${data.totalUser}\nTotal Pendapatan: Rp ${data.totalPendapatan.toLocaleString('id-ID')}\n\n`;
+        });
+        state.lastRekapData = rekapData;
+        await client.sendMessage(chatId, message);
+        return;
+      }
+      if (Object.keys(rekapData).length === 0) {
+        return client.sendMessage(chatId, "Tidak ada data rekap untuk periode yang diminta.");
+      }
+      try {
+        const jenisRekap = mode;
+        const periode = Object.values(rekapData)[0].periode;
+        const filepath = await buatFileExcel(rekapData, jenisRekap, periode);
+        const media = MessageMedia.fromFilePath(filepath);
+        await client.sendMessage(chatId, media, {
+          caption: `*REKAP ${jenisRekap.toUpperCase()} BERDASARKAN TANGGAL AKTIF*\n` +
+            `Periode: ${periode}\n` +
+            `Total Pendapatan: Rp ${Object.values(rekapData)[0].totalPendapatan.toLocaleString('id-ID')}\n`
+        });
+        setTimeout(() => fs.unlink(filepath, (err) => err && console.error('Gagal hapus file Excel:', err)), 30000);
+      } catch (error) {
+        console.error('Error membuat file Excel:', error);
+        await client.sendMessage(chatId, "Gagal membuat file Excel. Silakan coba lagi.");
+      }
+    } catch (error) {
+      console.error('Error dalam getRekapPendapatan:', error);
+      if (!isAutoCheck) await client.sendMessage(chatId, "Terjadi kesalahan saat mengambil rekap dari history.");
+    }
+  },
+
+  async getDaftarHarga(chatId) {
+    const hargaProfil = bacaHargaProfil();
+    if (Object.keys(hargaProfil).length === 0) {
+      return client.sendMessage(chatId, "Belum ada harga profil yang disetel. Gunakan `#setharga <profile> <harga>` untuk menambahkan.");
+    }
+    let message = `*DAFTAR HARGA PROFILE HOTSPOT*\n\n`;
+    for (const [profile, harga] of Object.entries(hargaProfil)) {
+      message += `*${profile}*: Rp ${harga.toLocaleString('id-ID')}\n`;
+    }
+    message += `\nGunakan \`#setharga <profile> <harga>\` untuk mengubah harga.`;
+    await client.sendMessage(chatId, message);
+  },
+
+  async setAutoRekap(chatId, enabled, intervalMenit = 1) {
+    const setting = { enabled, interval: intervalMenit };
+    if (simpanAutoRekapSetting(setting)) {
+      state.autoRekapEnabled = enabled;
+      if (enabled) {
+        startAutoRekapInterval(chatId, intervalMenit);
+        await client.sendMessage(chatId, `Auto rekap diaktifkan. Akan berjalan setiap ${intervalMenit} menit.`);
+      } else {
+        if (state.autoRekapInterval) {
+          clearInterval(state.autoRekapInterval);
+          state.autoRekapInterval = null;
+        }
+        await client.sendMessage(chatId, "Auto rekap dimatikan.");
+      }
+    } else {
+      await client.sendMessage(chatId, "Gagal menyimpan setting auto rekap.");
+    }
+  },
+
+  async getStatusAutoRekap(chatId) {
+    const setting = bacaAutoRekapSetting();
+    let message = `*STATUS AUTO REKAP*\n\nStatus: ${setting.enabled ? 'AKTIF' : 'NONAKTIF'}\n`;
+    if (setting.enabled) {
+      message += `Interval: ${setting.interval} menit\nBerjalan: ${state.autoRekapEnabled ? 'Ya' : 'Tidak'}\n`;
+    }
+    message += `\nGunakan \`#autorekap on [menit]\` untuk mengaktifkan\nGunakan \`#autorekap off\` untuk menonaktifkan`;
+    await client.sendMessage(chatId, message);
+  },
+
+  async addAdmin(chatId, phoneNumber) {
+    const formattedNumber = phoneNumber.replace(/\D/g, '');
+    if (tambahAdmin(formattedNumber)) {
+      await client.sendMessage(chatId, `Nomor ${formattedNumber} berhasil ditambahkan sebagai admin.`);
+    } else {
+      await client.sendMessage(chatId, `Gagal menambahkan nomor ${formattedNumber} sebagai admin.`);
+    }
+  },
+
+  async removeAdmin(chatId, phoneNumber) {
+    const formattedNumber = phoneNumber.replace(/\D/g, '');
+    if (hapusAdmin(formattedNumber)) {
+      await client.sendMessage(chatId, `Nomor ${formattedNumber} berhasil dihapus dari daftar admin.`);
+    } else {
+      await client.sendMessage(chatId, `Nomor ${formattedNumber} tidak ditemukan dalam daftar admin.`);
+    }
+  },
+
+  async getAdminList(chatId) {
+    const adminList = bacaAdminList();
+    if (adminList.length === 0) {
+      return client.sendMessage(chatId, "Tidak ada admin yang terdaftar.");
+    }
+    let message = `*DAFTAR ADMIN*\n\n`;
+    adminList.forEach((admin, index) => message += `${index + 1}. ${admin}\n`);
+    message += `\nTotal: ${adminList.length} admin`;
+    await client.sendMessage(chatId, message);
+  },
+
+  // ==================== ADD PELANGGAN DENGAN EMAIL ====================
+  async addPelanggan(chatId, nama, nomer, profile) {
+    const formattedNomer = nomer.replace(/\D/g, '');
+    if (!formattedNomer.startsWith('62')) {
+      return client.sendMessage(chatId, `Format nomor harus diawali 62 (contoh: 6281234567890)`);
+    }
+    const username = formatUsernameFromNama(nama);
+    const password = formattedNomer.slice(-5);
+    return executeWithMikrotik(async (conn) => {
+      const users = await conn.menu("/ip/hotspot/user").print();
+      const userExists = users.some(user => user.name === username);
+      if (userExists) {
+        return client.sendMessage(chatId, `Username "${username}" sudah ada di MikroTik.`);
+      }
+      // Simpan nomor di email dengan format email palsu
+      const email = buildHotspotEmailFromNomer(formattedNomer);
+      const addResult = await conn.menu("/ip/hotspot/user").add({
+        name: username,
+        password,
+        profile,
+        email: email,
+        //comment: `Pelanggan: ${nama}` 
+      });
+      if (addResult && !addResult["!trap"]) {
+        const success = tambahPelangganDanAkun({ username, nama, nomer: formattedNomer, profile, password });
+        if (success) {
+          tambahKeHistory({ name: username, profile, password, comment: `Pelanggan: ${nama} | Nomer: ${formattedNomer}` });
+          const pesanAkunBaru = `Yth. Bapak/Ibu *${nama}*,\n\nAkun hotspot Anda sudah berhasil dibuat.\n\nDetail Akun Hotspot:\n*Username:* ${username}\n*Password:* ${password}\n*Profile:* ${profile}\n\nSilakan simpan data ini. Terimakasih.`;
+          try {
+            await client.sendMessage(`${formattedNomer}@c.us`, pesanAkunBaru);
+          } catch (sendErr) {
+            console.error(`[AddPelanggan] Gagal kirim kredensial ke ${formattedNomer}:`, sendErr.message);
+            await client.sendMessage(chatId, `Pelanggan berhasil dibuat, tetapi pengiriman username/password ke ${formattedNomer} gagal.`);
+          }
+          await client.sendMessage(chatId,
+            `Pelanggan berhasil ditambahkan dan akun dibuat:\n\nNama: ${nama}\nNomor: ${formattedNomer}\nUsername: ${username}\nPassword: ${password}\nProfile: ${profile}\n\nNotifikasi akan dikirim jam 8 pagi sebelum expired.`
+          );
+        } else {
+          let rollbackMessage = "Akun hotspot yang sempat dibuat sudah dicoba rollback.";
+          try {
+            const rollbackResult = await removeHotspotUsersByName(conn, username);
+            if (rollbackResult.remaining > 0) {
+              rollbackMessage = `Akun hotspot gagal dihapus penuh. Masih tersisa ${rollbackResult.remaining} user bernama ${username}.`;
+            }
+          } catch (rollbackError) {
+            console.error(`[AddPelanggan] Rollback gagal untuk ${username}:`, rollbackError);
+            rollbackMessage = "Rollback akun hotspot gagal. Perlu pengecekan manual di MikroTik.";
+          }
+          await client.sendMessage(chatId, `Gagal menyimpan data pelanggan lokal. ${rollbackMessage}`);
+        }
+      } else {
+        const errorMsg = addResult?.["!trap"]?.[0]?.message || "Error tidak diketahui";
+        await client.sendMessage(chatId, `Gagal membuat akun untuk "${username}": ${errorMsg}`);
+      }
+    }, "Gagal membuat akun pelanggan");
+  },
+
+  async getDaftarPelanggan(chatId) {
+    const pelangganList = bacaPelanggan();
+    if (pelangganList.length === 0) {
+      return client.sendMessage(chatId, "Belum ada pelanggan yang terdaftar.");
+    }
+    const historyUsers = bacaHistoryUser();
+    const historyByUsername = buildLatestHistoryMapByName(historyUsers, true);
+    let message = `*DAFTAR PELANGGAN*\n\n`;
+    for (const pelanggan of pelangganList) {
+      let expiredInfo = '(Belum ada data expired)';
+      const userHistory = pelanggan.username ? historyByUsername.get(pelanggan.username.toLowerCase()) : null;
+      if (userHistory && userHistory.tanggalExpired) {
+        try {
+          const expiredDate = new Date(userHistory.tanggalExpired);
+          expiredInfo = `(Exp: ${expiredDate.toLocaleDateString('id-ID')} ${expiredDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })})`;
+        } catch (e) { expiredInfo = '(Format tanggal expired tidak valid)'; }
+      } else if (userHistory && userHistory.comment) {
+        const parsedDate = parseTanggalKomentar(userHistory.comment);
+        if (parsedDate) {
+          expiredInfo = `(Exp: ${parsedDate.toLocaleDateString('id-ID')} ${parsedDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })})`;
+        }
+      }
+      let tagihanInfo = '';
+      if (userHistory && userHistory.tanggalExpired) {
+        const infoTagihan = dapatkanInfoTagihan(pelanggan.profile, userHistory.tanggalExpired);
+        if (infoTagihan) tagihanInfo = `\nTagihan: Rp ${infoTagihan.hargaFormatted} (${infoTagihan.bulan})`;
+      }
+      message += `*${pelanggan.nama}*\n${pelanggan.nomer}\nUser: ${pelanggan.username}\nPass: ${pelanggan.password || 'tidak ada'}\nProfile: ${pelanggan.profile || 'tidak ada'}\nDaftar: ${new Date(pelanggan.tanggalDaftar || pelanggan.tanggalUpdate).toLocaleDateString('id-ID')}\nStatus: ${expiredInfo}${tagihanInfo}\n---\n`;
+    }
+    message += `\nTotal: ${pelangganList.length} pelanggan\n`;
+    await client.sendMessage(chatId, message);
+  },
+
+  async hapusPelanggan(chatId, username) {
+    const success = hapusPelanggan(username);
+    if (success) {
+      await client.sendMessage(chatId, `Pelanggan dengan username "${username}" berhasil dihapus dari daftar.`);
+    } else {
+      await client.sendMessage(chatId, `Pelanggan dengan username "${username}" tidak ditemukan.`);
+    }
+  },
+
+  async kirimNotifikasiManual(chatId, username) {
+    const pelanggan = cariPelangganByUsername(username);
+    if (!pelanggan) {
+      return client.sendMessage(chatId, `Pelanggan dengan username "${username}" tidak ditemukan.`);
+    }
+    const historyUsers = bacaHistoryUser();
+    const userHistory = buildLatestHistoryMapByName(historyUsers, true).get(String(username || "").toLowerCase());
+    if (!userHistory || !userHistory.tanggalExpired) {
+      return client.sendMessage(chatId, `Tidak ditemukan data expired untuk user "${username}".`);
+    }
+    let message = `Yth. Bapak/Ibu *${pelanggan.nama}*,\n\nPerkenankan kami menyampaikan pesan otomatis ini sebagai *Peningat Reaktivasi Akun* setiap bulan terkait status akun hotspot Anda.\n\n*Mohon diperhatikan:* Pesan ini *bukan* merupakan notifikasi jatuh tempo pembayaran, melainkan informasi status akun Anda\n\nDetail Akun Hotspot:\n*Username:* ${pelanggan.username}\n*Password:* ${pelanggan.password}\n\nTerimakasih atas perhatian Anda.`;
+    try {
+      await client.sendMessage(`${pelanggan.nomer}@c.us`, message);
+      await client.sendMessage(chatId, `Notifikasi manual berhasil dikirim ke ${pelanggan.nama} (${pelanggan.nomer})`);
+    } catch (error) {
+      console.error(`[NotifManual] Gagal kirim ke ${pelanggan.nomer}:`, error);
+      await client.sendMessage(chatId, `Gagal mengirim notifikasi manual ke ${pelanggan.nama} (${pelanggan.nomer}).`);
+    }
+  },
+
+  async syncPelanggan(chatId) {
+    await manualSyncPelanggan(chatId);
+  },
+
+  async cekPerbedaanPelanggan(chatId) {
+    await cekPerbedaanPelanggan(chatId);
+  },
+
+  async perbaikiPelanggan(chatId, username, nomer) {
+    await perbaikiPelanggan(chatId, username, nomer);
+  },
+
+  async kirimBroadcastInfo(chatId, pesanInfo) {
+    await kirimBroadcastInfo(chatId, pesanInfo, true);
+  },
+
+  async lihatRiwayatInfo(chatId, limit = 10) {
+    await lihatRiwayatInfo(chatId, limit);
+  },
+
+  async testBroadcastInfo(chatId, pesanInfo) {
+    await client.sendMessage(chatId, "MENGIRIM TEST BROADCAST...\n(ini hanya contoh, tidak akan dikirim ke pelanggan)");
+    const pelangganList = bacaPelanggan();
+    const now = new Date().toLocaleString('id-ID');
+    const contohPesan = `*INFORMASI LAYANAN EMMERIL HOTSPOT*\n\nYth. Pelanggan Emmeril Hotspot,\n\n${pesanInfo}\n\nTerima kasih atas pengertiannya.\n*Customer Service Emmeril Hotspot*`;
+    await client.sendMessage(chatId, contohPesan);
+    await client.sendMessage(chatId, `*CONTOH PESAN TEST*\n\nPesan akan dikirim ke ${pelangganList.length} pelanggan.\n\nGunakan \`#info <pesan>\` untuk mengirim broadcast sebenarnya.`);
+  }
+};
+
+// ==================== FUNGSI TAMBAHAN (REKAP, EXCEL, DLL) ====================
+const prosesRekapDariHistory = (options = {}) => {
+  const { mode = 'bulanan', tanggal = null, bulan = null, tahun = null, isAutoCheck = false } = options;
+  try {
+    const historyUsers = bacaHistoryUser();
+    const hargaProfil = bacaHargaProfil();
+    const durasiProfile = bacaDurasiProfile();
+    if (historyUsers.length === 0) return { error: "Tidak ada data history user." };
+    const userTerpakai = historyUsers.filter((user) => user.profile && user.tanggalExpired && resolveTanggalAktifForRekap(user, durasiProfile));
+    if (userTerpakai.length === 0) return { error: "Tidak ada user yang terdeteksi telah terpakai." };
+    const rekapData = {};
+    const nowParts = getDatePartsInTimezone(new Date(), APP_TIMEZONE);
+    if (!nowParts) return { error: "Gagal membaca tanggal server untuk rekap." };
+    const targetHarian = {
+      hari: nowParts.hari,
+      bulan: nowParts.bulan,
+      tahun: nowParts.tahun
+    };
+    const targetBulanan = {
+      bulan: bulan || nowParts.bulan,
+      tahun: tahun || nowParts.tahun
+    };
+    const targetSpesifikTanggal = mode === 'spesifik' && tanggal
+      ? (() => {
+          const [hariTarget, bulanTarget, tahunTarget] = tanggal.split('-').map(Number);
+          if (!isValidDateValue(hariTarget, bulanTarget, tahunTarget)) return null;
+          return { hari: hariTarget, bulan: bulanTarget, tahun: tahunTarget };
+        })()
+      : null;
+
+    userTerpakai.forEach(user => {
+      const tanggalAktif = resolveTanggalAktifForRekap(user, durasiProfile);
+      const transaksiParts = getDatePartsInTimezone(tanggalAktif, APP_TIMEZONE);
+      if (!transaksiParts) return;
+      const hariTransaksi = transaksiParts.hari;
+      const bulanTransaksi = transaksiParts.bulan;
+      const tahunTransaksi = transaksiParts.tahun;
+      let key, periode, sesuai = false;
+      if (mode === 'harian') {
+        if (
+          hariTransaksi === targetHarian.hari &&
+          bulanTransaksi === targetHarian.bulan &&
+          tahunTransaksi === targetHarian.tahun
+        ) {
+          sesuai = true;
+          key = `harian-${formatPeriodeTanggal(transaksiParts)}`;
+          periode = formatPeriodeTanggal(transaksiParts);
+        }
+      } else if (mode === 'bulanan') {
+        if (bulanTransaksi === targetBulanan.bulan && tahunTransaksi === targetBulanan.tahun) {
+          sesuai = true;
+          key = `bulanan-${formatPeriodeBulanan({ bulan: bulanTransaksi, tahun: tahunTransaksi })}`;
+          periode = formatPeriodeBulanan({ bulan: bulanTransaksi, tahun: tahunTransaksi });
+        }
+      } else if (mode === 'spesifik' && tanggal) {
+        if (
+          targetSpesifikTanggal &&
+          hariTransaksi === targetSpesifikTanggal.hari &&
+          bulanTransaksi === targetSpesifikTanggal.bulan &&
+          tahunTransaksi === targetSpesifikTanggal.tahun
+        ) {
+          sesuai = true;
+          key = `spesifik-${tanggal}`;
+          periode = tanggal;
+        }
+      } else if (mode === 'spesifik' && bulan && tahun) {
+        if (bulanTransaksi === bulan && tahunTransaksi === tahun) {
+          sesuai = true;
+          key = `spesifik-${formatPeriodeBulanan({ bulan, tahun })}`;
+          periode = formatPeriodeBulanan({ bulan, tahun });
+        }
+      }
+      if (!sesuai) return;
+      if (!rekapData[key]) {
+        rekapData[key] = { periode, mode, profiles: {}, totalUser: 0, totalPendapatan: 0, bulan: bulanTransaksi, tahun: tahunTransaksi };
+      }
+      const harga = hargaProfil[user.profile] || 0;
+      if (!rekapData[key].profiles[user.profile]) {
+        rekapData[key].profiles[user.profile] = { jumlah: 0, pendapatan: 0 };
+      }
+      rekapData[key].profiles[user.profile].jumlah++;
+      rekapData[key].profiles[user.profile].pendapatan += harga;
+      rekapData[key].totalUser++;
+      rekapData[key].totalPendapatan += harga;
+    });
+    return { success: true, data: rekapData };
+  } catch (error) {
+    console.error('Error dalam proses rekap dari history:', error);
+    return { error: "Terjadi kesalahan saat memproses rekap dari history." };
+  }
+};
+
+const buatFileExcel = async (dataRekap, jenisRekap, periode) => {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Rekap Pendapatan');
+  const headerStyle = {
+    font: { bold: true, color: { argb: 'FFFFFF' } },
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: '4472C4' } },
+    alignment: { horizontal: 'center', vertical: 'middle' },
+    border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+  };
+  const cellStyle = {
+    border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } },
+    alignment: { vertical: 'middle' }
+  };
+  worksheet.mergeCells('A1:G1');
+  worksheet.getCell('A1').value = `REKAP PENDAPATAN HOTSPOT - ${jenisRekap.toUpperCase()}`;
+  worksheet.getCell('A1').font = { bold: true, size: 16 };
+  worksheet.getCell('A1').alignment = { horizontal: 'center' };
+  worksheet.mergeCells('A2:G2');
+  worksheet.getCell('A2').value = `Periode: ${periode}`;
+  worksheet.getCell('A2').font = { bold: true, size: 12 };
+  worksheet.getCell('A2').alignment = { horizontal: 'center' };
+  worksheet.mergeCells('A3:G3');
+  worksheet.getCell('A3').value = `Dibuat pada: ${new Date().toLocaleString('id-ID')}`;
+  worksheet.getCell('A3').font = { italic: true };
+  worksheet.getCell('A3').alignment = { horizontal: 'center' };
+  worksheet.getCell('A6').value = 'No';
+  worksheet.getCell('B6').value = 'Tanggal Aktif';
+  worksheet.getCell('C6').value = 'Profile';
+  worksheet.getCell('D6').value = 'Jumlah User';
+  worksheet.getCell('E6').value = 'Harga per User';
+  worksheet.getCell('F6').value = 'Total Pendapatan';
+  worksheet.getCell('G6').value = 'Keterangan';
+  ['A6', 'B6', 'C6', 'D6', 'E6', 'F6', 'G6'].forEach(cell => {
+    worksheet.getCell(cell).font = headerStyle.font;
+    worksheet.getCell(cell).fill = headerStyle.fill;
+    worksheet.getCell(cell).alignment = headerStyle.alignment;
+    worksheet.getCell(cell).border = headerStyle.border;
+  });
+  let row = 7, totalSemua = 0, no = 1;
+  for (const [key, data] of Object.entries(dataRekap)) {
+    for (const [profile, detail] of Object.entries(data.profiles)) {
+      worksheet.getCell(`A${row}`).value = no++;
+      worksheet.getCell(`B${row}`).value = data.periode || `${data.bulan}/${data.tahun}`;
+      worksheet.getCell(`C${row}`).value = profile;
+      worksheet.getCell(`D${row}`).value = detail.jumlah;
+      worksheet.getCell(`E${row}`).value = detail.pendapatan / detail.jumlah;
+      worksheet.getCell(`F${row}`).value = detail.pendapatan;
+      worksheet.getCell(`G${row}`).value = `User aktif pada ${data.periode || `${data.bulan}/${data.tahun}`}`;
+      ['A', 'B', 'C', 'D', 'E', 'F', 'G'].forEach(col => {
+        worksheet.getCell(`${col}${row}`).border = cellStyle.border;
+        worksheet.getCell(`${col}${row}`).alignment = cellStyle.alignment;
+      });
+      worksheet.getCell(`E${row}`).numFmt = '#,##0';
+      worksheet.getCell(`F${row}`).numFmt = '#,##0';
+      totalSemua += detail.pendapatan;
+      row++;
+    }
+  }
+  worksheet.getCell(`A${row}`).value = 'TOTAL';
+  worksheet.mergeCells(`A${row}:E${row}`);
+  worksheet.getCell(`A${row}`).font = { bold: true };
+  worksheet.getCell(`A${row}`).alignment = { horizontal: 'right' };
+  worksheet.getCell(`F${row}`).value = totalSemua;
+  worksheet.getCell(`F${row}`).font = { bold: true };
+  worksheet.getCell(`F${row}`).numFmt = '#,##0';
+  ['A', 'B', 'C', 'D', 'E', 'F', 'G'].forEach(col => {
+    worksheet.getCell(`${col}${row}`).border = cellStyle.border;
+  });
+  worksheet.getColumn('A').width = 8;
+  worksheet.getColumn('B').width = 18;
+  worksheet.getColumn('C').width = 20;
+  worksheet.getColumn('D').width = 15;
+  worksheet.getColumn('E').width = 15;
+  worksheet.getColumn('F').width = 18;
+  worksheet.getColumn('G').width = 25;
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `rekap_${jenisRekap}_${timestamp}.xlsx`;
+  const filepath = path.join(EXCEL_FOLDER, filename);
+  await workbook.xlsx.writeFile(filepath);
+  return filepath;
+};
+
+const buatFileExcelGenerate = async (dataUsers, profileName, jumlahUser, prefix = "") => {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Generated Users');
+  const headerStyle = {
+    font: { bold: true, color: { argb: 'FFFFFF' } },
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: '4472C4' } },
+    alignment: { horizontal: 'center', vertical: 'middle' },
+    border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }
+  };
+  const cellStyle = {
+    border: { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } },
+    alignment: { vertical: 'middle' }
+  };
+  worksheet.mergeCells('A1:D1');
+  worksheet.getCell('A1').value = `HASIL GENERATE USER HOTSPOT`;
+  worksheet.getCell('A1').font = { bold: true, size: 16 };
+  worksheet.getCell('A1').alignment = { horizontal: 'center' };
+  worksheet.mergeCells('A2:D2');
+  worksheet.getCell('A2').value = `Profile: ${profileName} | Jumlah: ${jumlahUser} user | Prefix: ${prefix || 'Tidak ada'}`;
+  worksheet.getCell('A2').font = { bold: true, size: 12 };
+  worksheet.getCell('A2').alignment = { horizontal: 'center' };
+  worksheet.mergeCells('A3:D3');
+  worksheet.getCell('A3').value = `Dibuat pada: ${new Date().toLocaleString('id-ID')}`;
+  worksheet.getCell('A3').font = { italic: true };
+  worksheet.getCell('A3').alignment = { horizontal: 'center' };
+  worksheet.getCell('A5').value = 'No';
+  worksheet.getCell('B5').value = 'Username';
+  worksheet.getCell('C5').value = 'Password';
+  worksheet.getCell('D5').value = 'Profile';
+  ['A5', 'B5', 'C5', 'D5'].forEach(cell => {
+    worksheet.getCell(cell).font = headerStyle.font;
+    worksheet.getCell(cell).fill = headerStyle.fill;
+    worksheet.getCell(cell).alignment = headerStyle.alignment;
+    worksheet.getCell(cell).border = headerStyle.border;
+  });
+  let row = 6;
+  dataUsers.forEach((user, index) => {
+    worksheet.getCell(`A${row}`).value = index + 1;
+    worksheet.getCell(`B${row}`).value = user.username;
+    worksheet.getCell(`C${row}`).value = user.password;
+    worksheet.getCell(`D${row}`).value = profileName;
+    ['A', 'B', 'C', 'D'].forEach(col => {
+      worksheet.getCell(`${col}${row}`).border = cellStyle.border;
+      worksheet.getCell(`${col}${row}`).alignment = cellStyle.alignment;
+    });
+    row++;
+  });
+  worksheet.getColumn('A').width = 8;
+  worksheet.getColumn('B').width = 25;
+  worksheet.getColumn('C').width = 20;
+  worksheet.getColumn('D').width = 15;
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `generate_${profileName}_${timestamp}.xlsx`;
+  const filepath = path.join(EXCEL_FOLDER, filename);
+  await workbook.xlsx.writeFile(filepath);
+  return filepath;
+};
+
+const parseExpiredDateFromComment = (comment) => {
+  if (!comment) return null;
+  return parseTanggalKomentar(comment);
+};
+
+const startAutoRekapInterval = (chatId, intervalMenit) => {
+  if (state.autoRekapInterval) {
+    clearInterval(state.autoRekapInterval);
+  }
+
+  state.autoRekapInterval = setInterval(async () => {
+    if (!state.isReady) return;
+    if (!chatId) {
+      console.warn('[AutoRekap] ADMIN_NUMBER belum disetel, auto rekap dilewati.');
+      return;
+    }
+
+    console.log(`[AutoRekap] Menjalankan auto rekap...`);
+    try {
+      await mikrotikOperations.getRekapPendapatan(chatId, { mode: 'bulanan', isAutoCheck: true });
+    } catch (error) {
+      console.error('[AutoRekap] Gagal menjalankan auto rekap:', error);
+    }
+  }, intervalMenit * 60 * 1000);
+};
+
+const processInBatches = async (items, concurrency, worker) => {
+  if (!Array.isArray(items) || items.length === 0) return;
+  const chunkSize = Math.max(1, concurrency);
+  for (let i = 0; i < items.length; i += chunkSize) {
+    const batch = items.slice(i, i + chunkSize);
+    await Promise.all(batch.map(worker));
+  }
+};
+
+const normalizeUserKey = (value) => String(value || '').trim().toLowerCase();
+
+const buildMikrotikUserLookups = (users = []) => {
+  const userByName = new Map();
+  const userByEmail = new Map();
+
+  (users || []).forEach((user) => {
+    const normalizedName = normalizeUserKey(user?.name);
+    if (normalizedName) {
+      userByName.set(normalizedName, user);
+    }
+
+    const emailValue = String(user?.email || '').trim();
+    const atIndex = emailValue.indexOf('@');
+    if (atIndex > 0) {
+      const nomor = emailValue.substring(0, atIndex);
+      if (nomor) {
+        userByEmail.set(nomor, user);
+      }
+    }
+  });
+
+  return { userByName, userByEmail };
+};
+
+const getRouterRowId = (row) => {
+  if (!row || typeof row !== 'object') return null;
+  const candidates = ['.id', 'id', 'numbers', 'number', '_id'];
+  for (const key of candidates) {
+    const value = row[key];
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      return String(value).trim();
+    }
+  }
+  return null;
+};
+
+const removeHotspotUsersByName = async (conn, username, maxPasses = 3) => {
+  const targetKey = normalizeUserKey(username);
+  if (!targetKey) return { removed: 0, remaining: 0 };
+
+  let totalRemoved = 0;
+  let remaining = 0;
+
+  for (let pass = 1; pass <= maxPasses; pass++) {
+    const usersNow = await conn.menu("/ip/hotspot/user").print();
+    const matches = (usersNow || []).filter((u) => normalizeUserKey(u.name) === targetKey);
+    if (matches.length === 0) {
+      remaining = 0;
+      break;
+    }
+
+    for (const row of matches) {
+      const rowId = getRouterRowId(row);
+      if (rowId) {
+        await conn.menu("/ip/hotspot/user").remove(rowId);
+        totalRemoved++;
+        continue;
+      }
+      await conn.menu("/ip/hotspot/user").where('name', row?.name || username).remove();
+      totalRemoved++;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const verifyUsers = await conn.menu("/ip/hotspot/user").print();
+    remaining = (verifyUsers || []).filter((u) => normalizeUserKey(u.name) === targetKey).length;
+    if (remaining === 0) break;
+  }
+
+  return { removed: totalRemoved, remaining };
+};
+
+// ==================== NOTIFIKASI & BROADCAST ====================
+const kirimNotifikasiExpiredJam8Pagi = async () => {
+  if (!state.isReady) {
+    console.log('[Notifikasi] WhatsApp client belum siap, lewati...');
+    return;
+  }
+  try {
+    const pelangganList = bacaPelanggan();
+    const historyUsers = bacaHistoryUser();
+    if (pelangganList.length === 0 || historyUsers.length === 0) {
+      console.log('[Notifikasi] Tidak ada data pelanggan atau history');
+      return;
+    }
+    const now = new Date();
+    const todayString = formatDateKeyInTimezone(now);
+    const jamDikirim = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    const historyByName = buildLatestHistoryMapByName(
+      historyUsers.filter((user) => user?.tanggalExpired),
+      true
+    );
+    const pendingNotifications = [];
+
+    pelangganList.forEach((pelanggan) => {
+      const userHistory = historyByName.get(String(pelanggan.username || "").toLowerCase());
+      if (!userHistory) return;
+
+      const tanggalExpired = new Date(userHistory.tanggalExpired);
+      const selisihJam = (tanggalExpired - now) / (1000 * 60 * 60);
+      if (selisihJam <= 0 || selisihJam > 24) return;
+
+      const tanggalExpiredString = formatDateKeyInTimezone(tanggalExpired);
+      if (!tanggalExpiredString) return;
+      const notifikasiTerakhir = pelanggan.notifikasiHistory?.find((nh) => nh.tanggalExpired === tanggalExpiredString);
+      if (notifikasiTerakhir?.dikirim) return;
+
+      const message = `Yth. Bapak/Ibu *${pelanggan.nama}*,\n\nPerkenankan kami menyampaikan pesan otomatis ini sebagai *Peningat Reaktivasi Akun* terkait status akun hotspot Anda.\n\n*Mohon diperhatikan:* Pesan ini *bukan* merupakan notifikasi jatuh tempo pembayaran, melainkan informasi status akun Anda\n\nDetail Akun Hotspot:\n*Username:* ${pelanggan.username}\n*Password:* ${pelanggan.password}\n\nTerimakasih atas perhatian Anda.`;
+      pendingNotifications.push({ pelanggan, message, tanggalExpiredString });
+    });
+
+    console.log(`[Notifikasi] Menjalankan notifikasi jam 8 pagi: ${now.toLocaleString('id-ID')} | target=${pendingNotifications.length}`);
+    let notifikasiDikirim = 0, dataDiperbarui = false;
+
+    await processInBatches(pendingNotifications, BULK_SEND_CONCURRENCY, async ({ pelanggan, message, tanggalExpiredString }) => {
+      try {
+        await client.sendMessage(`${pelanggan.nomer}@c.us`, message);
+        if (!pelanggan.notifikasiHistory) pelanggan.notifikasiHistory = [];
+        pelanggan.notifikasiHistory = pelanggan.notifikasiHistory.filter((nh) => nh.tanggalExpired !== tanggalExpiredString);
+        pelanggan.notifikasiHistory.push({
+          tanggalExpired: tanggalExpiredString,
+          dikirim: true,
+          tanggalDikirim: todayString,
+          jamDikirim
+        });
+        dataDiperbarui = true;
+        notifikasiDikirim++;
+        await new Promise((resolve) => setTimeout(resolve, BULK_SEND_DELAY_MS));
+      } catch (error) {
+        console.error(`Gagal mengirim ke ${pelanggan.nomer}:`, error);
+      }
+    });
+    if (dataDiperbarui) simpanPelanggan(pelangganList);
+    console.log(`Notifikasi jam 8 pagi: ${notifikasiDikirim} dikirim`);
+  } catch (error) {
+    console.error('Error dalam kirimNotifikasiExpiredJam8Pagi:', error);
+  }
+};
+
+const kirimResetAkunSebelumExpiredJam3Pagi = async () => {
+  try {
+    const pelangganList = bacaPelanggan();
+    const historyUsers = bacaHistoryUser();
+    if (pelangganList.length === 0 || historyUsers.length === 0) {
+      console.log('[ResetAkun] Tidak ada data pelanggan atau history');
+      return;
+    }
+
+    const now = new Date();
+    const todayString = formatDateKeyInTimezone(now);
+    const jamProses = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    const historyByName = buildLatestHistoryMapByName(
+      historyUsers.filter((user) => user?.tanggalExpired),
+      true
+    );
+
+    const pendingReset = [];
+    pelangganList.forEach((pelanggan) => {
+      if (!pelanggan?.username || !pelanggan?.password || !pelanggan?.profile) return;
+      const userHistory = historyByName.get(String(pelanggan.username).toLowerCase());
+      if (!userHistory) return;
+
+      const tanggalExpired = new Date(userHistory.tanggalExpired);
+      const selisihJam = (tanggalExpired - now) / (1000 * 60 * 60);
+      if (selisihJam <= 0 || selisihJam > 24) return;
+
+      const tanggalExpiredString = formatDateKeyInTimezone(tanggalExpired);
+      if (!tanggalExpiredString) return;
+      const resetTerakhir = pelanggan.resetAkunHistory?.find((rh) => rh.tanggalExpired === tanggalExpiredString);
+      if (resetTerakhir?.dijalankan) return;
+
+      pendingReset.push({
+        pelanggan,
+        username: pelanggan.username,
+        password: pelanggan.password,
+        profile: pelanggan.profile,
+        tanggalExpiredString
+      });
+    });
+
+    if (pendingReset.length === 0) {
+      console.log(`[ResetAkun] Tidak ada akun target pada ${now.toLocaleString('id-ID')}`);
+      return;
+    }
+
+    console.log(`[ResetAkun] Menjalankan reset akun jam 1 pagi | target=${pendingReset.length}`);
+    await executeWithMikrotik(async (conn) => {
+      const activeUsers = await conn.menu("/ip/hotspot/active").print();
+      const activeByUser = new Map();
+      (activeUsers || []).forEach((active) => {
+        const key = String(active.user || '').toLowerCase();
+        if (!key) return;
+        if (!activeByUser.has(key)) activeByUser.set(key, []);
+        activeByUser.get(key).push(active);
+      });
+
+      let resetSukses = 0;
+      let dataDiperbarui = false;
+
+      for (const target of pendingReset) {
+        const key = normalizeUserKey(target.username);
+        const activeRows = activeByUser.get(key) || [];
+        try {
+          for (const activeRow of activeRows) {
+            if (activeRow?.['.id']) {
+              await conn.menu("/ip/hotspot/active").remove(activeRow['.id']);
+            }
+          }
+          const cleanupResult = await removeHotspotUsersByName(conn, target.username);
+          if (cleanupResult.remaining > 0) {
+            // Fallback: jika user tidak bisa dihapus tuntas, update akun existing agar reset tetap berlaku.
+            const usersAfterCleanup = await conn.menu("/ip/hotspot/user").print();
+            const existingRows = (usersAfterCleanup || []).filter((u) => normalizeUserKey(u.name) === key);
+            if (existingRows.length === 0) {
+              throw new Error(`cleanup gagal, masih ada ${cleanupResult.remaining} user bernama ${target.username}`);
+            }
+
+            const primaryRow = existingRows[0];
+            const primaryId = getRouterRowId(primaryRow);
+            if (primaryId) {
+              await conn.menu("/ip/hotspot/user").set({
+                '.id': primaryId,
+                name: target.username,
+                password: target.password,
+                profile: target.profile
+              });
+            } else {
+              await conn.menu("/ip/hotspot/user").where('name', target.username).update({
+                password: target.password,
+                profile: target.profile
+              });
+            }
+
+            for (let i = 1; i < existingRows.length; i++) {
+              const extraId = getRouterRowId(existingRows[i]);
+              try {
+                if (extraId) {
+                  await conn.menu("/ip/hotspot/user").remove(extraId);
+                } else {
+                  await conn.menu("/ip/hotspot/user").where('name', target.username).remove();
+                }
+              } catch {}
+            }
+
+            if (!target.pelanggan.resetAkunHistory) target.pelanggan.resetAkunHistory = [];
+            target.pelanggan.resetAkunHistory = target.pelanggan.resetAkunHistory
+              .filter((rh) => rh.tanggalExpired !== target.tanggalExpiredString);
+            target.pelanggan.resetAkunHistory.push({
+              tanggalExpired: target.tanggalExpiredString,
+              dijalankan: true,
+              tanggalDijalankan: todayString,
+              jamDijalankan: jamProses
+            });
+            target.pelanggan.tanggalUpdate = new Date().toISOString();
+
+            dataDiperbarui = true;
+            resetSukses++;
+            console.log(`[ResetAkun] Cleanup belum bersih, fallback update user existing: ${target.username}`);
+            continue;
+          }
+
+          let addSucceeded = false;
+          let lastAddError = null;
+          for (let addAttempt = 1; addAttempt <= 2; addAttempt++) {
+            try {
+              await conn.menu("/ip/hotspot/user").add({
+                name: target.username,
+                password: target.password,
+                profile: target.profile
+              });
+              addSucceeded = true;
+              break;
+            } catch (addError) {
+              lastAddError = addError;
+              const addMessage = String(addError?.message || addError || "");
+              const alreadyExists = /already have user with this name/i.test(addMessage);
+              if (!alreadyExists || addAttempt === 2) {
+                break;
+              }
+
+              // Jika masih bentrok saat add pertama, paksa cleanup sekali lagi lalu retry add.
+              await removeHotspotUsersByName(conn, target.username);
+              await new Promise((resolve) => setTimeout(resolve, 300));
+            }
+          }
+
+          if (!addSucceeded) {
+            throw lastAddError || new Error(`Gagal add ulang user ${target.username}`);
+          }
+
+          if (!target.pelanggan.resetAkunHistory) target.pelanggan.resetAkunHistory = [];
+          target.pelanggan.resetAkunHistory = target.pelanggan.resetAkunHistory
+            .filter((rh) => rh.tanggalExpired !== target.tanggalExpiredString);
+          target.pelanggan.resetAkunHistory.push({
+            tanggalExpired: target.tanggalExpiredString,
+            dijalankan: true,
+            tanggalDijalankan: todayString,
+            jamDijalankan: jamProses
+          });
+          target.pelanggan.tanggalUpdate = new Date().toISOString();
+
+          dataDiperbarui = true;
+          resetSukses++;
+          console.log(`[ResetAkun] Removed and re-added user: ${target.username}`);
+          console.log(`[ResetAkun] Added user: ${target.username} with profile: ${target.profile}`);
+        } catch (error) {
+          console.error(`[ResetAkun] Gagal reset akun ${target.username}:`, error?.message || error);
+        }
+      }
+
+      if (dataDiperbarui) {
+        simpanPelanggan(pelangganList);
+      }
+      console.log(`[ResetAkun] Selesai. Berhasil reset ${resetSukses}/${pendingReset.length} akun.`);
+    }, "Gagal reset akun pelanggan sebelum expired");
+  } catch (error) {
+    console.error('Error dalam kirimResetAkunSebelumExpiredJam3Pagi:', error);
+  }
+};
+
+const setupCronNotifikasi = () => {
+  try {
+    if (cronJobNotifikasi) {
+      cronJobNotifikasi.stop();
+      console.log('[Cron] Cron job lama dihentikan');
+    }
+    cronJobNotifikasi = new CronJob('0 0 8 * * *', async () => {
+      console.log('[Cron] Trigger cron job jam 8 pagi');
+      await kirimNotifikasiExpiredJam8Pagi();
+    }, null, true, APP_TIMEZONE);
+    console.log('[Cron] Cron job dijadwalkan setiap hari jam 8 pagi');
+    const nextRun = formatCronNextRun(cronJobNotifikasi);
+    console.log(`[Cron] Jadwal berikutnya: ${nextRun || '-'}`);
+  } catch (error) {
+    console.error('[Cron] Gagal setup cron job:', error);
+  }
+};
+
+const setupCronResetAkun = () => {
+  try {
+    if (cronJobResetAkun) {
+      cronJobResetAkun.stop();
+      console.log('[Cron ResetAkun] Cron job lama dihentikan');
+    }
+    cronJobResetAkun = new CronJob('0 0 1 * * *', async () => {
+      console.log('[Cron ResetAkun] Trigger cron job jam 1 pagi');
+      await kirimResetAkunSebelumExpiredJam3Pagi();
+    }, null, true, APP_TIMEZONE);
+    console.log('[Cron ResetAkun] Cron job dijadwalkan setiap hari jam 1 pagi');
+    const nextRun = formatCronNextRun(cronJobResetAkun);
+    console.log(`[Cron ResetAkun] Jadwal berikutnya: ${nextRun || '-'}`);
+  } catch (error) {
+    console.error('[Cron ResetAkun] Gagal setup cron job:', error);
+  }
+};
+
+const manualTriggerNotifikasi = async (chatId) => {
+  try {
+    await client.sendMessage(chatId, "Trigger manual notifikasi jam 8 pagi...");
+    await kirimNotifikasiExpiredJam8Pagi();
+    await client.sendMessage(chatId, "Notifikasi manual selesai dijalankan");
+  } catch (error) {
+    console.error('[Cron] Error manual trigger:', error);
+    await client.sendMessage(chatId, "Gagal menjalankan notifikasi manual");
+  }
+};
+
+const kirimBroadcastInfo = async (chatId, pesanInfo, denganRiwayat = false) => {
+  try {
+    const pelangganList = bacaPelanggan();
+    if (pelangganList.length === 0) {
+      await client.sendMessage(chatId, "Tidak ada pelanggan yang terdaftar.");
+      return { total: 0, berhasil: 0, gagal: 0 };
+    }
+    await client.sendMessage(chatId, `Mempersiapkan broadcast info ke ${pelangganList.length} pelanggan...\n\nPesan: ${pesanInfo.substring(0, 100)}${pesanInfo.length > 100 ? '...' : ''}`);
+    const now = new Date();
+    const waktuFormat = now.toLocaleString('id-ID');
+    const pesanBroadcast = `*INFORMASI LAYANAN EMMERIL HOTSPOT*\n\nYth. Pelanggan Emmeril Hotspot,\n\n${pesanInfo}\n\nTerima kasih atas pengertiannya.\n*Customer Service Emmeril Hotspot*`;
+    const targetValid = pelangganList.filter((pelanggan) => pelanggan.nomer && pelanggan.nomer.length >= 10);
+    let berhasil = 0;
+    let gagal = pelangganList.length - targetValid.length;
+
+    await processInBatches(targetValid, BULK_SEND_CONCURRENCY, async (pelanggan) => {
+      try {
+        await client.sendMessage(`${pelanggan.nomer}@c.us`, pesanBroadcast);
+        berhasil++;
+        await new Promise((resolve) => setTimeout(resolve, BULK_SEND_DELAY_MS));
+      } catch (error) {
+        console.error(`Gagal kirim ke ${pelanggan.nama} (${pelanggan.nomer}):`, error);
+        gagal++;
+      }
+    });
+    if (denganRiwayat) {
+      tambahRiwayatInfo({ pesan: pesanInfo, total_target: pelangganList.length, berhasil, gagal, pengirim: chatId });
+    }
+    const hasilMessage = `*LAPORAN BROADCAST INFO*\n\nBerhasil dikirim: ${berhasil} pelanggan\nGagal dikirim: ${gagal} pelanggan\nTotal target: ${pelangganList.length} pelanggan\n\nWaktu: ${waktuFormat}`;
+    await client.sendMessage(chatId, hasilMessage);
+    return { total: pelangganList.length, berhasil, gagal };
+  } catch (error) {
+    console.error('Error dalam kirimBroadcastInfo:', error);
+    await client.sendMessage(chatId, "Terjadi kesalahan saat mengirim broadcast info.");
+    throw error;
+  }
+};
+
+const lihatRiwayatInfo = async (chatId, limit = 10) => {
+  try {
+    const riwayat = bacaRiwayatInfo();
+    if (riwayat.length === 0) {
+      return client.sendMessage(chatId, "Belum ada riwayat broadcast info.");
+    }
+    let message = `*RIWAYAT BROADCAST INFO*\n\n`;
+    const tampilLimit = Math.min(limit, riwayat.length);
+    for (let i = 0; i < tampilLimit; i++) {
+      const item = riwayat[i];
+      const tanggal = new Date(item.tanggal).toLocaleString('id-ID');
+      const pesanSingkat = item.pesan.length > 50 ? item.pesan.substring(0, 50) + '...' : item.pesan;
+      message += `*${i + 1}. ${tanggal}*\n${pesanSingkat}\nBerhasil: ${item.berhasil}, Gagal: ${item.gagal}, Total: ${item.total_target}\n---\n`;
+    }
+    message += `\nTotal riwayat: ${riwayat.length}\nGunakan \`#inforiwayat <jumlah>\` untuk melihat lebih banyak.`;
+    await client.sendMessage(chatId, message);
+  } catch (error) {
+    console.error('Error dalam lihatRiwayatInfo:', error);
+    await client.sendMessage(chatId, "Terjadi kesalahan saat mengambil riwayat info.");
+  }
+};
+
+const tambahRiwayatInfo = (infoData) => {
+  const riwayat = bacaRiwayatInfo();
+  riwayat.unshift({ ...infoData, tanggal: new Date().toISOString() });
+  if (riwayat.length > 100) riwayat.splice(100);
+  return simpanRiwayatInfo(riwayat);
+};
+
+// ==================== PELANGGAN ====================
+const tambahPelangganDanAkun = (dataPelanggan) => {
+  const pelangganList = bacaPelanggan();
+  const existingIndex = pelangganList.findIndex(p => p.username === dataPelanggan.username);
+  if (existingIndex > -1) {
+    pelangganList[existingIndex] = { ...pelangganList[existingIndex], ...dataPelanggan, tanggalUpdate: new Date().toISOString() };
+  } else {
+    pelangganList.push({ ...dataPelanggan, tanggalDaftar: new Date().toISOString(), tanggalUpdate: new Date().toISOString() });
+  }
+  return simpanPelanggan(pelangganList);
+};
+
+const cariPelangganByUsername = (username) => {
+  const pelangganList = bacaPelanggan();
+  return pelangganList.find(p => p.username === username);
+};
+
+const hapusPelanggan = (username) => {
+  const pelangganList = bacaPelanggan();
+  const index = pelangganList.findIndex(p => p.username === username);
+  if (index > -1) {
+    pelangganList.splice(index, 1);
+    return simpanPelanggan(pelangganList);
+  }
+  return false;
+};
+
+// ==================== ADMIN ====================
+const isAdmin = (phoneNumber) => {
+  const adminList = bacaAdminList();
+  return adminList.includes(phoneNumber);
+};
+
+const tambahAdmin = (phoneNumber) => {
+  const adminList = bacaAdminList();
+  const formattedNumber = phoneNumber.replace(/\D/g, '');
+  if (!adminList.includes(formattedNumber)) {
+    adminList.push(formattedNumber);
+    return simpanAdminList(adminList);
+  }
+  return true;
+};
+
+const hapusAdmin = (phoneNumber) => {
+  const adminList = bacaAdminList();
+  const formattedNumber = phoneNumber.replace(/\D/g, '');
+  const index = adminList.indexOf(formattedNumber);
+  if (index > -1) {
+    adminList.splice(index, 1);
+    return simpanAdminList(adminList);
+  }
+  return false;
+};
+
+// ==================== SYNC PELANGGAN ====================
+// ==================== PERUBAHAN UTAMA: SYNC MENGGUNAKAN EMAIL DAN MENGISI EMAIL KOSONG ====================
+const syncPelangganFromMikrotik = async () => {
+  try {
+    console.log('[Sync] Memulai sinkronisasi data pelanggan...');
+    await executeWithMikrotik(async (conn) => {
+      const users = await conn.menu("/ip/hotspot/user").print();
+      if (!users || users.length === 0) {
+        console.log('[Sync] Tidak ada user di MikroTik');
+        return;
+      }
+      const pelangganList = bacaPelanggan();
+      if (pelangganList.length === 0) {
+        console.log('[Sync] Tidak ada data pelanggan di lokal');
+        return;
+      }
+      let updatedCount = 0, notFoundCount = 0, recoveredCount = 0;
+      const { userByName, userByEmail } = buildMikrotikUserLookups(users);
+
+      for (const pelanggan of pelangganList) {
+        const usernameKey = normalizeUserKey(pelanggan.username);
+        if (!usernameKey) {
+          notFoundCount++;
+          continue;
+        }
+        // Cari berdasarkan username (case-insensitive)
+        let mikrotikUser = userByName.get(usernameKey);
+
+        // Jika tidak ditemukan, cari berdasarkan nomor dari email
+        if (!mikrotikUser && pelanggan.nomer) {
+          mikrotikUser = userByEmail.get(pelanggan.nomer);
+          if (mikrotikUser) {
+            console.log(`[Sync] Ditemukan user dengan nomor ${pelanggan.nomer} (email) tetapi username berbeda: lokal=${pelanggan.username}, mikrotik=${mikrotikUser.name}. Memperbarui username lokal.`);
+            pelanggan.username = mikrotikUser.name;
+            pelanggan.tanggalUpdate = new Date().toISOString();
+            updatedCount++;
+            recoveredCount++;
+          }
+        }
+
+        if (mikrotikUser) {
+          let updated = false;
+          if (pelanggan.status !== 'verified') {
+            pelanggan.status = 'verified';
+            updated = true;
+          }
+          const mikrotikPassword = mikrotikUser.password || '';
+          const mikrotikProfile = mikrotikUser.profile || '';
+
+          if (pelanggan.password !== mikrotikPassword) {
+            console.log(`[Sync] Update password untuk ${pelanggan.username}: ${pelanggan.password} -> ${mikrotikPassword}`);
+            pelanggan.password = mikrotikPassword;
+            updated = true;
+          }
+          if (pelanggan.profile !== mikrotikProfile) {
+            console.log(`[Sync] Update profile untuk ${pelanggan.username}: ${pelanggan.profile} -> ${mikrotikProfile}`);
+            pelanggan.profile = mikrotikProfile;
+            updated = true;
+          }
+
+          // Sinkronisasi email: pastikan email terisi dan sesuai dengan nomor lokal
+          const nomorDariEmail = mikrotikUser.email ? mikrotikUser.email.split('@')[0] : null;
+          const emailSesuai = (nomorDariEmail === pelanggan.nomer);
+          if (pelanggan.nomer && (!nomorDariEmail || !emailSesuai)) {
+            try {
+              const targetEmail = buildHotspotEmailFromNomer(pelanggan.nomer);
+              // Gunakan filter by name untuk menghindari masalah ID
+              await conn.menu("/ip/hotspot/user").where('name', mikrotikUser.name).update({ email: targetEmail });
+              console.log(`[Sync] Update email untuk ${pelanggan.username} menjadi ${targetEmail} (sebelumnya: ${mikrotikUser.email || 'kosong'})`);
+              updated = true;
+            } catch (e) {
+              console.error(`[Sync] Gagal update email untuk ${pelanggan.username}:`, e.message);
+            }
+          }
+
+          if (updated) {
+            pelanggan.tanggalUpdate = new Date().toISOString();
+            pelanggan.status = 'verified';
+            updatedCount++;
+          }
+        } else {
+          console.log(`[Sync] ${pelanggan.username} (${pelanggan.nama}) tidak ditemukan di MikroTik`);
+          pelanggan.status = 'not_found_in_mikrotik';
+          pelanggan.tanggalUpdate = new Date().toISOString();
+          notFoundCount++;
+        }
+      }
+
+      if (updatedCount > 0 || notFoundCount > 0) {
+        const success = simpanPelanggan(pelangganList);
+        if (success) {
+          state.lastSyncTime = new Date();
+          console.log(`[Sync] Selesai. Updated: ${updatedCount} (termasuk ${recoveredCount} pemulihan username), Not Found: ${notFoundCount}`);
+          if (updatedCount > 0) {
+            kirimNotifikasiSyncKeAdmin(updatedCount, notFoundCount, recoveredCount);
+          }
+        } else {
+          console.error('[Sync] Gagal menyimpan data pelanggan setelah sinkronisasi');
+        }
+      } else {
+        console.log('[Sync] Tidak ada perubahan');
+      }
+    }, "Gagal sinkronisasi");
+  } catch (error) {
+    console.error('[Sync] Error:', error);
+  }
+};
+
+const cekPerbedaanPelanggan = async (chatId) => {
+  try {
+    await executeWithMikrotik(async (conn) => {
+      const users = await conn.menu("/ip/hotspot/user").print();
+      const pelangganList = bacaPelanggan();
+      if (pelangganList.length === 0) {
+        await client.sendMessage(chatId, "Tidak ada data pelanggan di lokal.");
+        return;
+      }
+      const { userByName, userByEmail } = buildMikrotikUserLookups(users);
+      let message = `*PERBEDAAN DATA PELANGGAN*\n\nTotal pelanggan di lokal: ${pelangganList.length}\n`;
+      let adaPerbedaan = false, passwordBerbeda = 0, profileBerbeda = 0, tidakDitemukan = 0;
+      for (const pelanggan of pelangganList) {
+        const usernameKey = normalizeUserKey(pelanggan.username);
+        if (!usernameKey) {
+          tidakDitemukan++;
+          adaPerbedaan = true;
+          message += `*(tanpa username)*: Data lokal tidak valid\n`;
+          continue;
+        }
+
+        let mikrotikUser = userByName.get(usernameKey);
+        if (!mikrotikUser && pelanggan.nomer) {
+          mikrotikUser = userByEmail.get(pelanggan.nomer);
+        }
+        if (!mikrotikUser) {
+          tidakDitemukan++;
+          if (!adaPerbedaan) adaPerbedaan = true;
+          message += `*${pelanggan.username}*: Tidak ditemukan di MikroTik\n`;
+          continue;
+        }
+        let perbedaan = [];
+        if (normalizeUserKey(mikrotikUser.name) !== usernameKey) {
+          perbedaan.push(`username: ${pelanggan.username} -> ${mikrotikUser.name}`);
+        }
+        if (pelanggan.password !== mikrotikUser.password) {
+          passwordBerbeda++;
+          perbedaan.push(`password: ${pelanggan.password} -> ${mikrotikUser.password}`);
+        }
+        if (pelanggan.profile !== mikrotikUser.profile) {
+          profileBerbeda++;
+          perbedaan.push(`profile: ${pelanggan.profile} -> ${mikrotikUser.profile}`);
+        }
+        if (perbedaan.length > 0) {
+          if (!adaPerbedaan) adaPerbedaan = true;
+          message += `*${pelanggan.username}*: ${perbedaan.join(', ')}\n`;
+        }
+      }
+      if (!adaPerbedaan) {
+        message += `\nTidak ada perbedaan untuk semua pelanggan.\n`;
+      } else {
+        message += `\nRingkasan:\n`;
+        if (tidakDitemukan > 0) message += `- Tidak ditemukan: ${tidakDitemukan}\n`;
+        if (passwordBerbeda > 0) message += `- Password berbeda: ${passwordBerbeda}\n`;
+        if (profileBerbeda > 0) message += `- Profile berbeda: ${profileBerbeda}\n`;
+      }
+      message += `\nGunakan \`#syncpelanggan\` untuk melakukan sinkronisasi.`;
+      await client.sendMessage(chatId, message);
+    }, "Gagal cek perbedaan");
+  } catch (error) {
+    console.error('[Sync] Error cek perbedaan:', error);
+    await client.sendMessage(chatId, "Gagal cek perbedaan.");
+  }
+};
+
+const perbaikiPelanggan = async (chatId, username, nomer) => {
+  try {
+    const pelangganList = bacaPelanggan();
+    const usernameKey = String(username || "").toLowerCase();
+    const index = pelangganList.findIndex((p) => String(p.username || "").toLowerCase() === usernameKey);
+    if (index === -1) {
+      return client.sendMessage(chatId, `${username} tidak ditemukan di data pelanggan.`);
+    }
+    const formattedNomer = nomer.replace(/\D/g, '');
+    if (!formattedNomer.startsWith('62')) {
+      return client.sendMessage(chatId, `Format nomor harus 62xxxxxxxxxx`);
+    }
+    const pelanggan = pelangganList[index];
+    const nomorLama = pelanggan.nomer || '-';
+    pelanggan.nomer = formattedNomer;
+    pelanggan.tanggalUpdate = new Date().toISOString();
+    pelanggan.status = 'verified';
+    if (simpanPelanggan(pelangganList)) {
+      let mikrotikSyncMessage = 'Perubahan email hotspot akan ikut tersinkron saat auto sync berikutnya.';
+      try {
+        await executeWithMikrotik(async (conn) => {
+          const users = await conn.menu("/ip/hotspot/user").print();
+          const mikrotikUser = users.find((user) => String(user.name || "").toLowerCase() === usernameKey);
+          if (!mikrotikUser) {
+            mikrotikSyncMessage = 'User hotspot tidak ditemukan di MikroTik, jadi email belum diperbarui.';
+            return;
+          }
+
+          const targetEmail = buildHotspotEmailFromNomer(formattedNomer);
+          if (String(mikrotikUser.email || "").trim() === targetEmail) {
+            mikrotikSyncMessage = 'Email hotspot di MikroTik sudah sesuai.';
+            return;
+          }
+
+          await conn.menu("/ip/hotspot/user").where('name', mikrotikUser.name).update({ email: targetEmail });
+          mikrotikSyncMessage = `Email hotspot di MikroTik ikut diperbarui ke ${targetEmail}.`;
+        }, "Gagal sinkron nomor pelanggan ke email hotspot");
+      } catch (syncError) {
+        console.error(`[Sync] Gagal sinkron nomor pelanggan ${pelanggan.username} ke MikroTik:`, syncError);
+      }
+
+      await client.sendMessage(
+        chatId,
+        `Nomor untuk ${pelanggan.username} diperbarui:\n${nomorLama} -> ${formattedNomer}\n\n${mikrotikSyncMessage}`
+      );
+    } else {
+      await client.sendMessage(chatId, "Gagal menyimpan perubahan nomor pelanggan.");
+    }
+  } catch (error) {
+    console.error('[Sync] Error perbaiki:', error);
+    await client.sendMessage(chatId, "Gagal memperbarui.");
+  }
+};
+
+const manualSyncPelanggan = async (chatId) => {
+  try {
+    await client.sendMessage(chatId, "Sync data pelanggan (hanya yang ada di data lokal)...");
+    await syncPelangganFromMikrotik();
+    const pelangganList = bacaPelanggan();
+    await client.sendMessage(chatId, `Sync selesai!\nTotal pelanggan: ${pelangganList.length}`);
+  } catch (error) {
+    console.error('[Sync] Error manual sync:', error);
+    await client.sendMessage(chatId, "Gagal sync.");
+  }
+};
+
+// ==================== NOTIFIKASI DENGAN RECOVERED COUNT ====================
+const kirimNotifikasiSyncKeAdmin = async (updatedCount, notFoundCount, recoveredCount = 0) => {
+  try {
+    if (!state.isReady) return;
+    const adminList = bacaAdminList();
+    const now = new Date();
+    const waktu = now.toLocaleString('id-ID');
+    let message = `*NOTIFIKASI SINKRONISASI*\n\nData pelanggan telah disinkronisasi dari MikroTik\nWaktu: ${waktu}\nDiperbarui: ${updatedCount} pelanggan`;
+    if (recoveredCount > 0) {
+      message += ` (${recoveredCount} username diperbaiki)`;
+    }
+    message += `\nTidak ditemukan: ${notFoundCount} pelanggan\n\nGunakan \`#daftarpelanggan\` untuk melihat daftar terbaru.\nGunakan \`#perbaiki <username> <nomor>\` untuk memperbaiki nomor.`;
+    for (const adminNumber of adminList) {
+      try {
+        await client.sendMessage(`${adminNumber}@c.us`, message);
+        console.log(`[Sync] Notifikasi dikirim ke admin ${adminNumber}`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (error) {
+        console.error(`[Sync] Gagal kirim notifikasi ke ${adminNumber}:`, error);
+      }
+    }
+  } catch (error) {
+    console.error('[Sync] Error kirim notifikasi:', error);
+  }
+};
+
+// ==================== WHATSAPP CLIENT ====================
+const createWhatsAppClient = () => {
+  console.log("Creating WhatsApp client...");
+  return new Client({
+    authStrategy: new LocalAuth({ dataPath: WWEBJS_AUTH_DIR }),
+    puppeteer: {
+      executablePath: getPuppeteerExecutablePath(),
+      headless: true,
+      args: [
+        "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas", "--no-first-run", "--no-zygote",
+        "--disable-gpu", "--disable-software-rasterizer", "--disable-features=VizDisplayCompositor",
+        "--disable-background-timer-throttling", "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding", "--max-old-space-size=512"
+      ],
+      ignoreHTTPSErrors: true,
+    },
+    webVersionCache: {
+      type: "remote",
+      remotePath: "https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1031490220-alpha.html",
+    },
+  });
+};
+
+const scheduleReconnect = (force = false) => {
+  if (!force && state.isReconnecting) {
+    console.log("[WA] Reconnect already running, skip");
+    return false;
+  }
+  const now = Date.now();
+  if (!force && state.lastReconnectTime && now - state.lastReconnectTime < MIN_RECONNECT_INTERVAL) {
+    const wait = Math.ceil((MIN_RECONNECT_INTERVAL - (now - state.lastReconnectTime)) / 1000);
+    console.log(`[WA] Wait ${wait}s before reconnect`);
+    return false;
+  }
+  if (!force && state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    console.error("Max reconnect attempts reached");
+    return false;
+  }
+  if (force) {
+    state.reconnectAttempts = 0;
+    state.isReconnecting = false;
+  }
+  state.reconnectAttempts++;
+  state.lastReconnectTime = now;
+  state.isReconnecting = true;
+  const delay = Math.min(30000, RECONNECT_DELAY * Math.pow(2, state.reconnectAttempts));
+  console.log(`Reconnect in ${delay / 1000}s (${state.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+  clearTimeout(state.reconnectTimer);
+  state.reconnectTimer = setTimeout(async () => {
+    try {
+      if (client) {
+        console.log("Destroying WhatsApp client");
+        await client.destroy().catch(() => {});
+        client = null;
+      }
+      console.log("[WA] Creating new WhatsApp client");
+      client = createWhatsAppClient();
+      setupWhatsAppEvents();
+      console.log("[WA] Initializing WhatsApp");
+      await client.initialize();
+    } catch (err) {
+      console.error("Reconnect failed:", err.message);
+      state.isReconnecting = false;
+      scheduleReconnect();
+      return;
+    } finally {
+      setTimeout(() => {
+        if (!state.isReady) {
+          state.isReconnecting = false;
+        }
+      }, 15000);
+    }
+  }, delay);
+  return true;
+};
+
+const startWhatsAppKeepAlive = () => {
+  if (state.keepAliveTimer) return;
+  state.keepAliveTimer = setInterval(async () => {
+    if (!client || !state.isReady) return;
+    try {
+      await client.getState();
+      state.reconnectAttempts = 0;
+      console.log("WA keep-alive OK");
+    } catch {
+      console.log("WA keep-alive failed");
+      state.isReady = false;
+      scheduleReconnect();
+    }
+  }, 300000); // 5 menit
+};
+
+const clearRuntimeIntervals = () => {
+  if (state.autoRekapInterval) {
+    clearInterval(state.autoRekapInterval);
+    state.autoRekapInterval = null;
+  }
+  if (state.syncPelangganInterval) {
+    clearInterval(state.syncPelangganInterval);
+    state.syncPelangganInterval = null;
+  }
+  if (state.autoBackupInterval) {
+    clearInterval(state.autoBackupInterval);
+    state.autoBackupInterval = null;
+  }
+  if (state.keepAliveTimer) {
+    clearInterval(state.keepAliveTimer);
+    state.keepAliveTimer = null;
+  }
+  if (state.infoConfirmations.size > 0) {
+    for (const [, pending] of state.infoConfirmations) {
+      if (pending?.timeoutId) {
+        clearTimeout(pending.timeoutId);
+      }
+      if (pending?.handler && client) {
+        client.removeListener('message', pending.handler);
+      }
+    }
+    state.infoConfirmations.clear();
+  }
+};
+
+// ==================== COMMAND HANDLERS ====================
+const commandHandlers = {
+  async bantuan(chatId) {
+    const menu = `*MikroTik Hotspot Bot - Daftar Perintah:*\n\n` +
+      `*#bantuan* - Menampilkan daftar perintah\n` +
+      `*#info <pesan>* - Broadcast info gangguan/perbaikan ke semua pelanggan\n` +
+      `*#infotest <pesan>* - Test broadcast tanpa mengirim\n` +
+      `*#inforiwayat [limit]* - Lihat riwayat broadcast info\n` +
+      `*#useractive* - Menampilkan user hotspot aktif\n` +
+      `*#monitorap* - Menampilkan status Access Point\n` +
+      `*#userprofile* - Jumlah user per profile\n` +
+      `*#cariuser <username>* - Cari user berdasarkan nama\n` +
+      `*#cekprofile* - Daftar profile hotspot\n` +
+      `*#addprofile <nama> <durasi> [rx] [tx] [lock/unlock]* - Buat profil hotspot baru\n` +
+      `*#setharga <profile> <harga>* - Set harga untuk profile\n` +
+      `*#daftarharga* - Lihat daftar harga profile\n` +
+      `*#backup* - Backup user aktif ke history\n` +
+      `*#rekap harian* - Rekap pendapatan harian (Excel)\n` +
+      `*#rekap bulanan* - Rekap pendapatan bulanan (Excel)\n` +
+      `*#rekap <dd-mm-yyyy>* - Rekap tanggal spesifik (Excel)\n` +
+      `*#rekap <mm-yyyy>* - Rekap bulan spesifik (Excel)\n` +
+      `*#autorekap <on/off> [menit]* - Auto rekap otomatis\n` +
+      `*#statusautorekap* - Status auto rekap\n` +
+      `*#adduser <username> <password> <profile>* - Tambah user baru\n` +
+      `*#generate [prefix] <profile> <jumlah>* - Generate user massal + Excel\n` +
+      `*#addpelanggan <nama> <nomer> <profile>* - Buat akun pelanggan baru\n` +
+      `*#daftarpelanggan* - Lihat daftar pelanggan\n` +
+      `*#hapuspelanggan <username>* - Hapus data pelanggan\n` +
+      `*#notifmanual <username>* - Kirim notifikasi manual\n` +
+      `*#addadmin <nomor>* - Tambah admin baru\n` +
+      `*#removeadmin <nomor>* - Hapus admin\n` +
+      `*#listadmin* - Lihat daftar admin\n` +
+      `*#syncpelanggan* - Sync data pelanggan dari MikroTik\n` +
+      `*#ceksync* - Cek perbedaan data \n` +
+      `*#perbaiki <username> <nomor>* - Perbaiki nomor pelanggan\n` +
+      `*#restart* - Restart bot WhatsApp\n` +
+      `*#testnotif* - Test notifikasi jam 8 pagi\n` +
+      `*#cronstatus* - Status cron job\n\n` +
+      `Contoh:\n` +
+      `#info Layanan sedang gangguan, perbaikan selesai jam 14.00 WIB\n` +
+      `#infotest Maintenance jaringan hari Minggu\n` +
+      `#inforiwayat 5\n` +
+      `#cariuser john\n` +
+      `#addprofile 4-JAM 4h\n` +
+      `#addprofile VIP-USER 1d 2M 1M\n` +
+      `#setharga 4-JAM 4000\n` +
+      `#backup\n` +
+      `#rekap harian\n` +
+      `#autorekap on 1\n` +
+      `#generate 4-JAM 50\n` +
+      `#addpelanggan John Doe 6281234567890 4-JAM\n` +
+      `#addadmin 6281234567890\n` +
+      `#syncpelanggan\n` +
+      `#perbaiki johndoe 6281234567890`;
+    await client.sendMessage(chatId, menu);
+  },
+
+  async info(chatId, args, senderNumber) {
+    if (!args) {
+      return client.sendMessage(chatId, "Format: `#info <pesan>`\n\nContoh: `#info Layanan sedang gangguan...`");
+    }
+
+    const existingConfirmation = state.infoConfirmations.get(senderNumber);
+    if (existingConfirmation?.timeoutId) {
+      clearTimeout(existingConfirmation.timeoutId);
+    }
+    if (existingConfirmation?.handler) {
+      client.removeListener('message', existingConfirmation.handler);
+    }
+    state.infoConfirmations.delete(senderNumber);
+
+    const konfirmasiPesan = `*KONFIRMASI BROADCAST INFO*\n\nPesan: ${args}\n\nAkan dikirim ke semua pelanggan.\n\nBalas dengan *YA* untuk melanjutkan atau *TIDAK* untuk membatalkan.`;
+    await client.sendMessage(chatId, konfirmasiPesan);
+    const confirmHandler = async (confirmMsg) => {
+      if (confirmMsg.from.split('@')[0] === senderNumber && confirmMsg.from === chatId) {
+        const response = confirmMsg.body.trim().toLowerCase();
+        if (response === 'ya' || response === 'y') {
+          const pending = state.infoConfirmations.get(senderNumber);
+          if (pending?.timeoutId) {
+            clearTimeout(pending.timeoutId);
+          }
+          client.removeListener('message', confirmHandler);
+          state.infoConfirmations.delete(senderNumber);
+          await client.sendMessage(chatId, "Mengirim broadcast info...");
+          await mikrotikOperations.kirimBroadcastInfo(chatId, args);
+        } else if (response === 'tidak' || response === 't') {
+          const pending = state.infoConfirmations.get(senderNumber);
+          if (pending?.timeoutId) {
+            clearTimeout(pending.timeoutId);
+          }
+          client.removeListener('message', confirmHandler);
+          state.infoConfirmations.delete(senderNumber);
+          await client.sendMessage(chatId, "Broadcast info dibatalkan.");
+        }
+      }
+    };
+    client.on('message', confirmHandler);
+    const timeoutId = setTimeout(() => {
+      const pending = state.infoConfirmations.get(senderNumber);
+      if (!pending || pending.handler !== confirmHandler) return;
+      client.removeListener('message', confirmHandler);
+      state.infoConfirmations.delete(senderNumber);
+      client.sendMessage(chatId, "Waktu konfirmasi habis. Broadcast dibatalkan.").catch((error) => {
+        console.error("Gagal kirim timeout konfirmasi info:", error);
+      });
+    }, 30000);
+    state.infoConfirmations.set(senderNumber, { handler: confirmHandler, timeoutId, chatId });
+  },
+
+  async infotest(chatId, args) {
+    if (!args) {
+      return client.sendMessage(chatId, "Format: `#infotest <pesan>`\nContoh: `#infotest Layanan sedang gangguan...`");
+    }
+    await mikrotikOperations.testBroadcastInfo(chatId, args);
+  },
+
+  async inforiwayat(chatId, args) {
+    const parsedLimit = parsePositiveInt(args, { min: 1, max: 50 });
+    const limit = parsedLimit ?? 10;
+    await mikrotikOperations.lihatRiwayatInfo(chatId, limit);
+  },
+
+  async useractive(chatId) {
+    await client.sendMessage(chatId, "Mengambil data user aktif...");
+    await mikrotikOperations.getActiveHotspotUsers(chatId);
+  },
+
+  async monitorap(chatId) {
+    await client.sendMessage(chatId, "Memantau status AP...");
+    await mikrotikOperations.getNetwatchStatus(chatId, true);
+  },
+
+  async userprofile(chatId) {
+    await client.sendMessage(chatId, "Menghitung user per profile...");
+    await mikrotikOperations.getTotalUserProfileCounts(chatId);
+  },
+
+  async cariuser(chatId, args) {
+    if (!args) {
+      return client.sendMessage(chatId, "Format: `#cariuser <username>`");
+    }
+    await client.sendMessage(chatId, `Mencari user: "${args}"...`);
+    await mikrotikOperations.findUserByName(chatId, args);
+  },
+
+  async cekprofile(chatId) {
+    await client.sendMessage(chatId, "Mengambil daftar profile...");
+    await mikrotikOperations.getHotspotProfiles(chatId);
+  },
+
+  async addprofile(chatId, args) {
+    const parts = splitArgs(args);
+    if (parts.length < 2) {
+      return client.sendMessage(chatId, "Format: `#addprofile <nama_profile> <durasi> [rx_limit] [tx_limit] [lock/unlock]`\nContoh: `#addprofile 4-JAM 4h`");
+    }
+    const profileName = parts[0];
+    const duration = parts[1];
+    if (!VALID_PROFILE_DURATIONS.has(duration)) {
+      return client.sendMessage(chatId, `Durasi tidak valid. Gunakan salah satu: ${Array.from(VALID_PROFILE_DURATIONS).join(', ')}`);
+    }
+    let rxLimit = null, txLimit = null, lockMode = "lock";
+    if (parts.length >= 3) {
+      const lastParam = parts[parts.length - 1].toLowerCase();
+      if (lastParam === "lock" || lastParam === "unlock") {
+        lockMode = lastParam;
+        parts.pop();
+      }
+      if (parts.length === 4) {
+        rxLimit = parts[2];
+        txLimit = parts[3];
+        if (!BANDWIDTH_LIMIT_REGEX.test(rxLimit) || !BANDWIDTH_LIMIT_REGEX.test(txLimit)) {
+          return client.sendMessage(chatId, `Format limit tidak valid. Gunakan format seperti: 1M, 500k, 2G`);
+        }
+      } else if (parts.length !== 2) {
+        return client.sendMessage(chatId, "Format: `#addprofile <nama_profile> <durasi> [rx_limit] [tx_limit] [lock/unlock]`\nContoh: `#addprofile 4-JAM 4h`\nContoh lain: `#addprofile VIP 1d 2M 1M unlock`");
+      }
+    }
+    let infoMessage = `Membuat profil "${profileName}" dengan durasi ${duration}`;
+    if (rxLimit && txLimit) infoMessage += ` dan limit ${rxLimit} download / ${txLimit} upload`;
+    infoMessage += ` (MAC address: ${lockMode.toUpperCase()})...`;
+    await client.sendMessage(chatId, infoMessage);
+    await mikrotikOperations.addHotspotProfile(chatId, profileName, duration, rxLimit, txLimit, lockMode);
+  },
+
+  async setharga(chatId, args) {
+    const parts = splitArgs(args);
+    if (parts.length !== 2) {
+      return client.sendMessage(chatId, "Format: `#setharga <profile> <harga>`\nContoh: `#setharga 4-JAM 4000`");
+    }
+    const [profileName, hargaStr] = parts;
+    const harga = Number.parseInt(hargaStr.replace(/[^\d]/g, ''), 10);
+    if (Number.isNaN(harga) || harga <= 0) {
+      return client.sendMessage(chatId, "Harga harus angka positif.");
+    }
+    await client.sendMessage(chatId, `Menyetel harga profil "${profileName}" menjadi Rp ${harga.toLocaleString('id-ID')}...`);
+    await mikrotikOperations.setHargaProfil(chatId, profileName, harga);
+  },
+
+  async daftarharga(chatId) {
+    await client.sendMessage(chatId, "Mengambil daftar harga...");
+    await mikrotikOperations.getDaftarHarga(chatId);
+  },
+
+  async backup(chatId) {
+    await client.sendMessage(chatId, "Melakukan backup user ke history...");
+    const backupResult = await mikrotikOperations.backupUserHistory(chatId);
+    if (!backupResult) {
+      await client.sendMessage(chatId, "Backup selesai tanpa hasil yang bisa dipastikan. Cek log untuk detail.");
+      return;
+    }
+
+    if (backupResult.reason === 'saved') {
+      await client.sendMessage(chatId, `Backup history berhasil dilakukan. Data baru: ${backupResult.inserted}, diperbarui: ${backupResult.updated}.`);
+      return;
+    }
+
+    if (backupResult.reason === 'no_valid_data') {
+      await client.sendMessage(chatId, "Backup selesai, tetapi tidak ada data user valid yang bisa disimpan ke history.");
+      return;
+    }
+
+    if (backupResult.reason === 'save_failed') {
+      await client.sendMessage(chatId, "Data backup ditemukan, tetapi gagal disimpan ke file history.");
+      return;
+    }
+
+    await client.sendMessage(chatId, "Backup selesai. Tidak ada perubahan data history.");
+  },
+
+  async rekap(chatId, args) {
+    const rekapOptions = parseRekapArgs(args);
+    if (!rekapOptions) {
+      await client.sendMessage(chatId, `*Format Perintah Rekap:*\n\n#rekap harian\n#rekap bulanan\n#rekap 25-11-2024\n#rekap 10-2024`);
+      return;
+    }
+
+    if (rekapOptions.mode === 'harian') {
+      await client.sendMessage(chatId, "Membuat rekap pendapatan harian berdasarkan tanggal aktif (dari expired comment)...");
+    } else if (rekapOptions.mode === 'bulanan') {
+      await client.sendMessage(chatId, "Membuat rekap pendapatan bulanan berdasarkan tanggal aktif (dari expired comment)...");
+    } else if (rekapOptions.tanggal) {
+      await client.sendMessage(chatId, `Membuat rekap untuk tanggal aktif ${rekapOptions.tanggal}...`);
+    } else {
+      await client.sendMessage(chatId, `Membuat rekap untuk bulan aktif ${rekapOptions.bulan}-${rekapOptions.tahun}...`);
+    }
+    await mikrotikOperations.getRekapPendapatan(chatId, rekapOptions);
+  },
+
+  async autorekap(chatId, args) {
+    const parts = splitArgs(args);
+    const action = parts[0];
+    if (action === "on") {
+      let interval = 1;
+      if (parts.length > 1) {
+        interval = parsePositiveInt(parts[1], { min: 1 });
+        if (interval === null) {
+          return client.sendMessage(chatId, "Interval harus angka positif (dalam menit).\nContoh: `#autorekap on 5`");
+        }
+      }
+      await client.sendMessage(chatId, `Mengaktifkan auto rekap setiap ${interval} menit...`);
+      await mikrotikOperations.setAutoRekap(chatId, true, interval);
+    } else if (action === "off") {
+      await client.sendMessage(chatId, "Menonaktifkan auto rekap...");
+      await mikrotikOperations.setAutoRekap(chatId, false);
+    } else {
+      await client.sendMessage(chatId, "Format: `#autorekap <on/off> [menit]`");
+    }
+  },
+
+  async statusautorekap(chatId) {
+    await mikrotikOperations.getStatusAutoRekap(chatId);
+  },
+
+  async adduser(chatId, args) {
+    const parts = splitArgs(args);
+    if (parts.length === 2) {
+      // Hanya username dan password, minta profile
+      await mikrotikOperations.getHotspotProfiles(chatId);
+    } else if (parts.length === 3) {
+      const [username, password, profile] = parts;
+      await client.sendMessage(chatId, `Menambah user ${username} dengan profile ${profile}...`);
+      await mikrotikOperations.addUserToHotspot(chatId, username, password, profile);
+    } else {
+      await client.sendMessage(chatId, "Format: `#adduser <username> <password> <profile>`");
+    }
+  },
+
+  async generate(chatId, args) {
+    const parts = splitArgs(args);
+    let prefix = "";
+    let profileName = "";
+    let countStr = "";
+    if (parts.length === 2) {
+      [profileName, countStr] = parts;
+    } else if (parts.length === 3) {
+      [prefix, profileName, countStr] = parts;
+    } else {
+      await client.sendMessage(chatId, "Format: `#generate [prefix] <profile> <jumlah>`");
+      return;
+    }
+
+    const count = parsePositiveInt(countStr, { min: 1 });
+    if (count === null) {
+      return client.sendMessage(chatId, "Jumlah user harus angka positif.");
+    }
+
+    if (prefix) {
+      await client.sendMessage(chatId, `Generate ${count} user dengan prefix "${prefix}" dan profile "${profileName}"...`);
+    } else {
+      await client.sendMessage(chatId, `Generate ${count} user dengan profile "${profileName}"...`);
+    }
+    await mikrotikOperations.generateBulkUsers(chatId, profileName, count, prefix);
+  },
+
+  async addpelanggan(chatId, args) {
+    const parts = splitArgs(args);
+    if (parts.length < 3) {
+      return client.sendMessage(chatId, "Format: `#addpelanggan <nama lengkap> <nomer> <profile>`\nContoh: `#addpelanggan John Doe 6281234567890 4-JAM`");
+    }
+    const profile = parts[parts.length - 1];
+    const nomer = parts[parts.length - 2];
+    const nama = parts.slice(0, parts.length - 2).join(' ');
+    await client.sendMessage(chatId, `Membuat akun untuk pelanggan ${nama}...`);
+    await mikrotikOperations.addPelanggan(chatId, nama, nomer, profile);
+  },
+
+  async daftarpelanggan(chatId) {
+    await mikrotikOperations.getDaftarPelanggan(chatId);
+  },
+
+  async hapuspelanggan(chatId, args) {
+    if (!args) {
+      return client.sendMessage(chatId, "Format: `#hapuspelanggan <username>`");
+    }
+    await client.sendMessage(chatId, `Menghapus pelanggan dengan username "${args}"...`);
+    await mikrotikOperations.hapusPelanggan(chatId, args);
+  },
+
+  async notifmanual(chatId, args) {
+    if (!args) {
+      return client.sendMessage(chatId, "Format: `#notifmanual <username>`");
+    }
+    await client.sendMessage(chatId, `Mengirim notifikasi manual untuk "${args}"...`);
+    await mikrotikOperations.kirimNotifikasiManual(chatId, args);
+  },
+
+  async addadmin(chatId, args) {
+    if (!args) {
+      return client.sendMessage(chatId, "Format: `#addadmin <nomor>`\nContoh: `#addadmin 6281234567890`");
+    }
+    await client.sendMessage(chatId, `Menambahkan nomor ${args} sebagai admin...`);
+    await mikrotikOperations.addAdmin(chatId, args);
+  },
+
+  async removeadmin(chatId, args) {
+    if (!args) {
+      return client.sendMessage(chatId, "Format: `#removeadmin <nomor>`\nContoh: `#removeadmin 6281234567890`");
+    }
+    await client.sendMessage(chatId, `Menghapus nomor ${args} dari daftar admin...`);
+    await mikrotikOperations.removeAdmin(chatId, args);
+  },
+
+  async listadmin(chatId) {
+    await mikrotikOperations.getAdminList(chatId);
+  },
+
+  async syncpelanggan(chatId) {
+    await mikrotikOperations.syncPelanggan(chatId);
+  },
+
+  async ceksync(chatId) {
+    await client.sendMessage(chatId, "Memeriksa perbedaan data pelanggan...");
+    await mikrotikOperations.cekPerbedaanPelanggan(chatId);
+  },
+
+  async perbaiki(chatId, args) {
+    const parts = splitArgs(args);
+    if (parts.length !== 2) {
+      return client.sendMessage(chatId, "Format: `#perbaiki <username> <nomor>`\nContoh: `#perbaiki johndoe 6281234567890`");
+    }
+    const [username, nomer] = parts;
+    await mikrotikOperations.perbaikiPelanggan(chatId, username, nomer);
+  },
+
+  async testnotif(chatId) {
+    await manualTriggerNotifikasi(chatId);
+  },
+
+  async cronstatus(chatId) {
+    const notifikasiAktif = !!cronJobNotifikasi;
+    const resetAkunAktif = !!cronJobResetAkun;
+
+    if (!notifikasiAktif && !resetAkunAktif) {
+      return client.sendMessage(chatId, "Cron job tidak aktif");
+    }
+
+    const nextNotif = notifikasiAktif ? (formatCronNextRun(cronJobNotifikasi) || '-') : '-';
+    const nextReset = resetAkunAktif ? (formatCronNextRun(cronJobResetAkun) || '-') : '-';
+    const message = `*Status Cron Job*\n\n` +
+      `Notifikasi Expired (08:00): ${notifikasiAktif ? 'Aktif' : 'Tidak aktif'}\n` +
+      `Berikutnya: ${nextNotif}\n\n` +
+      `Reset Akun Sebelum Expired (01:00): ${resetAkunAktif ? 'Aktif' : 'Tidak aktif'}\n` +
+      `Berikutnya: ${nextReset}\n\n` +
+      `Timezone: ${APP_TIMEZONE}`;
+    await client.sendMessage(chatId, message);
+  },
+
+  async restart(chatId) {
+    await client.sendMessage(chatId, "Merestart WhatsApp client...");
+    state.isReady = false;
+    clearRuntimeIntervals();
+    clearTimeout(state.reconnectTimer);
+    state.reconnectTimer = null;
+    setTimeout(() => scheduleReconnect(true), 2000);
+  }
+};
+
+// ==================== WHATSAPP EVENT HANDLERS ====================
+const setupWhatsAppEvents = () => {
+  if (!client) {
+    console.error("Cannot setup events: client is null");
+    return;
+  }
+  client.removeAllListeners();
+
+  client.on("qr", (qr) => {
+    state.currentQR = qr;
+    state.isReady = false;
+    state.reconnectAttempts = 0;
+    state.isReconnecting = false;
+    console.log("QR code generated");
+  });
+
+  client.on("authenticated", () => {
+    console.log("WhatsApp authenticated");
+    state.reconnectAttempts = 0;
+    state.isReconnecting = false;
+  });
+
+  client.on("auth_failure", (msg) => {
+    console.error("Auth failure:", msg);
+    state.isReady = false;
+    state.isReconnecting = false;
+    scheduleReconnect();
+  });
+
+  client.on("ready", () => {
+    console.log("WhatsApp ready");
+    state.isReady = true;
+    state.currentQR = null;
+    state.reconnectAttempts = 0;
+    state.isReconnecting = false;
+    state.lastReconnectTime = null;
+    state.restartCount = 0;
+    if (state.reconnectTimer) {
+      clearTimeout(state.reconnectTimer);
+      state.reconnectTimer = null;
+    }
+
+    const autoRekapSetting = bacaAutoRekapSetting();
+    if (autoRekapSetting.enabled) {
+      state.autoRekapEnabled = true;
+      startAutoRekapInterval(adminNumber ? `${adminNumber}@c.us` : null, autoRekapSetting.interval);
+      console.log(`Auto rekap diaktifkan dengan interval ${autoRekapSetting.interval} menit`);
+    } else {
+      state.autoRekapEnabled = false;
+    }
+
+    // Auto backup setiap 30 menit
+    if (state.autoBackupInterval) {
+      clearInterval(state.autoBackupInterval);
+    }
+    state.autoBackupInterval = setInterval(async () => {
+      if (state.isReady) {
+        console.log("[AutoBackup] Menjalankan backup otomatis (hanya user baru)...");
+        try {
+          await executeWithMikrotik(async (conn) => {
+            const users = await conn.menu("/ip/hotspot/user").print();
+            if (!users) return;
+            const existingHistory = bacaHistoryUser();
+            const historyCandidates = [];
+            users.forEach(user => {
+              const expiredDate = parseExpiredDateFromComment(user.comment);
+              if (expiredDate) {
+                historyCandidates.push({
+                  name: user.name,
+                  profile: user.profile,
+                  comment: user.comment,
+                  tanggalExpired: expiredDate.toISOString(),
+                  password: user.password || '',
+                });
+              }
+            });
+
+            if (historyCandidates.length === 0) return;
+
+            const { history, inserted, updated, changed } = upsertHistoryUsers(historyCandidates, existingHistory);
+            if (changed) {
+              simpanHistoryUser(history);
+              console.log(`[AutoBackup] ${inserted} baru, ${updated} diupdate`);
+            }
+          }, "Gagal auto backup");
+        } catch (error) {
+          console.error("[AutoBackup] Gagal:", error);
+        }
+      }
+    }, 30 * 60 * 1000);
+
+    setupCronNotifikasi();
+    setupCronResetAkun();
+    const now = new Date();
+    const currentHour = getHourInTimezone(now, APP_TIMEZONE);
+    if (currentHour !== null && currentHour >= 1) {
+      console.log('[Cron ResetAkun] Sudah lewat jam 1 pagi, menjalankan reset akun sekarang...');
+      setTimeout(kirimResetAkunSebelumExpiredJam3Pagi, 15000);
+    }
+    if (currentHour !== null && currentHour >= 8) {
+      console.log('[Cron] Sudah lewat jam 8 pagi, menjalankan notifikasi sekarang...');
+      setTimeout(kirimNotifikasiExpiredJam8Pagi, 30000);
+    }
+
+    // Auto sync setiap 30 menit
+    console.log("Auto sync pelanggan diaktifkan setiap 30 menit");
+    if (state.syncPelangganInterval) {
+      clearInterval(state.syncPelangganInterval);
+    }
+    state.syncPelangganInterval = setInterval(async () => {
+      if (state.isReady && state.syncPelangganEnabled) {
+        console.log("[AutoSync] Menjalankan sync pelanggan...");
+        try {
+          await syncPelangganFromMikrotik();
+        } catch (error) {
+          console.error("[AutoSync] Gagal:", error);
+        }
+      }
+    }, 30 * 60 * 1000);
+    setTimeout(() => {
+      if (state.isReady) syncPelangganFromMikrotik().catch(console.error);
+    }, 30000);
+
+    startWhatsAppKeepAlive();
+  });
+
+  client.on("change_state", (newState) => {
+    state.waState = newState;
+    console.log("WA STATE:", newState);
+    if (newState === "CONNECTED") {
+      state.isReady = true;
+      state.reconnectAttempts = 0;
+      state.isReconnecting = false;
+    }
+    if (["DISCONNECTED", "CONFLICT"].includes(newState)) {
+      state.isReady = false;
+      clearRuntimeIntervals();
+      scheduleReconnect();
+    }
+  });
+
+  client.on("disconnected", (reason) => {
+    console.log("WhatsApp disconnected:", reason);
+    state.isReady = false;
+    state.currentQR = null;
+    clearRuntimeIntervals();
+    if (["UNAUTHORIZED", "CONFLICT"].includes(reason)) {
+      try {
+        fs.rmSync(WWEBJS_AUTH_DIR, { recursive: true, force: true });
+        console.log("Session cleared");
+      } catch {}
+    }
+    scheduleReconnect();
+  });
+
+  client.on("error", (error) => {
+    console.error("WhatsApp error:", error.message);
+    if (!state.isReady && !state.isReconnecting) {
+      scheduleReconnect();
+    }
+  });
+
+  client.on("loading_screen", (percent, message) => {
+    console.log(`[LOADING] ${percent}% ${message}`);
+  });
+
+  // Message handler
+  client.on("message", async (msg) => {
+    const senderNumber = msg.from.split("@")[0];
+    if (!isAdmin(senderNumber)) {
+      console.log(`Akses ditolak untuk nomor: ${senderNumber}`);
+      return;
+    }
+    const chatId = msg.from;
+    const parsedCommand = parseCommandPayload(msg.body);
+    if (!parsedCommand) return; // abaikan pesan biasa
+    const { command, args } = parsedCommand;
+
+    try {
+      const handler = commandHandlers[command];
+      if (handler) {
+        await handler(chatId, args, senderNumber);
+      } else {
+        // command tidak dikenal, mungkin tampilkan bantuan
+        await client.sendMessage(chatId, "Perintah tidak dikenal. Ketik #bantuan untuk melihat daftar perintah.");
+      }
+    } catch (error) {
+      console.error("Error processing message:", error);
+      await client.sendMessage(chatId, "Terjadi kesalahan saat memproses perintah.");
+    }
+  });
+};
+
+const initializeWhatsApp = () => {
+  if (!client) {
+    client = createWhatsAppClient();
+    setupWhatsAppEvents();
+  }
+  client.initialize().catch((error) => {
+    console.error("Failed to initialize WhatsApp:", error.message);
+    state.isReconnecting = false;
+    scheduleReconnect();
+  });
+};
+
+// ==================== EXPRESS ROUTES ====================
+app.get("/qr", async (req, res) => {
+  if (state.isReady) {
+    return res.send(`<html><body style="font-family:sans-serif;padding:20px;text-align:center;color:green;">WhatsApp sudah terhubung.</body></html>`);
+  }
+  if (!state.currentQR) {
+    return res.send("Menunggu QR code tersedia...");
+  }
+  const qrImage = await QRCode.toDataURL(state.currentQR);
+  res.send(`<html><body style="text-align:center;font-family:sans-serif"><h1>Scan QR WhatsApp</h1><img src="${qrImage}" style="width:90%;max-width:300px;border:10px solid #fff;box-shadow:0 0 10px #aaa;border-radius:8px;" /><p>Halaman ini auto-refresh tiap 15 detik</p><meta http-equiv="refresh" content="15" /></body></html>`);
+});
+
+app.get("/health", (req, res) => {
+  res.json({
+    status: state.isReady ? "healthy" : "initializing",
+    whatsapp_ready: state.isReady,
+    qr_available: !!state.currentQR,
+    restart_count: state.restartCount,
+    auto_rekap_enabled: state.autoRekapEnabled,
+    cron_notifikasi_aktif: !!cronJobNotifikasi,
+    cron_jadwal_berikutnya: cronJobNotifikasi ? formatCronNextRun(cronJobNotifikasi) : null,
+    cron_reset_akun_aktif: !!cronJobResetAkun,
+    cron_reset_akun_berikutnya: cronJobResetAkun ? formatCronNextRun(cronJobResetAkun) : null,
+    reconnect_attempts: state.reconnectAttempts,
+    wa_state: state.waState,
+    is_reconnecting: state.isReconnecting
+  });
+});
+
+// ==================== MAIN ====================
+const startServer = async () => {
+  try {
+    initializeWhatsApp();
+    app.listen(PORT, '0.0.0.0', () => console.log(`QR server di http://localhost:${PORT}`));
+    console.log('Aplikasi berhasil dijalankan');
+  } catch (error) {
+    console.error('Gagal memulai server:', error);
+    process.exit(1);
+  }
+};
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  setTimeout(() => {
+    console.log('Restarting after uncaught exception...');
+    scheduleReconnect();
+  }, 5000);
+});
+
+startServer();
