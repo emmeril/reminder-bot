@@ -27,7 +27,7 @@
       }
     };
   </script>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="/public/styles.css">
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body class="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(204,90,46,.16),transparent_34%),radial-gradient(circle_at_top_right,rgba(31,122,106,.16),transparent_28%),linear-gradient(180deg,#f7f2ea_0%,#f3ede3_50%,#e6ece6_100%)] font-body text-ink">
@@ -50,7 +50,7 @@
           </div>
         </div>
         <div class="flex items-center justify-end gap-3">
-          <button @click="showActions = !showActions" class="sm:hidden inline-flex items-center justify-center h-10 w-10 rounded-full border border-ink/10 bg-white text-ink shadow-sm" aria-label="Toggle actions">☰</button>
+          <button @click="showActions = !showActions" class="sm:hidden inline-flex items-center justify-center h-10 w-10 rounded-full border border-ink/10 bg-white text-ink shadow-sm" aria-label="Toggle actions">&#9776;</button>
           <div x-show="showActions" x-cloak class="flex flex-wrap gap-3 responsive-actions">
           <a href="/qr" target="_blank" rel="noreferrer" class="rounded-full bg-gradient-to-r from-clay to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
             Hubungkan WhatsApp
@@ -347,7 +347,7 @@
             <h2 class="font-display text-2xl">Settings</h2>
             <p class="mt-1 text-sm text-ink/60">Konfigurasi operasional untuk perilaku dashboard dan alert.</p>
           </div>
-          <form class="space-y-4" @submit.prevent="saveSettings()">
+          <form class="space-y-4" @input="settingsDirty = true" @change="settingsDirty = true" @submit.prevent="saveSettings()">
             <div class="grid gap-4 md:grid-cols-2">
               <label class="block text-sm text-ink/60">
                 Judul dashboard
@@ -443,9 +443,9 @@
               <article class="rounded-[1.5rem] border border-ink/8 bg-white/85 px-4 py-4">
                 <div class="text-xs uppercase tracking-[0.18em] text-ink/45">
                   <span x-text="formatDateTime(entry.timestamp)"></span>
-                  <span> · </span>
+                  <span> &middot; </span>
                   <span x-text="entry.level.toUpperCase()"></span>
-                  <span> · </span>
+                  <span> &middot; </span>
                   <span x-text="entry.source"></span>
                 </div>
                 <div class="mt-2 text-sm leading-6 text-ink/80" x-text="entry.message"></div>
@@ -485,6 +485,7 @@
         logs: [],
         statusCards: [],
         summaryMetrics: [],
+        settingsDirty: false,
         forms: {
           manual: { phoneNumber: "", message: "" },
           broadcast: { title: "", message: "" },
@@ -527,9 +528,14 @@
             throw new Error("Unauthorized");
           }
 
-          const payload = await response.json();
+          const contentType = response.headers.get("content-type") || "";
+          const payload = contentType.includes("application/json")
+            ? await response.json()
+            : { success: false, error: await response.text() || "Request failed" };
           if (!response.ok || !payload.success) {
-            throw new Error(payload.error || "Request failed");
+            const message = payload.error || `Request failed (${response.status})`;
+            this.notify(message);
+            throw new Error(message);
           }
 
           return payload.data;
@@ -577,16 +583,18 @@
               { label: "Paid contacts", value: data.summary.paidContacts },
               { label: "Unpaid contacts", value: data.summary.unpaidContacts },
             ];
-            this.forms.settings = {
-              dashboardTitle: data.settings.dashboardTitle || "",
-              companyName: data.settings.companyName || "",
-              supportSignature: data.settings.supportSignature || "",
-              timezone: data.settings.timezone || "",
-              autoRescheduleMonthly: Boolean(data.settings.autoRescheduleMonthly),
-              notifyAdminsOnDelivery: Boolean(data.settings.notifyAdminsOnDelivery),
-              notifyAdminsOnConnectionChange: Boolean(data.settings.notifyAdminsOnConnectionChange),
-              notifyAdminsOnPaymentReset: Boolean(data.settings.notifyAdminsOnPaymentReset),
-            };
+            if (!this.settingsDirty) {
+              this.forms.settings = {
+                dashboardTitle: data.settings.dashboardTitle || "",
+                companyName: data.settings.companyName || "",
+                supportSignature: data.settings.supportSignature || "",
+                timezone: data.settings.timezone || "",
+                autoRescheduleMonthly: Boolean(data.settings.autoRescheduleMonthly),
+                notifyAdminsOnDelivery: Boolean(data.settings.notifyAdminsOnDelivery),
+                notifyAdminsOnConnectionChange: Boolean(data.settings.notifyAdminsOnConnectionChange),
+                notifyAdminsOnPaymentReset: Boolean(data.settings.notifyAdminsOnPaymentReset),
+              };
+            }
           } finally {
             this.loading.status = false;
           }
@@ -728,6 +736,7 @@
             method: "PUT",
             body: JSON.stringify(this.forms.settings),
           });
+          this.settingsDirty = false;
           this.notify("Settings diperbarui.");
           await this.loadStatus();
         },

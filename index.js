@@ -100,7 +100,11 @@ function parseCookies(cookieHeader) {
   for (const part of String(cookieHeader).split(";")) {
     const [rawKey, ...rawValue] = part.trim().split("=");
     if (!rawKey) continue;
-    cookies[rawKey] = decodeURIComponent(rawValue.join("=") || "");
+    try {
+      cookies[rawKey] = decodeURIComponent(rawValue.join("=") || "");
+    } catch {
+      cookies[rawKey] = rawValue.join("=") || "";
+    }
   }
 
   return cookies;
@@ -315,7 +319,6 @@ class DataManager {
     this.roles = new Map();
     this.settings = { ...DEFAULT_SETTINGS };
     this.fileLocks = new Map();
-    this.initDirectories();
   }
 
   async initDirectories() {
@@ -415,6 +418,7 @@ class DataManager {
 
   async loadAll() {
     this.activityLog.push("info", "boot", "Loading persisted data");
+    await this.initDirectories();
     this.contacts = await this.loadMapFromFile(this.getPath("contacts.json"), "id");
     this.reminders = await this.loadMapFromFile(this.getPath("reminders.json"), "id");
     this.sentReminders = await this.loadMapFromFile(this.getPath("sent_reminders.json"), "id");
@@ -1410,7 +1414,8 @@ class WebServer {
 
     const hasApiKeyAccess = (req) => {
       const apiKey = req.headers["x-api-key"] || req.query.api_key;
-      return Boolean(apiKey && apiKey === CONFIG.WEB_API_KEY);
+      const apiKeyIsConfigured = Boolean(CONFIG.WEB_API_KEY && CONFIG.WEB_API_KEY !== "dev-key-change-in-production");
+      return Boolean(apiKeyIsConfigured && apiKey && apiKey === CONFIG.WEB_API_KEY);
     };
 
     const readSession = (req) => {
@@ -1453,7 +1458,8 @@ class WebServer {
       } catch (error) {
         this.activityLog.push("error", "api", error.message);
         if (!res.headersSent) {
-          res.status(400).json({ success: false, error: error.message });
+          const statusCode = error.statusCode || res.statusCode;
+          res.status(statusCode >= 400 ? statusCode : 400).json({ success: false, error: error.message });
         }
       }
     };
@@ -1477,8 +1483,9 @@ class WebServer {
 
       if (!this.authManager.validateCredentials(username, password)) {
         this.activityLog.push("error", "auth", `Login gagal untuk user ${username || "(kosong)"}`);
-        res.status(401);
-        throw new Error("Username atau password salah.");
+        const error = new Error("Username atau password salah.");
+        error.statusCode = 401;
+        throw error;
       }
 
       const { token, session } = this.authManager.createSession(username);
@@ -1800,9 +1807,6 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
     authManager
   );
 
-  await notificationBot.initialize();
-  notificationBot.startKeepAlive();
-
   cron.schedule(CONFIG.CRON_SCHEDULE, () => {
     reminderScheduler.processDueReminders().catch((error) => {
       activityLog.push("error", "scheduler", `Cron execution failed: ${error.message}`);
@@ -1851,4 +1855,10 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
   });
 
   webServer.start();
+  notificationBot.initialize()
+    .then(() => notificationBot.startKeepAlive())
+    .catch((error) => {
+      activityLog.push("error", "whatsapp", `Initial WhatsApp startup failed: ${error.message}`);
+      notificationBot.scheduleReconnect();
+    });
 })();

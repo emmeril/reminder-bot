@@ -39,9 +39,9 @@
       </span>
       <div class="mt-5 space-y-3">
         <h1 class="font-display text-4xl leading-none tracking-tight sm:text-5xl">__DASHBOARD_TITLE__</h1>
-        <p class="text-sm leading-7 text-ink/60">
+        <!-- <p class="text-sm leading-7 text-ink/60">
           Masuk dulu untuk membuka dashboard, melihat output bot, dan mengelola semua notifikasi dari satu tempat.
-        </p>
+        </p> -->
       </div>
 
       <form class="mt-8 space-y-4" @submit.prevent="submit()">
@@ -60,9 +60,9 @@
         </button>
       </form>
 
-      <p class="mt-6 text-xs leading-6 text-ink/50">
+      <!-- <p class="mt-6 text-xs leading-6 text-ink/50">
         Gunakan <code>AUTH_USERNAME</code> dan <code>AUTH_PASSWORD</code> di environment untuk mengganti kredensial default.
-      </p>
+      </p> -->
     </section>
   </main>
 
@@ -86,9 +86,12 @@
             },
           });
 
-          const payload = await response.json();
+          const contentType = response.headers.get("content-type") || "";
+          const payload = contentType.includes("application/json")
+            ? await response.json()
+            : { success: false, error: await response.text() || "Request failed" };
           if (!response.ok || !payload.success) {
-            throw new Error(payload.error || "Request failed");
+            throw new Error(payload.error || `Request failed (${response.status})`);
           }
 
           return payload.data;

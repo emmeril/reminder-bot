@@ -68,7 +68,7 @@ button[aria-label="Toggle actions"] {
 
 /* Reduce section padding and font sizes on small screens for compactness */
 @media (max-width: 480px) {
-  .rounded\[1.75rem\] {
+  .rounded-\[1\.75rem\] {
     padding: 0.75rem !important;
   }
   h1 {
