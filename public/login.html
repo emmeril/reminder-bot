@@ -10,35 +10,39 @@
       theme: {
         extend: {
           colors: {
-            sand: "#f7f1e5",
-            clay: "#cc5a2e",
-            moss: "#1f7a6a",
-            ink: "#17313b"
+            sand: "#f8fafc",
+            clay: "#e05f2f",
+            moss: "#12856f",
+            ink: "#172033"
           },
           boxShadow: {
-            soft: "0 24px 70px rgba(23,49,59,.16)"
+            soft: "0 24px 70px rgba(15,23,42,.14)"
           },
           fontFamily: {
-            display: ["Georgia", "serif"],
-            body: ["Georgia", "serif"]
+            display: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+            body: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"]
           }
         }
       }
     };
   </script>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <link rel="stylesheet" href="/public/styles.css">
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
-<body class="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(204,90,46,.18),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(31,122,106,.14),transparent_28%),linear-gradient(135deg,#f7f1e5,#dce7e2)] font-body text-ink">
+<body class="min-h-screen bg-[linear-gradient(145deg,#f8fafc_0%,#eef5f4_44%,#fff7ed_100%)] font-body text-ink">
   <main class="grid min-h-screen place-items-center px-5">
     <section
       x-data="loginApp()"
-      class="w-full max-w-md rounded-[2rem] border border-white/70 bg-white/80 p-8 shadow-soft backdrop-blur-xl"
+      class="hero-panel w-full max-w-md rounded-[2rem] border border-white/70 bg-white/85 p-8 shadow-soft backdrop-blur-xl"
     >
-      <span class="inline-flex rounded-full bg-clay/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-clay">
+      <span class="inline-flex items-center gap-2 rounded-full bg-clay/10 px-3 py-1 text-xs font-bold uppercase text-clay">
+        <i class="fa-solid fa-lock"></i>
         Protected Dashboard
       </span>
       <div class="mt-5 space-y-3">
-        <h1 class="font-display text-4xl leading-none tracking-tight sm:text-5xl">__DASHBOARD_TITLE__</h1>
+        <h1 class="font-display text-4xl font-extrabold leading-none tracking-tight sm:text-5xl">__DASHBOARD_TITLE__</h1>
         <!-- <p class="text-sm leading-7 text-ink/60">
           Masuk dulu untuk membuka dashboard, melihat output bot, dan mengelola semua notifikasi dari satu tempat.
         </p> -->
@@ -47,16 +51,22 @@
       <form class="mt-8 space-y-4" @submit.prevent="submit()">
         <label class="block text-sm text-ink/60">
           Username
-          <input x-model="form.username" autocomplete="username" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+          <div class="relative mt-2">
+            <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-ink/35"></i>
+            <input x-model="form.username" autocomplete="username" class="w-full rounded-2xl border border-ink/10 bg-white py-3 pl-11 pr-4 outline-none transition focus:border-clay" required>
+          </div>
         </label>
         <label class="block text-sm text-ink/60">
           Password
-          <input x-model="form.password" type="password" autocomplete="current-password" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+          <div class="relative mt-2">
+            <i class="fa-solid fa-key absolute left-4 top-1/2 -translate-y-1/2 text-ink/35"></i>
+            <input x-model="form.password" type="password" autocomplete="current-password" class="w-full rounded-2xl border border-ink/10 bg-white py-3 pl-11 pr-4 outline-none transition focus:border-clay" required>
+          </div>
         </label>
         <div class="min-h-6 text-sm text-clay" x-text="error"></div>
         <button class="w-full rounded-full bg-gradient-to-r from-clay to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
-          <span x-show="!submitting">Masuk</span>
-          <span x-show="submitting">Memproses...</span>
+          <span x-show="!submitting"><i class="fa-solid fa-right-to-bracket mr-2"></i>Masuk</span>
+          <span x-show="submitting"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memproses...</span>
         </button>
       </form>
 
