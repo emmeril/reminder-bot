@@ -527,18 +527,25 @@
         </section>
 
         <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-5 flex items-center justify-between">
+          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="font-display text-2xl">Activity Log</h2>
               <p class="mt-1 text-sm text-ink/60">Monitoring internal untuk koneksi, scheduler, API, dan delivery.</p>
             </div>
-            <button @click="loadLogs()" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">Reload</button>
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <select x-model.number="filters.logs.pageSize" @change="resetPage('logs')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-2 text-sm outline-none transition focus:border-clay sm:w-36">
+                <template x-for="size in pageSizes" :key="'logs-size-' + size">
+                  <option :value="size" x-text="size + ' / page'"></option>
+                </template>
+              </select>
+              <button @click="loadLogs()" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">Reload</button>
+            </div>
           </div>
           <div class="space-y-3">
             <template x-if="!logs.length">
               <div class="rounded-[1.5rem] border border-dashed border-ink/15 bg-haze px-4 py-8 text-center text-ink/45">Belum ada activity log.</div>
             </template>
-            <template x-for="entry in logs" :key="entry.id">
+            <template x-for="entry in paginatedLogs" :key="entry.id">
               <article class="rounded-[1.5rem] border border-ink/8 bg-white/85 px-4 py-4">
                 <div class="text-xs uppercase tracking-[0.18em] text-ink/45">
                   <span x-text="formatDateTime(entry.timestamp)"></span>
@@ -550,6 +557,14 @@
                 <div class="mt-2 text-sm leading-6 text-ink/80" x-text="entry.message"></div>
               </article>
             </template>
+          </div>
+          <div class="mt-4 flex flex-col gap-3 text-sm text-ink/60 sm:flex-row sm:items-center sm:justify-between">
+            <div x-text="paginationLabel('logs', logs.length)"></div>
+            <div class="flex items-center gap-2">
+              <button @click="setPage('logs', filters.logs.page - 1)" :disabled="filters.logs.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Prev</button>
+              <span class="px-2" x-text="filters.logs.page + ' / ' + totalPages('logs', logs.length)"></span>
+              <button @click="setPage('logs', filters.logs.page + 1)" :disabled="filters.logs.page >= totalPages('logs', logs.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+            </div>
           </div>
         </section>
       </main>
@@ -591,6 +606,7 @@
           contacts: { search: "", status: "ALL", page: 1, pageSize: 10 },
           reminders: { search: "", schedule: "ALL", page: 1, pageSize: 10 },
           sent: { search: "", status: "ALL", page: 1, pageSize: 10 },
+          logs: { page: 1, pageSize: 10 },
         },
         forms: {
           manual: { phoneNumber: "", message: "" },
@@ -716,6 +732,14 @@
           return this.paginate(this.filteredSent, "sent");
         },
 
+        get filteredLogs() {
+          return this.logs;
+        },
+
+        get paginatedLogs() {
+          return this.paginate(this.filteredLogs, "logs");
+        },
+
         paginate(items, key) {
           this.clampPage(key, items.length);
           const pageSize = this.filters[key].pageSize;
@@ -827,6 +851,7 @@
 
         async loadLogs() {
           this.logs = await this.api("/api/logs");
+          this.clampPage("logs", this.logs.length);
         },
 
         async createContact() {
