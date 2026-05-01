@@ -1080,6 +1080,22 @@ class DataManager {
     return contact;
   }
 
+  inferPaymentType(contact, options = {}) {
+    const paymentMonths = contact.paymentMonths || {};
+    const year = options.year ?? new Date().getFullYear();
+    const month = options.month ?? new Date().getMonth() + 1;
+    const currentKey = `${year}-${String(month).padStart(2, "0")}`;
+    const previousDate = new Date(year, month - 2, 1);
+    const previousKey = `${previousDate.getFullYear()}-${String(previousDate.getMonth() + 1).padStart(2, "0")}`;
+    const currentPaid = paymentMonths[currentKey]?.status === PAYMENT_STATUS.PAID;
+    const previousPaid = paymentMonths[previousKey]?.status === PAYMENT_STATUS.PAID;
+
+    if (currentPaid && previousPaid) return "FULL-PAID";
+    if (currentPaid && !previousPaid) return "CURRENT-ONLY";
+    if (!currentPaid && previousPaid) return "ARREARS-ONLY";
+    return "DEFAULT";
+  }
+
   getOverdueContacts(year, month) {
     const prevMonth = month === 1 ? 12 : month - 1;
     const prevYear = month === 1 ? year - 1 : year;
@@ -1862,12 +1878,18 @@ class WebServer {
       }
 
       const transactionId = `TRX-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+      const requestedPaymentType = sanitizeInput(req.body.paymentType).toUpperCase();
+      const allowedPaymentTypes = ["ARREARS-ONLY", "CURRENT-ONLY", "FULL-PAID"];
+      const paymentType = allowedPaymentTypes.includes(requestedPaymentType)
+        ? requestedPaymentType
+        : this.dataManager.inferPaymentType(updatedContact);
 
       try {
-        await this.notificationBot.sendPaymentNotification(updatedContact, transactionId);
+        await this.notificationBot.sendPaymentNotification(updatedContact, transactionId, paymentType);
         return {
           contact: updatedContact,
           transactionId,
+          paymentType,
           notificationSent: true,
         };
       } catch (error) {

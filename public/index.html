@@ -266,6 +266,17 @@
                       </td>
                       <td class="px-4 py-4">
                         <div class="flex flex-wrap gap-2">
+                          <template x-if="contact.paymentStatus !== 'PAID'">
+                            <select
+                              x-model="paymentTypeSelection[contact.id]"
+                              class="rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition focus:border-clay"
+                            >
+                              <option value="DEFAULT">Default</option>
+                              <option value="ARREARS-ONLY">Arrears Only</option>
+                              <option value="CURRENT-ONLY">Current Only</option>
+                              <option value="FULL-PAID">Full Paid</option>
+                            </select>
+                          </template>
                           <button
                             @click="togglePayment(contact.id, contact.paymentStatus === 'PAID' ? 'UNPAID' : 'PAID')"
                             class="rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:bg-ink hover:text-white"
@@ -619,6 +630,7 @@
         statusCards: [],
         summaryMetrics: [],
         settingsDirty: false,
+        paymentTypeSelection: {},
         pageSizes: [10, 25, 50, 100],
         filters: {
           contacts: { search: "", status: "ALL", page: 1, pageSize: 10 },
@@ -693,6 +705,30 @@
 
         formatDateTime(value) {
           return new Date(value).toLocaleString("id-ID");
+        },
+
+        inferPaymentType(contact) {
+          const paymentMonths = contact.paymentMonths || {};
+          const now = new Date();
+          const year = now.getFullYear();
+          const month = now.getMonth() + 1;
+          const currentKey = `${year}-${String(month).padStart(2, "0")}`;
+          const previousDate = new Date(year, month - 2, 1);
+          const previousKey = `${previousDate.getFullYear()}-${String(previousDate.getMonth() + 1).padStart(2, "0")}`;
+          const currentPaid = paymentMonths[currentKey]?.status === "PAID";
+          const previousPaid = paymentMonths[previousKey]?.status === "PAID";
+
+          if (currentPaid && previousPaid) return "FULL-PAID";
+          if (!currentPaid && previousPaid) return "CURRENT-ONLY";
+          if (currentPaid && !previousPaid) return "ARREARS-ONLY";
+          return "DEFAULT";
+        },
+
+        getPaymentTypeSelection(contact) {
+          if (!this.paymentTypeSelection[contact.id]) {
+            this.paymentTypeSelection[contact.id] = this.inferPaymentType(contact);
+          }
+          return this.paymentTypeSelection[contact.id];
         },
 
         searchMatches(item, fields, search) {
@@ -840,6 +876,11 @@
 
         async loadContacts() {
           this.contacts = await this.api("/api/contacts");
+          for (const contact of this.contacts) {
+            if (!this.paymentTypeSelection[contact.id]) {
+              this.paymentTypeSelection[contact.id] = this.inferPaymentType(contact);
+            }
+          }
           this.clampPage("contacts", this.filteredContacts.length);
         },
 
@@ -901,9 +942,14 @@
         },
 
         async togglePayment(id, status) {
+          const contact = this.contacts.find((item) => String(item.id) === String(id));
+          const payload = { status };
+          if (status === "PAID" && contact) {
+            payload.paymentType = this.paymentTypeSelection[contact.id] || this.inferPaymentType(contact);
+          }
           const result = await this.api(`/api/contacts/${id}/payment`, {
             method: "POST",
-            body: JSON.stringify({ status }),
+            body: JSON.stringify(payload),
           });
           if (status === "PAID") {
             if (result.notificationSent) {
