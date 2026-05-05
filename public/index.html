@@ -285,9 +285,9 @@
                <option value="ALL">Semua status</option>
                <option value="PAID">Paid</option>
                <option value="UNPAID">Unpaid</option>
-               <option value="ARREARS-ONLY">Arrears Only</option>
-               <option value="CURRENT-ONLY">Current Only</option>
-               <option value="FULL-PAID">Full Paid</option>
+               <option value="ARREARS-ONLY">Hanya Tunggakan</option>
+               <option value="CURRENT-ONLY">Bulan Ini Saja</option>
+               <option value="FULL-PAID">Lunas Semua</option>
              </select>
             <select x-model.number="filters.contacts.pageSize" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <template x-for="size in pageSizes" :key="'contacts-size-' + size">
@@ -806,9 +806,9 @@ inferPaymentType(contact) {
         getPaymentTypeLabel(type) {
           const labels = {
             "DEFAULT": "Default (Belum dibayar)",
-            "ARREARS-ONLY": "Arrears Only",
-            "CURRENT-ONLY": "Current Only", 
-            "FULL-PAID": "Full Paid"
+            "ARREARS-ONLY": "Hanya Tunggakan (bulan lalu menunggak, bulan ini belum lunas)",
+            "CURRENT-ONLY": "Bulan Ini Saja (bulan ini lunas, bulan lalu sudah lunas)", 
+            "FULL-PAID": "Lunas Semua (bulan lalu + bulan ini lunas)"
           };
           return labels[type] || type;
         },
