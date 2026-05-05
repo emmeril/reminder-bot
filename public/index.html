@@ -227,11 +227,14 @@
           </form>
           <div class="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr),180px,140px]">
             <input x-model="filters.contacts.search" @input="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama atau nomor WA">
-            <select x-model="filters.contacts.status" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-              <option value="ALL">Semua status</option>
-              <option value="PAID">Paid</option>
-              <option value="UNPAID">Unpaid</option>
-            </select>
+<select x-model="filters.contacts.status" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+               <option value="ALL">Semua status</option>
+               <option value="PAID">Paid</option>
+               <option value="UNPAID">Unpaid</option>
+               <option value="ARREARS-ONLY">Arrears Only</option>
+               <option value="CURRENT-ONLY">Current Only</option>
+               <option value="FULL-PAID">Full Paid</option>
+             </select>
             <select x-model.number="filters.contacts.pageSize" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <template x-for="size in pageSizes" :key="'contacts-size-' + size">
                 <option :value="size" x-text="size + ' / page'"></option>
@@ -746,13 +749,18 @@
             && date.getDate() === today.getDate();
         },
 
-        get filteredContacts() {
-          return this.contacts.filter((contact) => {
-            const status = String(contact.paymentStatus || "UNPAID").toUpperCase();
-            if (this.filters.contacts.status !== "ALL" && status !== this.filters.contacts.status) return false;
-            return this.searchMatches(contact, ["name", "phoneNumber", "paymentStatus"], this.filters.contacts.search);
-          });
-        },
+get filteredContacts() {
+           return this.contacts.filter((contact) => {
+             const status = String(contact.paymentStatus || "UNPAID").toUpperCase();
+             const paymentType = this.inferPaymentType(contact);
+             if (this.filters.contacts.status !== "ALL") {
+               if (this.filters.contacts.status === "PAID" && status !== "PAID") return false;
+               if (this.filters.contacts.status === "UNPAID" && status !== "UNPAID") return false;
+               if (["ARREARS-ONLY", "CURRENT-ONLY", "FULL-PAID"].includes(this.filters.contacts.status) && paymentType !== this.filters.contacts.status) return false;
+             }
+             return this.searchMatches(contact, ["name", "phoneNumber", "paymentStatus"], this.filters.contacts.search);
+           });
+         },
 
         get filteredReminders() {
           const now = Date.now();
