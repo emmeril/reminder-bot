@@ -691,7 +691,7 @@
           { key: "logs", label: "Activity Log", icon: "fa-solid fa-list-check" },
         ],
         showActions: false,
-        isMobileActions: false,
+        isMobileActions: null,
         contacts: [],
         mikrotikProfiles: [],
         reminders: [],
@@ -730,7 +730,7 @@
         },
 
         async init() {
-          this.updateActionMenuMode();
+          this.updateActionMenuMode(true);
           await this.refreshAll();
           window.addEventListener("resize", () => this.updateActionMenuMode());
           setInterval(() => this.loadStatus(), 20000);
@@ -738,9 +738,9 @@
         },
 
 
-        updateActionMenuMode() {
+        updateActionMenuMode(force = false) {
           const nextIsMobile = window.innerWidth < 640;
-          if (nextIsMobile === this.isMobileActions) return;
+          if (!force && nextIsMobile === this.isMobileActions) return;
 
           this.isMobileActions = nextIsMobile;
           this.showActions = !nextIsMobile;
