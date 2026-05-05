@@ -1507,13 +1507,13 @@ class NotificationBot {
 
     if (paymentType === "ARREARS-ONLY") {
       statusText = "TUNGGAKAN TERBAYAR";
-      noteText = "Pembayaran tunggakan telah kami terima. Catatan: Bulan ini masih belum lunas.";
+      noteText = "Pembayaran tunggakan bulan sebelumnya telah kami terima. Catatan: Bulan ini masih belum lunas.";
     } else if (paymentType === "CURRENT-ONLY") {
       statusText = "LUNAS (BULAN INI)";
-      noteText = "Pembayaran bulan ini telah kami terima. Namun Anda masih memiliki tunggakan bulan sebelumnya. Silakan lunasi agar layanan tidak terputus.";
+      noteText = "Pembayaran bulan ini telah kami terima dan riwayat bulan sebelumnya sudah lunas.";
     } else if (paymentType === "FULL-PAID") {
       statusText = "LUNAS";
-      noteText = "Semua tagihan (tunggakan + bulan ini) telah lunas. Terima kasih atas kelancarannya!";
+      noteText = "Semua tagihan (bulan sebelumnya dan bulan ini) telah lunas. Terima kasih atas kelancarannya!";
     }
 
     const message = `*BUKTI PEMBAYARAN EMMERIL HOTSPOT*
