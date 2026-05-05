@@ -1137,12 +1137,20 @@ class DataManager {
 
   async resetAllPaymentStatus() {
     let resetCount = 0;
+    const now = new Date();
+    const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
     for (const contact of this.contacts.values()) {
-      if (contact.paymentStatus === PAYMENT_STATUS.PAID) {
-        contact.paymentStatus = PAYMENT_STATUS.UNPAID;
-        contact.paymentDate = null;
-        resetCount += 1;
+      contact.paymentStatus = PAYMENT_STATUS.UNPAID;
+      contact.paymentDate = null;
+      if (!contact.paymentMonths) {
+        contact.paymentMonths = {};
       }
+      contact.paymentMonths[currentKey] = {
+        status: PAYMENT_STATUS.UNPAID,
+        paidDate: null,
+      };
+      resetCount += 1;
     }
 
     if (resetCount > 0) {
