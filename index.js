@@ -1989,13 +1989,24 @@ class WebServer {
     }));
 
     this.app.post("/api/notifications/test", requireApiAuth, handleApi(async (req) => {
-      const phoneNumber = normalizePhoneNumber(req.body.phoneNumber);
       const message = sanitizeMultilineText(req.body.message);
+      const requestedPhone = normalizePhoneNumber(req.body.phoneNumber);
+      const contactId = sanitizeInput(req.body.contactId);
+      const selectedContact = contactId ? this.dataManager.getContact(contactId) : null;
+      const phoneNumber = selectedContact?.phoneNumber || requestedPhone;
+
+      if (contactId && !selectedContact) throw new Error("Contact tidak ditemukan.");
       if (!isValidPhoneNumber(phoneNumber)) throw new Error("Nomor tujuan tidak valid.");
       if (!message) throw new Error("Pesan notifikasi wajib diisi.");
+
       await this.notificationBot.sendMessage(phoneNumber, message);
       this.activityLog.push("info", "manual", `Manual notification sent to ${phoneNumber}`);
-      return { phoneNumber, status: "sent" };
+      return {
+        phoneNumber,
+        contactId: selectedContact?.id || null,
+        contactName: selectedContact?.name || null,
+        status: "sent",
+      };
     }));
 
     this.app.post("/api/notifications/admin-broadcast", requireApiAuth, handleApi(async (req) => {
