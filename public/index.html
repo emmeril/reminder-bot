@@ -328,13 +328,12 @@
                         <div class="flex flex-wrap gap-2">
 <template x-if="contact.paymentStatus !== 'PAID'">
                              <select
-                               x-model="paymentTypeSelection[contact.id]"
+                               x-model="paymentTypeSelection[contact.id]" :value="getPaymentTypeSelection(contact)"
                                class="rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition focus:border-clay"
                              >
-                               <option :value="inferPaymentType(contact)" x-text="getPaymentTypeLabel(inferPaymentType(contact))"></option>
-                               <option value="ARREARS-ONLY">Arrears Only</option>
-                               <option value="CURRENT-ONLY">Current Only</option>
-                               <option value="FULL-PAID">Full Paid</option>
+                               <template x-for="option in getPaymentTypeOptions(contact)" :key="option">
+                                 <option :value="option" x-text="getPaymentTypeLabel(option)"></option>
+                               </template>
                              </select>
                            </template>
                           <button
@@ -796,8 +795,10 @@ inferPaymentType(contact) {
          },
 
         getPaymentTypeSelection(contact) {
-          if (!this.paymentTypeSelection[contact.id]) {
-            this.paymentTypeSelection[contact.id] = this.inferPaymentType(contact);
+          const options = this.getPaymentTypeOptions(contact);
+          const selected = this.paymentTypeSelection[contact.id];
+          if (!selected || !options.includes(selected)) {
+            this.paymentTypeSelection[contact.id] = options[0];
           }
           return this.paymentTypeSelection[contact.id];
         },
@@ -810,6 +811,14 @@ inferPaymentType(contact) {
             "FULL-PAID": "Full Paid"
           };
           return labels[type] || type;
+        },
+
+        getPaymentTypeOptions(contact) {
+          const inferred = this.inferPaymentType(contact);
+          if (inferred === "ARREARS-ONLY") return ["ARREARS-ONLY"];
+          if (inferred === "CURRENT-ONLY") return ["CURRENT-ONLY", "FULL-PAID"];
+          if (inferred === "FULL-PAID") return ["FULL-PAID"];
+          return ["CURRENT-ONLY", "FULL-PAID"];
         },
 
         searchMatches(item, fields, search) {
