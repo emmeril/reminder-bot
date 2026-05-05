@@ -103,8 +103,26 @@
           <h2 class="font-display text-2xl"><i class="fa-solid fa-paper-plane mr-2 text-clay"></i>Kirim Notifikasi Manual</h2>
           <form class="mt-4 space-y-4" @submit.prevent="sendManualNotification()">
             <label class="block text-sm text-ink/60">
+              Pilih contact (opsional)
+              <select x-model="forms.manual.contactId" @change="onManualContactChange()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+                <option value="">-- Isi manual nomor tujuan --</option>
+                <template x-for="contact in contacts" :key="'manual-contact-' + contact.id">
+                  <option :value="contact.id" x-text="contact.name + ' (' + contact.phoneNumber + ')'"></option>
+                </template>
+              </select>
+            </label>
+            <label class="block text-sm text-ink/60">
               Nomor tujuan
               <input x-model="forms.manual.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none ring-0 transition focus:border-clay" placeholder="628xxx" required>
+            </label>
+            <label class="block text-sm text-ink/60">
+              Template pesan (opsional)
+              <select x-model="forms.manual.templateName" @change="applyManualTemplate()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+                <option value="">-- Tulis pesan manual --</option>
+                <template x-for="t in templates" :key="'manual-template-' + t.name">
+                  <option :value="t.name" x-text="t.name"></option>
+                </template>
+              </select>
             </label>
             <label class="block text-sm text-ink/60">
               Pesan
@@ -645,7 +663,7 @@
           logs: { page: 1, pageSize: 10 },
         },
         forms: {
-          manual: { phoneNumber: "", message: "" },
+          manual: { contactId: "", phoneNumber: "", templateName: "", message: "" },
           broadcast: { title: "", message: "" },
           recipients: "",
           contact: { name: "", phoneNumber: "" },
@@ -1014,6 +1032,25 @@ get filteredContacts() {
           const dateIso = (this.forms.reminder.reminderDate && this.forms.reminder.reminderTime) ? `${this.forms.reminder.reminderDate}T${this.forms.reminder.reminderTime}:00` : null;
           this.forms.reminder.message = this.applyTemplateContent(tpl.content, contact, dateIso);
         },
+        onManualContactChange() {
+          const selected = this.contacts.find((c) => String(c.id) === String(this.forms.manual.contactId));
+          if (selected) {
+            this.forms.manual.phoneNumber = selected.phoneNumber || "";
+          }
+          if (this.forms.manual.templateName) {
+            this.applyManualTemplate();
+          }
+        },
+
+        applyManualTemplate() {
+          const name = this.forms.manual.templateName;
+          if (!name) return;
+          const tpl = this.templates.find((t) => t.name === name);
+          if (!tpl) return;
+          const contact = this.contacts.find((c) => String(c.id) === String(this.forms.manual.contactId)) || null;
+          this.forms.manual.message = this.applyTemplateContent(tpl.content, contact, new Date().toISOString());
+        },
+
         onReminderContactChange() {
           if (this.forms.reminder.templateName) {
             this.applySelectedTemplate();
@@ -1078,7 +1115,7 @@ get filteredContacts() {
             method: "POST",
             body: JSON.stringify(this.forms.manual),
           });
-          this.forms.manual = { phoneNumber: "", message: "" };
+          this.forms.manual = { contactId: "", phoneNumber: "", templateName: "", message: "" };
           this.notify("Notifikasi manual terkirim.");
           await this.loadLogs();
         },
