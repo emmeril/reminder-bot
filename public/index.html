@@ -75,7 +75,11 @@
       </div>
     </section>
 
-    <section class="mt-6 rounded-[1.75rem] border border-white/70 bg-white/75 p-4 shadow-soft backdrop-blur-xl">
+    <section class="panel-shell mt-6 rounded-[1.75rem] p-4 shadow-soft backdrop-blur-xl">
+      <div class="mb-3 flex items-center justify-between">
+        <p class="section-caption">Feature Navigation</p>
+        <p class="text-xs text-ink/45">Pilih menu untuk fokus per modul</p>
+      </div>
       <div class="flex flex-wrap gap-2">
         <template x-for="menu in navMenus" :key="menu.key">
           <button
@@ -92,7 +96,7 @@
 
     <div class="mt-6 grid gap-6 xl:grid-cols-[360px,minmax(0,1fr)]">
       <aside class="space-y-6 xl:sticky xl:top-4 xl:self-start">
-        <section x-show="activeMenu === 'overview'" x-transition.opacity class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-signal mr-2 text-moss"></i>Status Bot</h2>
             <template x-if="loading.status">
@@ -114,7 +118,7 @@
           </div>
         </section>
 
-        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <h2 class="font-display text-2xl"><i class="fa-solid fa-paper-plane mr-2 text-clay"></i>Kirim Notifikasi Manual</h2>
           <form class="mt-4 space-y-4" @submit.prevent="sendManualNotification()">
             <label class="block text-sm text-ink/60">
@@ -149,7 +153,7 @@
           </form>
         </section>
 
-        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <h2 class="font-display text-2xl"><i class="fa-solid fa-tower-broadcast mr-2 text-moss"></i>Broadcast ke Semua Contact</h2>
           <p class="mt-1 text-sm text-ink/60">Kirim pesan ke semua customer sekaligus.</p>
           <form class="mt-4 space-y-4" @submit.prevent="sendBroadcast()">
@@ -176,7 +180,7 @@
           </form>
         </section>
 
-        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <h2 class="font-display text-2xl"><i class="fa-solid fa-user-shield mr-2 text-ink/70"></i>Admin Recipients</h2>
           <form class="mt-4 space-y-4" @submit.prevent="saveRecipients()">
             <label class="block text-sm text-ink/60">
@@ -191,7 +195,7 @@
       </aside>
 
       <main class="space-y-6">
-        <section x-show="activeMenu === 'overview'" x-transition.opacity class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-chart-line mr-2 text-moss"></i>Overview</h2>
             <p class="mt-1 text-sm text-ink/60">Ringkasan health bot, antrean notifikasi, dan hasil kirim.</p>
@@ -211,7 +215,7 @@
           </div>
         </section>
 
-        <section x-show="activeMenu === 'contacts'" x-transition.opacity class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'contacts'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="font-display text-2xl"><i class="fa-solid fa-address-book mr-2 text-moss"></i>Contacts</h2>
@@ -350,7 +354,7 @@
           </div>
         </section>
 
-        <section x-show="activeMenu === 'reminders'" x-transition.opacity class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'reminders'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="font-display text-2xl"><i class="fa-solid fa-calendar-check mr-2 text-clay"></i>Reminders</h2>
@@ -450,7 +454,7 @@
           </div>
         </section>
 
-        <section x-show="activeMenu === 'templates'" x-transition.opacity class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'templates'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-file-pen mr-2 text-moss"></i>Templates</h2>
             <p class="mt-1 text-sm text-ink/60">Kelola format pesan tanpa masuk ke kode bot.</p>
@@ -497,7 +501,7 @@
           </div>
         </section>
 
-        <section x-show="activeMenu === 'settings'" x-transition.opacity class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'settings'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-sliders mr-2 text-ink/70"></i>Settings</h2>
             <p class="mt-1 text-sm text-ink/60">Konfigurasi operasional untuk perilaku dashboard dan alert.</p>
@@ -543,7 +547,7 @@
           </form>
         </section>
 
-        <section x-show="activeMenu === 'history'" x-transition.opacity class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'history'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-paper-plane mr-2 text-clay"></i>Sent History</h2>
             <p class="mt-1 text-sm text-ink/60">Output notifikasi yang sudah keluar dari bot.</p>
@@ -603,7 +607,7 @@
           </div>
         </section>
 
-        <section x-show="activeMenu === 'logs'" x-transition.opacity class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'logs'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="font-display text-2xl"><i class="fa-solid fa-list-check mr-2 text-moss"></i>Activity Log</h2>
