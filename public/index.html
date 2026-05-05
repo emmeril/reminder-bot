@@ -739,8 +739,11 @@
 
 
         updateActionMenuMode() {
-          this.isMobileActions = window.innerWidth < 640;
-          this.showActions = !this.isMobileActions;
+          const nextIsMobile = window.innerWidth < 640;
+          if (nextIsMobile === this.isMobileActions) return;
+
+          this.isMobileActions = nextIsMobile;
+          this.showActions = !nextIsMobile;
         },
 
         toggleActions() {
