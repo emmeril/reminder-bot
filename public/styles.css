@@ -8,6 +8,7 @@ body {
   color: #172033;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  background-attachment: fixed;
 }
 
 body::before {
@@ -29,6 +30,17 @@ aside > section,
 main > section {
   position: relative;
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.12);
+  isolation: isolate;
+}
+
+aside > section::before,
+main > section::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.2));
 }
 
 .hero-panel::after {
@@ -50,6 +62,7 @@ main > section {
   color: #fff;
   background: linear-gradient(135deg, #12856f, #172033);
   box-shadow: 0 16px 36px rgba(18, 133, 111, 0.24);
+  animation: floaty 4.2s ease-in-out infinite;
 }
 
 .hero-mark i {
@@ -112,6 +125,7 @@ input,
 textarea,
 select {
   box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
+  border-color: rgba(23, 32, 51, 0.09);
 }
 
 input:focus,
@@ -131,6 +145,7 @@ table tbody tr:hover {
 .metric-card {
   overflow: hidden;
   position: relative;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
 }
 
 .metric-card::before {
@@ -153,6 +168,32 @@ table tbody tr:hover {
   color: #12856f;
   background: linear-gradient(135deg, rgba(18, 133, 111, 0.13), rgba(224, 95, 47, 0.1));
   box-shadow: inset 0 0 0 1px rgba(23, 32, 51, 0.06);
+}
+
+.hero-actions,
+.metric-card,
+table.min-w-full tr,
+aside > section,
+main > section {
+  transition: transform 190ms ease, box-shadow 190ms ease;
+}
+
+.hero-actions:hover,
+.metric-card:hover,
+aside > section:hover,
+main > section:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 38px rgba(15, 23, 42, 0.1);
+}
+
+@keyframes floaty {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
 }
 
 .fa-solid,
