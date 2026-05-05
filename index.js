@@ -1055,6 +1055,9 @@ class DataManager {
 
     contact.paymentStatus = status;
     contact.paymentDate = status === PAYMENT_STATUS.PAID ? new Date().toISOString() : null;
+    if (status !== PAYMENT_STATUS.PAID) {
+      contact.paymentType = null;
+    }
     await this.saveContacts();
     return contact;
   }
@@ -1917,6 +1920,9 @@ class WebServer {
       const paymentType = allowedPaymentTypes.includes(requestedPaymentType)
         ? requestedPaymentType
         : allowedPaymentTypes[0];
+
+      updatedContact.paymentType = paymentType;
+      await this.dataManager.saveContacts();
 
       try {
         await this.notificationBot.sendPaymentNotification(updatedContact, transactionId, paymentType);

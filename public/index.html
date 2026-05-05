@@ -778,6 +778,11 @@
         },
 
 inferPaymentType(contact) {
+           const savedType = String(contact.paymentType || "").toUpperCase();
+           if (["ARREARS-ONLY", "CURRENT-ONLY", "FULL-PAID"].includes(savedType)) {
+             return savedType;
+           }
+
            const paymentMonths = contact.paymentMonths || {};
            const now = new Date();
            const year = now.getFullYear();
