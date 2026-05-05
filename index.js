@@ -1093,23 +1093,14 @@ class DataManager {
     const year = options.year ?? new Date().getFullYear();
     const month = options.month ?? new Date().getMonth() + 1;
     const currentKey = `${year}-${String(month).padStart(2, "0")}`;
-    const previousDate = new Date(year, month - 2, 1);
-    const previousKey = `${previousDate.getFullYear()}-${String(previousDate.getMonth() + 1).padStart(2, "0")}`;
     const currentPaid = paymentMonths[currentKey]?.status === PAYMENT_STATUS.PAID;
-    const previousPaid = paymentMonths[previousKey]?.status === PAYMENT_STATUS.PAID;
 
-    if (currentPaid && previousPaid) return "FULL-PAID";
-    if (currentPaid && !previousPaid) return "CURRENT-ONLY";
-    if (!currentPaid && previousPaid) return "ARREARS-ONLY";
+    if (currentPaid) return "CURRENT-ONLY";
     return "DEFAULT";
   }
 
-  getAllowedPaymentTypes(contact, options = {}) {
-    const inferred = this.inferPaymentType(contact, options);
-    if (inferred === "ARREARS-ONLY") return ["ARREARS-ONLY"];
-    if (inferred === "CURRENT-ONLY") return ["CURRENT-ONLY", "FULL-PAID"];
-    if (inferred === "FULL-PAID") return ["FULL-PAID"];
-    return ["CURRENT-ONLY", "FULL-PAID"];
+  getAllowedPaymentTypes() {
+    return ["ARREARS-ONLY", "CURRENT-ONLY", "FULL-PAID"];
   }
 
   getOverdueContacts(year, month) {

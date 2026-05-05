@@ -783,14 +783,9 @@ inferPaymentType(contact) {
            const year = now.getFullYear();
            const month = now.getMonth() + 1;
            const currentKey = `${year}-${String(month).padStart(2, "0")}`;
-           const previousDate = new Date(year, month - 2, 1);
-           const previousKey = `${previousDate.getFullYear()}-${String(previousDate.getMonth() + 1).padStart(2, "0")}`;
            const currentPaid = paymentMonths[currentKey]?.status === "PAID";
-           const previousPaid = paymentMonths[previousKey]?.status === "PAID";
 
-           if (currentPaid && previousPaid) return "FULL-PAID";
-           if (currentPaid && !previousPaid) return "CURRENT-ONLY";
-           if (!currentPaid && previousPaid) return "ARREARS-ONLY";
+           if (currentPaid) return "CURRENT-ONLY";
            return "DEFAULT";
          },
 
@@ -806,19 +801,15 @@ inferPaymentType(contact) {
         getPaymentTypeLabel(type) {
           const labels = {
             "DEFAULT": "Default (Belum dibayar)",
-            "ARREARS-ONLY": "Hanya Tunggakan (bulan lalu menunggak, bulan ini belum lunas)",
-            "CURRENT-ONLY": "Bulan Ini Saja (bulan ini lunas, bulan lalu sudah lunas)", 
-            "FULL-PAID": "Lunas Semua (bulan lalu + bulan ini lunas)"
+            "ARREARS-ONLY": "Hanya Tunggakan",
+            "CURRENT-ONLY": "Bulan Ini Saja",
+            "FULL-PAID": "Lunas Semua"
           };
           return labels[type] || type;
         },
 
-        getPaymentTypeOptions(contact) {
-          const inferred = this.inferPaymentType(contact);
-          if (inferred === "ARREARS-ONLY") return ["ARREARS-ONLY"];
-          if (inferred === "CURRENT-ONLY") return ["CURRENT-ONLY", "FULL-PAID"];
-          if (inferred === "FULL-PAID") return ["FULL-PAID"];
-          return ["CURRENT-ONLY", "FULL-PAID"];
+        getPaymentTypeOptions() {
+          return ["ARREARS-ONLY", "CURRENT-ONLY", "FULL-PAID"];
         },
 
         searchMatches(item, fields, search) {
