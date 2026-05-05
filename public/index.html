@@ -56,7 +56,7 @@
           </div>
         </div>
         <div class="flex flex-col items-stretch gap-3 lg:items-end">
-          <button @click="showActions = !showActions" class="sm:hidden inline-flex h-10 w-10 items-center justify-center self-end rounded-full border border-ink/10 bg-white text-ink shadow-sm" aria-label="Toggle actions"><i class="fa-solid fa-bars"></i></button>
+          <button type="button" @click="toggleActions()" :aria-expanded="showActions.toString()" class="sm:hidden inline-flex h-10 w-10 items-center justify-center self-end rounded-full border border-ink/10 bg-white text-ink shadow-sm" aria-label="Toggle actions"><i class="fa-solid fa-bars"></i></button>
           <div x-show="showActions" x-cloak class="hero-actions flex flex-wrap gap-2 rounded-[1.5rem] border border-white/70 bg-white/70 p-2 shadow-sm responsive-actions">
             <a href="/qr" target="_blank" rel="noreferrer" class="rounded-full bg-gradient-to-r from-clay to-orange-400 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
               <i class="fa-brands fa-whatsapp mr-2"></i>Hubungkan WA
@@ -691,6 +691,7 @@
           { key: "logs", label: "Activity Log", icon: "fa-solid fa-list-check" },
         ],
         showActions: false,
+        isMobileActions: false,
         contacts: [],
         mikrotikProfiles: [],
         reminders: [],
@@ -729,11 +730,25 @@
         },
 
         async init() {
-          // show actions on larger screens by default
-          this.showActions = window.innerWidth >= 640;
+          this.updateActionMenuMode();
           await this.refreshAll();
+          window.addEventListener("resize", () => this.updateActionMenuMode());
           setInterval(() => this.loadStatus(), 20000);
           setInterval(() => this.loadLogs(), 20000);
+        },
+
+
+        updateActionMenuMode() {
+          const nextIsMobile = window.innerWidth < 640;
+          if (nextIsMobile === this.isMobileActions) return;
+
+          this.isMobileActions = nextIsMobile;
+          this.showActions = !nextIsMobile;
+        },
+
+        toggleActions() {
+          if (!this.isMobileActions) return;
+          this.showActions = !this.showActions;
         },
 
         async api(path, options = {}) {
