@@ -1104,6 +1104,14 @@ class DataManager {
     return "DEFAULT";
   }
 
+  getAllowedPaymentTypes(contact, options = {}) {
+    const inferred = this.inferPaymentType(contact, options);
+    if (inferred === "ARREARS-ONLY") return ["ARREARS-ONLY"];
+    if (inferred === "CURRENT-ONLY") return ["CURRENT-ONLY", "FULL-PAID"];
+    if (inferred === "FULL-PAID") return ["FULL-PAID"];
+    return ["CURRENT-ONLY", "FULL-PAID"];
+  }
+
   getOverdueContacts(year, month) {
     const prevMonth = month === 1 ? 12 : month - 1;
     const prevYear = month === 1 ? year - 1 : year;
@@ -1906,10 +1914,10 @@ class WebServer {
 
       const transactionId = `TRX-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
       const requestedPaymentType = sanitizeInput(req.body.paymentType).toUpperCase();
-      const allowedPaymentTypes = ["ARREARS-ONLY", "CURRENT-ONLY", "FULL-PAID"];
+      const allowedPaymentTypes = this.dataManager.getAllowedPaymentTypes(updatedContact);
       const paymentType = allowedPaymentTypes.includes(requestedPaymentType)
         ? requestedPaymentType
-        : this.dataManager.inferPaymentType(updatedContact);
+        : allowedPaymentTypes[0];
 
       try {
         await this.notificationBot.sendPaymentNotification(updatedContact, transactionId, paymentType);
