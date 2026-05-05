@@ -96,13 +96,13 @@
 
     <div
       class="mt-6 grid gap-6"
-      :class="['overview','notifications'].includes(activeMenu) ? 'xl:grid-cols-[360px,minmax(0,1fr)]' : 'grid-cols-1'"
+      :class="activeMenu === 'overview' ? 'xl:grid-cols-[360px,minmax(0,1fr)]' : 'grid-cols-1'"
     >
       <aside
         x-show="['overview','notifications'].includes(activeMenu)"
         x-transition.opacity
         class="space-y-6"
-        :class="activeMenu === 'overview' ? 'xl:sticky xl:top-4 xl:self-start' : 'space-y-0 grid gap-6 md:grid-cols-2 xl:grid-cols-3'"
+        :class="activeMenu === 'overview' ? 'xl:sticky xl:top-4 xl:self-start' : 'space-y-0 grid gap-6 md:grid-cols-2 xl:grid-cols-3 w-full'"
       >
         <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-4 flex items-center justify-between">
@@ -202,7 +202,7 @@
         </section>
       </aside>
 
-      <main class="space-y-6" :class="['overview','notifications'].includes(activeMenu) ? '' : 'w-full max-w-none'">
+      <main class="space-y-6" :class="activeMenu === 'overview' ? '' : 'w-full max-w-none'">
         <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-chart-line mr-2 text-moss"></i>Overview</h2>
