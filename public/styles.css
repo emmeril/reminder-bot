@@ -178,6 +178,44 @@ main > section {
   transition: transform 190ms ease, box-shadow 190ms ease;
 }
 
+.menu-pill {
+  position: relative;
+  border-radius: 999px;
+  letter-spacing: 0.01em;
+}
+
+.menu-pill::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 5px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0;
+  transform: scaleX(0.7);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.menu-pill:hover::after {
+  opacity: 0.25;
+  transform: scaleX(1);
+}
+
+.panel-shell {
+  border: 1px solid rgba(23, 32, 51, 0.08);
+  background: linear-gradient(160deg, rgba(255,255,255,0.92), rgba(247,250,252,0.82));
+}
+
+.section-caption {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  color: rgba(23, 32, 51, 0.42);
+}
+
 .hero-actions:hover,
 .metric-card:hover,
 aside > section:hover,
@@ -221,6 +259,11 @@ main > section:hover {
   .app-container {
     padding-left: 12px;
     padding-right: 12px;
+  }
+
+  .menu-pill {
+    flex: 1 1 calc(50% - 0.5rem);
+    justify-content: center;
   }
 }
 
