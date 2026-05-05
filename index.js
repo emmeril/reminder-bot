@@ -1093,23 +1093,14 @@ class DataManager {
     const year = options.year ?? new Date().getFullYear();
     const month = options.month ?? new Date().getMonth() + 1;
     const currentKey = `${year}-${String(month).padStart(2, "0")}`;
-    const previousDate = new Date(year, month - 2, 1);
-    const previousKey = `${previousDate.getFullYear()}-${String(previousDate.getMonth() + 1).padStart(2, "0")}`;
     const currentPaid = paymentMonths[currentKey]?.status === PAYMENT_STATUS.PAID;
-    const previousPaid = paymentMonths[previousKey]?.status === PAYMENT_STATUS.PAID;
 
-    if (currentPaid && previousPaid) return "FULL-PAID";
-    if (currentPaid && !previousPaid) return "CURRENT-ONLY";
-    if (!currentPaid && previousPaid) return "ARREARS-ONLY";
+    if (currentPaid) return "CURRENT-ONLY";
     return "DEFAULT";
   }
 
-  getAllowedPaymentTypes(contact, options = {}) {
-    const inferred = this.inferPaymentType(contact, options);
-    if (inferred === "ARREARS-ONLY") return ["ARREARS-ONLY"];
-    if (inferred === "CURRENT-ONLY") return ["CURRENT-ONLY", "FULL-PAID"];
-    if (inferred === "FULL-PAID") return ["FULL-PAID"];
-    return ["CURRENT-ONLY", "FULL-PAID"];
+  getAllowedPaymentTypes() {
+    return ["ARREARS-ONLY", "CURRENT-ONLY", "FULL-PAID"];
   }
 
   getOverdueContacts(year, month) {
@@ -1137,12 +1128,20 @@ class DataManager {
 
   async resetAllPaymentStatus() {
     let resetCount = 0;
+    const now = new Date();
+    const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
     for (const contact of this.contacts.values()) {
-      if (contact.paymentStatus === PAYMENT_STATUS.PAID) {
-        contact.paymentStatus = PAYMENT_STATUS.UNPAID;
-        contact.paymentDate = null;
-        resetCount += 1;
+      contact.paymentStatus = PAYMENT_STATUS.UNPAID;
+      contact.paymentDate = null;
+      if (!contact.paymentMonths) {
+        contact.paymentMonths = {};
       }
+      contact.paymentMonths[currentKey] = {
+        status: PAYMENT_STATUS.UNPAID,
+        paidDate: null,
+      };
+      resetCount += 1;
     }
 
     if (resetCount > 0) {
