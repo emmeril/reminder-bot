@@ -75,9 +75,36 @@
       </div>
     </section>
 
-    <div class="mt-6 grid gap-6 xl:grid-cols-[360px,minmax(0,1fr)]">
-      <aside class="space-y-6 xl:sticky xl:top-4 xl:self-start">
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+    <section class="panel-shell mt-6 rounded-[1.75rem] p-4 shadow-soft backdrop-blur-xl">
+      <div class="mb-3 flex items-center justify-between">
+        <p class="section-caption">Feature Navigation</p>
+        <p class="text-xs text-ink/45">Pilih menu untuk fokus per modul</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <template x-for="menu in navMenus" :key="menu.key">
+          <button
+            type="button"
+            @click="activeMenu = menu.key"
+            class="menu-pill rounded-full border px-4 py-2 text-sm font-semibold transition"
+            :class="activeMenu === menu.key ? 'border-moss bg-moss text-white shadow-lg shadow-moss/25' : 'border-ink/10 bg-white text-ink hover:bg-ink hover:text-white'"
+          >
+            <i :class="menu.icon + ' mr-2'"></i><span x-text="menu.label"></span>
+          </button>
+        </template>
+      </div>
+    </section>
+
+    <div
+      class="mt-6 grid gap-6"
+      :class="activeMenu === 'overview' ? 'xl:grid-cols-[360px,minmax(0,1fr)]' : 'grid-cols-1'"
+    >
+      <aside
+        x-show="['overview','notifications'].includes(activeMenu)"
+        x-transition.opacity
+        class="space-y-6"
+        :class="activeMenu === 'overview' ? 'xl:sticky xl:top-4 xl:self-start' : 'space-y-0 grid gap-6 md:grid-cols-2 xl:grid-cols-3 w-full'"
+      >
+        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-signal mr-2 text-moss"></i>Status Bot</h2>
             <template x-if="loading.status">
@@ -99,7 +126,7 @@
           </div>
         </section>
 
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <h2 class="font-display text-2xl"><i class="fa-solid fa-paper-plane mr-2 text-clay"></i>Kirim Notifikasi Manual</h2>
           <form class="mt-4 space-y-4" @submit.prevent="sendManualNotification()">
             <label class="block text-sm text-ink/60">
@@ -134,7 +161,7 @@
           </form>
         </section>
 
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <h2 class="font-display text-2xl"><i class="fa-solid fa-tower-broadcast mr-2 text-moss"></i>Broadcast ke Semua Contact</h2>
           <p class="mt-1 text-sm text-ink/60">Kirim pesan ke semua customer sekaligus.</p>
           <form class="mt-4 space-y-4" @submit.prevent="sendBroadcast()">
@@ -161,7 +188,7 @@
           </form>
         </section>
 
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <h2 class="font-display text-2xl"><i class="fa-solid fa-user-shield mr-2 text-ink/70"></i>Admin Recipients</h2>
           <form class="mt-4 space-y-4" @submit.prevent="saveRecipients()">
             <label class="block text-sm text-ink/60">
@@ -175,8 +202,8 @@
         </section>
       </aside>
 
-      <main class="space-y-6">
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+      <main class="space-y-6" :class="activeMenu === 'overview' ? '' : 'w-full max-w-none'">
+        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-chart-line mr-2 text-moss"></i>Overview</h2>
             <p class="mt-1 text-sm text-ink/60">Ringkasan health bot, antrean notifikasi, dan hasil kirim.</p>
@@ -196,7 +223,7 @@
           </div>
         </section>
 
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'contacts'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="font-display text-2xl"><i class="fa-solid fa-address-book mr-2 text-moss"></i>Contacts</h2>
@@ -335,7 +362,7 @@
           </div>
         </section>
 
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'reminders'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="font-display text-2xl"><i class="fa-solid fa-calendar-check mr-2 text-clay"></i>Reminders</h2>
@@ -435,7 +462,7 @@
           </div>
         </section>
 
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'templates'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-file-pen mr-2 text-moss"></i>Templates</h2>
             <p class="mt-1 text-sm text-ink/60">Kelola format pesan tanpa masuk ke kode bot.</p>
@@ -482,7 +509,7 @@
           </div>
         </section>
 
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'settings'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-sliders mr-2 text-ink/70"></i>Settings</h2>
             <p class="mt-1 text-sm text-ink/60">Konfigurasi operasional untuk perilaku dashboard dan alert.</p>
@@ -528,7 +555,7 @@
           </form>
         </section>
 
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'history'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-paper-plane mr-2 text-clay"></i>Sent History</h2>
             <p class="mt-1 text-sm text-ink/60">Output notifikasi yang sudah keluar dari bot.</p>
@@ -588,7 +615,7 @@
           </div>
         </section>
 
-        <section class="rounded-[1.75rem] border border-white/70 bg-white/75 p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'logs'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="font-display text-2xl"><i class="fa-solid fa-list-check mr-2 text-moss"></i>Activity Log</h2>
@@ -653,6 +680,17 @@
           show: false,
           message: "",
         },
+        activeMenu: "overview",
+        navMenus: [
+          { key: "overview", label: "Overview", icon: "fa-solid fa-chart-pie" },
+          { key: "notifications", label: "Notifikasi", icon: "fa-solid fa-paper-plane" },
+          { key: "contacts", label: "Contacts", icon: "fa-solid fa-address-book" },
+          { key: "reminders", label: "Reminders", icon: "fa-solid fa-calendar-check" },
+          { key: "templates", label: "Templates", icon: "fa-solid fa-file-pen" },
+          { key: "settings", label: "Settings", icon: "fa-solid fa-sliders" },
+          { key: "history", label: "Sent History", icon: "fa-solid fa-clock-rotate-left" },
+          { key: "logs", label: "Activity Log", icon: "fa-solid fa-list-check" },
+        ],
         showActions: false,
         contacts: [],
         mikrotikProfiles: [],
