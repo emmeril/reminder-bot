@@ -1459,11 +1459,15 @@ class NotificationBot {
     const contacts = this.dataManager.getContacts();
     if (contacts.length === 0) return [];
 
-    const message = `*${title}*\n\n${body}`;
     const results = [];
 
     for (const contact of contacts) {
       try {
+        const renderedBody =
+          typeof options.renderMessage === "function"
+            ? options.renderMessage(contact, body)
+            : body;
+        const message = `*${title}*\n\n${renderedBody}`;
         await this.sendMessage(contact.phoneNumber, message);
         results.push({ phoneNumber: contact.phoneNumber, name: contact.name, status: "sent" });
       } catch (error) {
@@ -2018,9 +2022,21 @@ class WebServer {
 
     this.app.post("/api/notifications/broadcast", requireApiAuth, handleApi(async (req) => {
       const title = sanitizeInput(req.body.title) || "Pengumuman";
-      const body = sanitizeMultilineText(req.body.message);
+      const templateName = sanitizeInput(req.body.templateName || "");
+      let body = sanitizeMultilineText(req.body.message);
+      if (templateName) {
+        const templatePath = this.templateManager.getTemplatePath(templateName);
+        body = sanitizeMultilineText(await fs.readFile(templatePath, "utf-8"));
+      }
       if (!body) throw new Error("Pesan broadcast wajib diisi.");
-      return this.notificationBot.sendContactBroadcast(title, body);
+      return this.notificationBot.sendContactBroadcast(title, body, {
+        renderMessage: (contact, content) =>
+          this.templateManager.applyTemplate(content, {
+            name: contact?.name || "",
+            phoneNumber: contact?.phoneNumber || "",
+            date: new Date().toLocaleDateString("id-ID"),
+          }),
+      });
     }));
 
     this.app.post("/api/scheduler/run", requireApiAuth, handleApi(async () => {

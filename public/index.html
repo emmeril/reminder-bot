@@ -143,6 +143,15 @@
               <input x-model="forms.broadcast.title" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none ring-0 transition focus:border-clay" placeholder="Pengumuman" required>
             </label>
             <label class="block text-sm text-ink/60">
+              Template (opsional)
+              <select x-model="forms.broadcast.templateName" @change="applyBroadcastTemplate()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+                <option value="">-- Tulis manual --</option>
+                <template x-for="t in templates" :key="'broadcast-template-' + t.name">
+                  <option :value="t.name" x-text="t.name"></option>
+                </template>
+              </select>
+            </label>
+            <label class="block text-sm text-ink/60">
               Pesan
               <textarea x-model="forms.broadcast.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Tulis pesan broadcast..." required></textarea>
             </label>
@@ -664,7 +673,7 @@
         },
         forms: {
           manual: { contactId: "", phoneNumber: "", templateName: "", message: "" },
-          broadcast: { title: "", message: "" },
+          broadcast: { title: "", templateName: "", message: "" },
           recipients: "",
           contact: { name: "", phoneNumber: "" },
           mikrotikCustomer: { name: "", phoneNumber: "", profile: "", sendCredentials: true },
@@ -1050,6 +1059,13 @@ get filteredContacts() {
           const contact = this.contacts.find((c) => String(c.id) === String(this.forms.manual.contactId)) || null;
           this.forms.manual.message = this.applyTemplateContent(tpl.content, contact, new Date().toISOString());
         },
+        applyBroadcastTemplate() {
+          const name = this.forms.broadcast.templateName;
+          if (!name) return;
+          const tpl = this.templates.find((t) => t.name === name);
+          if (!tpl) return;
+          this.forms.broadcast.message = tpl.content || "";
+        },
 
         onReminderContactChange() {
           if (this.forms.reminder.templateName) {
@@ -1127,7 +1143,7 @@ get filteredContacts() {
           });
           const successCount = response.filter(r => r.status === "sent").length;
           const failedCount = response.filter(r => r.status === "failed").length;
-          this.forms.broadcast = { title: "", message: "" };
+          this.forms.broadcast = { title: "", templateName: "", message: "" };
           this.notify(`Broadcast terkirim: ${successCount} berhasil, ${failedCount} gagal.`);
           await this.loadLogs();
         },
