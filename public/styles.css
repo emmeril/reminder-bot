@@ -246,7 +246,6 @@ main > section:hover {
 
 @media (max-width: 640px) {
   .responsive-actions {
-    display: flex !important;
     flex-direction: column;
     gap: 0.6rem;
   }
