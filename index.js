@@ -137,6 +137,13 @@ function serializeCookie(name, value, options = {}) {
   return parts.join("; ");
 }
 
+function safeCompareString(left, right) {
+  const leftBuffer = Buffer.from(String(left || ""));
+  const rightBuffer = Buffer.from(String(right || ""));
+  if (leftBuffer.length !== rightBuffer.length) return false;
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
 function normalizePhoneNumber(value) {
   return sanitizeInput(String(value || "")).replace(/[^0-9]/g, "");
 }
@@ -300,7 +307,8 @@ class AuthManager {
   }
 
   validateCredentials(username, password) {
-    return username === CONFIG.AUTH_USERNAME && password === CONFIG.AUTH_PASSWORD;
+    return safeCompareString(username, CONFIG.AUTH_USERNAME)
+      && safeCompareString(password, CONFIG.AUTH_PASSWORD);
   }
 
   createSession(username) {
@@ -1655,13 +1663,21 @@ class WebServer {
 
   setupRoutes() {
     this.app.use(express.json({ limit: "1mb" }));
-    this.app.use(express.urlencoded({ extended: true }));
+    this.app.use(express.urlencoded({ extended: true, limit: "1mb" }));
     this.app.use("/public", express.static(CONFIG.PUBLIC_PATH));
+
+    this.app.use((req, res, next) => {
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("X-Frame-Options", "DENY");
+      res.setHeader("Referrer-Policy", "no-referrer");
+      res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+      next();
+    });
 
     const hasApiKeyAccess = (req) => {
       const apiKey = req.headers["x-api-key"] || req.query.api_key;
       const apiKeyIsConfigured = Boolean(CONFIG.WEB_API_KEY && CONFIG.WEB_API_KEY !== "dev-key-change-in-production");
-      return Boolean(apiKeyIsConfigured && apiKey && apiKey === CONFIG.WEB_API_KEY);
+      return Boolean(apiKeyIsConfigured && apiKey && safeCompareString(apiKey, CONFIG.WEB_API_KEY));
     };
 
     const readSession = (req) => {
@@ -1735,10 +1751,12 @@ class WebServer {
       }
 
       const { token, session } = this.authManager.createSession(username);
+      const secureCookie = req.secure || req.headers["x-forwarded-proto"] === "https";
       res.setHeader("Set-Cookie", serializeCookie(CONFIG.SESSION_COOKIE_NAME, token, {
         path: "/",
         httpOnly: true,
         sameSite: "Lax",
+        secure: secureCookie,
         maxAge: Math.floor(CONFIG.SESSION_TTL / 1000),
       }));
 
@@ -1752,10 +1770,12 @@ class WebServer {
     this.app.post("/api/auth/logout", handleApi(async (req, res) => {
       const { token, session } = readSession(req);
       this.authManager.destroySession(token);
+      const secureCookie = req.secure || req.headers["x-forwarded-proto"] === "https";
       res.setHeader("Set-Cookie", serializeCookie(CONFIG.SESSION_COOKIE_NAME, "", {
         path: "/",
         httpOnly: true,
         sameSite: "Lax",
+        secure: secureCookie,
         maxAge: 0,
       }));
 
