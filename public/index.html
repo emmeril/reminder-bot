@@ -786,10 +786,19 @@
 
         updateActionMenuMode(force = false) {
           const nextIsMobile = window.innerWidth < 640;
+          const firstSync = this.isMobileActions === null;
           if (!force && nextIsMobile === this.isMobileActions) return;
 
           this.isMobileActions = nextIsMobile;
-          this.showActions = !nextIsMobile;
+
+          if (force || firstSync) {
+            this.showActions = !nextIsMobile;
+            return;
+          }
+
+          if (!nextIsMobile) {
+            this.showActions = true;
+          }
         },
 
         toggleActions() {
