@@ -10,10 +10,14 @@ const qrcode = require("qrcode-terminal");
 const QRCode = require("qrcode");
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const { RouterOSClient } = require("routeros-client");
+const { Sequelize, DataTypes } = require("sequelize");
 
 const CONFIG = {
   PORT: Number(process.env.PORT || 3025),
   DB_PATH: path.join(__dirname, "database"),
+  DB_STORAGE: process.env.DB_STORAGE
+    ? (path.isAbsolute(process.env.DB_STORAGE) ? process.env.DB_STORAGE : path.join(__dirname, process.env.DB_STORAGE))
+    : path.join(__dirname, "database", "reminder_bot.sqlite"),
   TEMPLATE_PATH: path.join(__dirname, "templates"),
   PUBLIC_PATH: path.join(__dirname, "public"),
   AUTO_SAVE_INTERVAL: 24 * 60 * 60 * 1000,
@@ -488,6 +492,8 @@ class DataManager {
     this.roles = new Map();
     this.settings = { ...DEFAULT_SETTINGS };
     this.fileLocks = new Map();
+    this.sequelize = null;
+    this.models = {};
   }
 
   async initDirectories() {
@@ -498,6 +504,72 @@ class DataManager {
 
   getPath(filename) {
     return path.join(CONFIG.DB_PATH, filename);
+  }
+
+  async initDatabase() {
+    await this.initDirectories();
+
+    if (this.sequelize) {
+      return;
+    }
+
+    this.sequelize = process.env.DATABASE_URL
+      ? new Sequelize(process.env.DATABASE_URL, {
+          logging: false,
+        })
+      : new Sequelize({
+          dialect: "sqlite",
+          storage: CONFIG.DB_STORAGE,
+          logging: false,
+        });
+
+    const jsonPayloadModel = (name, tableName, keyField) => this.sequelize.define(name, {
+      [keyField]: {
+        type: DataTypes.STRING,
+        primaryKey: true,
+      },
+      data: {
+        type: DataTypes.JSON,
+        allowNull: false,
+      },
+    }, {
+      tableName,
+      timestamps: true,
+    });
+
+    this.models.Contact = jsonPayloadModel("Contact", "contacts", "id");
+    this.models.Pelanggan = jsonPayloadModel("Pelanggan", "pelanggan", "username");
+    this.models.Reminder = jsonPayloadModel("Reminder", "reminders", "id");
+    this.models.SentReminder = jsonPayloadModel("SentReminder", "sent_reminders", "id");
+    this.models.Role = this.sequelize.define("Role", {
+      phoneNumber: {
+        type: DataTypes.STRING,
+        primaryKey: true,
+      },
+      role: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+    }, {
+      tableName: "roles",
+      timestamps: true,
+    });
+    this.models.Setting = this.sequelize.define("Setting", {
+      key: {
+        type: DataTypes.STRING,
+        primaryKey: true,
+      },
+      value: {
+        type: DataTypes.JSON,
+        allowNull: false,
+      },
+    }, {
+      tableName: "settings",
+      timestamps: true,
+    });
+
+    await this.sequelize.authenticate();
+    await this.sequelize.sync();
   }
 
   async acquireLock(filePath) {
@@ -541,7 +613,7 @@ class DataManager {
     }
   }
 
-  async loadMapFromFile(filePath, keyField) {
+  async loadLegacyMapFromFile(filePath, keyField) {
     try {
       const raw = await fs.readFile(filePath, "utf-8");
       if (!raw.trim()) return new Map();
@@ -554,14 +626,14 @@ class DataManager {
       try {
         const backup = `${filePath}.bak`;
         await fs.copyFile(backup, filePath);
-        return this.loadMapFromFile(filePath, keyField);
+        return this.loadLegacyMapFromFile(filePath, keyField);
       } catch {
         return new Map();
       }
     }
   }
 
-  async loadRoles() {
+  async loadLegacyRoles() {
     try {
       const raw = await fs.readFile(this.getPath("roles.json"), "utf-8");
       if (!raw.trim()) return new Map();
@@ -573,7 +645,7 @@ class DataManager {
     }
   }
 
-  async loadSettings() {
+  async loadLegacySettings() {
     try {
       const raw = await fs.readFile(this.getPath("settings.json"), "utf-8");
       if (!raw.trim()) return { ...DEFAULT_SETTINGS };
@@ -585,15 +657,71 @@ class DataManager {
     }
   }
 
+  async loadJsonPayloadMap(model, keyField) {
+    const rows = await model.findAll({ raw: true });
+    return new Map(rows.map((row) => [String(row[keyField]), this.parseStoredJson(row.data, {})]));
+  }
+
+  parseStoredJson(value, fallback) {
+    if (typeof value !== "string") {
+      return value ?? fallback;
+    }
+
+    try {
+      return JSON.parse(value);
+    } catch {
+      return fallback;
+    }
+  }
+
+  async hasDatabaseData() {
+    const counts = await Promise.all([
+      this.models.Contact.count(),
+      this.models.Pelanggan.count(),
+      this.models.Reminder.count(),
+      this.models.SentReminder.count(),
+      this.models.Role.count(),
+      this.models.Setting.count(),
+    ]);
+    return counts.some((count) => count > 0);
+  }
+
+  async loadFromDatabase() {
+    this.contacts = await this.loadJsonPayloadMap(this.models.Contact, "id");
+    this.pelanggan = await this.loadJsonPayloadMap(this.models.Pelanggan, "username");
+    this.reminders = await this.loadJsonPayloadMap(this.models.Reminder, "id");
+    this.sentReminders = await this.loadJsonPayloadMap(this.models.SentReminder, "id");
+
+    const roleRows = await this.models.Role.findAll({ raw: true });
+    this.roles = new Map(roleRows.map((row) => [String(row.phoneNumber), row.role]));
+
+    const settingsRow = await this.models.Setting.findByPk("app", { raw: true });
+    this.settings = { ...DEFAULT_SETTINGS, ...this.parseStoredJson(settingsRow?.value, {}) };
+  }
+
+  async loadFromLegacyJson() {
+    this.contacts = await this.loadLegacyMapFromFile(this.getPath("contacts.json"), "id");
+    this.pelanggan = await this.loadLegacyMapFromFile(this.getPath("pelanggan.json"), "username");
+    this.reminders = await this.loadLegacyMapFromFile(this.getPath("reminders.json"), "id");
+    this.sentReminders = await this.loadLegacyMapFromFile(this.getPath("sent_reminders.json"), "id");
+    this.roles = await this.loadLegacyRoles();
+    this.settings = await this.loadLegacySettings();
+  }
+
   async loadAll() {
-    this.activityLog.push("info", "boot", "Loading persisted data");
-    await this.initDirectories();
-    this.contacts = await this.loadMapFromFile(this.getPath("contacts.json"), "id");
-    this.pelanggan = await this.loadMapFromFile(this.getPath("pelanggan.json"), "username");
-    this.reminders = await this.loadMapFromFile(this.getPath("reminders.json"), "id");
-    this.sentReminders = await this.loadMapFromFile(this.getPath("sent_reminders.json"), "id");
-    this.roles = await this.loadRoles();
-    this.settings = await this.loadSettings();
+    this.activityLog.push("info", "boot", "Loading persisted data with Sequelize");
+    await this.initDatabase();
+
+    if (await this.hasDatabaseData()) {
+      await this.loadFromDatabase();
+    } else {
+      await this.loadFromLegacyJson();
+      await this.saveAll();
+      this.activityLog.push("info", "storage", "Legacy JSON data migrated into Sequelize database", {
+        storage: process.env.DATABASE_URL ? "DATABASE_URL" : CONFIG.DB_STORAGE,
+      });
+    }
+
     await this.normalizeReminderRelations();
     this.activityLog.push("info", "boot", "Data load complete", {
       contacts: this.contacts.size,
@@ -604,28 +732,47 @@ class DataManager {
     });
   }
 
+  async replaceJsonPayloadTable(model, keyField, values) {
+    const rows = Array.from(values).map((item) => ({
+      [keyField]: String(item[keyField]),
+      data: item,
+    }));
+
+    await model.destroy({ where: {}, truncate: true });
+    if (rows.length > 0) {
+      await model.bulkCreate(rows);
+    }
+  }
+
   async saveContacts() {
-    await this.atomicWrite(this.getPath("contacts.json"), Array.from(this.contacts.values()));
+    await this.replaceJsonPayloadTable(this.models.Contact, "id", this.contacts.values());
   }
 
   async savePelanggan() {
-    await this.atomicWrite(this.getPath("pelanggan.json"), Array.from(this.pelanggan.values()));
+    await this.replaceJsonPayloadTable(this.models.Pelanggan, "username", this.pelanggan.values());
   }
 
   async saveReminders() {
-    await this.atomicWrite(this.getPath("reminders.json"), Array.from(this.reminders.values()));
+    await this.replaceJsonPayloadTable(this.models.Reminder, "id", this.reminders.values());
   }
 
   async saveSentReminders() {
-    await this.atomicWrite(this.getPath("sent_reminders.json"), Array.from(this.sentReminders.values()));
+    await this.replaceJsonPayloadTable(this.models.SentReminder, "id", this.sentReminders.values());
   }
 
   async saveRoles() {
-    await this.atomicWrite(this.getPath("roles.json"), Object.fromEntries(this.roles));
+    const rows = Array.from(this.roles.entries()).map(([phoneNumber, role]) => ({ phoneNumber, role }));
+    await this.models.Role.destroy({ where: {}, truncate: true });
+    if (rows.length > 0) {
+      await this.models.Role.bulkCreate(rows);
+    }
   }
 
   async saveSettings() {
-    await this.atomicWrite(this.getPath("settings.json"), this.settings);
+    await this.models.Setting.upsert({
+      key: "app",
+      value: this.settings,
+    });
   }
 
   async saveAll() {
@@ -644,22 +791,20 @@ class DataManager {
     const backupDir = path.join(CONFIG.DB_PATH, "backups", timestamp);
     await fs.mkdir(backupDir, { recursive: true });
 
-    const files = [
-      "contacts.json",
-      "pelanggan.json",
-      "reminders.json",
-      "sent_reminders.json",
-      "roles.json",
-      "settings.json",
-    ];
+    if (!process.env.DATABASE_URL) {
+      const sqliteFiles = [
+        CONFIG.DB_STORAGE,
+        `${CONFIG.DB_STORAGE}-wal`,
+        `${CONFIG.DB_STORAGE}-shm`,
+      ];
 
-    await Promise.all(
-      files.map(async (file) => {
-        const src = this.getPath(file);
-        const dest = path.join(backupDir, file);
-        await fs.copyFile(src, dest).catch(() => {});
-      })
-    );
+      await Promise.all(
+        sqliteFiles.map(async (src) => {
+          const dest = path.join(backupDir, path.basename(src));
+          await fs.copyFile(src, dest).catch(() => {});
+        })
+      );
+    }
 
     this.activityLog.push("info", "storage", "Backup created", { backupDir });
   }
