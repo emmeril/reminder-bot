@@ -8,6 +8,7 @@ body {
   color: #172033;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  background: #eef2f7;
   background-attachment: fixed;
 }
 
@@ -18,18 +19,17 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(circle at 16% 12%, rgba(18, 133, 111, 0.16), transparent 28%),
-    radial-gradient(circle at 88% 2%, rgba(224, 95, 47, 0.13), transparent 26%),
-    linear-gradient(90deg, rgba(23, 32, 51, 0.035) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(23, 32, 51, 0.035) 1px, transparent 1px);
-  background-size: auto, auto, 52px 52px, 52px 52px;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.56), rgba(255, 255, 255, 0.1)),
+    linear-gradient(90deg, rgba(23, 32, 51, 0.03) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(23, 32, 51, 0.03) 1px, transparent 1px);
+  background-size: auto, 56px 56px, 56px 56px;
 }
 
 .hero-panel,
 aside > section,
 main > section {
   position: relative;
-  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
   isolation: isolate;
 }
 
@@ -40,15 +40,7 @@ main > section::before {
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background: linear-gradient(140deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.2));
-}
-
-.hero-panel::after {
-  content: "";
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 4px;
-  background: linear-gradient(90deg, #12856f, #e05f2f, #f5b84b);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(248, 250, 252, 0.92));
 }
 
 .hero-mark {
@@ -60,17 +52,12 @@ main > section::before {
   justify-content: center;
   border-radius: 1.25rem;
   color: #fff;
-  background: linear-gradient(135deg, #12856f, #172033);
-  box-shadow: 0 16px 36px rgba(18, 133, 111, 0.24);
-  animation: floaty 4.2s ease-in-out infinite;
+  background: linear-gradient(135deg, #12856f, #0f6b68);
+  box-shadow: 0 12px 28px rgba(18, 133, 111, 0.22);
 }
 
 .hero-mark i {
   font-size: 1.35rem;
-}
-
-.hero-actions {
-  max-width: 100%;
 }
 
 h1,
@@ -88,6 +75,14 @@ h2 {
   align-items: center;
   line-height: 1.15;
   font-weight: 800;
+}
+
+.section-caption {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 800;
+  color: rgba(23, 32, 51, 0.44);
 }
 
 button,
@@ -109,6 +104,13 @@ a.rounded-full {
   align-items: center;
   justify-content: center;
   gap: 0.2rem;
+}
+
+.action-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
 }
 
 button:hover,
@@ -176,7 +178,8 @@ table tbody tr:hover {
 .metric-card {
   overflow: hidden;
   position: relative;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  border-radius: 1rem;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
 }
 
 .metric-card::before {
@@ -197,11 +200,10 @@ table tbody tr:hover {
   justify-content: center;
   border-radius: 1rem;
   color: #12856f;
-  background: linear-gradient(135deg, rgba(18, 133, 111, 0.13), rgba(224, 95, 47, 0.1));
+  background: linear-gradient(135deg, rgba(18, 133, 111, 0.08), rgba(224, 95, 47, 0.07));
   box-shadow: inset 0 0 0 1px rgba(23, 32, 51, 0.06);
 }
 
-.hero-actions,
 .metric-card,
 table.min-w-full tr,
 aside > section,
@@ -211,68 +213,29 @@ main > section {
 
 .menu-pill {
   position: relative;
-  border-radius: 999px;
-  letter-spacing: 0.01em;
+  border-radius: 0.95rem;
+  letter-spacing: 0;
 }
 
 .menu-pill::after {
-  content: "";
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 5px;
-  height: 2px;
-  border-radius: 999px;
-  background: currentColor;
-  opacity: 0;
-  transform: scaleX(0.7);
-  transition: opacity 160ms ease, transform 160ms ease;
-}
-
-.menu-pill:hover::after {
-  opacity: 0.25;
-  transform: scaleX(1);
+  display: none;
 }
 
 .panel-shell {
-  border: 1px solid rgba(23, 32, 51, 0.08);
-  background: linear-gradient(160deg, rgba(255,255,255,0.92), rgba(247,250,252,0.82));
+  border: 1px solid rgba(23, 32, 51, 0.07);
+  background: rgba(255, 255, 255, 0.92);
 }
 
-.section-caption {
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-weight: 700;
-  color: rgba(23, 32, 51, 0.42);
-}
-
-.hero-actions:hover,
 .metric-card:hover,
 aside > section:hover,
 main > section:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 20px 38px rgba(15, 23, 42, 0.1);
-}
-
-@keyframes floaty {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-4px);
-  }
+  transform: translateY(-1px);
+  box-shadow: 0 16px 30px rgba(15, 23, 42, 0.08);
 }
 
 .fa-solid,
 .fa-brands {
   line-height: 1;
-}
-
-/* Ensure action buttons become full-width on small screens */
-.responsive-actions > * {
-  min-width: 140px;
 }
 
 /* Hide elements with x-cloak until Alpine initializes */
@@ -291,11 +254,6 @@ main > section:hover {
     padding-bottom: 0.75rem;
   }
 
-  .hero-panel {
-    padding: 1rem !important;
-    border-radius: 1.5rem;
-  }
-
   aside > section,
   main > section,
   .panel-shell {
@@ -311,16 +269,6 @@ main > section:hover {
 
   .hero-mark i {
     font-size: 1.15rem;
-  }
-
-  .responsive-actions {
-    flex-direction: column;
-    gap: 0.6rem;
-  }
-
-  .responsive-actions > * {
-    width: 100% !important;
-    min-width: 0 !important;
   }
 
   .menu-pill {
