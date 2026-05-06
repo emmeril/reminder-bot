@@ -206,7 +206,7 @@
         <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-chart-line mr-2 text-moss"></i>Overview</h2>
-            <p class="mt-1 text-sm text-ink/60">Ringkasan health bot, antrean notifikasi, dan hasil kirim.</p>
+            <!-- <p class="mt-1 text-sm text-ink/60">Ringkasan health bot, antrean notifikasi, dan hasil kirim.</p> -->
           </div>
           <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <template x-for="metric in summaryMetrics" :key="metric.label">
@@ -227,7 +227,7 @@
           <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="font-display text-2xl"><i class="fa-solid fa-address-book mr-2 text-moss"></i>Contacts</h2>
-              <p class="mt-1 text-sm text-ink/60">Sumber data penerima yang dikelola dari dashboard.</p>
+              <!-- <p class="mt-1 text-sm text-ink/60">Sumber data penerima yang dikelola dari dashboard.</p> -->
             </div>
             <button @click="loadContacts()" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
               <i class="fa-solid fa-rotate mr-2"></i>Reload
@@ -236,8 +236,8 @@
           <div class="mb-6 rounded-[1.25rem] border border-moss/15 bg-moss/[0.04] p-4">
             <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 class="text-base font-semibold text-ink"><i class="fa-solid fa-wifi mr-2 text-moss"></i>Registrasi Pelanggan MikroTik</h3>
-                <p class="mt-1 text-sm text-ink/60">Membuat user hotspot, menyimpan data pelanggan, dan menambahkan contact dashboard.</p>
+                <h3 class="text-base font-semibold text-ink"><i class="fa-solid fa-wifi mr-2 text-moss"></i>Registrasi Pelanggan</h3>
+                <!-- <p class="mt-1 text-sm text-ink/60">Membuat user hotspot, menyimpan data pelanggan, dan menambahkan contact dashboard.</p> -->
               </div>
               <button type="button" @click="loadMikrotikProfiles()" class="rounded-full border border-moss/20 bg-white px-4 py-2 text-sm font-semibold text-moss transition hover:bg-moss hover:text-white">
                 <i class="fa-solid fa-cloud-arrow-down mr-2"></i>Load Profile
@@ -379,7 +379,7 @@
           <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="font-display text-2xl"><i class="fa-solid fa-calendar-check mr-2 text-clay"></i>Reminders</h2>
-              <p class="mt-1 text-sm text-ink/60">Seluruh jadwal outbound dibuat dan diubah dari sini.</p>
+              <!-- <p class="mt-1 text-sm text-ink/60">Seluruh jadwal outbound dibuat dan diubah dari sini.</p> -->
             </div>
             <button @click="loadReminders()" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white"><i class="fa-solid fa-rotate mr-2"></i>Reload</button>
           </div>
@@ -489,7 +489,7 @@
         <section x-show="activeMenu === 'templates'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-file-pen mr-2 text-moss"></i>Templates</h2>
-            <p class="mt-1 text-sm text-ink/60">Kelola format pesan tanpa masuk ke kode bot.</p>
+            <!-- <p class="mt-1 text-sm text-ink/60">Kelola format pesan tanpa masuk ke kode bot.</p> -->
           </div>
           <form class="space-y-4" @submit.prevent="createTemplate()">
             <label class="block text-sm text-ink/60">
@@ -536,7 +536,7 @@
         <section x-show="activeMenu === 'settings'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-sliders mr-2 text-ink/70"></i>Settings</h2>
-            <p class="mt-1 text-sm text-ink/60">Konfigurasi operasional untuk perilaku dashboard dan alert.</p>
+            <!-- <p class="mt-1 text-sm text-ink/60">Konfigurasi operasional untuk perilaku dashboard dan alert.</p> -->
           </div>
           <form class="space-y-4" @input="settingsDirty = true" @change="settingsDirty = true" @submit.prevent="saveSettings()">
             <div class="grid gap-4 md:grid-cols-2">
@@ -582,7 +582,7 @@
         <section x-show="activeMenu === 'history'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-paper-plane mr-2 text-clay"></i>Sent History</h2>
-            <p class="mt-1 text-sm text-ink/60">Output notifikasi yang sudah keluar dari bot.</p>
+            <!-- <p class="mt-1 text-sm text-ink/60">Output notifikasi yang sudah keluar dari bot.</p> -->
           </div>
           <div class="mb-5 grid gap-3 lg:grid-cols-[minmax(0,1fr),180px,140px]">
             <input x-model="filters.sent.search" @input="resetPage('sent')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari tujuan, nomor, status, atau pesan">
@@ -663,7 +663,7 @@
           <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="font-display text-2xl"><i class="fa-solid fa-list-check mr-2 text-moss"></i>Activity Log</h2>
-              <p class="mt-1 text-sm text-ink/60">Monitoring internal untuk koneksi, scheduler, API, dan delivery.</p>
+              <!-- <p class="mt-1 text-sm text-ink/60">Monitoring internal untuk koneksi, scheduler, API, dan delivery.</p> -->
             </div>
             <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
               <select x-model.number="filters.logs.pageSize" @change="resetPage('logs')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-2 text-sm outline-none transition focus:border-clay sm:w-36">
