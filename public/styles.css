@@ -142,6 +142,37 @@ table tbody tr:hover {
   background: rgba(244, 247, 251, 0.78);
 }
 
+.sent-history-table table {
+  table-layout: fixed;
+}
+
+.sent-history-table thead th {
+  border-bottom: 1px solid rgba(23, 32, 51, 0.08);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.sent-history-table tbody tr {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.sent-history-table tbody tr:hover {
+  background: rgba(248, 250, 252, 0.96);
+}
+
+.sent-history-table td {
+  vertical-align: top;
+}
+
+.sent-message {
+  display: -webkit-box;
+  max-height: 4.7rem;
+  overflow: hidden;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 .metric-card {
   overflow: hidden;
   position: relative;
@@ -300,6 +331,57 @@ main > section:hover {
   table.min-w-full td:not(:first-child) {
     color: rgba(23,49,59,0.65);
     font-size: 0.95rem;
+  }
+
+  .sent-history-table {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .sent-history-table table.min-w-full tr {
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.85rem;
+  }
+
+  .sent-history-table table.min-w-full td {
+    display: grid;
+    grid-template-columns: 6.25rem minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: start;
+    padding: 0 !important;
+  }
+
+  .sent-history-table table.min-w-full td::before {
+    content: attr(data-label);
+    align-self: center;
+    color: rgba(23, 32, 51, 0.42);
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .sent-history-table table.min-w-full td:first-child {
+    padding-top: 0 !important;
+  }
+
+  .sent-history-table table.min-w-full td:first-child::before {
+    align-self: center;
+  }
+
+  .sent-history-table table.min-w-full td[colspan] {
+    display: block;
+    padding: 1.25rem !important;
+  }
+
+  .sent-history-table table.min-w-full td[colspan]::before {
+    display: none;
+  }
+
+  .sent-message {
+    max-height: none;
+    -webkit-line-clamp: unset;
   }
 }
 

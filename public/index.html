@@ -597,32 +597,52 @@
               </template>
             </select>
           </div>
-          <div class="overflow-hidden rounded-[1.5rem] border border-ink/8">
+          <div class="sent-history-table overflow-hidden rounded-[1.5rem] border border-ink/8 bg-white/80 shadow-sm">
             <div class="overflow-x-auto">
               <table class="min-w-full text-sm">
-                <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
+                <thead class="bg-haze/90 text-left text-xs uppercase text-ink/50">
                   <tr>
-                    <th class="px-4 py-3"><i class="fa-solid fa-user mr-2"></i>Tujuan</th>
-                    <th class="px-4 py-3"><i class="fa-solid fa-clock mr-2"></i>Terkirim</th>
-                    <th class="px-4 py-3"><i class="fa-solid fa-circle-check mr-2"></i>Status</th>
-                    <th class="px-4 py-3"><i class="fa-solid fa-message mr-2"></i>Pesan</th>
+                    <th class="w-[28%] px-5 py-4"><i class="fa-solid fa-user mr-2 text-moss"></i>Tujuan</th>
+                    <th class="w-[20%] px-5 py-4"><i class="fa-solid fa-clock mr-2 text-clay"></i>Terkirim</th>
+                    <th class="w-[14%] px-5 py-4"><i class="fa-solid fa-circle-check mr-2 text-moss"></i>Status</th>
+                    <th class="px-5 py-4"><i class="fa-solid fa-message mr-2 text-ink/45"></i>Pesan</th>
                   </tr>
                 </thead>
-                <tbody class="divide-y divide-ink/6 bg-white/70">
+                <tbody class="divide-y divide-ink/6 bg-white">
                   <template x-if="!filteredSent.length">
-                    <tr><td colspan="4" class="px-4 py-8 text-center text-ink/45" x-text="sent.length ? 'Tidak ada riwayat yang cocok.' : 'Belum ada riwayat kirim.'"></td></tr>
+                    <tr><td colspan="4" class="px-5 py-10 text-center text-ink/45" x-text="sent.length ? 'Tidak ada riwayat yang cocok.' : 'Belum ada riwayat kirim.'"></td></tr>
                   </template>
                   <template x-for="item in paginatedSent" :key="item.id + '-' + item.sentAt">
                     <tr>
-                      <td class="px-4 py-4">
-                        <div class="font-medium" x-text="item.contactName || 'Contact tidak ditemukan'"></div>
-                        <div class="text-xs text-ink/50" x-text="item.phoneNumber || '-'"></div>
+                      <td class="px-5 py-4" data-label="Tujuan">
+                        <div class="flex items-center gap-3">
+                          <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-moss/10 text-moss">
+                            <i class="fa-solid fa-user"></i>
+                          </span>
+                          <div class="min-w-0">
+                            <div class="truncate font-semibold text-ink" x-text="item.contactName || 'Contact tidak ditemukan'"></div>
+                            <div class="mt-1 text-xs font-medium text-ink/45" x-text="item.phoneNumber || '-'"></div>
+                          </div>
+                        </div>
                       </td>
-                      <td class="px-4 py-4 text-ink/65" x-text="formatDateTime(item.sentAt || item.reminderDateTime)"></td>
-                      <td class="px-4 py-4">
-                        <span class="inline-flex rounded-full bg-moss/10 px-3 py-1 text-xs font-semibold text-moss" x-text="item.deliveryStatus || 'SENT'"></span>
+                      <td class="px-5 py-4 text-ink/65" data-label="Terkirim">
+                        <span class="inline-flex items-center gap-2 whitespace-nowrap">
+                          <i class="fa-regular fa-calendar text-ink/35"></i>
+                          <span x-text="formatDateTime(item.sentAt || item.reminderDateTime)"></span>
+                        </span>
                       </td>
-                      <td class="px-4 py-4 text-ink/65 whitespace-pre-line" x-text="item.message"></td>
+                      <td class="px-5 py-4" data-label="Status">
+                        <span
+                          class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold uppercase"
+                          :class="String(item.deliveryStatus || 'SENT').toUpperCase() === 'FAILED' ? 'bg-red-50 text-red-600 ring-1 ring-red-100' : 'bg-moss/10 text-moss ring-1 ring-moss/10'"
+                        >
+                          <i :class="String(item.deliveryStatus || 'SENT').toUpperCase() === 'FAILED' ? 'fa-solid fa-circle-xmark' : 'fa-solid fa-circle-check'"></i>
+                          <span x-text="item.deliveryStatus || 'SENT'"></span>
+                        </span>
+                      </td>
+                      <td class="px-5 py-4 text-ink/65" data-label="Pesan">
+                        <div class="sent-message whitespace-pre-line" x-text="item.message || '-'"></div>
+                      </td>
                     </tr>
                   </template>
                 </tbody>
