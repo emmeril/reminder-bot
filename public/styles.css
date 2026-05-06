@@ -300,15 +300,36 @@ main > section:hover {
   .menu-pill {
     flex: 1 1 calc(50% - 0.5rem);
     justify-content: center;
+    min-height: 3rem;
     padding-left: 0.85rem;
     padding-right: 0.85rem;
     padding-top: 0.72rem;
     padding-bottom: 0.72rem;
     font-size: 0.85rem;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.2;
   }
 
   .menu-pill i {
     margin-right: 0.35rem;
+  }
+
+  .action-chip {
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.25;
+  }
+
+  form .flex.flex-wrap.gap-2 > * {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  form .flex.flex-wrap.gap-2 {
+    width: 100%;
   }
 
   table.min-w-full thead {

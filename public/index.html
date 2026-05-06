@@ -128,12 +128,12 @@
         </header>
 
         <section class="panel-shell rounded-[1.25rem] p-3 shadow-soft backdrop-blur-xl xl:hidden">
-          <div class="flex gap-2 overflow-x-auto pb-1">
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <template x-for="menu in navMenus" :key="menu.key">
               <button
                 type="button"
                 @click="activeMenu = menu.key"
-                class="menu-pill whitespace-nowrap rounded-full border px-4 py-2 text-sm font-semibold transition"
+                class="menu-pill rounded-full border px-4 py-2 text-sm font-semibold transition"
                 :class="activeMenu === menu.key ? 'border-moss bg-moss text-white shadow-lg shadow-moss/20' : 'border-ink/10 bg-white text-ink hover:bg-haze'"
               >
                 <i :class="menu.icon + ' mr-2'"></i><span x-text="menu.label"></span>
@@ -143,7 +143,7 @@
         </section>
 
         <section class="panel-shell rounded-[1.25rem] p-3 shadow-soft backdrop-blur-xl lg:hidden">
-          <div class="flex flex-wrap gap-2">
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <a href="/qr" target="_blank" rel="noreferrer" class="action-chip rounded-2xl bg-clay px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
               <i class="fa-brands fa-whatsapp mr-2"></i>Hubungkan WA
             </a>
