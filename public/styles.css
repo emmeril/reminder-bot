@@ -201,6 +201,18 @@ table tbody tr:hover {
   -webkit-line-clamp: 3;
 }
 
+.sent-message-expanded {
+  display: block;
+  max-height: none;
+  -webkit-line-clamp: unset;
+}
+
+.read-more-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
 .metric-card {
   overflow: hidden;
   position: relative;
@@ -426,11 +438,6 @@ main > section:hover {
 
   .sent-history-table table.min-w-full td[colspan]::before {
     display: none;
-  }
-
-  .sent-message {
-    max-height: none;
-    -webkit-line-clamp: unset;
   }
 
   button[aria-label="Toggle actions"] {

@@ -545,7 +545,18 @@
                         </span>
                       </td>
                       <td class="px-5 py-4 text-ink/65" data-label="Pesan">
-                        <div class="sent-message whitespace-pre-line" x-text="reminder.message"></div>
+                        <div
+                          class="sent-message whitespace-pre-line"
+                          :class="isMessageExpanded(messageKey('reminder', reminder.id)) ? 'sent-message-expanded' : ''"
+                          x-text="reminder.message"
+                        ></div>
+                        <button
+                          type="button"
+                          x-show="isLongMessage(reminder.message)"
+                          @click="toggleMessage(messageKey('reminder', reminder.id))"
+                          class="read-more-button mt-2 text-xs font-bold text-moss transition hover:text-ink"
+                          x-text="isMessageExpanded(messageKey('reminder', reminder.id)) ? 'Tutup' : 'Read more'"
+                        ></button>
                       </td>
                       <td class="px-5 py-4 align-top" data-label="Aksi">
                         <div class="flex flex-col items-start gap-2">
@@ -724,7 +735,18 @@
                         </span>
                       </td>
                       <td class="px-5 py-4 text-ink/65" data-label="Pesan">
-                        <div class="sent-message whitespace-pre-line" x-text="item.message || '-'"></div>
+                        <div
+                          class="sent-message whitespace-pre-line"
+                          :class="isMessageExpanded(messageKey('sent', item.id + '-' + (item.sentAt || item.reminderDateTime || ''))) ? 'sent-message-expanded' : ''"
+                          x-text="item.message || '-'"
+                        ></div>
+                        <button
+                          type="button"
+                          x-show="isLongMessage(item.message)"
+                          @click="toggleMessage(messageKey('sent', item.id + '-' + (item.sentAt || item.reminderDateTime || '')))"
+                          class="read-more-button mt-2 text-xs font-bold text-moss transition hover:text-ink"
+                          x-text="isMessageExpanded(messageKey('sent', item.id + '-' + (item.sentAt || item.reminderDateTime || ''))) ? 'Tutup' : 'Read more'"
+                        ></button>
                       </td>
                     </tr>
                   </template>
@@ -830,6 +852,7 @@
         summaryMetrics: [],
         settingsDirty: false,
         paymentTypeSelection: {},
+        expandedMessages: {},
         billingPeriod: "",
         pageSizes: [10, 25, 50, 100],
         filters: {
@@ -903,6 +926,22 @@
 
         formatDateTime(value) {
           return new Date(value).toLocaleString("id-ID");
+        },
+
+        messageKey(scope, id) {
+          return `${scope}:${id || "unknown"}`;
+        },
+
+        isLongMessage(message) {
+          return String(message || "").trim().length > 150;
+        },
+
+        isMessageExpanded(key) {
+          return Boolean(this.expandedMessages[key]);
+        },
+
+        toggleMessage(key) {
+          this.expandedMessages[key] = !this.expandedMessages[key];
         },
 
         formatDateInput(value) {
