@@ -57,7 +57,7 @@
         </div>
         <div class="flex flex-col items-stretch gap-3 lg:items-end">
           <button type="button" @click="toggleActions()" :aria-expanded="showActions.toString()" class="sm:hidden inline-flex h-10 w-10 items-center justify-center self-end rounded-full border border-ink/10 bg-white text-ink shadow-sm" aria-label="Toggle actions"><i class="fa-solid fa-bars"></i></button>
-          <div x-show="showActions" x-cloak @click.outside="showActions = false" class="hero-actions flex flex-wrap gap-2 rounded-[1.5rem] border border-white/70 bg-white/70 p-2 shadow-sm responsive-actions">
+          <div x-show="showActions" x-cloak @click.outside="showActions = false" class="hero-actions flex flex-wrap gap-2 rounded-[1.5rem] border border-white/70 bg-white/70 p-2 shadow-sm responsive-actions sm:hidden">
             <a href="/qr" target="_blank" rel="noreferrer" class="rounded-full bg-gradient-to-r from-clay to-orange-400 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
               <i class="fa-brands fa-whatsapp mr-2"></i>Hubungkan WA
             </a>
@@ -93,6 +93,23 @@
         </template>
       </div>
     </section>
+
+    <div class="sticky top-4 z-30 mt-4 hidden sm:block">
+      <div class="hero-actions flex flex-wrap gap-2 rounded-[1.5rem] border border-white/80 bg-white/90 p-2 shadow-soft backdrop-blur-xl responsive-actions">
+        <a href="/qr" target="_blank" rel="noreferrer" class="rounded-full bg-gradient-to-r from-clay to-orange-400 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
+          <i class="fa-brands fa-whatsapp mr-2"></i>Hubungkan WA
+        </a>
+        <button @click="refreshAll()" class="rounded-full border border-ink/10 bg-white px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
+          <i class="fa-solid fa-rotate mr-2"></i>Refresh
+        </button>
+        <button @click="runScheduler()" class="rounded-full bg-ink px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-moss">
+          <i class="fa-solid fa-play mr-2"></i>Run Scheduler
+        </button>
+        <button @click="logout()" class="rounded-full border border-ink/10 bg-white px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-clay hover:text-white">
+          <i class="fa-solid fa-right-from-bracket mr-2"></i>Logout
+        </button>
+      </div>
+    </div>
 
     <div
       class="mt-6 grid gap-6"
