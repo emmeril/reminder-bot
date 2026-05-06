@@ -275,61 +275,123 @@ main > section:hover {
   min-width: 140px;
 }
 
+/* Hide elements with x-cloak until Alpine initializes */
+[x-cloak] {
+  display: none !important;
+}
+
 @media (max-width: 640px) {
+  body::before {
+    background-size: auto, auto, 42px 42px, 42px 42px;
+  }
+
+  .app-container {
+    width: calc(100% - 16px);
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+
+  .hero-panel {
+    padding: 1rem !important;
+    border-radius: 1.5rem;
+  }
+
+  aside > section,
+  main > section,
+  .panel-shell {
+    padding: 0.95rem !important;
+    border-radius: 1.35rem;
+  }
+
+  .hero-mark {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 1rem;
+  }
+
+  .hero-mark i {
+    font-size: 1.15rem;
+  }
+
   .responsive-actions {
     flex-direction: column;
     gap: 0.6rem;
   }
+
   .responsive-actions > * {
     width: 100% !important;
     min-width: 0 !important;
   }
 
-  /* Slight horizontal padding on very small screens for the main app container */
-  .app-container {
-    padding-left: 12px;
-    padding-right: 12px;
-  }
-
   .menu-pill {
     flex: 1 1 calc(50% - 0.5rem);
     justify-content: center;
+    padding-left: 0.85rem;
+    padding-right: 0.85rem;
+    padding-top: 0.72rem;
+    padding-bottom: 0.72rem;
+    font-size: 0.85rem;
   }
-}
 
-/* Hide elements with x-cloak until Alpine initializes */
-[x-cloak] { display: none !important; }
+  .menu-pill i {
+    margin-right: 0.35rem;
+  }
 
-/* Table -> card layout on small screens */
-@media (max-width: 640px) {
   table.min-w-full thead {
     display: none;
   }
-  table.min-w-full, table.min-w-full tbody, table.min-w-full tr, table.min-w-full td {
+
+  table.min-w-full,
+  table.min-w-full tbody,
+  table.min-w-full tr,
+  table.min-w-full td {
     display: block;
     width: 100%;
   }
+
   table.min-w-full tr {
     margin-bottom: 0.75rem;
-    border-radius: 1rem;
-    background: rgba(255,255,255,0.9);
-    box-shadow: 0 12px 28px rgba(15,23,42,0.08);
-    border: 1px solid rgba(23,32,51,0.06);
+    border-radius: 1.1rem;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+    border: 1px solid rgba(23, 32, 51, 0.06);
     overflow: hidden;
   }
+
   table.min-w-full td {
     padding-left: 0.9rem !important;
     padding-right: 0.9rem !important;
-    padding-top: 0.6rem !important;
-    padding-bottom: 0.6rem !important;
+    padding-top: 0.7rem !important;
+    padding-bottom: 0.7rem !important;
     border-bottom: none !important;
   }
-  table.min-w-full td:first-child {
-    font-weight: 600;
-    padding-top: 0.8rem !important;
+
+  table.min-w-full td[data-label] {
+    display: grid;
+    grid-template-columns: minmax(5.75rem, 38%) minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: start;
   }
+
+  table.min-w-full td[data-label]::before {
+    content: attr(data-label);
+    color: rgba(23, 32, 51, 0.42);
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  table.min-w-full td:not([data-label])::before {
+    display: none;
+  }
+
+  table.min-w-full td:first-child {
+    padding-top: 0.85rem !important;
+  }
+
   table.min-w-full td:not(:first-child) {
-    color: rgba(23,49,59,0.65);
+    color: rgba(23, 49, 59, 0.68);
     font-size: 0.95rem;
   }
 
@@ -342,12 +404,12 @@ main > section:hover {
   .sent-history-table table.min-w-full tr {
     display: grid;
     gap: 0.55rem;
-    padding: 0.85rem;
+    padding: 0.9rem;
   }
 
   .sent-history-table table.min-w-full td {
     display: grid;
-    grid-template-columns: 6.25rem minmax(0, 1fr);
+    grid-template-columns: minmax(5.75rem, 38%) minmax(0, 1fr);
     gap: 0.75rem;
     align-items: start;
     padding: 0 !important;
@@ -355,19 +417,11 @@ main > section:hover {
 
   .sent-history-table table.min-w-full td::before {
     content: attr(data-label);
-    align-self: center;
     color: rgba(23, 32, 51, 0.42);
     font-size: 0.72rem;
     font-weight: 800;
     text-transform: uppercase;
-  }
-
-  .sent-history-table table.min-w-full td:first-child {
-    padding-top: 0 !important;
-  }
-
-  .sent-history-table table.min-w-full td:first-child::before {
-    align-self: center;
+    letter-spacing: 0.12em;
   }
 
   .sent-history-table table.min-w-full td[colspan] {
@@ -383,38 +437,23 @@ main > section:hover {
     max-height: none;
     -webkit-line-clamp: unset;
   }
+
+  button[aria-label="Toggle actions"] {
+    font-size: 1rem;
+    line-height: 1;
+  }
 }
 
-/* Hamburger button tweaks */
-button[aria-label="Toggle actions"] {
-  font-size: 1rem;
-  line-height: 1;
-}
-
-/* Reduce section padding and font sizes on small screens for compactness */
 @media (max-width: 480px) {
-  .rounded-\[1\.75rem\] {
-    padding: 0.75rem !important;
-  }
   h1 {
-    font-size: 1.6rem !important;
+    font-size: 1.7rem !important;
   }
+
   h2 {
-    font-size: 1.08rem !important;
+    font-size: 1.05rem !important;
   }
+
   .min-h-32 {
     min-height: 6rem !important;
-  }
-  .px-4 {
-    padding-left: 0.75rem !important;
-    padding-right: 0.75rem !important;
-  }
-}
-
-/* Make table rows more readable on small screens by increasing row spacing */
-@media (max-width: 640px) {
-  table.min-w-full td, table.min-w-full th {
-    padding-top: 0.6rem !important;
-    padding-bottom: 0.6rem !important;
   }
 }

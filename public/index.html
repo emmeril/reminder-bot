@@ -57,7 +57,7 @@
         </div>
         <div class="flex flex-col items-stretch gap-3 lg:items-end">
           <button type="button" @click="toggleActions()" :aria-expanded="showActions.toString()" class="sm:hidden inline-flex h-10 w-10 items-center justify-center self-end rounded-full border border-ink/10 bg-white text-ink shadow-sm" aria-label="Toggle actions"><i class="fa-solid fa-bars"></i></button>
-          <div x-show="showActions" x-cloak class="hero-actions flex flex-wrap gap-2 rounded-[1.5rem] border border-white/70 bg-white/70 p-2 shadow-sm responsive-actions">
+          <div x-show="showActions" x-cloak @click.outside="showActions = false" class="hero-actions flex flex-wrap gap-2 rounded-[1.5rem] border border-white/70 bg-white/70 p-2 shadow-sm responsive-actions">
             <a href="/qr" target="_blank" rel="noreferrer" class="rounded-full bg-gradient-to-r from-clay to-orange-400 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
               <i class="fa-brands fa-whatsapp mr-2"></i>Hubungkan WA
             </a>
@@ -320,9 +320,9 @@
                   </template>
                   <template x-for="contact in paginatedContacts" :key="contact.id">
                     <tr>
-                      <td class="px-4 py-4 font-medium" x-text="contact.name"></td>
-                      <td class="px-4 py-4 text-ink/65" x-text="contact.phoneNumber"></td>
-<td class="px-4 py-4">
+                      <td class="px-4 py-4 font-medium" data-label="Nama" x-text="contact.name"></td>
+                      <td class="px-4 py-4 text-ink/65" data-label="No. WA" x-text="contact.phoneNumber"></td>
+<td class="px-4 py-4" data-label="Status Bayar">
                         <span
                           class="inline-flex rounded-full px-3 py-1 text-xs font-semibold"
                           :class="{
@@ -332,7 +332,7 @@
                           x-text="contact.paymentType ? getPaymentTypeLabel(contact.paymentType) : (contact.paymentStatus === 'PAID' ? getPaymentTypeLabel(inferPaymentType(contact)) : 'Belum bayar')"
                         ></span>
                       </td>
-                      <td class="px-4 py-4 align-top">
+                      <td class="px-4 py-4 align-top" data-label="Aksi">
                         <div class="flex flex-col items-start gap-2">
 <template x-if="contact.paymentStatus !== 'PAID'">
                              <div class="grid w-full gap-2">
@@ -457,14 +457,14 @@
                   </template>
                   <template x-for="reminder in paginatedReminders" :key="reminder.id">
                     <tr>
-                      <td class="px-4 py-4">
+                      <td class="px-4 py-4" data-label="Tujuan">
                         <div class="font-medium" x-text="reminder.contactName || 'Contact tidak ditemukan'"></div>
                         <div class="text-xs text-ink/50" x-text="reminder.phoneNumber || '-'"></div>
                       </td>
-                      <td class="px-4 py-4 text-ink/65" x-text="formatDateTime(reminder.reminderDateTime)"></td>
-                      <td class="px-4 py-4 text-ink/65" x-text="reminder.templateName || '-'"></td>
-                      <td class="px-4 py-4 text-ink/65 whitespace-pre-line" x-text="reminder.message"></td>
-                      <td class="px-4 py-4 align-top">
+                      <td class="px-4 py-4 text-ink/65" data-label="Jadwal" x-text="formatDateTime(reminder.reminderDateTime)"></td>
+                      <td class="px-4 py-4 text-ink/65" data-label="Template" x-text="reminder.templateName || '-'"></td>
+                      <td class="px-4 py-4 text-ink/65 whitespace-pre-line" data-label="Pesan" x-text="reminder.message"></td>
+                      <td class="px-4 py-4 align-top" data-label="Aksi">
                         <div class="flex flex-col items-start gap-2">
                           <button @click="editReminder(reminder)" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit</button>
                           <button @click="removeReminder(reminder.id)" class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Delete</button>
@@ -519,10 +519,10 @@
                   </template>
                   <template x-for="template in templates" :key="template.name">
                     <tr>
-                      <td class="px-4 py-4 font-medium" x-text="template.name"></td>
-                      <td class="px-4 py-4 text-ink/65" x-text="formatDateTime(template.updatedAt)"></td>
-                      <td class="px-4 py-4 text-ink/65" x-text="(template.content || '').slice(0, 120)"></td>
-                      <td class="px-4 py-4">
+                      <td class="px-4 py-4 font-medium" data-label="Template" x-text="template.name"></td>
+                      <td class="px-4 py-4 text-ink/65" data-label="Update" x-text="formatDateTime(template.updatedAt)"></td>
+                      <td class="px-4 py-4 text-ink/65" data-label="Preview" x-text="(template.content || '').slice(0, 120)"></td>
+                      <td class="px-4 py-4" data-label="Aksi">
                         <button @click="removeTemplate(template.name)" class="rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Delete</button>
                       </td>
                     </tr>
@@ -709,7 +709,7 @@
       x-transition:enter-start="translate-y-3"
       x-transition:enter-end="translate-y-0"
       x-transition:leave-end="translate-y-3"
-      class="fixed bottom-5 right-5 z-50 rounded-2xl bg-ink px-4 py-3 text-sm font-medium text-white shadow-soft"
+      class="fixed bottom-4 left-1/2 z-50 w-[calc(100%-1.5rem)] max-w-sm -translate-x-1/2 rounded-2xl bg-ink px-4 py-3 text-center text-sm font-medium text-white shadow-soft sm:left-auto sm:right-5 sm:w-auto sm:translate-x-0 sm:text-left"
       x-text="toast.message"
     ></div>
   </div>
