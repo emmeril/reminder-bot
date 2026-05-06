@@ -72,19 +72,29 @@
         </section>
 
         <section class="panel-shell rounded-[1.4rem] p-5 shadow-soft backdrop-blur-xl">
-          <div class="text-xs font-bold uppercase tracking-[0.18em] text-ink/40">Quick Actions</div>
-          <div class="mt-4 space-y-2">
-            <a href="/qr" target="_blank" rel="noreferrer" class="action-chip w-full rounded-2xl bg-clay px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
-              <i class="fa-brands fa-whatsapp mr-2"></i>Hubungkan WA
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <div class="section-caption">Quick Actions</div>
+              <div class="mt-1 text-sm font-semibold text-ink">Operasional cepat</div>
+            </div>
+            <span class="rounded-full bg-haze px-3 py-1 text-xs font-semibold text-ink/55">4</span>
+          </div>
+          <div class="quick-actions-list mt-4">
+            <a href="/qr" target="_blank" rel="noreferrer" class="quick-action action-chip w-full rounded-[1rem] bg-clay px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
+              <span class="quick-action-icon bg-white/15 text-white"><i class="fa-brands fa-whatsapp"></i></span>
+              <span>Hubungkan WA</span>
             </a>
-            <button @click="refreshAll()" class="action-chip w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze">
-              <i class="fa-solid fa-rotate mr-2"></i>Refresh
+            <button @click="refreshAll()" class="quick-action action-chip w-full rounded-[1rem] border border-ink/10 bg-white px-3 py-2.5 text-sm font-semibold text-ink transition hover:bg-haze">
+              <span class="quick-action-icon bg-ink/5 text-ink"><i class="fa-solid fa-rotate"></i></span>
+              <span>Refresh</span>
             </button>
-            <button @click="runScheduler()" class="action-chip w-full rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white transition hover:bg-moss">
-              <i class="fa-solid fa-play mr-2"></i>Run Scheduler
+            <button @click="runScheduler()" class="quick-action action-chip w-full rounded-[1rem] bg-ink px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-moss">
+              <span class="quick-action-icon bg-white/10 text-white"><i class="fa-solid fa-play"></i></span>
+              <span>Run Scheduler</span>
             </button>
-            <button @click="logout()" class="action-chip w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-clay hover:text-white">
-              <i class="fa-solid fa-right-from-bracket mr-2"></i>Logout
+            <button @click="logout()" class="quick-action action-chip w-full rounded-[1rem] border border-ink/10 bg-white px-3 py-2.5 text-sm font-semibold text-ink transition hover:bg-clay hover:text-white">
+              <span class="quick-action-icon bg-ink/5 text-ink"><i class="fa-solid fa-right-from-bracket"></i></span>
+              <span>Logout</span>
             </button>
           </div>
         </section>

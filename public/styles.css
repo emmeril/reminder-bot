@@ -113,6 +113,32 @@ a.rounded-full {
   gap: 0.45rem;
 }
 
+.quick-actions-list {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.quick-action {
+  min-height: 3rem;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.quick-action span:last-child {
+  flex: 1 1 auto;
+}
+
+.quick-action-icon {
+  display: inline-flex;
+  width: 1.9rem;
+  height: 1.9rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.7rem;
+  font-size: 0.8rem;
+}
+
 button:hover,
 a.rounded-full:hover {
   transform: translateY(-1px);
@@ -389,6 +415,10 @@ main > section:hover {
   button[aria-label="Toggle actions"] {
     font-size: 1rem;
     line-height: 1;
+  }
+
+  .quick-action {
+    min-height: 2.8rem;
   }
 }
 
