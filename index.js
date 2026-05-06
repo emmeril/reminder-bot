@@ -114,6 +114,35 @@ function sanitizeMultilineText(value) {
     .trim();
 }
 
+function parseBoolean(value, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value !== "string") return fallback;
+
+  const normalized = value.trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "off", ""].includes(normalized)) return false;
+  return fallback;
+}
+
+function collectSecurityWarnings() {
+  const warnings = [];
+
+  if (CONFIG.WEB_API_KEY === "dev-key-change-in-production") {
+    warnings.push("WEB_API_KEY masih memakai nilai default.");
+  }
+
+  if (CONFIG.AUTH_USERNAME === "admin" && CONFIG.AUTH_PASSWORD === "admin123") {
+    warnings.push("Kredensial login dashboard masih memakai nilai default.");
+  }
+
+  if (CONFIG.SESSION_SECRET === "change-this-session-secret") {
+    warnings.push("SESSION_SECRET masih memakai nilai default.");
+  }
+
+  return warnings;
+}
+
 function parseCookies(cookieHeader) {
   const cookies = {};
   if (!cookieHeader) return cookies;
@@ -284,6 +313,8 @@ class ActivityLog {
     const line = `[${entry.timestamp}] [${level}] [${source}] ${message}`;
     if (level === "error") {
       console.error(line);
+    } else if (level === "warn") {
+      console.warn(line);
     } else {
       console.log(line);
     }
@@ -614,19 +645,32 @@ class DataManager {
   }
 
   async loadLegacyMapFromFile(filePath, keyField) {
-    try {
-      const raw = await fs.readFile(filePath, "utf-8");
+    const readMap = async (candidatePath) => {
+      const raw = await fs.readFile(candidatePath, "utf-8");
       if (!raw.trim()) return new Map();
+
       const arr = JSON.parse(raw);
       if (!Array.isArray(arr)) return new Map();
-      return new Map(arr.filter((item) => item && item[keyField]).map((item) => [String(item[keyField]), item]));
+
+      return new Map(
+        arr
+          .filter((item) => item && item[keyField])
+          .map((item) => [String(item[keyField]), item])
+      );
+    };
+
+    try {
+      return await readMap(filePath);
     } catch (error) {
-      if (error.code === "ENOENT") return new Map();
-      this.activityLog.push("error", "storage", `Failed to load ${path.basename(filePath)}`, { error: error.message });
+      if (error.code !== "ENOENT") {
+        this.activityLog.push("error", "storage", `Failed to load ${path.basename(filePath)}`, {
+          error: error.message,
+        });
+      }
+
+      const backupPath = `${filePath}.bak`;
       try {
-        const backup = `${filePath}.bak`;
-        await fs.copyFile(backup, filePath);
-        return this.loadLegacyMapFromFile(filePath, keyField);
+        return await readMap(backupPath);
       } catch {
         return new Map();
       }
@@ -1150,10 +1194,10 @@ class DataManager {
       companyName: payload.companyName !== undefined ? sanitizeInput(payload.companyName) || current.companyName : current.companyName,
       supportSignature: payload.supportSignature !== undefined ? sanitizeInput(payload.supportSignature) || current.supportSignature : current.supportSignature,
       timezone: payload.timezone !== undefined ? sanitizeInput(payload.timezone) || current.timezone : current.timezone,
-      autoRescheduleMonthly: payload.autoRescheduleMonthly !== undefined ? Boolean(payload.autoRescheduleMonthly) : current.autoRescheduleMonthly,
-      notifyAdminsOnDelivery: payload.notifyAdminsOnDelivery !== undefined ? Boolean(payload.notifyAdminsOnDelivery) : current.notifyAdminsOnDelivery,
-      notifyAdminsOnConnectionChange: payload.notifyAdminsOnConnectionChange !== undefined ? Boolean(payload.notifyAdminsOnConnectionChange) : current.notifyAdminsOnConnectionChange,
-      notifyAdminsOnPaymentReset: payload.notifyAdminsOnPaymentReset !== undefined ? Boolean(payload.notifyAdminsOnPaymentReset) : current.notifyAdminsOnPaymentReset,
+      autoRescheduleMonthly: payload.autoRescheduleMonthly !== undefined ? parseBoolean(payload.autoRescheduleMonthly, current.autoRescheduleMonthly) : current.autoRescheduleMonthly,
+      notifyAdminsOnDelivery: payload.notifyAdminsOnDelivery !== undefined ? parseBoolean(payload.notifyAdminsOnDelivery, current.notifyAdminsOnDelivery) : current.notifyAdminsOnDelivery,
+      notifyAdminsOnConnectionChange: payload.notifyAdminsOnConnectionChange !== undefined ? parseBoolean(payload.notifyAdminsOnConnectionChange, current.notifyAdminsOnConnectionChange) : current.notifyAdminsOnConnectionChange,
+      notifyAdminsOnPaymentReset: payload.notifyAdminsOnPaymentReset !== undefined ? parseBoolean(payload.notifyAdminsOnPaymentReset, current.notifyAdminsOnPaymentReset) : current.notifyAdminsOnPaymentReset,
     };
     await this.saveSettings();
     return this.getSettings();
@@ -1695,7 +1739,14 @@ CS Emmeril Hotspot`;
   async notifyAdminsIfEnabled(title, body) {
     const settings = this.dataManager.getSettings();
     if (!settings.notifyAdminsOnConnectionChange) return [];
-    if (!this.isReady && title !== "Perubahan status bot") return [];
+    const connectionTitles = new Set([
+      "Perubahan status bot",
+      "Bot kembali online",
+      "Transport WA terganggu",
+      "WhatsApp terputus",
+      "Error transport WA",
+    ]);
+    if (!connectionTitles.has(title)) return [];
     return this.sendAdminBroadcast(title, body, { silentLog: true });
   }
 
@@ -2022,7 +2073,7 @@ class WebServer {
       }
 
       let notification = { sent: false };
-      if (Boolean(req.body.sendCredentials) && this.notificationBot.isReady) {
+      if (parseBoolean(req.body.sendCredentials) && this.notificationBot.isReady) {
         const message = `Yth. Bapak/Ibu *${registered.name}*,\n\nAkun hotspot Anda sudah berhasil dibuat.\n\nDetail Akun Hotspot:\n*Username:* ${registered.username}\n*Password:* ${registered.password}\n*Profile:* ${registered.profile}\n\nSilakan simpan data ini. Terimakasih.`;
         try {
           await this.notificationBot.sendMessage(registered.phoneNumber, message);
@@ -2030,7 +2081,7 @@ class WebServer {
         } catch (error) {
           notification = { sent: false, error: error.message };
         }
-      } else if (Boolean(req.body.sendCredentials)) {
+      } else if (parseBoolean(req.body.sendCredentials)) {
         notification = { sent: false, error: "WhatsApp belum online." };
       }
 
@@ -2292,6 +2343,10 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
 
 (async () => {
   const activityLog = new ActivityLog();
+  for (const warning of collectSecurityWarnings()) {
+    activityLog.push("warn", "config", warning);
+  }
+
   const authManager = new AuthManager(activityLog);
   const dataManager = new DataManager(activityLog);
   const templateManager = new TemplateManager(activityLog);
