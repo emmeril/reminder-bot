@@ -76,11 +76,18 @@ const PAYMENT_STATUS = {
   UNPAID: "UNPAID",
 };
 
+const PAYMENT_TYPES = {
+  ARREARS_ONLY: "ARREARS-ONLY",
+  CURRENT_ONLY: "CURRENT-ONLY",
+  FULL_PAID: "FULL-PAID",
+};
+
 const DEFAULT_SETTINGS = {
   dashboardTitle: "Reminder Bot Control Center",
   companyName: "Emmeril Hotspot",
   supportSignature: "CS Emmeril Hotspot",
   timezone: "Asia/Jakarta",
+  lastPaymentResetPeriod: "",
   autoRescheduleMonthly: true,
   notifyAdminsOnDelivery: true,
   notifyAdminsOnConnectionChange: true,
@@ -234,6 +241,11 @@ function formatDateTime(date) {
     timeStyle: "short",
     timeZone: "Asia/Jakarta",
   });
+}
+
+function getBillingPeriodKey(date = new Date()) {
+  const source = new Date(date);
+  return `${source.getFullYear()}-${String(source.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function addMonthsSafely(dateValue, monthsToAdd) {
@@ -766,6 +778,7 @@ class DataManager {
       });
     }
 
+    this.normalizeLoadedContacts();
     await this.normalizeReminderRelations();
     this.activityLog.push("info", "boot", "Data load complete", {
       contacts: this.contacts.size,
@@ -817,6 +830,31 @@ class DataManager {
       key: "app",
       value: this.settings,
     });
+  }
+
+  normalizeLoadedContacts() {
+    for (const contact of this.contacts.values()) {
+      contact.paymentStatus = String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase();
+      const normalizedType = String(contact.paymentType || "").toUpperCase();
+      contact.paymentType = Object.values(PAYMENT_TYPES).includes(normalizedType) ? normalizedType : null;
+      if (!contact.paymentMonths || typeof contact.paymentMonths !== "object" || Array.isArray(contact.paymentMonths)) {
+        contact.paymentMonths = {};
+      }
+
+      if (contact.paymentStatus === PAYMENT_STATUS.PAID && contact.paymentDate) {
+        const paidDate = new Date(contact.paymentDate);
+        if (!Number.isNaN(paidDate.getTime())) {
+          const key = getBillingPeriodKey(paidDate);
+          if (!contact.paymentMonths[key]) {
+            contact.paymentMonths[key] = {
+              status: PAYMENT_STATUS.PAID,
+              paidDate: paidDate.toISOString(),
+              paymentType: contact.paymentType,
+            };
+          }
+        }
+      }
+    }
   }
 
   async saveAll() {
@@ -1208,24 +1246,23 @@ class DataManager {
   }
 
   getPaymentsByMonth(year, month) {
+    const key = `${year}-${String(month).padStart(2, "0")}`;
     return this.getSortedContacts().filter((contact) => {
-      if (!contact.paymentDate) return false;
-      const paidDate = new Date(contact.paymentDate);
-      return paidDate.getFullYear() === year && paidDate.getMonth() + 1 === month;
+      return contact.paymentMonths?.[key]?.status === PAYMENT_STATUS.PAID;
     });
   }
 
   getAllPaymentsHistory() {
     const history = {};
     for (const contact of this.contacts.values()) {
-      if (!contact.paymentDate) continue;
-      const paidDate = new Date(contact.paymentDate);
-      const key = `${paidDate.getFullYear()}-${String(paidDate.getMonth() + 1).padStart(2, "0")}`;
-      if (!history[key]) {
-        history[key] = { contacts: [], total: 0 };
+      for (const [key, payment] of Object.entries(contact.paymentMonths || {})) {
+        if (!payment || payment.status !== PAYMENT_STATUS.PAID) continue;
+        if (!history[key]) {
+          history[key] = { contacts: [], total: 0 };
+        }
+        history[key].contacts.push(contact);
+        history[key].total += 1;
       }
-      history[key].contacts.push(contact);
-      history[key].total += 1;
     }
     return history;
   }
@@ -1235,23 +1272,32 @@ class DataManager {
     return contact?.paymentMonths || {};
   }
 
-  async updatePaymentStatus(contactId, status) {
+  async updatePaymentStatus(contactId, status, paymentType = null) {
     const contact = this.getContact(contactId);
     if (!contact) throw new Error("Kontak tidak ditemukan.");
     if (![PAYMENT_STATUS.PAID, PAYMENT_STATUS.UNPAID].includes(status)) {
       throw new Error("Status pembayaran tidak valid.");
     }
 
+    const currentKey = getBillingPeriodKey();
+    if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") {
+      contact.paymentMonths = {};
+    }
+
     contact.paymentStatus = status;
     contact.paymentDate = status === PAYMENT_STATUS.PAID ? new Date().toISOString() : null;
-    if (status !== PAYMENT_STATUS.PAID) {
-      contact.paymentType = null;
-    }
+    contact.paymentType = paymentType || null;
+    contact.paymentMonths[currentKey] = {
+      status,
+      paidDate: status === PAYMENT_STATUS.PAID ? new Date().toISOString() : null,
+      paymentType: paymentType || null,
+    };
+
     await this.saveContacts();
     return contact;
   }
 
-  async setPaymentForMonth(contactId, year, month, status) {
+  async setPaymentForMonth(contactId, year, month, status, paymentType = null) {
     const contact = this.getContact(contactId);
     if (!contact) throw new Error("Kontak tidak ditemukan.");
     if (![PAYMENT_STATUS.PAID, PAYMENT_STATUS.UNPAID].includes(status)) {
@@ -1266,6 +1312,7 @@ class DataManager {
     contact.paymentMonths[key] = {
       status,
       paidDate: status === PAYMENT_STATUS.PAID ? new Date().toISOString() : null,
+      paymentType: paymentType || null,
     };
 
     const now = new Date();
@@ -1274,6 +1321,7 @@ class DataManager {
     if (year === currentYear && month === currentMonth) {
       contact.paymentStatus = status;
       contact.paymentDate = status === PAYMENT_STATUS.PAID ? new Date().toISOString() : null;
+      contact.paymentType = paymentType || null;
     }
 
     await this.saveContacts();
@@ -1285,14 +1333,25 @@ class DataManager {
     const year = options.year ?? new Date().getFullYear();
     const month = options.month ?? new Date().getMonth() + 1;
     const currentKey = `${year}-${String(month).padStart(2, "0")}`;
-    const currentPaid = paymentMonths[currentKey]?.status === PAYMENT_STATUS.PAID;
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevKey = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
+    const savedType = String(contact.paymentType || "").toUpperCase();
+    if (Object.values(PAYMENT_TYPES).includes(savedType)) {
+      return savedType;
+    }
 
-    if (currentPaid) return "CURRENT-ONLY";
+    const currentPaid = paymentMonths[currentKey]?.status === PAYMENT_STATUS.PAID;
+    const previousPaid = paymentMonths[prevKey]?.status === PAYMENT_STATUS.PAID;
+
+    if (currentPaid && previousPaid) return PAYMENT_TYPES.FULL_PAID;
+    if (currentPaid) return PAYMENT_TYPES.CURRENT_ONLY;
+    if (previousPaid) return PAYMENT_TYPES.ARREARS_ONLY;
     return "DEFAULT";
   }
 
   getAllowedPaymentTypes() {
-    return ["ARREARS-ONLY", "CURRENT-ONLY", "FULL-PAID"];
+    return Object.values(PAYMENT_TYPES);
   }
 
   getOverdueContacts(year, month) {
@@ -1320,18 +1379,19 @@ class DataManager {
 
   async resetAllPaymentStatus() {
     let resetCount = 0;
-    const now = new Date();
-    const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const currentKey = getBillingPeriodKey();
 
     for (const contact of this.contacts.values()) {
       contact.paymentStatus = PAYMENT_STATUS.UNPAID;
       contact.paymentDate = null;
+      contact.paymentType = null;
       if (!contact.paymentMonths) {
         contact.paymentMonths = {};
       }
       contact.paymentMonths[currentKey] = {
         status: PAYMENT_STATUS.UNPAID,
         paidDate: null,
+        paymentType: null,
       };
       resetCount += 1;
     }
@@ -1341,6 +1401,26 @@ class DataManager {
     }
 
     return resetCount;
+  }
+
+  async ensureMonthlyPaymentReset() {
+    const currentPeriod = getBillingPeriodKey();
+    const settings = this.getSettings();
+
+    if (!settings.lastPaymentResetPeriod) {
+      this.settings.lastPaymentResetPeriod = currentPeriod;
+      await this.saveSettings();
+      return { reset: false, initialized: true, period: currentPeriod, count: 0 };
+    }
+
+    if (settings.lastPaymentResetPeriod === currentPeriod) {
+      return { reset: false, period: currentPeriod, count: 0 };
+    }
+
+    const count = await this.resetAllPaymentStatus();
+    this.settings.lastPaymentResetPeriod = currentPeriod;
+    await this.saveSettings();
+    return { reset: true, period: currentPeriod, count };
   }
 }
 
@@ -2044,6 +2124,7 @@ class WebServer {
       bot: this.notificationBot.getStatus(),
       summary: this.dataManager.getDashboardSummary(),
       settings: this.dataManager.getSettings(),
+      billingPeriod: getBillingPeriodKey(),
       scheduler: { isProcessing: this.reminderScheduler.isProcessing },
     })));
 
@@ -2101,9 +2182,15 @@ class WebServer {
 
     this.app.post("/api/contacts/:id/payment", requireApiAuth, handleApi(async (req) => {
       const status = sanitizeInput(req.body.status).toUpperCase();
-      const updatedContact = await this.dataManager.updatePaymentStatus(req.params.id, status);
+      const requestedPaymentType = sanitizeInput(req.body.paymentType).toUpperCase();
+      const allowedPaymentTypes = this.dataManager.getAllowedPaymentTypes();
+      const paymentType = allowedPaymentTypes.includes(requestedPaymentType)
+        ? requestedPaymentType
+        : (status === PAYMENT_STATUS.PAID ? allowedPaymentTypes[0] : null);
+      const updatedContact = await this.dataManager.updatePaymentStatus(req.params.id, status, paymentType);
+      const shouldSendPaymentNotification = status === PAYMENT_STATUS.PAID || paymentType === PAYMENT_TYPES.ARREARS_ONLY;
 
-      if (status !== PAYMENT_STATUS.PAID) {
+      if (!shouldSendPaymentNotification) {
         return {
           contact: updatedContact,
           notificationSent: false,
@@ -2111,15 +2198,6 @@ class WebServer {
       }
 
       const transactionId = `TRX-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
-      const requestedPaymentType = sanitizeInput(req.body.paymentType).toUpperCase();
-      const allowedPaymentTypes = this.dataManager.getAllowedPaymentTypes(updatedContact);
-      const paymentType = allowedPaymentTypes.includes(requestedPaymentType)
-        ? requestedPaymentType
-        : allowedPaymentTypes[0];
-
-      updatedContact.paymentType = paymentType;
-      await this.dataManager.saveContacts();
-
       try {
         await this.notificationBot.sendPaymentNotification(updatedContact, transactionId, paymentType);
         return {
@@ -2148,8 +2226,15 @@ class WebServer {
       const year = Number(req.body.year);
       const month = Number(req.body.month);
       const status = sanitizeInput(req.body.status).toUpperCase();
+      const paymentType = sanitizeInput(req.body.paymentType).toUpperCase();
       if (!year || !month) throw new Error("Year dan month wajib diisi.");
-      return this.dataManager.setPaymentForMonth(req.params.id, year, month, status);
+      return this.dataManager.setPaymentForMonth(
+        req.params.id,
+        year,
+        month,
+        status,
+        this.dataManager.getAllowedPaymentTypes().includes(paymentType) ? paymentType : null
+      );
     }));
 
     this.app.get("/api/reminders", requireApiAuth, handleApi(async () => this.dataManager.getSortedReminders()));
@@ -2313,7 +2398,12 @@ class WebServer {
 }
 
 async function sendMonthlyResetNotification(notificationBot, dataManager, activityLog) {
-  const count = await dataManager.resetAllPaymentStatus();
+  const resetResult = await dataManager.ensureMonthlyPaymentReset();
+  if (!resetResult.reset) {
+    return;
+  }
+
+  const count = resetResult.count;
   const settings = dataManager.getSettings();
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
@@ -2365,6 +2455,8 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
     authManager,
     mikrotikService
   );
+
+  await dataManager.ensureMonthlyPaymentReset();
 
   cron.schedule(CONFIG.CRON_SCHEDULE, () => {
     reminderScheduler.processDueReminders().catch((error) => {

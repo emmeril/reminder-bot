@@ -291,8 +291,8 @@
             <input x-model="filters.contacts.search" @input="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama atau nomor WA">
 <select x-model="filters.contacts.status" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
                <option value="ALL">Semua status</option>
-               <option value="PAID">Paid</option>
-               <option value="UNPAID">Unpaid</option>
+               <option value="PAID">Lunas</option>
+               <option value="UNPAID">Belum bayar</option>
                <option value="ARREARS-ONLY">Hanya Tunggakan</option>
                <option value="CURRENT-ONLY">Bulan Ini Saja</option>
                <option value="FULL-PAID">Lunas Semua</option>
@@ -329,27 +329,32 @@
                             'bg-moss/10 text-moss': contact.paymentStatus === 'PAID',
                             'bg-clay/10 text-clay': contact.paymentStatus !== 'PAID'
                           }"
-                          x-text="contact.paymentStatus === 'PAID' ? getPaymentTypeSelection(contact) : 'UNPAID'"
+                          x-text="contact.paymentType ? getPaymentTypeLabel(contact.paymentType) : (contact.paymentStatus === 'PAID' ? getPaymentTypeLabel(inferPaymentType(contact)) : 'Belum bayar')"
                         ></span>
                       </td>
                       <td class="px-4 py-4 align-top">
                         <div class="flex flex-col items-start gap-2">
 <template x-if="contact.paymentStatus !== 'PAID'">
-                             <select
-                               x-model="paymentTypeSelection[contact.id]" :value="getPaymentTypeSelection(contact)"
-                               class="rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition focus:border-clay"
-                             >
-                               <template x-for="option in getPaymentTypeOptions(contact)" :key="option">
-                                 <option :value="option" x-text="getPaymentTypeLabel(option)"></option>
-                               </template>
-                             </select>
+                             <div class="grid w-full gap-2">
+                               <button type="button" @click="togglePayment(contact.id, 'UNPAID', 'ARREARS-ONLY')" class="w-full rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:bg-ink hover:text-white">
+                                 <i class="fa-solid fa-circle-check mr-1.5"></i>Hanya tunggakan
+                               </button>
+                               <button type="button" @click="togglePayment(contact.id, 'PAID', 'CURRENT-ONLY')" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white">
+                                 <i class="fa-solid fa-calendar-check mr-1.5"></i>Bulan ini saja
+                               </button>
+                               <button type="button" @click="togglePayment(contact.id, 'PAID', 'FULL-PAID')" class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white">
+                                 <i class="fa-solid fa-sack-dollar mr-1.5"></i>Lunas semua
+                               </button>
+                             </div>
                            </template>
-                          <button
-                            @click="togglePayment(contact.id, contact.paymentStatus === 'PAID' ? 'UNPAID' : 'PAID')"
-                            class="w-full rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:bg-ink hover:text-white"
-                          >
-                            <i class="fa-solid fa-circle-check mr-1.5"></i><span x-text="contact.paymentStatus === 'PAID' ? 'Mark unpaid' : 'Mark paid'"></span>
-                          </button>
+                          <template x-if="contact.paymentStatus === 'PAID'">
+                            <button
+                              @click="togglePayment(contact.id, 'UNPAID')"
+                              class="w-full rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:bg-ink hover:text-white"
+                            >
+                              <i class="fa-solid fa-circle-check mr-1.5"></i>Reset ke belum bayar
+                            </button>
+                          </template>
                           <button @click="editContact(contact)" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit</button>
                           <button @click="removeContact(contact.id)" class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Delete</button>
                         </div>
@@ -722,6 +727,7 @@
         summaryMetrics: [],
         settingsDirty: false,
         paymentTypeSelection: {},
+        billingPeriod: "",
         pageSizes: [10, 25, 50, 100],
         filters: {
           contacts: { search: "", status: "ALL", page: 1, pageSize: 10 },
@@ -840,19 +846,20 @@ inferPaymentType(contact) {
            const year = now.getFullYear();
            const month = now.getMonth() + 1;
            const currentKey = `${year}-${String(month).padStart(2, "0")}`;
+           const prevMonth = month === 1 ? 12 : month - 1;
+           const prevYear = month === 1 ? year - 1 : year;
+           const prevKey = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
            const currentPaid = paymentMonths[currentKey]?.status === "PAID";
+           const prevPaid = paymentMonths[prevKey]?.status === "PAID";
 
+           if (currentPaid && prevPaid) return "FULL-PAID";
            if (currentPaid) return "CURRENT-ONLY";
+           if (prevPaid) return "ARREARS-ONLY";
            return "DEFAULT";
          },
 
         getPaymentTypeSelection(contact) {
-          const options = this.getPaymentTypeOptions(contact);
-          const selected = this.paymentTypeSelection[contact.id];
-          if (!selected || !options.includes(selected)) {
-            this.paymentTypeSelection[contact.id] = options[0];
-          }
-          return this.paymentTypeSelection[contact.id];
+          return String(contact.paymentType || this.inferPaymentType(contact) || "").toUpperCase();
         },
 
         getPaymentTypeLabel(type) {
@@ -987,6 +994,7 @@ get filteredContacts() {
           this.loading.status = true;
           try {
             const data = await this.api("/api/status");
+            this.billingPeriod = data.billingPeriod || this.billingPeriod;
             this.statusCards = [
               { label: "Transport", value: data.bot.isReady ? "Online" : "Offline", icon: data.bot.isReady ? "fa-solid fa-plug-circle-check" : "fa-solid fa-plug-circle-xmark" },
               { label: "QR", value: data.bot.hasQR ? "Ready to scan" : "No QR", icon: "fa-solid fa-qrcode" },
@@ -1019,11 +1027,6 @@ get filteredContacts() {
 
         async loadContacts() {
           this.contacts = await this.api("/api/contacts");
-          for (const contact of this.contacts) {
-            if (!this.paymentTypeSelection[contact.id]) {
-              this.paymentTypeSelection[contact.id] = this.inferPaymentType(contact);
-            }
-          }
           this.clampPage("contacts", this.filteredContacts.length);
         },
 
@@ -1108,17 +1111,25 @@ get filteredContacts() {
           await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
         },
 
-        async togglePayment(id, status) {
+        async togglePayment(id, status, paymentType = "") {
           const contact = this.contacts.find((item) => String(item.id) === String(id));
           const payload = { status };
-          if (status === "PAID" && contact) {
-            payload.paymentType = this.paymentTypeSelection[contact.id] || this.inferPaymentType(contact);
+          if (paymentType && contact) {
+            payload.paymentType = paymentType || contact.paymentType || this.inferPaymentType(contact);
           }
           const result = await this.api(`/api/contacts/${id}/payment`, {
             method: "POST",
             body: JSON.stringify(payload),
           });
-          if (status === "PAID") {
+          if (status === "UNPAID" && payload.paymentType === "ARREARS-ONLY") {
+            if (result.notificationSent) {
+              this.notify(`Tunggakan dicatat. Notifikasi terkirim (${result.transactionId}).`);
+            } else if (result.notificationError) {
+              this.notify(`Tunggakan dicatat, tapi notifikasi gagal: ${result.notificationError}`);
+            } else {
+              this.notify("Tunggakan dicatat.");
+            }
+          } else if (status === "PAID") {
             if (result.notificationSent) {
               this.notify(`Status pembayaran diperbarui. Bukti pembayaran terkirim (${result.transactionId}).`);
             } else if (result.notificationError) {
