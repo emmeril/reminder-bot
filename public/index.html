@@ -397,12 +397,12 @@
                           }"
                           x-text="contact.paymentType ? getPaymentTypeLabel(contact.paymentType) : (contact.paymentStatus === 'PAID' ? getPaymentTypeLabel(inferPaymentType(contact)) : 'Belum bayar')"
                         ></span>
-                        <template x-if="hasDebt(contact)">
+                        <!-- <template x-if="hasDebt(contact)">
                           <div class="mt-2 inline-flex max-w-full items-start gap-1.5 rounded-xl border border-clay/20 bg-clay/5 px-2.5 py-1.5 text-xs font-semibold leading-5 text-clay">
                             <i class="fa-solid fa-circle-info mt-0.5"></i>
                             <span x-text="getDebtNote(contact)"></span>
                           </div>
-                        </template>
+                        </template> -->
                       </td>
                       <td class="px-4 py-4 align-top" data-label="Aksi">
                         <div class="flex flex-col items-start gap-2">
