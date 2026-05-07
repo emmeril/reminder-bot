@@ -248,6 +248,28 @@ function getBillingPeriodKey(date = new Date()) {
   return `${source.getFullYear()}-${String(source.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function getBillingPeriodParts(date = new Date()) {
+  const source = new Date(date);
+  return {
+    year: source.getFullYear(),
+    month: source.getMonth() + 1,
+  };
+}
+
+function makeBillingPeriodKey(year, month) {
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+function getPreviousBillingPeriod(year, month) {
+  return month === 1
+    ? { year: year - 1, month: 12 }
+    : { year, month: month - 1 };
+}
+
+function formatBillingPeriodLabel(year, month) {
+  return `${MONTH_NAMES[month] || month} ${year}`;
+}
+
 function addMonthsSafely(dateValue, monthsToAdd) {
   const source = new Date(dateValue);
   const targetMonthIndex = source.getMonth() + monthsToAdd;
@@ -892,11 +914,13 @@ class DataManager {
   }
 
   getSortedContacts() {
-    return Array.from(this.contacts.values()).sort((a, b) => a.name.localeCompare(b.name, "id-ID"));
+    return Array.from(this.contacts.values())
+      .map((contact) => this.hydrateContact(contact))
+      .sort((a, b) => a.name.localeCompare(b.name, "id-ID"));
   }
 
   getContacts() {
-    return Array.from(this.contacts.values());
+    return Array.from(this.contacts.values()).map((contact) => this.hydrateContact(contact));
   }
 
   getSortedReminders() {
@@ -917,6 +941,7 @@ class DataManager {
     const sentReminders = this.getSentReminders();
     const paid = contacts.filter((contact) => contact.paymentStatus === PAYMENT_STATUS.PAID).length;
     const unpaid = contacts.length - paid;
+    const debt = contacts.filter((contact) => contact.hasDebt).length;
     return {
       contacts: contacts.length,
       pelanggan: this.pelanggan.size,
@@ -924,6 +949,7 @@ class DataManager {
       sentReminders: sentReminders.length,
       paidContacts: paid,
       unpaidContacts: unpaid,
+      debtContacts: debt,
       adminRecipients: this.getAdminRecipients().length,
       nextReminderAt: reminders[0]?.reminderDateTime || null,
     };
@@ -970,6 +996,48 @@ class DataManager {
     };
   }
 
+  buildDebtInfo(contact, options = {}) {
+    const { year, month } = options.year && options.month
+      ? { year: options.year, month: options.month }
+      : getBillingPeriodParts();
+    const previous = getPreviousBillingPeriod(year, month);
+    const previousKey = makeBillingPeriodKey(previous.year, previous.month);
+    const currentKey = makeBillingPeriodKey(year, month);
+    const systemStartYear = 2026;
+    const systemStartMonth = 4;
+    const previousBeforeSystem = previous.year < systemStartYear
+      || (previous.year === systemStartYear && previous.month < systemStartMonth);
+    const paymentMonths = contact.paymentMonths || {};
+    const previousPayment = paymentMonths[previousKey] || null;
+    const currentPayment = paymentMonths[currentKey] || null;
+    const currentType = String(currentPayment?.paymentType || contact.paymentType || "").toUpperCase();
+    const createdAt = contact.createdAt ? new Date(contact.createdAt) : null;
+    const previousPeriodEnd = new Date(previous.year, previous.month, 0, 23, 59, 59, 999);
+    const createdAfterPreviousPeriod = createdAt && !Number.isNaN(createdAt.getTime()) && createdAt > previousPeriodEnd;
+    const previousPaid = previousPayment?.status === PAYMENT_STATUS.PAID
+      || currentType === PAYMENT_TYPES.FULL_PAID
+      || currentType === PAYMENT_TYPES.ARREARS_ONLY;
+    const hasDebt = !previousBeforeSystem && !createdAfterPreviousPeriod && !previousPaid;
+    const periodLabel = formatBillingPeriodLabel(previous.year, previous.month);
+
+    return {
+      hasDebt,
+      debtPeriod: previousKey,
+      debtPeriodLabel: periodLabel,
+      debtNote: hasDebt ? `Masih ada hutang ${periodLabel}.` : "",
+      previousPaymentStatus: previousPayment?.status || PAYMENT_STATUS.UNPAID,
+      currentPaymentStatus: currentPayment?.status || String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase(),
+    };
+  }
+
+  hydrateContact(contact) {
+    const debtInfo = this.buildDebtInfo(contact);
+    return {
+      ...contact,
+      ...debtInfo,
+    };
+  }
+
   async normalizeReminderRelations() {
     let hasChanges = false;
 
@@ -1011,6 +1079,8 @@ class DataManager {
       paymentStatus: payload.paymentStatus || PAYMENT_STATUS.UNPAID,
       paymentDate: payload.paymentStatus === PAYMENT_STATUS.PAID ? new Date().toISOString() : null,
       paymentMonths: payload.paymentMonths || {},
+      createdAt: payload.createdAt || new Date().toISOString(),
+      updatedAt: payload.updatedAt || new Date().toISOString(),
     };
 
     this.contacts.set(contact.id, contact);
@@ -1279,22 +1349,36 @@ class DataManager {
       throw new Error("Status pembayaran tidak valid.");
     }
 
-    const currentKey = getBillingPeriodKey();
+    const now = new Date();
+    const { year, month } = getBillingPeriodParts(now);
+    const currentKey = makeBillingPeriodKey(year, month);
+    const previous = getPreviousBillingPeriod(year, month);
+    const previousKey = makeBillingPeriodKey(previous.year, previous.month);
     if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") {
       contact.paymentMonths = {};
     }
 
     contact.paymentStatus = status;
-    contact.paymentDate = status === PAYMENT_STATUS.PAID ? new Date().toISOString() : null;
+    contact.paymentDate = status === PAYMENT_STATUS.PAID ? now.toISOString() : null;
     contact.paymentType = paymentType || null;
+
+    if (paymentType === PAYMENT_TYPES.ARREARS_ONLY || paymentType === PAYMENT_TYPES.FULL_PAID) {
+      contact.paymentMonths[previousKey] = {
+        status: PAYMENT_STATUS.PAID,
+        paidDate: now.toISOString(),
+        paymentType,
+      };
+    }
+
     contact.paymentMonths[currentKey] = {
       status,
-      paidDate: status === PAYMENT_STATUS.PAID ? new Date().toISOString() : null,
+      paidDate: status === PAYMENT_STATUS.PAID ? now.toISOString() : null,
       paymentType: paymentType || null,
     };
+    contact.updatedAt = now.toISOString();
 
     await this.saveContacts();
-    return contact;
+    return this.hydrateContact(contact);
   }
 
   async setPaymentForMonth(contactId, year, month, status, paymentType = null) {
@@ -1309,23 +1393,35 @@ class DataManager {
     }
 
     const key = `${year}-${String(month).padStart(2, "0")}`;
+    const now = new Date();
+    const previous = getPreviousBillingPeriod(year, month);
+    const previousKey = makeBillingPeriodKey(previous.year, previous.month);
+
+    if (paymentType === PAYMENT_TYPES.ARREARS_ONLY || paymentType === PAYMENT_TYPES.FULL_PAID) {
+      contact.paymentMonths[previousKey] = {
+        status: PAYMENT_STATUS.PAID,
+        paidDate: now.toISOString(),
+        paymentType,
+      };
+    }
+
     contact.paymentMonths[key] = {
       status,
-      paidDate: status === PAYMENT_STATUS.PAID ? new Date().toISOString() : null,
+      paidDate: status === PAYMENT_STATUS.PAID ? now.toISOString() : null,
       paymentType: paymentType || null,
     };
 
-    const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1;
     if (year === currentYear && month === currentMonth) {
       contact.paymentStatus = status;
-      contact.paymentDate = status === PAYMENT_STATUS.PAID ? new Date().toISOString() : null;
+      contact.paymentDate = status === PAYMENT_STATUS.PAID ? now.toISOString() : null;
       contact.paymentType = paymentType || null;
     }
+    contact.updatedAt = now.toISOString();
 
     await this.saveContacts();
-    return contact;
+    return this.hydrateContact(contact);
   }
 
   inferPaymentType(contact, options = {}) {

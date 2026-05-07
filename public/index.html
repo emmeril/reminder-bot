@@ -358,6 +358,7 @@
                <option value="ALL">Semua status</option>
                <option value="PAID">Lunas</option>
                <option value="UNPAID">Belum bayar</option>
+               <option value="DEBT">Masih ada hutang</option>
                <option value="ARREARS-ONLY">Hanya Tunggakan</option>
                <option value="CURRENT-ONLY">Bulan Ini Saja</option>
                <option value="FULL-PAID">Lunas Semua</option>
@@ -396,13 +397,25 @@
                           }"
                           x-text="contact.paymentType ? getPaymentTypeLabel(contact.paymentType) : (contact.paymentStatus === 'PAID' ? getPaymentTypeLabel(inferPaymentType(contact)) : 'Belum bayar')"
                         ></span>
+                        <template x-if="hasDebt(contact)">
+                          <div class="mt-2 inline-flex max-w-full items-start gap-1.5 rounded-xl border border-clay/20 bg-clay/5 px-2.5 py-1.5 text-xs font-semibold leading-5 text-clay">
+                            <i class="fa-solid fa-circle-info mt-0.5"></i>
+                            <span x-text="getDebtNote(contact)"></span>
+                          </div>
+                        </template>
                       </td>
                       <td class="px-4 py-4 align-top" data-label="Aksi">
                         <div class="flex flex-col items-start gap-2">
+                          <template x-if="hasDebt(contact)">
+                            <div class="w-full rounded-xl border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold leading-5 text-clay">
+                              <i class="fa-solid fa-triangle-exclamation mr-1.5"></i>
+                              <span x-text="getDebtNote(contact)"></span>
+                            </div>
+                          </template>
 <template x-if="contact.paymentStatus !== 'PAID'">
                              <div class="grid w-full gap-2">
-                               <button type="button" @click="togglePayment(contact.id, 'UNPAID', 'ARREARS-ONLY')" class="w-full rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:bg-ink hover:text-white">
-                                 <i class="fa-solid fa-circle-check mr-1.5"></i>Hanya tunggakan
+                               <button x-show="hasDebt(contact)" type="button" @click="togglePayment(contact.id, 'UNPAID', 'ARREARS-ONLY')" class="w-full rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:bg-ink hover:text-white">
+                                 <i class="fa-solid fa-circle-check mr-1.5"></i>Bayar tunggakan
                                </button>
                                <button type="button" @click="togglePayment(contact.id, 'PAID', 'CURRENT-ONLY')" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white">
                                  <i class="fa-solid fa-calendar-check mr-1.5"></i>Bulan ini saja
@@ -413,12 +426,21 @@
                              </div>
                            </template>
                           <template x-if="contact.paymentStatus === 'PAID'">
-                            <button
-                              @click="togglePayment(contact.id, 'UNPAID')"
-                              class="w-full rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:bg-ink hover:text-white"
-                            >
-                              <i class="fa-solid fa-circle-check mr-1.5"></i>Reset ke belum bayar
-                            </button>
+                            <div class="grid w-full gap-2">
+                              <button
+                                x-show="hasDebt(contact)"
+                                @click="togglePayment(contact.id, 'PAID', 'FULL-PAID')"
+                                class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"
+                              >
+                                <i class="fa-solid fa-sack-dollar mr-1.5"></i>Lunasi hutang
+                              </button>
+                              <button
+                                @click="togglePayment(contact.id, 'UNPAID')"
+                                class="w-full rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:bg-ink hover:text-white"
+                              >
+                                <i class="fa-solid fa-circle-check mr-1.5"></i>Reset ke belum bayar
+                              </button>
+                            </div>
                           </template>
                           <button @click="editContact(contact)" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit</button>
                           <button @click="removeContact(contact)" class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Delete</button>
@@ -1085,6 +1107,34 @@ inferPaymentType(contact) {
           return ["ARREARS-ONLY", "CURRENT-ONLY", "FULL-PAID"];
         },
 
+        getPreviousBillingPeriodLabel() {
+          const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+          const now = new Date();
+          const currentMonth = now.getMonth() + 1;
+          const previousMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+          const previousYear = currentMonth === 1 ? now.getFullYear() - 1 : now.getFullYear();
+          return `${monthNames[previousMonth]} ${previousYear}`;
+        },
+
+        hasDebt(contact) {
+          if (contact.hasDebt !== undefined) return Boolean(contact.hasDebt);
+          const type = this.inferPaymentType(contact);
+          if (type === "FULL-PAID" || type === "ARREARS-ONLY") return false;
+
+          const paymentMonths = contact.paymentMonths || {};
+          const now = new Date();
+          const year = now.getFullYear();
+          const month = now.getMonth() + 1;
+          const prevMonth = month === 1 ? 12 : month - 1;
+          const prevYear = month === 1 ? year - 1 : year;
+          const prevKey = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
+          return paymentMonths[prevKey]?.status !== "PAID";
+        },
+
+        getDebtNote(contact) {
+          return contact.debtNote || `Masih ada hutang ${contact.debtPeriodLabel || this.getPreviousBillingPeriodLabel()}.`;
+        },
+
         searchMatches(item, fields, search) {
           const needle = String(search || "").trim().toLowerCase();
           if (!needle) return true;
@@ -1107,9 +1157,10 @@ get filteredContacts() {
              if (this.filters.contacts.status !== "ALL") {
                if (this.filters.contacts.status === "PAID" && status !== "PAID") return false;
                if (this.filters.contacts.status === "UNPAID" && status !== "UNPAID") return false;
+               if (this.filters.contacts.status === "DEBT" && !this.hasDebt(contact)) return false;
                if (["ARREARS-ONLY", "CURRENT-ONLY", "FULL-PAID"].includes(this.filters.contacts.status) && paymentType !== this.filters.contacts.status) return false;
              }
-             return this.searchMatches(contact, ["name", "phoneNumber", "paymentStatus"], this.filters.contacts.search);
+             return this.searchMatches(contact, ["name", "phoneNumber", "paymentStatus", "debtNote"], this.filters.contacts.search);
            });
          },
 
@@ -1216,6 +1267,7 @@ get filteredContacts() {
               { label: "Admin recipients", value: data.summary.adminRecipients, icon: "fa-solid fa-user-shield" },
               { label: "Paid contacts", value: data.summary.paidContacts, icon: "fa-solid fa-circle-check" },
               { label: "Unpaid contacts", value: data.summary.unpaidContacts, icon: "fa-solid fa-triangle-exclamation" },
+              { label: "Masih ada hutang", value: data.summary.debtContacts || 0, icon: "fa-solid fa-file-invoice-dollar" },
             ];
             if (!this.settingsDirty) {
               this.forms.settings = {
