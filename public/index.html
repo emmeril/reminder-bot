@@ -1153,11 +1153,14 @@
           return this.contacts.filter((contact) => {
             const selectedStatus = String(this.filters.contacts.status || "ALL").toUpperCase();
             const paymentStatus = String(contact.paymentStatus || "UNPAID").toUpperCase();
+            const savedPaymentType = String(contact.paymentType || "").toUpperCase();
             const paymentType = this.inferPaymentType(contact, { useSavedType: false });
 
             if (selectedStatus !== "ALL") {
-              if (selectedStatus === "UNPAID" && (paymentStatus === "PAID" || paymentType === "ARREARS-ONLY")) return false;
-              if (["ARREARS-ONLY", "CURRENT-ONLY", "FULL-PAID"].includes(selectedStatus) && paymentType !== selectedStatus) return false;
+              if (selectedStatus === "ARREARS-ONLY" && (savedPaymentType !== "ARREARS-ONLY" || paymentStatus === "PAID")) return false;
+              if (selectedStatus === "UNPAID" && (paymentStatus === "PAID" || savedPaymentType === "ARREARS-ONLY")) return false;
+              if (selectedStatus === "CURRENT-ONLY" && paymentType !== "CURRENT-ONLY") return false;
+              if (selectedStatus === "FULL-PAID" && paymentType !== "FULL-PAID") return false;
             }
 
             return this.searchMatches(
