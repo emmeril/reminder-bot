@@ -349,7 +349,7 @@
               </button>
             </div>
           </form>
-          <div class="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr),180px,140px]">
+          <div class="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr),180px,210px,140px]">
             <input x-model="filters.contacts.search" @input="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama atau nomor WA">
 <select x-model="filters.contacts.status" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
                <option value="ALL">Semua status</option>
@@ -358,6 +358,13 @@
                <option value="CURRENT-ONLY">Bulan Ini Saja</option>
                <option value="FULL-PAID">Lunas Semua</option>
              </select>
+            <select x-model="filters.contacts.dueStatus" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+              <option value="ALL">Semua jatuh tempo</option>
+              <option value="NOT_SCHEDULED">Belum Dijadwalkan</option>
+              <option value="UPCOMING">Belum Jatuh Tempo</option>
+              <option value="OVERDUE">Jatuh Tempo</option>
+              <option value="PAID">Lunas</option>
+            </select>
             <select x-model.number="filters.contacts.pageSize" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <template x-for="size in pageSizes" :key="'contacts-size-' + size">
                 <option :value="size" x-text="size + ' / page'"></option>
@@ -936,7 +943,7 @@
         billingPeriod: "",
         pageSizes: [10, 25, 50, 100],
         filters: {
-          contacts: { search: "", status: "ALL", page: 1, pageSize: 10 },
+          contacts: { search: "", status: "ALL", dueStatus: "ALL", page: 1, pageSize: 10 },
           reminders: { search: "", schedule: "ALL", page: 1, pageSize: 10 },
           sent: { search: "", status: "ALL", page: 1, pageSize: 10 },
           logs: { page: 1, pageSize: 10 },
@@ -1177,8 +1184,10 @@
         get filteredContacts() {
           return this.contacts.filter((contact) => {
             const selectedStatus = String(this.filters.contacts.status || "ALL").toUpperCase();
+            const selectedDueStatus = String(this.filters.contacts.dueStatus || "ALL").toUpperCase();
             const paymentStatus = String(contact.paymentStatus || "UNPAID").toUpperCase();
             const savedPaymentType = String(contact.paymentType || "").toUpperCase();
+            const dueStatus = String(contact.dueStatus || "NOT_SCHEDULED").toUpperCase();
 
             if (selectedStatus !== "ALL") {
               if (selectedStatus === "ARREARS-ONLY" && (savedPaymentType !== "ARREARS-ONLY" || paymentStatus === "PAID")) return false;
@@ -1186,6 +1195,7 @@
               if (selectedStatus === "CURRENT-ONLY" && (savedPaymentType !== "CURRENT-ONLY" || paymentStatus !== "PAID")) return false;
               if (selectedStatus === "FULL-PAID" && (savedPaymentType !== "FULL-PAID" || paymentStatus !== "PAID")) return false;
             }
+            if (selectedDueStatus !== "ALL" && dueStatus !== selectedDueStatus) return false;
 
             return this.searchMatches(
               contact,
