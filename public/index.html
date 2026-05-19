@@ -332,6 +332,7 @@
                   <tr>
                     <th class="px-4 py-3"><i class="fa-solid fa-user mr-2"></i>Nama</th>
                     <th class="px-4 py-3"><i class="fa-brands fa-whatsapp mr-2"></i>No. WA</th>
+                    <th class="px-4 py-3"><i class="fa-solid fa-wifi mr-2"></i>AP Tujuan</th>
                     <th class="px-4 py-3"><i class="fa-regular fa-calendar mr-2"></i>Tgl Jatuh Tempo</th>
                     <th class="px-4 py-3"><i class="fa-solid fa-hourglass-half mr-2"></i>Status Jatuh Tempo</th>
                     <th class="px-4 py-3"><i class="fa-solid fa-receipt mr-2"></i>Status Bayar</th>
@@ -340,12 +341,13 @@
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white/70">
                   <template x-if="!filteredContacts.length">
-                    <tr><td colspan="6" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada contact yang cocok.' : 'Belum ada contact.'"></td></tr>
+                    <tr><td colspan="7" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada contact yang cocok.' : 'Belum ada contact.'"></td></tr>
                   </template>
                   <template x-for="contact in paginatedContacts" :key="contact.id">
                     <tr>
                       <td class="px-4 py-4 font-medium" data-label="Nama" x-text="contact.name"></td>
                       <td class="px-4 py-4 text-ink/65" data-label="No. WA" x-text="contact.phoneNumber"></td>
+                      <td class="px-4 py-4 text-ink/65" data-label="AP Tujuan" x-text="contact.linkedApHost || '-'"></td>
                       <td class="px-4 py-4 text-ink/65" data-label="Tgl Jatuh Tempo" x-text="contact.dueDate ? formatDateTime(contact.dueDate) : '-'"></td>
                       <td class="px-4 py-4" data-label="Status Jatuh Tempo">
                         <span
@@ -668,6 +670,10 @@
                 <input x-model="forms.settings.timezone" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               </label>
             </div>
+            <label class="block text-sm text-ink/60">
+              Template Notifikasi AP Down
+              <textarea x-model="forms.settings.apDownMessageTemplate" class="mt-2 min-h-36 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Gunakan placeholder: {{name}}, {{host}}, {{status}}, {{supportSignature}}, {{companyName}}"></textarea>
+            </label>
             <div class="grid gap-3 rounded-[1.5rem] border border-ink/8 bg-haze p-4">
               <label class="flex items-start gap-3 text-sm text-ink/75">
                 <input x-model="forms.settings.autoRescheduleMonthly" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
@@ -855,6 +861,15 @@
             Nomor WhatsApp
             <input x-model="forms.contact.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="628xxx" required>
           </label>
+          <label class="block text-sm text-ink/60">
+            AP tujuan (opsional)
+            <select x-model="forms.contact.linkedApHost" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+              <option value="">-- Tidak di-link ke AP --</option>
+              <template x-for="ap in apMonitors" :key="'contact-ap-' + ap.id + '-' + ap.host">
+                <option :value="ap.host" x-text="ap.host + ' (' + (ap.status || 'UNKNOWN') + ')'"></option>
+              </template>
+            </select>
+          </label>
           <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" @click="closeContactCreateModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="contactCreateModal.loading">Batal</button>
             <button type="submit" class="rounded-2xl bg-moss px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20 transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60" :disabled="contactCreateModal.loading">
@@ -1020,6 +1035,15 @@
           <label class="block text-sm text-ink/60">
             Nomor WhatsApp
             <input x-model="forms.contactEdit.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="628xxx" required>
+          </label>
+          <label class="block text-sm text-ink/60">
+            AP tujuan (opsional)
+            <select x-model="forms.contactEdit.linkedApHost" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+              <option value="">-- Tidak di-link ke AP --</option>
+              <template x-for="ap in apMonitors" :key="'contact-edit-ap-' + ap.id + '-' + ap.host">
+                <option :value="ap.host" x-text="ap.host + ' (' + (ap.status || 'UNKNOWN') + ')'"></option>
+              </template>
+            </select>
           </label>
           <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" @click="closeContactEditModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="contactEditModal.loading">Batal</button>
@@ -1229,16 +1253,17 @@
           manual: { contactId: "", phoneNumber: "", templateName: "", message: "" },
           broadcast: { title: "", templateName: "", message: "" },
           recipients: "",
-          contact: { id: "", name: "", phoneNumber: "" },
+          contact: { id: "", name: "", phoneNumber: "", linkedApHost: "" },
           mikrotikCustomer: { name: "", phoneNumber: "", profile: "", sendCredentials: true },
           reminder: { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
-          contactEdit: { id: "", name: "", phoneNumber: "" },
+          contactEdit: { id: "", name: "", phoneNumber: "", linkedApHost: "" },
           reminderEdit: { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
           template: { name: "", content: "" },
           settings: {
             dashboardTitle: "",
             companyName: "",
             supportSignature: "",
+            apDownMessageTemplate: "",
             timezone: "",
             autoRescheduleMonthly: false,
             notifyAdminsOnDelivery: false,
@@ -1485,7 +1510,7 @@
 
             return this.searchMatches(
               contact,
-              ["name", "phoneNumber", "paymentStatus", "paymentType", "debtNote", "dueStatus", "dueDate"],
+              ["name", "phoneNumber", "linkedApHost", "paymentStatus", "paymentType", "debtNote", "dueStatus", "dueDate"],
               this.filters.contacts.search
             );
           });
@@ -1627,6 +1652,7 @@
                 dashboardTitle: data.settings.dashboardTitle || "",
                 companyName: data.settings.companyName || "",
                 supportSignature: data.settings.supportSignature || "",
+                apDownMessageTemplate: data.settings.apDownMessageTemplate || "",
                 timezone: data.settings.timezone || "",
                 autoRescheduleMonthly: Boolean(data.settings.autoRescheduleMonthly),
                 notifyAdminsOnDelivery: Boolean(data.settings.notifyAdminsOnDelivery),
@@ -1682,17 +1708,18 @@
           const payload = {
             name: this.forms.contact.name,
             phoneNumber: this.forms.contact.phoneNumber,
+            linkedApHost: this.forms.contact.linkedApHost,
           };
           await this.api("/api/contacts", {
             method: "POST",
             body: JSON.stringify(payload),
           });
-          this.forms.contact = { id: "", name: "", phoneNumber: "" };
+          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "" };
           await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
         },
 
         openContactCreateModal() {
-          this.forms.contact = { id: "", name: "", phoneNumber: "" };
+          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "" };
           this.contactCreateModal.open = true;
           document.body.classList.add("overflow-hidden");
         },
@@ -1700,7 +1727,7 @@
         closeContactCreateModal() {
           this.contactCreateModal.open = false;
           this.contactCreateModal.loading = false;
-          this.forms.contact = { id: "", name: "", phoneNumber: "" };
+          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "" };
           document.body.classList.remove("overflow-hidden");
         },
 
@@ -1721,6 +1748,7 @@
             id: contact.id,
             name: contact.name || "",
             phoneNumber: contact.phoneNumber || "",
+            linkedApHost: contact.linkedApHost || "",
           };
           this.contactEditModal.open = true;
           document.body.classList.add("overflow-hidden");
@@ -1729,7 +1757,7 @@
         closeContactEditModal() {
           this.contactEditModal.open = false;
           this.contactEditModal.loading = false;
-          this.forms.contactEdit = { id: "", name: "", phoneNumber: "" };
+          this.forms.contactEdit = { id: "", name: "", phoneNumber: "", linkedApHost: "" };
           document.body.classList.remove("overflow-hidden");
         },
 
@@ -1742,6 +1770,7 @@
               body: JSON.stringify({
                 name: this.forms.contactEdit.name,
                 phoneNumber: this.forms.contactEdit.phoneNumber,
+                linkedApHost: this.forms.contactEdit.linkedApHost,
               }),
             });
             this.notify("Contact diperbarui.");

@@ -86,6 +86,7 @@ const DEFAULT_SETTINGS = {
   dashboardTitle: "Reminder Bot Control Center",
   companyName: "Emmeril Hotspot",
   supportSignature: "CS Emmeril Hotspot",
+  apDownMessageTemplate: "Halo {{name}},\n\nKami mendeteksi perangkat AP *{{host}}* sedang *DOWN*.\nTim kami sedang melakukan pengecekan.\n\nMohon maaf atas ketidaknyamanannya.\n\n{{supportSignature}}",
   timezone: "Asia/Jakarta",
   lastPaymentResetPeriod: "",
   autoRescheduleMonthly: true,
@@ -879,6 +880,7 @@ class DataManager {
       contact.paymentStatus = String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase();
       const normalizedType = String(contact.paymentType || "").toUpperCase();
       contact.paymentType = Object.values(PAYMENT_TYPES).includes(normalizedType) ? normalizedType : null;
+      contact.linkedApHost = sanitizeInput(String(contact.linkedApHost || ""));
       if (!contact.paymentMonths || typeof contact.paymentMonths !== "object" || Array.isArray(contact.paymentMonths)) {
         contact.paymentMonths = {};
       }
@@ -1139,6 +1141,7 @@ class DataManager {
   async addContact(payload) {
     const name = sanitizeInput(payload.name);
     const phoneNumber = normalizePhoneNumber(payload.phoneNumber);
+    const linkedApHost = sanitizeInput(String(payload.linkedApHost || ""));
 
     if (!name) throw new Error("Nama kontak wajib diisi.");
     if (!isValidPhoneNumber(phoneNumber)) throw new Error("Nomor kontak harus berformat 628xxx.");
@@ -1151,6 +1154,7 @@ class DataManager {
       paymentStatus: payload.paymentStatus || PAYMENT_STATUS.UNPAID,
       paymentDate: payload.paymentStatus === PAYMENT_STATUS.PAID ? new Date().toISOString() : null,
       paymentMonths: payload.paymentMonths || {},
+      linkedApHost,
       createdAt: payload.createdAt || new Date().toISOString(),
       updatedAt: payload.updatedAt || new Date().toISOString(),
     };
@@ -1223,6 +1227,9 @@ class DataManager {
 
     const nextName = payload.name !== undefined ? sanitizeInput(payload.name) : contact.name;
     const nextPhone = payload.phoneNumber !== undefined ? normalizePhoneNumber(payload.phoneNumber) : contact.phoneNumber;
+    const nextLinkedApHost = payload.linkedApHost !== undefined
+      ? sanitizeInput(String(payload.linkedApHost || ""))
+      : sanitizeInput(String(contact.linkedApHost || ""));
 
     if (!nextName) throw new Error("Nama kontak wajib diisi.");
     if (!isValidPhoneNumber(nextPhone)) throw new Error("Nomor kontak harus berformat 628xxx.");
@@ -1230,6 +1237,7 @@ class DataManager {
 
     contact.name = nextName;
     contact.phoneNumber = nextPhone;
+    contact.linkedApHost = nextLinkedApHost;
 
     for (const reminder of this.reminders.values()) {
       if (String(reminder.contactId) === String(id) || reminder.phoneNumber === previousPhone) {
@@ -1373,6 +1381,9 @@ class DataManager {
       dashboardTitle: payload.dashboardTitle !== undefined ? sanitizeInput(payload.dashboardTitle) || current.dashboardTitle : current.dashboardTitle,
       companyName: payload.companyName !== undefined ? sanitizeInput(payload.companyName) || current.companyName : current.companyName,
       supportSignature: payload.supportSignature !== undefined ? sanitizeInput(payload.supportSignature) || current.supportSignature : current.supportSignature,
+      apDownMessageTemplate: payload.apDownMessageTemplate !== undefined
+        ? sanitizeMultilineText(payload.apDownMessageTemplate) || current.apDownMessageTemplate
+        : current.apDownMessageTemplate,
       timezone: payload.timezone !== undefined ? sanitizeInput(payload.timezone) || current.timezone : current.timezone,
       autoRescheduleMonthly: payload.autoRescheduleMonthly !== undefined ? parseBoolean(payload.autoRescheduleMonthly, current.autoRescheduleMonthly) : current.autoRescheduleMonthly,
       notifyAdminsOnDelivery: payload.notifyAdminsOnDelivery !== undefined ? parseBoolean(payload.notifyAdminsOnDelivery, current.notifyAdminsOnDelivery) : current.notifyAdminsOnDelivery,
@@ -2106,6 +2117,91 @@ class ReminderScheduler {
   }
 }
 
+class ApDownNotifier {
+  constructor(mikrotikService, notificationBot, dataManager, activityLog) {
+    this.mikrotikService = mikrotikService;
+    this.notificationBot = notificationBot;
+    this.dataManager = dataManager;
+    this.activityLog = activityLog;
+    this.lastStatuses = new Map();
+    this.isInitialized = false;
+  }
+
+  normalizeStatus(value) {
+    return String(value || "UNKNOWN").trim().toUpperCase();
+  }
+
+  renderApDownMessage(template, context) {
+    return String(template || "")
+      .replace(/{{\s*name\s*}}/gi, context.name || "")
+      .replace(/{{\s*host\s*}}/gi, context.host || "")
+      .replace(/{{\s*status\s*}}/gi, context.status || "")
+      .replace(/{{\s*supportSignature\s*}}/gi, context.supportSignature || "CS Emmeril Hotspot")
+      .replace(/{{\s*companyName\s*}}/gi, context.companyName || "");
+  }
+
+  async processNetwatchChanges() {
+    const monitors = await this.mikrotikService.getNetwatchStatus();
+    const currentStatuses = new Map(
+      monitors.map((item) => [String(item.host || ""), this.normalizeStatus(item.status)])
+    );
+
+    if (!this.isInitialized) {
+      this.lastStatuses = currentStatuses;
+      this.isInitialized = true;
+      return;
+    }
+
+    for (const monitor of monitors) {
+      const host = String(monitor.host || "");
+      if (!host) continue;
+
+      const currentStatus = this.normalizeStatus(monitor.status);
+      const previousStatus = this.lastStatuses.get(host);
+      const isTransitionToDown = previousStatus
+        && previousStatus !== "DOWN"
+        && currentStatus === "DOWN";
+
+      if (!isTransitionToDown) continue;
+
+      const linkedContacts = this.dataManager
+        .getContacts()
+        .filter((contact) => String(contact.linkedApHost || "") === host);
+
+      if (linkedContacts.length === 0) continue;
+
+      for (const contact of linkedContacts) {
+        try {
+          const settings = this.dataManager.getSettings();
+          const message = this.renderApDownMessage(settings.apDownMessageTemplate, {
+            name: contact.name,
+            host,
+            status: currentStatus,
+            supportSignature: settings.supportSignature || "CS Emmeril Hotspot",
+            companyName: settings.companyName || "",
+          });
+          await this.notificationBot.sendMessage(
+            contact.phoneNumber,
+            message
+          );
+          this.activityLog.push("info", "ap-monitor", `Notifikasi AP DOWN terkirim ke ${contact.phoneNumber}`, {
+            host,
+            contactId: contact.id,
+          });
+        } catch (error) {
+          this.activityLog.push("error", "ap-monitor", `Gagal kirim notifikasi AP DOWN ke ${contact.phoneNumber}`, {
+            host,
+            error: error.message,
+            contactId: contact.id,
+          });
+        }
+      }
+    }
+
+    this.lastStatuses = currentStatuses;
+  }
+}
+
 class WebServer {
   constructor(notificationBot, dataManager, templateManager, activityLog, reminderScheduler, authManager, mikrotikService) {
     this.app = express();
@@ -2611,6 +2707,7 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
   const templateManager = new TemplateManager(activityLog);
   const notificationBot = new NotificationBot(dataManager, activityLog);
   const mikrotikService = new MikrotikService(activityLog);
+  const apDownNotifier = new ApDownNotifier(mikrotikService, notificationBot, dataManager, activityLog);
 
   await dataManager.loadAll();
 
@@ -2628,7 +2725,10 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
   await dataManager.ensureMonthlyPaymentReset();
 
   cron.schedule(CONFIG.CRON_SCHEDULE, () => {
-    reminderScheduler.processDueReminders().catch((error) => {
+    Promise.all([
+      reminderScheduler.processDueReminders(),
+      apDownNotifier.processNetwatchChanges(),
+    ]).catch((error) => {
       activityLog.push("error", "scheduler", `Cron execution failed: ${error.message}`);
     });
   });
