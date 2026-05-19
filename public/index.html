@@ -341,11 +341,8 @@
             </label>
             <div class="flex flex-wrap gap-2">
               <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">
-                <i class="fa-solid" :class="forms.contact.id ? 'fa-floppy-disk mr-2' : 'fa-plus mr-2'"></i>
-                <span x-text="forms.contact.id ? 'Simpan Perubahan' : 'Tambah Contact'"></span>
-              </button>
-              <button type="button" x-show="forms.contact.id" @click="cancelContactEdit()" class="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
-                <i class="fa-solid fa-xmark mr-2"></i>Batal
+                <i class="fa-solid fa-plus mr-2"></i>
+                <span>Tambah Contact</span>
               </button>
             </div>
           </form>
@@ -454,7 +451,7 @@
                               </button>
                             </div>
                           </template>
-                          <button @click="editContact(contact)" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit</button>
+                          <button @click="openContactEditModal(contact)" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit</button>
                           <button @click="removeContact(contact)" class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Delete</button>
                         </div>
                       </td>
@@ -516,11 +513,8 @@
             </label>
             <div class="flex flex-wrap gap-2">
               <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">
-                <i class="fa-solid" :class="forms.reminder.id ? 'fa-floppy-disk mr-2' : 'fa-calendar-plus mr-2'"></i>
-                <span x-text="forms.reminder.id ? 'Simpan Perubahan' : 'Buat Reminder'"></span>
-              </button>
-              <button type="button" x-show="forms.reminder.id" @click="cancelReminderEdit()" class="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
-                <i class="fa-solid fa-xmark mr-2"></i>Batal
+                <i class="fa-solid fa-calendar-plus mr-2"></i>
+                <span>Buat Reminder</span>
               </button>
             </div>
           </form>
@@ -594,7 +588,7 @@
                       </td>
                       <td class="px-5 py-4 align-top" data-label="Aksi">
                         <div class="flex flex-col items-start gap-2">
-                          <button @click="editReminder(reminder)" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit</button>
+                          <button @click="openReminderEditModal(reminder)" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit</button>
                           <button @click="removeReminder(reminder)" class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Delete</button>
                         </div>
                       </td>
@@ -845,6 +839,111 @@
     </div>
 
     <div
+      x-cloak
+      x-show="contactEditModal.open"
+      x-transition.opacity
+      @keydown.escape.window="closeContactEditModal()"
+      @click.self="closeContactEditModal()"
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+    >
+      <div
+        x-show="contactEditModal.open"
+        x-transition.scale.origin.center
+        class="w-full max-w-xl rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
+      >
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="text-lg font-semibold text-ink">Edit Contact</h3>
+          <button type="button" @click="closeContactEditModal()" class="rounded-full border border-ink/10 px-3 py-1 text-sm font-semibold text-ink hover:bg-haze">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <form class="space-y-4" @submit.prevent="saveContactEdit()">
+          <label class="block text-sm text-ink/60">
+            Nama
+            <input x-model="forms.contactEdit.name" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+          </label>
+          <label class="block text-sm text-ink/60">
+            Nomor WhatsApp
+            <input x-model="forms.contactEdit.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="628xxx" required>
+          </label>
+          <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" @click="closeContactEditModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="contactEditModal.loading">Batal</button>
+            <button type="submit" class="rounded-2xl bg-moss px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20 transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60" :disabled="contactEditModal.loading">
+              <span x-show="!contactEditModal.loading">Simpan Perubahan</span>
+              <span x-show="contactEditModal.loading" class="inline-flex items-center gap-2">
+                <i class="fa-solid fa-circle-notch fa-spin"></i>Menyimpan...
+              </span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div
+      x-cloak
+      x-show="reminderEditModal.open"
+      x-transition.opacity
+      @keydown.escape.window="closeReminderEditModal()"
+      @click.self="closeReminderEditModal()"
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+    >
+      <div
+        x-show="reminderEditModal.open"
+        x-transition.scale.origin.center
+        class="w-full max-w-2xl rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
+      >
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="text-lg font-semibold text-ink">Edit Reminder</h3>
+          <button type="button" @click="closeReminderEditModal()" class="rounded-full border border-ink/10 px-3 py-1 text-sm font-semibold text-ink hover:bg-haze">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <form class="space-y-4" @submit.prevent="saveReminderEdit()">
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="block text-sm text-ink/60">
+              Contact tujuan
+              <select x-model="forms.reminderEdit.contactId" @change="onReminderEditContactChange()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+                <option value="">Pilih contact</option>
+                <template x-for="contact in contacts" :key="'modal-reminder-contact-' + contact.id">
+                  <option :value="contact.id" x-text="contact.name + ' (' + contact.phoneNumber + ')'"></option>
+                </template>
+              </select>
+            </label>
+            <label class="block text-sm text-ink/60">
+              Waktu kirim
+              <div class="mt-2 grid grid-cols-2 gap-2">
+                <input type="date" x-model="forms.reminderEdit.reminderDate" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+                <input type="time" x-model="forms.reminderEdit.reminderTime" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+              </div>
+            </label>
+          </div>
+          <label class="block text-sm text-ink/60">
+            Template (opsional)
+            <select x-model="forms.reminderEdit.templateName" @change="applyReminderEditTemplate()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+              <option value="">-- Tidak memakai template --</option>
+              <template x-for="t in templates" :key="'modal-reminder-template-' + t.name">
+                <option :value="t.name" x-text="t.name"></option>
+              </template>
+            </select>
+          </label>
+          <label class="block text-sm text-ink/60">
+            Pesan reminder
+            <textarea x-model="forms.reminderEdit.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required></textarea>
+          </label>
+          <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" @click="closeReminderEditModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="reminderEditModal.loading">Batal</button>
+            <button type="submit" class="rounded-2xl bg-moss px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20 transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60" :disabled="reminderEditModal.loading">
+              <span x-show="!reminderEditModal.loading">Simpan Perubahan</span>
+              <span x-show="reminderEditModal.loading" class="inline-flex items-center gap-2">
+                <i class="fa-solid fa-circle-notch fa-spin"></i>Menyimpan...
+              </span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div
       x-show="toast.show"
       x-transition.opacity.duration.200ms
       x-transition:enter-start="translate-y-3"
@@ -918,6 +1017,14 @@
           description: "",
           action: null,
         },
+        contactEditModal: {
+          open: false,
+          loading: false,
+        },
+        reminderEditModal: {
+          open: false,
+          loading: false,
+        },
         activeMenu: "overview",
         navMenus: [
           { key: "overview", label: "Overview", icon: "fa-solid fa-chart-pie" },
@@ -955,6 +1062,8 @@
           contact: { id: "", name: "", phoneNumber: "" },
           mikrotikCustomer: { name: "", phoneNumber: "", profile: "", sendCredentials: true },
           reminder: { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
+          contactEdit: { id: "", name: "", phoneNumber: "" },
+          reminderEdit: { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
           template: { name: "", content: "" },
           settings: {
             dashboardTitle: "",
@@ -1366,33 +1475,49 @@
             name: this.forms.contact.name,
             phoneNumber: this.forms.contact.phoneNumber,
           };
-          if (this.forms.contact.id) {
-            await this.api(`/api/contacts/${this.forms.contact.id}`, {
-              method: "PUT",
-              body: JSON.stringify(payload),
-            });
-            this.notify("Contact diperbarui.");
-          } else {
-            await this.api("/api/contacts", {
-              method: "POST",
-              body: JSON.stringify(payload),
-            });
-            this.notify("Contact ditambahkan.");
-          }
+          await this.api("/api/contacts", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+          this.notify("Contact ditambahkan.");
           this.forms.contact = { id: "", name: "", phoneNumber: "" };
           await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
         },
 
-        editContact(contact) {
-          this.forms.contact = {
+        openContactEditModal(contact) {
+          this.forms.contactEdit = {
             id: contact.id,
             name: contact.name || "",
             phoneNumber: contact.phoneNumber || "",
           };
+          this.contactEditModal.open = true;
+          document.body.classList.add("overflow-hidden");
         },
 
-        cancelContactEdit() {
-          this.forms.contact = { id: "", name: "", phoneNumber: "" };
+        closeContactEditModal() {
+          this.contactEditModal.open = false;
+          this.contactEditModal.loading = false;
+          this.forms.contactEdit = { id: "", name: "", phoneNumber: "" };
+          document.body.classList.remove("overflow-hidden");
+        },
+
+        async saveContactEdit() {
+          if (!this.forms.contactEdit.id || this.contactEditModal.loading) return;
+          this.contactEditModal.loading = true;
+          try {
+            await this.api(`/api/contacts/${this.forms.contactEdit.id}`, {
+              method: "PUT",
+              body: JSON.stringify({
+                name: this.forms.contactEdit.name,
+                phoneNumber: this.forms.contactEdit.phoneNumber,
+              }),
+            });
+            this.notify("Contact diperbarui.");
+            this.closeContactEditModal();
+            await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
+          } finally {
+            this.contactEditModal.loading = false;
+          }
         },
 
         async registerMikrotikCustomer() {
@@ -1527,26 +1652,18 @@
             templateName: this.forms.reminder.templateName,
           };
 
-          if (this.forms.reminder.id) {
-            await this.api(`/api/reminders/${this.forms.reminder.id}`, {
-              method: "PUT",
-              body: JSON.stringify(payload),
-            });
-            this.notify("Reminder diperbarui.");
-          } else {
-            await this.api("/api/reminders", {
-              method: "POST",
-              body: JSON.stringify(payload),
-            });
-            this.notify("Reminder dibuat.");
-          }
+          await this.api("/api/reminders", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+          this.notify("Reminder dibuat.");
 
           this.forms.reminder = { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" };
           await Promise.all([this.loadReminders(), this.loadStatus()]);
         },
 
-        editReminder(reminder) {
-          this.forms.reminder = {
+        openReminderEditModal(reminder) {
+          this.forms.reminderEdit = {
             id: reminder.id,
             contactId: reminder.contactId || "",
             reminderDate: this.formatDateInput(reminder.reminderDateTime),
@@ -1554,10 +1671,58 @@
             templateName: reminder.templateName || "",
             message: reminder.message || "",
           };
+          this.reminderEditModal.open = true;
+          document.body.classList.add("overflow-hidden");
         },
 
-        cancelReminderEdit() {
-          this.forms.reminder = { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" };
+        closeReminderEditModal() {
+          this.reminderEditModal.open = false;
+          this.reminderEditModal.loading = false;
+          this.forms.reminderEdit = { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" };
+          document.body.classList.remove("overflow-hidden");
+        },
+
+        applyReminderEditTemplate() {
+          const name = this.forms.reminderEdit.templateName;
+          if (!name) return;
+          const tpl = this.templates.find((t) => t.name === name);
+          if (!tpl) return;
+          const contact = this.contacts.find((c) => c.id === this.forms.reminderEdit.contactId) || null;
+          const dateIso = (this.forms.reminderEdit.reminderDate && this.forms.reminderEdit.reminderTime)
+            ? `${this.forms.reminderEdit.reminderDate}T${this.forms.reminderEdit.reminderTime}:00`
+            : null;
+          this.forms.reminderEdit.message = this.applyTemplateContent(tpl.content, contact, dateIso);
+        },
+
+        onReminderEditContactChange() {
+          if (this.forms.reminderEdit.templateName) {
+            this.applyReminderEditTemplate();
+          }
+        },
+
+        async saveReminderEdit() {
+          if (!this.forms.reminderEdit.id || this.reminderEditModal.loading) return;
+          const date = this.forms.reminderEdit.reminderDate;
+          const time = this.forms.reminderEdit.reminderTime || "00:00";
+          if (!date) return this.notify("Pilih tanggal pengiriman");
+
+          this.reminderEditModal.loading = true;
+          try {
+            await this.api(`/api/reminders/${this.forms.reminderEdit.id}`, {
+              method: "PUT",
+              body: JSON.stringify({
+                contactId: this.forms.reminderEdit.contactId,
+                reminderDateTime: `${date} ${time}`,
+                message: this.forms.reminderEdit.message,
+                templateName: this.forms.reminderEdit.templateName,
+              }),
+            });
+            this.notify("Reminder diperbarui.");
+            this.closeReminderEditModal();
+            await Promise.all([this.loadReminders(), this.loadStatus(), this.loadContacts()]);
+          } finally {
+            this.reminderEditModal.loading = false;
+          }
         },
 
         removeReminder(reminder) {
