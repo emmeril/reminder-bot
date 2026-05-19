@@ -286,7 +286,7 @@
         </section>
 
         <section x-show="activeMenu === 'contacts'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
             <div>
               <h2 class="font-display text-2xl"><i class="fa-solid fa-address-book mr-2 text-moss"></i>Contacts</h2>
               <!-- <p class="mt-1 text-sm text-ink/60">Sumber data penerima yang dikelola dari dashboard.</p> -->
@@ -295,11 +295,11 @@
               <i class="fa-solid fa-rotate mr-2"></i>Reload
             </button>
           </div>
-          <div class="mb-4 flex flex-wrap justify-end gap-2">
-            <button type="button" @click="openMikrotikCreateModal()" class="rounded-full bg-moss px-5 py-3 text-sm font-semibold text-white transition hover:bg-ink">
+          <div class="mb-4 flex flex-nowrap items-center justify-start gap-2 overflow-x-auto pb-1">
+            <button type="button" @click="openMikrotikCreateModal()" class="shrink-0 rounded-full bg-moss px-5 py-3 text-sm font-semibold text-white transition hover:bg-ink">
               <i class="fa-solid fa-user-plus mr-2"></i>Registrasi Pelanggan
             </button>
-            <button type="button" @click="openContactCreateModal()" class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">
+            <button type="button" @click="openContactCreateModal()" class="shrink-0 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">
               <i class="fa-solid fa-plus mr-2"></i>Tambah Contact
             </button>
           </div>
@@ -429,15 +429,15 @@
         </section>
 
         <section x-show="activeMenu === 'reminders'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
             <div>
               <h2 class="font-display text-2xl"><i class="fa-solid fa-calendar-check mr-2 text-clay"></i>Reminders</h2>
               <!-- <p class="mt-1 text-sm text-ink/60">Seluruh jadwal outbound dibuat dan diubah dari sini.</p> -->
             </div>
             <button @click="loadReminders()" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white"><i class="fa-solid fa-rotate mr-2"></i>Reload</button>
           </div>
-          <div class="mb-4 flex justify-end">
-            <button type="button" @click="openReminderCreateModal()" class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">
+          <div class="mb-4 flex flex-nowrap items-center justify-start gap-2 overflow-x-auto pb-1">
+            <button type="button" @click="openReminderCreateModal()" class="shrink-0 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">
               <i class="fa-solid fa-calendar-plus mr-2"></i>Buat Reminder
             </button>
           </div>
