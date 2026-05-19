@@ -352,14 +352,14 @@
           <div class="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr),180px,210px,140px]">
             <input x-model="filters.contacts.search" @input="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama atau nomor WA">
 <select x-model="filters.contacts.status" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-               <option value="ALL">Semua status</option>
+               <option value="ALL">Semua status bayar</option>
                <option value="ARREARS-ONLY">Hanya Tunggakan</option>
                <option value="UNPAID">Belum Bayar</option>
                <option value="CURRENT-ONLY">Bulan Ini Saja</option>
                <option value="FULL-PAID">Lunas Semua</option>
              </select>
             <select x-model="filters.contacts.dueStatus" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-              <option value="ALL">Semua jatuh tempo</option>
+              <option value="ALL">Semua status jatuh tempo</option>
               <option value="NOT_SCHEDULED">Belum Dijadwalkan</option>
               <option value="UPCOMING">Belum Jatuh Tempo</option>
               <option value="OVERDUE">Jatuh Tempo</option>
