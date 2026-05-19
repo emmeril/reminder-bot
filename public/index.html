@@ -356,12 +356,10 @@
             <input x-model="filters.contacts.search" @input="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama atau nomor WA">
 <select x-model="filters.contacts.status" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
                <option value="ALL">Semua status</option>
-               <option value="PAID">Lunas</option>
-               <option value="UNPAID">Belum bayar</option>
-               <option value="DEBT">Masih ada hutang</option>
                <option value="ARREARS-ONLY">Hanya Tunggakan</option>
+               <option value="UNPAID">Belum bayar</option>
                <option value="CURRENT-ONLY">Bulan Ini Saja</option>
-               <option value="FULL-PAID">Lunas Semua</option>
+               <option value="FULL-PAID">Lunas</option>
              </select>
             <select x-model.number="filters.contacts.pageSize" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <template x-for="size in pageSizes" :key="'contacts-size-' + size">
@@ -1157,9 +1155,7 @@ inferPaymentType(contact) {
             const paymentType = this.inferPaymentType(contact);
 
             if (selectedStatus !== "ALL") {
-              if (selectedStatus === "PAID" && paymentStatus !== "PAID") return false;
-              if (selectedStatus === "UNPAID" && paymentStatus === "PAID") return false;
-              if (selectedStatus === "DEBT" && !this.hasDebt(contact)) return false;
+              if (selectedStatus === "UNPAID" && (paymentStatus === "PAID" || paymentType === "ARREARS-ONLY")) return false;
               if (["ARREARS-ONLY", "CURRENT-ONLY", "FULL-PAID"].includes(selectedStatus) && paymentType !== selectedStatus) return false;
             }
 
