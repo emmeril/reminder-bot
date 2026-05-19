@@ -437,6 +437,20 @@
               <i class="fa-solid fa-rotate mr-2"></i>Reload
             </button>
           </div>
+          <div class="mb-5 grid gap-3 lg:grid-cols-[minmax(0,1fr),180px,140px]">
+            <input x-model="filters.monitorAp.search" @input="resetPage('monitorAp')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari host, status, comment, interval">
+            <select x-model="filters.monitorAp.status" @change="resetPage('monitorAp')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+              <option value="ALL">Semua status</option>
+              <option value="UP">UP</option>
+              <option value="DOWN">DOWN</option>
+              <option value="UNKNOWN">UNKNOWN</option>
+            </select>
+            <select x-model.number="filters.monitorAp.pageSize" @change="resetPage('monitorAp')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+              <template x-for="size in pageSizes" :key="'ap-size-' + size">
+                <option :value="size" x-text="size + ' / page'"></option>
+              </template>
+            </select>
+          </div>
           <div class="overflow-hidden rounded-[1.5rem] border border-ink/8">
             <div class="overflow-x-auto">
               <table class="min-w-full text-sm">
@@ -451,10 +465,10 @@
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white/70">
-                  <template x-if="!apMonitors.length">
+                  <template x-if="!filteredApMonitors.length">
                     <tr><td colspan="6" class="px-4 py-8 text-center text-ink/45">Belum ada data Netwatch.</td></tr>
                   </template>
-                  <template x-for="ap in apMonitors" :key="'ap-' + ap.id + '-' + ap.host">
+                  <template x-for="ap in paginatedApMonitors" :key="'ap-' + ap.id + '-' + ap.host">
                     <tr>
                       <td class="px-4 py-4 font-medium text-ink" x-text="ap.host || '-'"></td>
                       <td class="px-4 py-4">
@@ -468,6 +482,14 @@
                   </template>
                 </tbody>
               </table>
+            </div>
+          </div>
+          <div class="mt-4 flex flex-col gap-3 text-sm text-ink/60 sm:flex-row sm:items-center sm:justify-between">
+            <div x-text="paginationLabel('monitorAp', filteredApMonitors.length)"></div>
+            <div class="flex items-center gap-2">
+              <button @click="setPage('monitorAp', filters.monitorAp.page - 1)" :disabled="filters.monitorAp.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
+              <span class="px-2" x-text="filters.monitorAp.page + ' / ' + totalPages('monitorAp', filteredApMonitors.length)"></span>
+              <button @click="setPage('monitorAp', filters.monitorAp.page + 1)" :disabled="filters.monitorAp.page >= totalPages('monitorAp', filteredApMonitors.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
           </div>
         </section>
@@ -1198,6 +1220,7 @@
         pageSizes: [10, 25, 50, 100],
         filters: {
           contacts: { search: "", status: "ALL", dueStatus: "ALL", page: 1, pageSize: 10 },
+          monitorAp: { search: "", status: "ALL", page: 1, pageSize: 10 },
           reminders: { search: "", schedule: "ALL", page: 1, pageSize: 10 },
           sent: { search: "", status: "ALL", page: 1, pageSize: 10 },
           logs: { page: 1, pageSize: 10 },
@@ -1468,6 +1491,19 @@
           });
         },
 
+        get filteredApMonitors() {
+          return this.apMonitors.filter((ap) => {
+            const selectedStatus = String(this.filters.monitorAp.status || "ALL").toUpperCase();
+            const status = String(ap.status || "UNKNOWN").toUpperCase();
+            if (selectedStatus !== "ALL" && status !== selectedStatus) return false;
+            return this.searchMatches(
+              ap,
+              ["host", "status", "since", "comment", "interval", "timeout", "type"],
+              this.filters.monitorAp.search
+            );
+          });
+        },
+
         get filteredReminders() {
           const now = Date.now();
           return this.reminders.filter((reminder) => {
@@ -1490,6 +1526,10 @@
 
         get paginatedContacts() {
           return this.paginate(this.filteredContacts, "contacts");
+        },
+
+        get paginatedApMonitors() {
+          return this.paginate(this.filteredApMonitors, "monitorAp");
         },
 
         get paginatedReminders() {
@@ -1603,6 +1643,7 @@
 
         async loadApMonitors() {
           this.apMonitors = await this.api("/api/mikrotik/netwatch");
+          this.clampPage("monitorAp", this.filteredApMonitors.length);
         },
 
         async loadReminders() {
