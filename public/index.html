@@ -1064,9 +1064,10 @@
           return `${hours}:${minutes}`;
         },
 
-inferPaymentType(contact) {
+        inferPaymentType(contact, options = {}) {
+           const { useSavedType = true } = options;
            const savedType = String(contact.paymentType || "").toUpperCase();
-           if (["ARREARS-ONLY", "CURRENT-ONLY", "FULL-PAID"].includes(savedType)) {
+           if (useSavedType && ["ARREARS-ONLY", "CURRENT-ONLY", "FULL-PAID"].includes(savedType)) {
              return savedType;
            }
 
@@ -1152,7 +1153,7 @@ inferPaymentType(contact) {
           return this.contacts.filter((contact) => {
             const selectedStatus = String(this.filters.contacts.status || "ALL").toUpperCase();
             const paymentStatus = String(contact.paymentStatus || "UNPAID").toUpperCase();
-            const paymentType = this.inferPaymentType(contact);
+            const paymentType = this.inferPaymentType(contact, { useSavedType: false });
 
             if (selectedStatus !== "ALL") {
               if (selectedStatus === "UNPAID" && (paymentStatus === "PAID" || paymentType === "ARREARS-ONLY")) return false;
