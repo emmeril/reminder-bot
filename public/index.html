@@ -357,9 +357,9 @@
 <select x-model="filters.contacts.status" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
                <option value="ALL">Semua status</option>
                <option value="ARREARS-ONLY">Hanya Tunggakan</option>
-               <option value="UNPAID">Belum bayar</option>
+               <option value="UNPAID">Belum Bayar</option>
                <option value="CURRENT-ONLY">Bulan Ini Saja</option>
-               <option value="FULL-PAID">Lunas</option>
+               <option value="FULL-PAID">Lunas Semua</option>
              </select>
             <select x-model.number="filters.contacts.pageSize" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <template x-for="size in pageSizes" :key="'contacts-size-' + size">
@@ -393,7 +393,7 @@
                             'bg-moss/10 text-moss': contact.paymentStatus === 'PAID',
                             'bg-clay/10 text-clay': contact.paymentStatus !== 'PAID'
                           }"
-                          x-text="contact.paymentType ? getPaymentTypeLabel(contact.paymentType) : (contact.paymentStatus === 'PAID' ? getPaymentTypeLabel(inferPaymentType(contact)) : 'Belum bayar')"
+                          x-text="contact.paymentType ? getPaymentTypeLabel(contact.paymentType) : (contact.paymentStatus === 'PAID' ? getPaymentTypeLabel(inferPaymentType(contact)) : 'Belum Bayar')"
                         ></span>
                         <!-- <template x-if="hasDebt(contact)">
                           <div class="mt-2 inline-flex max-w-full items-start gap-1.5 rounded-xl border border-clay/20 bg-clay/5 px-2.5 py-1.5 text-xs font-semibold leading-5 text-clay">
@@ -1154,13 +1154,12 @@
             const selectedStatus = String(this.filters.contacts.status || "ALL").toUpperCase();
             const paymentStatus = String(contact.paymentStatus || "UNPAID").toUpperCase();
             const savedPaymentType = String(contact.paymentType || "").toUpperCase();
-            const paymentType = this.inferPaymentType(contact, { useSavedType: false });
 
             if (selectedStatus !== "ALL") {
               if (selectedStatus === "ARREARS-ONLY" && (savedPaymentType !== "ARREARS-ONLY" || paymentStatus === "PAID")) return false;
               if (selectedStatus === "UNPAID" && (paymentStatus === "PAID" || savedPaymentType === "ARREARS-ONLY")) return false;
-              if (selectedStatus === "CURRENT-ONLY" && paymentType !== "CURRENT-ONLY") return false;
-              if (selectedStatus === "FULL-PAID" && paymentType !== "FULL-PAID") return false;
+              if (selectedStatus === "CURRENT-ONLY" && (savedPaymentType !== "CURRENT-ONLY" || paymentStatus !== "PAID")) return false;
+              if (selectedStatus === "FULL-PAID" && (savedPaymentType !== "FULL-PAID" || paymentStatus !== "PAID")) return false;
             }
 
             return this.searchMatches(
