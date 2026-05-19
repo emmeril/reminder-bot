@@ -330,22 +330,11 @@
               <button class="rounded-full bg-moss px-5 py-3 text-sm font-semibold text-white transition hover:bg-ink"><i class="fa-solid fa-user-plus mr-2"></i>Registrasi</button>
             </form>
           </div>
-          <form class="grid gap-4 md:grid-cols-[minmax(0,1fr),minmax(0,1fr),auto] md:items-end" @submit.prevent="createContact()">
-            <label class="block text-sm text-ink/60">
-              Nama
-              <input x-model="forms.contact.name" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
-            </label>
-            <label class="block text-sm text-ink/60">
-              Nomor WhatsApp
-              <input x-model="forms.contact.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="628xxx" required>
-            </label>
-            <div class="flex flex-wrap gap-2">
-              <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">
-                <i class="fa-solid fa-plus mr-2"></i>
-                <span>Tambah Contact</span>
-              </button>
-            </div>
-          </form>
+          <div class="mb-4 flex justify-end">
+            <button type="button" @click="openContactCreateModal()" class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">
+              <i class="fa-solid fa-plus mr-2"></i>Tambah Contact
+            </button>
+          </div>
           <div class="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr),180px,210px,140px]">
             <input x-model="filters.contacts.search" @input="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama atau nomor WA">
 <select x-model="filters.contacts.status" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
@@ -479,45 +468,11 @@
             </div>
             <button @click="loadReminders()" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white"><i class="fa-solid fa-rotate mr-2"></i>Reload</button>
           </div>
-          <form class="space-y-4" @submit.prevent="createReminder()">
-            <div class="grid gap-4 md:grid-cols-2">
-              <label class="block text-sm text-ink/60">
-                Contact tujuan
-                <select x-model="forms.reminder.contactId" @change="onReminderContactChange()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
-                  <option value="">Pilih contact</option>
-                  <template x-for="contact in contacts" :key="'reminder-contact-' + contact.id">
-                    <option :value="contact.id" x-text="contact.name + ' (' + contact.phoneNumber + ')'"></option>
-                  </template>
-                </select>
-              </label>
-              <label class="block text-sm text-ink/60">
-                Waktu kirim
-                <div class="mt-2 grid grid-cols-2 gap-2">
-                  <input type="date" x-model="forms.reminder.reminderDate" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
-                  <input type="time" x-model="forms.reminder.reminderTime" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
-                </div>
-              </label>
-            </div>
-            <label class="block text-sm text-ink/60">
-              Template (opsional)
-              <select x-model="forms.reminder.templateName" @change="applySelectedTemplate()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
-                <option value="">-- Tidak memakai template --</option>
-                <template x-for="t in templates" :key="t.name">
-                  <option :value="t.name" x-text="t.name"></option>
-                </template>
-              </select>
-            </label>
-            <label class="block text-sm text-ink/60">
-              Pesan reminder
-              <textarea x-model="forms.reminder.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required></textarea>
-            </label>
-            <div class="flex flex-wrap gap-2">
-              <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">
-                <i class="fa-solid fa-calendar-plus mr-2"></i>
-                <span>Buat Reminder</span>
-              </button>
-            </div>
-          </form>
+          <div class="mb-4 flex justify-end">
+            <button type="button" @click="openReminderCreateModal()" class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">
+              <i class="fa-solid fa-calendar-plus mr-2"></i>Buat Reminder
+            </button>
+          </div>
           <div class="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr),180px,140px]">
             <input x-model="filters.reminders.search" @input="resetPage('reminders')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari tujuan, nomor, template, atau pesan">
             <select x-model="filters.reminders.schedule" @change="resetPage('reminders')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
@@ -840,6 +795,111 @@
 
     <div
       x-cloak
+      x-show="contactCreateModal.open"
+      x-transition.opacity
+      @keydown.escape.window="closeContactCreateModal()"
+      @click.self="closeContactCreateModal()"
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+    >
+      <div
+        x-show="contactCreateModal.open"
+        x-transition.scale.origin.center
+        class="w-full max-w-xl rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
+      >
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="text-lg font-semibold text-ink">Tambah Contact</h3>
+          <button type="button" @click="closeContactCreateModal()" class="rounded-full border border-ink/10 px-3 py-1 text-sm font-semibold text-ink hover:bg-haze">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <form class="space-y-4" @submit.prevent="submitCreateContact()">
+          <label class="block text-sm text-ink/60">
+            Nama
+            <input x-model="forms.contact.name" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+          </label>
+          <label class="block text-sm text-ink/60">
+            Nomor WhatsApp
+            <input x-model="forms.contact.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="628xxx" required>
+          </label>
+          <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" @click="closeContactCreateModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="contactCreateModal.loading">Batal</button>
+            <button type="submit" class="rounded-2xl bg-moss px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20 transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60" :disabled="contactCreateModal.loading">
+              <span x-show="!contactCreateModal.loading">Simpan Contact</span>
+              <span x-show="contactCreateModal.loading" class="inline-flex items-center gap-2">
+                <i class="fa-solid fa-circle-notch fa-spin"></i>Menyimpan...
+              </span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div
+      x-cloak
+      x-show="reminderCreateModal.open"
+      x-transition.opacity
+      @keydown.escape.window="closeReminderCreateModal()"
+      @click.self="closeReminderCreateModal()"
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+    >
+      <div
+        x-show="reminderCreateModal.open"
+        x-transition.scale.origin.center
+        class="w-full max-w-2xl rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
+      >
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="text-lg font-semibold text-ink">Buat Reminder</h3>
+          <button type="button" @click="closeReminderCreateModal()" class="rounded-full border border-ink/10 px-3 py-1 text-sm font-semibold text-ink hover:bg-haze">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <form class="space-y-4" @submit.prevent="submitCreateReminder()">
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="block text-sm text-ink/60">
+              Contact tujuan
+              <select x-model="forms.reminder.contactId" @change="onReminderContactChange()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+                <option value="">Pilih contact</option>
+                <template x-for="contact in contacts" :key="'create-reminder-contact-' + contact.id">
+                  <option :value="contact.id" x-text="contact.name + ' (' + contact.phoneNumber + ')'"></option>
+                </template>
+              </select>
+            </label>
+            <label class="block text-sm text-ink/60">
+              Waktu kirim
+              <div class="mt-2 grid grid-cols-2 gap-2">
+                <input type="date" x-model="forms.reminder.reminderDate" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+                <input type="time" x-model="forms.reminder.reminderTime" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+              </div>
+            </label>
+          </div>
+          <label class="block text-sm text-ink/60">
+            Template (opsional)
+            <select x-model="forms.reminder.templateName" @change="applySelectedTemplate()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+              <option value="">-- Tidak memakai template --</option>
+              <template x-for="t in templates" :key="'create-reminder-template-' + t.name">
+                <option :value="t.name" x-text="t.name"></option>
+              </template>
+            </select>
+          </label>
+          <label class="block text-sm text-ink/60">
+            Pesan reminder
+            <textarea x-model="forms.reminder.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required></textarea>
+          </label>
+          <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" @click="closeReminderCreateModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="reminderCreateModal.loading">Batal</button>
+            <button type="submit" class="rounded-2xl bg-moss px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20 transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60" :disabled="reminderCreateModal.loading">
+              <span x-show="!reminderCreateModal.loading">Simpan Reminder</span>
+              <span x-show="reminderCreateModal.loading" class="inline-flex items-center gap-2">
+                <i class="fa-solid fa-circle-notch fa-spin"></i>Menyimpan...
+              </span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div
+      x-cloak
       x-show="contactEditModal.open"
       x-transition.opacity
       @keydown.escape.window="closeContactEditModal()"
@@ -1021,7 +1081,15 @@
           open: false,
           loading: false,
         },
+        contactCreateModal: {
+          open: false,
+          loading: false,
+        },
         reminderEditModal: {
+          open: false,
+          loading: false,
+        },
+        reminderCreateModal: {
           open: false,
           loading: false,
         },
@@ -1479,9 +1547,33 @@
             method: "POST",
             body: JSON.stringify(payload),
           });
-          this.notify("Contact ditambahkan.");
           this.forms.contact = { id: "", name: "", phoneNumber: "" };
           await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
+        },
+
+        openContactCreateModal() {
+          this.forms.contact = { id: "", name: "", phoneNumber: "" };
+          this.contactCreateModal.open = true;
+          document.body.classList.add("overflow-hidden");
+        },
+
+        closeContactCreateModal() {
+          this.contactCreateModal.open = false;
+          this.contactCreateModal.loading = false;
+          this.forms.contact = { id: "", name: "", phoneNumber: "" };
+          document.body.classList.remove("overflow-hidden");
+        },
+
+        async submitCreateContact() {
+          if (this.contactCreateModal.loading) return;
+          this.contactCreateModal.loading = true;
+          try {
+            await this.createContact();
+            this.notify("Contact ditambahkan.");
+            this.closeContactCreateModal();
+          } finally {
+            this.contactCreateModal.loading = false;
+          }
         },
 
         openContactEditModal(contact) {
@@ -1656,10 +1748,34 @@
             method: "POST",
             body: JSON.stringify(payload),
           });
-          this.notify("Reminder dibuat.");
 
           this.forms.reminder = { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" };
           await Promise.all([this.loadReminders(), this.loadStatus()]);
+        },
+
+        openReminderCreateModal() {
+          this.forms.reminder = { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" };
+          this.reminderCreateModal.open = true;
+          document.body.classList.add("overflow-hidden");
+        },
+
+        closeReminderCreateModal() {
+          this.reminderCreateModal.open = false;
+          this.reminderCreateModal.loading = false;
+          this.forms.reminder = { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" };
+          document.body.classList.remove("overflow-hidden");
+        },
+
+        async submitCreateReminder() {
+          if (this.reminderCreateModal.loading) return;
+          this.reminderCreateModal.loading = true;
+          try {
+            await this.createReminder();
+            this.notify("Reminder dibuat.");
+            this.closeReminderCreateModal();
+          } finally {
+            this.reminderCreateModal.loading = false;
+          }
         },
 
         openReminderEditModal(reminder) {
