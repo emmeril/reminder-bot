@@ -997,6 +997,8 @@ class DataManager {
   }
 
   buildDueDateInfo(contact) {
+    const { year, month } = getBillingPeriodParts();
+    const activePeriodKey = makeBillingPeriodKey(year, month);
     const reminders = Array.from(this.reminders.values()).filter((reminder) => {
       if (String(reminder.contactId || "") === String(contact.id)) return true;
       return reminder.phoneNumber && reminder.phoneNumber === contact.phoneNumber;
@@ -1005,15 +1007,26 @@ class DataManager {
     const parsedReminders = reminders
       .map((reminder) => ({
         ...reminder,
-        timestamp: new Date(reminder.reminderDateTime).getTime(),
+        reminderDate: new Date(reminder.reminderDateTime),
       }))
-      .filter((reminder) => Number.isFinite(reminder.timestamp))
+      .filter((reminder) => !Number.isNaN(reminder.reminderDate.getTime()))
+      .map((reminder) => ({
+        ...reminder,
+        timestamp: reminder.reminderDate.getTime(),
+        periodKey: makeBillingPeriodKey(
+          reminder.reminderDate.getFullYear(),
+          reminder.reminderDate.getMonth() + 1
+        ),
+      }))
       .sort((a, b) => a.timestamp - b.timestamp);
 
     const nowTs = Date.now();
-    const nextReminder = parsedReminders.find((reminder) => reminder.timestamp >= nowTs) || null;
-    const latestReminder = parsedReminders.length > 0 ? parsedReminders[parsedReminders.length - 1] : null;
-    const dueReminder = nextReminder || latestReminder;
+    const activePeriodReminders = parsedReminders.filter((reminder) => reminder.periodKey === activePeriodKey);
+    const nextInActivePeriod = activePeriodReminders.find((reminder) => reminder.timestamp >= nowTs) || null;
+    const latestInActivePeriod = activePeriodReminders.length > 0
+      ? activePeriodReminders[activePeriodReminders.length - 1]
+      : null;
+    const dueReminder = nextInActivePeriod || latestInActivePeriod || null;
     const dueDate = dueReminder ? new Date(dueReminder.timestamp).toISOString() : null;
 
     let dueStatus = "NOT_SCHEDULED";
