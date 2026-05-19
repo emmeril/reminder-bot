@@ -996,6 +996,43 @@ class DataManager {
     };
   }
 
+  buildDueDateInfo(contact) {
+    const reminders = Array.from(this.reminders.values()).filter((reminder) => {
+      if (String(reminder.contactId || "") === String(contact.id)) return true;
+      return reminder.phoneNumber && reminder.phoneNumber === contact.phoneNumber;
+    });
+
+    const parsedReminders = reminders
+      .map((reminder) => ({
+        ...reminder,
+        timestamp: new Date(reminder.reminderDateTime).getTime(),
+      }))
+      .filter((reminder) => Number.isFinite(reminder.timestamp))
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    const nowTs = Date.now();
+    const nextReminder = parsedReminders.find((reminder) => reminder.timestamp >= nowTs) || null;
+    const latestReminder = parsedReminders.length > 0 ? parsedReminders[parsedReminders.length - 1] : null;
+    const dueReminder = nextReminder || latestReminder;
+    const dueDate = dueReminder ? new Date(dueReminder.timestamp).toISOString() : null;
+
+    let dueStatus = "NOT_SCHEDULED";
+    if (dueDate) {
+      if (String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase() === PAYMENT_STATUS.PAID) {
+        dueStatus = "PAID";
+      } else if (dueReminder.timestamp < nowTs) {
+        dueStatus = "OVERDUE";
+      } else {
+        dueStatus = "UPCOMING";
+      }
+    }
+
+    return {
+      dueDate,
+      dueStatus,
+    };
+  }
+
   buildDebtInfo(contact, options = {}) {
     const { year, month } = options.year && options.month
       ? { year: options.year, month: options.month }
@@ -1032,9 +1069,11 @@ class DataManager {
 
   hydrateContact(contact) {
     const debtInfo = this.buildDebtInfo(contact);
+    const dueDateInfo = this.buildDueDateInfo(contact);
     return {
       ...contact,
       ...debtInfo,
+      ...dueDateInfo,
     };
   }
 

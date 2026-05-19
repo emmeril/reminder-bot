@@ -371,18 +371,28 @@
                   <tr>
                     <th class="px-4 py-3"><i class="fa-solid fa-user mr-2"></i>Nama</th>
                     <th class="px-4 py-3"><i class="fa-brands fa-whatsapp mr-2"></i>No. WA</th>
+                    <th class="px-4 py-3"><i class="fa-regular fa-calendar mr-2"></i>Tgl Jatuh Tempo</th>
+                    <th class="px-4 py-3"><i class="fa-solid fa-hourglass-half mr-2"></i>Status Jatuh Tempo</th>
                     <th class="px-4 py-3"><i class="fa-solid fa-receipt mr-2"></i>Status Bayar</th>
                     <th class="px-4 py-3"><i class="fa-solid fa-bolt mr-2"></i>Aksi</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white/70">
                   <template x-if="!filteredContacts.length">
-                    <tr><td colspan="4" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada contact yang cocok.' : 'Belum ada contact.'"></td></tr>
+                    <tr><td colspan="6" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada contact yang cocok.' : 'Belum ada contact.'"></td></tr>
                   </template>
                   <template x-for="contact in paginatedContacts" :key="contact.id">
                     <tr>
                       <td class="px-4 py-4 font-medium" data-label="Nama" x-text="contact.name"></td>
                       <td class="px-4 py-4 text-ink/65" data-label="No. WA" x-text="contact.phoneNumber"></td>
+                      <td class="px-4 py-4 text-ink/65" data-label="Tgl Jatuh Tempo" x-text="contact.dueDate ? formatDateTime(contact.dueDate) : '-'"></td>
+                      <td class="px-4 py-4" data-label="Status Jatuh Tempo">
+                        <span
+                          class="inline-flex rounded-full px-3 py-1 text-xs font-semibold"
+                          :class="getDueStatusClass(contact.dueStatus)"
+                          x-text="getDueStatusLabel(contact.dueStatus)"
+                        ></span>
+                      </td>
 <td class="px-4 py-4" data-label="Status Bayar">
                         <span
                           class="inline-flex rounded-full px-3 py-1 text-xs font-semibold"
@@ -1131,6 +1141,24 @@
           return contact.debtNote || `Masih ada hutang ${contact.debtPeriodLabel || this.getPreviousBillingPeriodLabel()}.`;
         },
 
+        getDueStatusLabel(status) {
+          const labels = {
+            NOT_SCHEDULED: "Belum Dijadwalkan",
+            UPCOMING: "Belum Jatuh Tempo",
+            OVERDUE: "Jatuh Tempo",
+            PAID: "Lunas",
+          };
+          return labels[String(status || "").toUpperCase()] || "Belum Dijadwalkan";
+        },
+
+        getDueStatusClass(status) {
+          const normalized = String(status || "").toUpperCase();
+          if (normalized === "PAID") return "bg-moss/10 text-moss";
+          if (normalized === "OVERDUE") return "bg-clay/10 text-clay";
+          if (normalized === "UPCOMING") return "bg-ink/10 text-ink";
+          return "bg-slate-200/70 text-slate-700";
+        },
+
         searchMatches(item, fields, search) {
           const needle = String(search || "").trim().toLowerCase();
           if (!needle) return true;
@@ -1161,7 +1189,7 @@
 
             return this.searchMatches(
               contact,
-              ["name", "phoneNumber", "paymentStatus", "paymentType", "debtNote"],
+              ["name", "phoneNumber", "paymentStatus", "paymentType", "debtNote", "dueStatus", "dueDate"],
               this.filters.contacts.search
             );
           });
