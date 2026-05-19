@@ -1566,7 +1566,15 @@
         },
 
         setPage(key, page) {
-          this.filters[key].page = Math.min(Math.max(1, page), this.totalPages(key, this[`filtered${key[0].toUpperCase()}${key.slice(1)}`].length));
+          const totalsByKey = {
+            contacts: this.filteredContacts.length,
+            monitorAp: this.filteredApMonitors.length,
+            reminders: this.filteredReminders.length,
+            sent: this.filteredSent.length,
+            logs: this.logs.length,
+          };
+          const total = totalsByKey[key] ?? 0;
+          this.filters[key].page = Math.min(Math.max(1, page), this.totalPages(key, total));
         },
 
         resetPage(key) {
