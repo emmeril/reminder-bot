@@ -1150,19 +1150,26 @@ inferPaymentType(contact) {
             && date.getDate() === today.getDate();
         },
 
-get filteredContacts() {
-           return this.contacts.filter((contact) => {
-             const status = String(contact.paymentStatus || "UNPAID").toUpperCase();
-             const paymentType = this.inferPaymentType(contact);
-             if (this.filters.contacts.status !== "ALL") {
-               if (this.filters.contacts.status === "PAID" && status !== "PAID") return false;
-               if (this.filters.contacts.status === "UNPAID" && status !== "UNPAID") return false;
-               if (this.filters.contacts.status === "DEBT" && !this.hasDebt(contact)) return false;
-               if (["ARREARS-ONLY", "CURRENT-ONLY", "FULL-PAID"].includes(this.filters.contacts.status) && paymentType !== this.filters.contacts.status) return false;
-             }
-             return this.searchMatches(contact, ["name", "phoneNumber", "paymentStatus", "debtNote"], this.filters.contacts.search);
-           });
-         },
+        get filteredContacts() {
+          return this.contacts.filter((contact) => {
+            const selectedStatus = String(this.filters.contacts.status || "ALL").toUpperCase();
+            const paymentStatus = String(contact.paymentStatus || "UNPAID").toUpperCase();
+            const paymentType = this.inferPaymentType(contact);
+
+            if (selectedStatus !== "ALL") {
+              if (selectedStatus === "PAID" && paymentStatus !== "PAID") return false;
+              if (selectedStatus === "UNPAID" && paymentStatus === "PAID") return false;
+              if (selectedStatus === "DEBT" && !this.hasDebt(contact)) return false;
+              if (["ARREARS-ONLY", "CURRENT-ONLY", "FULL-PAID"].includes(selectedStatus) && paymentType !== selectedStatus) return false;
+            }
+
+            return this.searchMatches(
+              contact,
+              ["name", "phoneNumber", "paymentStatus", "paymentType", "debtNote"],
+              this.filters.contacts.search
+            );
+          });
+        },
 
         get filteredReminders() {
           const now = Date.now();
