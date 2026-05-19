@@ -478,6 +478,26 @@ class MikrotikService {
     });
   }
 
+  async getNetwatchStatus() {
+    return this.withConnection(async (conn) => {
+      const rows = await conn.menu("/tool/netwatch").print();
+      return (rows || [])
+        .map((row) => ({
+          id: row[".id"] || row.id || row.numbers || "",
+          host: row.host || row["host-address"] || "-",
+          status: String(row.status || row.state || "unknown").toUpperCase(),
+          since: row.since || "",
+          comment: row.comment || "",
+          interval: row.interval || "",
+          timeout: row.timeout || "",
+          type: row.type || "",
+          upScript: row["up-script"] || "",
+          downScript: row["down-script"] || "",
+        }))
+        .sort((a, b) => String(a.host || "").localeCompare(String(b.host || ""), "id-ID"));
+    });
+  }
+
   async removeHotspotUsersByName(conn, username) {
     const users = await conn.menu("/ip/hotspot/user").print();
     const matches = (users || []).filter((user) => String(user.name || "").toLowerCase() === String(username).toLowerCase());
@@ -2284,6 +2304,7 @@ class WebServer {
     this.app.delete("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.dataManager.deleteContact(req.params.id)));
 
     this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotProfiles()));
+    this.app.get("/api/mikrotik/netwatch", requireApiAuth, handleApi(async () => this.mikrotikService.getNetwatchStatus()));
     this.app.post("/api/mikrotik/customers", requireApiAuth, handleApi(async (req) => {
       const registered = await this.mikrotikService.createHotspotCustomer({
         name: req.body.name,

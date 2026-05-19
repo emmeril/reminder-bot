@@ -428,6 +428,50 @@
           </div>
         </section>
 
+        <section x-show="activeMenu === 'monitor-ap'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
+          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
+            <div>
+              <h2 class="font-display text-2xl"><i class="fa-solid fa-tower-cell mr-2 text-moss"></i>Monitor AP</h2>
+            </div>
+            <button @click="loadApMonitors()" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
+              <i class="fa-solid fa-rotate mr-2"></i>Reload
+            </button>
+          </div>
+          <div class="overflow-hidden rounded-[1.5rem] border border-ink/8">
+            <div class="overflow-x-auto">
+              <table class="min-w-full text-sm">
+                <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
+                  <tr>
+                    <th class="px-4 py-3">Host AP</th>
+                    <th class="px-4 py-3">Status</th>
+                    <th class="px-4 py-3">Since</th>
+                    <th class="px-4 py-3">Interval</th>
+                    <th class="px-4 py-3">Timeout</th>
+                    <th class="px-4 py-3">Comment</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-ink/6 bg-white/70">
+                  <template x-if="!apMonitors.length">
+                    <tr><td colspan="6" class="px-4 py-8 text-center text-ink/45">Belum ada data Netwatch.</td></tr>
+                  </template>
+                  <template x-for="ap in apMonitors" :key="'ap-' + ap.id + '-' + ap.host">
+                    <tr>
+                      <td class="px-4 py-4 font-medium text-ink" x-text="ap.host || '-'"></td>
+                      <td class="px-4 py-4">
+                        <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getApStatusClass(ap.status)" x-text="ap.status || 'UNKNOWN'"></span>
+                      </td>
+                      <td class="px-4 py-4 text-ink/65" x-text="ap.since || '-'"></td>
+                      <td class="px-4 py-4 text-ink/65" x-text="ap.interval || '-'"></td>
+                      <td class="px-4 py-4 text-ink/65" x-text="ap.timeout || '-'"></td>
+                      <td class="px-4 py-4 text-ink/65" x-text="ap.comment || '-'"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <section x-show="activeMenu === 'reminders'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
             <div>
@@ -1131,6 +1175,7 @@
           { key: "overview", label: "Overview", icon: "fa-solid fa-chart-pie" },
           { key: "notifications", label: "Notifikasi", icon: "fa-solid fa-paper-plane" },
           { key: "contacts", label: "Contacts", icon: "fa-solid fa-address-book" },
+          { key: "monitor-ap", label: "Monitor AP", icon: "fa-solid fa-tower-cell" },
           { key: "reminders", label: "Reminders", icon: "fa-solid fa-calendar-check" },
           { key: "templates", label: "Templates", icon: "fa-solid fa-file-pen" },
           { key: "settings", label: "Settings", icon: "fa-solid fa-sliders" },
@@ -1139,6 +1184,7 @@
         ],
         contacts: [],
         mikrotikProfiles: [],
+        apMonitors: [],
         reminders: [],
         sent: [],
         templates: [],
@@ -1376,6 +1422,13 @@
           return "bg-slate-200/70 text-slate-700";
         },
 
+        getApStatusClass(status) {
+          const normalized = String(status || "").toUpperCase();
+          if (["UP", "ONLINE", "OK"].includes(normalized)) return "bg-moss/10 text-moss";
+          if (["DOWN", "OFFLINE", "FAIL"].includes(normalized)) return "bg-clay/10 text-clay";
+          return "bg-slate-200/70 text-slate-700";
+        },
+
         searchMatches(item, fields, search) {
           const needle = String(search || "").trim().toLowerCase();
           if (!needle) return true;
@@ -1493,6 +1546,7 @@
           await Promise.all([
             this.loadStatus(),
             this.loadContacts(),
+            this.loadApMonitors(),
             this.loadReminders(),
             this.loadSent(),
             this.loadTemplates(),
@@ -1545,6 +1599,10 @@
         async loadMikrotikProfiles() {
           this.mikrotikProfiles = await this.api("/api/mikrotik/profiles");
           this.notify(`${this.mikrotikProfiles.length} profile MikroTik dimuat.`);
+        },
+
+        async loadApMonitors() {
+          this.apMonitors = await this.api("/api/mikrotik/netwatch");
         },
 
         async loadReminders() {
