@@ -173,15 +173,15 @@
               <span class="inline-flex items-center gap-2 text-xs font-bold uppercase text-ink/45"><i class="fa-solid fa-circle-notch fa-spin"></i>Loading</span>
             </template>
           </div>
-          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div class="grid gap-3">
             <template x-for="card in statusCards" :key="card.label">
-              <div class="metric-card rounded-[1.5rem] border border-ink/8 bg-gradient-to-b from-white to-haze px-4 py-5">
-                <div class="flex items-start justify-between gap-4">
+              <div class="metric-card rounded-3xl border border-ink/8 bg-haze px-4 py-4">
+                <div class="flex items-center gap-3">
+                  <span class="icon-chip"><i :class="card.icon"></i></span>
                   <div>
                     <div class="text-xs font-bold uppercase text-ink/45" x-text="card.label"></div>
-                    <div class="mt-3 text-3xl font-semibold" x-text="card.value"></div>
+                    <div class="mt-1 text-2xl font-semibold" x-text="card.value"></div>
                   </div>
-                  <span class="icon-chip"><i :class="card.icon"></i></span>
                 </div>
               </div>
             </template>
