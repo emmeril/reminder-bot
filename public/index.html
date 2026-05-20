@@ -428,11 +428,11 @@
               </table>
             </div>
           </div>
-          <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
+          <div class="pagination-bar mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
             <div class="min-w-0" x-text="paginationLabel('contacts', filteredContacts.length)"></div>
-            <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
+            <div class="pagination-controls flex shrink-0 items-center gap-2 whitespace-nowrap">
               <button @click="setPage('contacts', filters.contacts.page - 1)" :disabled="filters.contacts.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
-              <span class="px-2" x-text="filters.contacts.page + ' / ' + totalPages('contacts', filteredContacts.length)"></span>
+              <span class="px-2 whitespace-nowrap" x-text="filters.contacts.page + ' / ' + totalPages('contacts', filteredContacts.length)"></span>
               <button @click="setPage('contacts', filters.contacts.page + 1)" :disabled="filters.contacts.page >= totalPages('contacts', filteredContacts.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
           </div>
@@ -494,11 +494,11 @@
               </table>
             </div>
           </div>
-          <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
+          <div class="pagination-bar mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
             <div class="min-w-0" x-text="paginationLabel('monitorAp', filteredApMonitors.length)"></div>
-            <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
+            <div class="pagination-controls flex shrink-0 items-center gap-2 whitespace-nowrap">
               <button @click="setPage('monitorAp', filters.monitorAp.page - 1)" :disabled="filters.monitorAp.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
-              <span class="px-2" x-text="filters.monitorAp.page + ' / ' + totalPages('monitorAp', filteredApMonitors.length)"></span>
+              <span class="px-2 whitespace-nowrap" x-text="filters.monitorAp.page + ' / ' + totalPages('monitorAp', filteredApMonitors.length)"></span>
               <button @click="setPage('monitorAp', filters.monitorAp.page + 1)" :disabled="filters.monitorAp.page >= totalPages('monitorAp', filteredApMonitors.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
           </div>
@@ -597,11 +597,11 @@
               </table>
             </div>
           </div>
-          <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
+          <div class="pagination-bar mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
             <div class="min-w-0" x-text="paginationLabel('reminders', filteredReminders.length)"></div>
-            <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
+            <div class="pagination-controls flex shrink-0 items-center gap-2 whitespace-nowrap">
               <button @click="setPage('reminders', filters.reminders.page - 1)" :disabled="filters.reminders.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
-              <span class="px-2" x-text="filters.reminders.page + ' / ' + totalPages('reminders', filteredReminders.length)"></span>
+              <span class="px-2 whitespace-nowrap" x-text="filters.reminders.page + ' / ' + totalPages('reminders', filteredReminders.length)"></span>
               <button @click="setPage('reminders', filters.reminders.page + 1)" :disabled="filters.reminders.page >= totalPages('reminders', filteredReminders.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
           </div>
@@ -797,11 +797,11 @@
               </table>
             </div>
           </div>
-          <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
+          <div class="pagination-bar mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
             <div class="min-w-0" x-text="paginationLabel('sent', filteredSent.length)"></div>
-            <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
+            <div class="pagination-controls flex shrink-0 items-center gap-2 whitespace-nowrap">
               <button @click="setPage('sent', filters.sent.page - 1)" :disabled="filters.sent.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
-              <span class="px-2" x-text="filters.sent.page + ' / ' + totalPages('sent', filteredSent.length)"></span>
+              <span class="px-2 whitespace-nowrap" x-text="filters.sent.page + ' / ' + totalPages('sent', filteredSent.length)"></span>
               <button @click="setPage('sent', filters.sent.page + 1)" :disabled="filters.sent.page >= totalPages('sent', filteredSent.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
           </div>
@@ -839,11 +839,11 @@
               </article>
             </template>
           </div>
-          <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
+          <div class="pagination-bar mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
             <div class="min-w-0" x-text="paginationLabel('logs', logs.length)"></div>
-            <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
+            <div class="pagination-controls flex shrink-0 items-center gap-2 whitespace-nowrap">
               <button @click="setPage('logs', filters.logs.page - 1)" :disabled="filters.logs.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
-              <span class="px-2" x-text="filters.logs.page + ' / ' + totalPages('logs', logs.length)"></span>
+              <span class="px-2 whitespace-nowrap" x-text="filters.logs.page + ' / ' + totalPages('logs', logs.length)"></span>
               <button @click="setPage('logs', filters.logs.page + 1)" :disabled="filters.logs.page >= totalPages('logs', logs.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
           </div>

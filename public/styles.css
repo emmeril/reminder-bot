@@ -317,6 +317,14 @@ main > section {
   min-width: 130px;
 }
 
+.pagination-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
 .metric-card:hover,
 aside > section:hover,
 main > section:hover {
@@ -532,6 +540,19 @@ main > section:hover {
   .filter-inline-select,
   .filter-inline-size {
     min-width: 0;
+  }
+
+  .pagination-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .pagination-bar > .min-w-0 {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .backdrop-blur-xl {
