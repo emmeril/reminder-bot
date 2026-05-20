@@ -1275,6 +1275,16 @@
         },
 
         async init() {
+          const savedMenu = localStorage.getItem("dashboardActiveMenu");
+          const isValidSavedMenu = this.navMenus.some((menu) => menu.key === savedMenu);
+          if (isValidSavedMenu) {
+            this.activeMenu = savedMenu;
+          }
+
+          this.$watch("activeMenu", (value) => {
+            localStorage.setItem("dashboardActiveMenu", value);
+          });
+
           await this.loadStatus();
           await Promise.all([
             this.loadContacts(),
