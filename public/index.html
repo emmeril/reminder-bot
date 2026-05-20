@@ -1733,6 +1733,7 @@
               { label: "Unpaid contacts", value: data.summary.unpaidContacts, icon: "fa-solid fa-triangle-exclamation" },
               { label: "Masih ada hutang", value: data.summary.debtContacts || 0, icon: "fa-solid fa-file-invoice-dollar" },
             ];
+            this.updateApSummaryMetrics();
             if (!this.settingsDirty) {
               this.forms.settings = {
                 dashboardTitle: data.settings.dashboardTitle || "",
@@ -1763,7 +1764,32 @@
 
         async loadApMonitors() {
           this.apMonitors = await this.api("/api/mikrotik/netwatch");
+          this.updateApSummaryMetrics();
           this.clampPage("monitorAp", this.filteredApMonitors.length);
+        },
+
+        updateApSummaryMetrics() {
+          if (!Array.isArray(this.summaryMetrics) || this.summaryMetrics.length === 0) return;
+
+          const apUp = this.apMonitors.filter((ap) => {
+            const status = String(ap?.status || "").toUpperCase();
+            return ["UP", "ONLINE", "OK"].includes(status);
+          }).length;
+
+          const apDown = this.apMonitors.filter((ap) => {
+            const status = String(ap?.status || "").toUpperCase();
+            return ["DOWN", "OFFLINE", "FAIL"].includes(status);
+          }).length;
+
+          const baseMetrics = this.summaryMetrics.filter(
+            (metric) => metric.label !== "Status AP UP" && metric.label !== "Status AP DOWN"
+          );
+
+          this.summaryMetrics = [
+            ...baseMetrics,
+            { label: "Status AP UP", value: apUp, icon: "fa-solid fa-tower-cell" },
+            { label: "Status AP DOWN", value: apDown, icon: "fa-solid fa-tower-cell" },
+          ];
         },
 
         async loadReminders() {
