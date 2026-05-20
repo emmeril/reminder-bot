@@ -2,7 +2,12 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, minimum-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <meta name="description" content="Login - Dashboard Reminder Bot">
+  <meta name="theme-color" content="#12856f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Login">
   <title>Login - __DASHBOARD_TITLE__</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -27,52 +32,49 @@
     };
   </script>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"></noscript>
   <link rel="stylesheet" href="/public/styles.css">
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
-<body class="min-h-screen bg-[linear-gradient(145deg,#f8fafc_0%,#eef5f4_44%,#fff7ed_100%)] font-body text-ink">
-  <main class="grid min-h-screen place-items-center px-5">
+<body class="min-h-screen bg-[linear-gradient(145deg,#f8fafc_0%,#eef5f4_44%,#fff7ed_100%)] font-body text-ink overflow-x-hidden" x-cloak>
+  <main class="grid min-h-screen place-items-center px-4 sm:px-5 md:px-6 py-4 sm:py-6">
     <section
       x-data="loginApp()"
-      class="hero-panel w-full max-w-md rounded-[2rem] border border-white/70 bg-white/85 p-8 shadow-soft backdrop-blur-xl"
+      class="hero-panel w-full max-w-md rounded-[1.8rem] sm:rounded-[2rem] border border-white/70 bg-white/85 p-6 sm:p-8 md:p-9 shadow-soft backdrop-blur-xl"
     >
-      <span class="inline-flex items-center gap-2 rounded-full bg-clay/10 px-3 py-1 text-xs font-bold uppercase text-clay">
+      <span class="inline-flex items-center gap-2 rounded-full bg-clay/10 px-3 py-1.5 text-xs font-bold uppercase text-clay">
         <i class="fa-solid fa-lock"></i>
         Protected Dashboard
       </span>
-      <div class="mt-5 space-y-3">
-        <h1 class="font-display text-4xl whitespace-nowrap  font-extrabold leading-none tracking-tight sm:text-5xl">__DASHBOARD_TITLE__</h1>
-        <!-- <p class="text-sm leading-7 text-ink/60">
-          Masuk dulu untuk membuka dashboard, melihat output bot, dan mengelola semua notifikasi dari satu tempat.
-        </p> -->
+      <div class="mt-5 sm:mt-6 space-y-3 sm:space-y-4">
+        <h1 class="font-display text-3xl sm:text-4xl md:text-5xl whitespace-normal font-extrabold leading-snug tracking-tight">__DASHBOARD_TITLE__</h1>
       </div>
 
-      <form class="mt-8 space-y-4" @submit.prevent="submit()">
+      <form class="mt-7 sm:mt-8 md:mt-9 space-y-4 sm:space-y-5" @submit.prevent="submit()">
         <label class="block text-sm text-ink/60">
           Username
           <div class="relative mt-2">
             <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-ink/35"></i>
-            <input x-model="form.username" autocomplete="username" class="w-full rounded-2xl border border-ink/10 bg-white py-3 pl-11 pr-4 outline-none transition focus:border-clay" required>
+            <input x-model="form.username" autocomplete="username" class="w-full rounded-2xl border border-ink/10 bg-white py-3 sm:py-3.5 pl-11 pr-4 text-sm sm:text-base outline-none transition focus:border-clay" required>
           </div>
         </label>
         <label class="block text-sm text-ink/60">
           Password
           <div class="relative mt-2">
             <i class="fa-solid fa-key absolute left-4 top-1/2 -translate-y-1/2 text-ink/35"></i>
-            <input x-model="form.password" type="password" autocomplete="current-password" class="w-full rounded-2xl border border-ink/10 bg-white py-3 pl-11 pr-4 outline-none transition focus:border-clay" required>
+            <input x-model="form.password" type="password" autocomplete="current-password" class="w-full rounded-2xl border border-ink/10 bg-white py-3 sm:py-3.5 pl-11 pr-4 text-sm sm:text-base outline-none transition focus:border-clay" required>
           </div>
         </label>
         <div class="min-h-6 text-sm text-clay" x-text="error"></div>
-        <button class="w-full rounded-full bg-gradient-to-r from-clay to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
+        <button class="w-full rounded-full bg-gradient-to-r from-clay to-orange-400 px-5 py-3 sm:py-3.5 text-sm sm:text-base font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed">
           <span x-show="!submitting"><i class="fa-solid fa-right-to-bracket mr-2"></i>Masuk</span>
           <span x-show="submitting"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memproses...</span>
         </button>
       </form>
-
-      <!-- <p class="mt-6 text-xs leading-6 text-ink/50">
-        Gunakan <code>AUTH_USERNAME</code> dan <code>AUTH_PASSWORD</code> di environment untuk mengganti kredensial default.
-      </p> -->
     </section>
   </main>
 
