@@ -682,6 +682,22 @@
               Template Notifikasi AP Down
               <textarea x-model="forms.settings.apDownMessageTemplate" class="mt-2 min-h-36 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Gunakan placeholder: {{name}}, {{host}}, {{status}}, {{supportSignature}}, {{companyName}}"></textarea>
             </label>
+            <label class="block text-sm text-ink/60">
+              Template Notifikasi Status Pembayaran
+              <textarea x-model="forms.settings.paymentStatusMessageTemplate" class="mt-2 min-h-36 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Gunakan placeholder: {{name}}, {{transactionId}}, {{paymentDate}}, {{statusText}}, {{noteText}}, {{companyName}}, {{companyNameUpper}}, {{supportSignature}}"></textarea>
+            </label>
+            <label class="block text-sm text-ink/60">
+              Template Pembayaran: Hanya Tunggakan
+              <textarea x-model="forms.settings.paymentMessageTemplateArrearsOnly" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Template khusus untuk tipe ARREARS-ONLY"></textarea>
+            </label>
+            <label class="block text-sm text-ink/60">
+              Template Pembayaran: Bulan Ini Saja
+              <textarea x-model="forms.settings.paymentMessageTemplateCurrentOnly" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Template khusus untuk tipe CURRENT-ONLY"></textarea>
+            </label>
+            <label class="block text-sm text-ink/60">
+              Template Pembayaran: Lunas Semua
+              <textarea x-model="forms.settings.paymentMessageTemplateFullPaid" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Template khusus untuk tipe FULL-PAID"></textarea>
+            </label>
             <div class="grid gap-3 rounded-[1.5rem] border border-ink/8 bg-haze p-4">
               <label class="flex items-start gap-3 text-sm text-ink/75">
                 <input x-model="forms.settings.autoRescheduleMonthly" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
@@ -1274,6 +1290,10 @@
             companyName: "",
             supportSignature: "",
             apDownMessageTemplate: "",
+            paymentStatusMessageTemplate: "",
+            paymentMessageTemplateArrearsOnly: "",
+            paymentMessageTemplateCurrentOnly: "",
+            paymentMessageTemplateFullPaid: "",
             timezone: "",
             autoRescheduleMonthly: false,
             notifyAdminsOnDelivery: false,
@@ -1740,6 +1760,10 @@
                 companyName: data.settings.companyName || "",
                 supportSignature: data.settings.supportSignature || "",
                 apDownMessageTemplate: data.settings.apDownMessageTemplate || "",
+                paymentStatusMessageTemplate: data.settings.paymentStatusMessageTemplate || "",
+                paymentMessageTemplateArrearsOnly: data.settings.paymentMessageTemplateArrearsOnly || "",
+                paymentMessageTemplateCurrentOnly: data.settings.paymentMessageTemplateCurrentOnly || "",
+                paymentMessageTemplateFullPaid: data.settings.paymentMessageTemplateFullPaid || "",
                 timezone: data.settings.timezone || "",
                 autoRescheduleMonthly: Boolean(data.settings.autoRescheduleMonthly),
                 notifyAdminsOnDelivery: Boolean(data.settings.notifyAdminsOnDelivery),
