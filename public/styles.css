@@ -580,37 +580,3 @@ main > section:hover {
     transform: none !important;
   }
 }
-
-/* Perbaikan konsistensi mobile & desktop - tambahan */
-@media (max-width: 640px) {
-  table.min-w-full td {
-    word-break: break-word;
-    white-space: normal;
-  }
-  .contact-actions {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-    gap: 0.5rem;
-  }
-  .filter-inline {
-    grid-template-columns: 1fr;
-    gap: 0.75rem;
-  }
-  .filter-inline-search,
-  .filter-inline-select,
-  .filter-inline-size {
-    width: 100%;
-    min-width: unset;
-  }
-  header .flex-col {
-    gap: 1rem;
-  }
-}
-td, th, .message-preview, .sent-message {
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-.table-responsive {
-  overflow-x: auto;
-  border-radius: 1.5rem;
-}
