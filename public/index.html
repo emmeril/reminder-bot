@@ -303,7 +303,7 @@
               <i class="fa-solid fa-plus mr-2"></i>Tambah Contact
             </button>
           </div>
-          <div class="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr),180px,210px,140px]">
+          <div class="filter-grid filter-grid-4 mt-5">
             <input x-model="filters.contacts.search" @input="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama atau nomor WA">
 <select x-model="filters.contacts.status" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
                <option value="ALL">Semua status bayar</option>
@@ -428,9 +428,9 @@
               </table>
             </div>
           </div>
-          <div class="mt-4 flex flex-col gap-3 text-sm text-ink/60 sm:flex-row sm:items-center sm:justify-between">
-            <div x-text="paginationLabel('contacts', filteredContacts.length)"></div>
-            <div class="flex items-center gap-2">
+          <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
+            <div class="min-w-0" x-text="paginationLabel('contacts', filteredContacts.length)"></div>
+            <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
               <button @click="setPage('contacts', filters.contacts.page - 1)" :disabled="filters.contacts.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
               <span class="px-2" x-text="filters.contacts.page + ' / ' + totalPages('contacts', filteredContacts.length)"></span>
               <button @click="setPage('contacts', filters.contacts.page + 1)" :disabled="filters.contacts.page >= totalPages('contacts', filteredContacts.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
@@ -447,7 +447,7 @@
               <i class="fa-solid fa-rotate mr-2"></i>Reload
             </button>
           </div>
-          <div class="mb-5 grid gap-3 lg:grid-cols-[minmax(0,1fr),180px,140px]">
+          <div class="filter-grid filter-grid-3 mb-5">
             <input x-model="filters.monitorAp.search" @input="resetPage('monitorAp')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari host, status, comment, interval">
             <select x-model="filters.monitorAp.status" @change="resetPage('monitorAp')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <option value="ALL">Semua status</option>
@@ -494,9 +494,9 @@
               </table>
             </div>
           </div>
-          <div class="mt-4 flex flex-col gap-3 text-sm text-ink/60 sm:flex-row sm:items-center sm:justify-between">
-            <div x-text="paginationLabel('monitorAp', filteredApMonitors.length)"></div>
-            <div class="flex items-center gap-2">
+          <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
+            <div class="min-w-0" x-text="paginationLabel('monitorAp', filteredApMonitors.length)"></div>
+            <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
               <button @click="setPage('monitorAp', filters.monitorAp.page - 1)" :disabled="filters.monitorAp.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
               <span class="px-2" x-text="filters.monitorAp.page + ' / ' + totalPages('monitorAp', filteredApMonitors.length)"></span>
               <button @click="setPage('monitorAp', filters.monitorAp.page + 1)" :disabled="filters.monitorAp.page >= totalPages('monitorAp', filteredApMonitors.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
@@ -517,7 +517,7 @@
               <i class="fa-solid fa-calendar-plus mr-2"></i>Buat Reminder
             </button>
           </div>
-          <div class="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr),180px,140px]">
+          <div class="filter-grid filter-grid-3 mt-5">
             <input x-model="filters.reminders.search" @input="resetPage('reminders')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari tujuan, nomor, template, atau pesan">
             <select x-model="filters.reminders.schedule" @change="resetPage('reminders')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <option value="ALL">Semua jadwal</option>
@@ -597,9 +597,9 @@
               </table>
             </div>
           </div>
-          <div class="mt-4 flex flex-col gap-3 text-sm text-ink/60 sm:flex-row sm:items-center sm:justify-between">
-            <div x-text="paginationLabel('reminders', filteredReminders.length)"></div>
-            <div class="flex items-center gap-2">
+          <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
+            <div class="min-w-0" x-text="paginationLabel('reminders', filteredReminders.length)"></div>
+            <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
               <button @click="setPage('reminders', filters.reminders.page - 1)" :disabled="filters.reminders.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
               <span class="px-2" x-text="filters.reminders.page + ' / ' + totalPages('reminders', filteredReminders.length)"></span>
               <button @click="setPage('reminders', filters.reminders.page + 1)" :disabled="filters.reminders.page >= totalPages('reminders', filteredReminders.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
@@ -709,7 +709,7 @@
             <h2 class="font-display text-2xl"><i class="fa-solid fa-paper-plane mr-2 text-clay"></i>Sent History</h2>
             <!-- <p class="mt-1 text-sm text-ink/60">Output notifikasi yang sudah keluar dari bot.</p> -->
           </div>
-          <div class="mb-5 grid gap-3 lg:grid-cols-[minmax(0,1fr),180px,140px]">
+          <div class="filter-grid filter-grid-3 mb-5">
             <input x-model="filters.sent.search" @input="resetPage('sent')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari tujuan, nomor, status, atau pesan">
             <select x-model="filters.sent.status" @change="resetPage('sent')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <option value="ALL">Semua status</option>
@@ -785,9 +785,9 @@
               </table>
             </div>
           </div>
-          <div class="mt-4 flex flex-col gap-3 text-sm text-ink/60 sm:flex-row sm:items-center sm:justify-between">
-            <div x-text="paginationLabel('sent', filteredSent.length)"></div>
-            <div class="flex items-center gap-2">
+          <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
+            <div class="min-w-0" x-text="paginationLabel('sent', filteredSent.length)"></div>
+            <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
               <button @click="setPage('sent', filters.sent.page - 1)" :disabled="filters.sent.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
               <span class="px-2" x-text="filters.sent.page + ' / ' + totalPages('sent', filteredSent.length)"></span>
               <button @click="setPage('sent', filters.sent.page + 1)" :disabled="filters.sent.page >= totalPages('sent', filteredSent.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
@@ -801,8 +801,8 @@
               <h2 class="font-display text-2xl"><i class="fa-solid fa-list-check mr-2 text-moss"></i>Activity Log</h2>
               <!-- <p class="mt-1 text-sm text-ink/60">Monitoring internal untuk koneksi, scheduler, API, dan delivery.</p> -->
             </div>
-            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <select x-model.number="filters.logs.pageSize" @change="resetPage('logs')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-2 text-sm outline-none transition focus:border-clay sm:w-36">
+            <div class="filter-grid filter-grid-logs">
+              <select x-model.number="filters.logs.pageSize" @change="resetPage('logs')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-2 text-sm outline-none transition focus:border-clay">
                 <template x-for="size in pageSizes" :key="'logs-size-' + size">
                   <option :value="size" x-text="size + ' / page'"></option>
                 </template>
@@ -827,9 +827,9 @@
               </article>
             </template>
           </div>
-          <div class="mt-4 flex flex-col gap-3 text-sm text-ink/60 sm:flex-row sm:items-center sm:justify-between">
-            <div x-text="paginationLabel('logs', logs.length)"></div>
-            <div class="flex items-center gap-2">
+          <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
+            <div class="min-w-0" x-text="paginationLabel('logs', logs.length)"></div>
+            <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
               <button @click="setPage('logs', filters.logs.page - 1)" :disabled="filters.logs.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
               <span class="px-2" x-text="filters.logs.page + ' / ' + totalPages('logs', logs.length)"></span>
               <button @click="setPage('logs', filters.logs.page + 1)" :disabled="filters.logs.page >= totalPages('logs', logs.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
