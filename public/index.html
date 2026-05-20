@@ -381,7 +381,7 @@
                         </template> -->
                       </td>
                       <td class="px-4 py-4 align-top" data-label="Aksi">
-                        <div class="flex flex-col items-start gap-2">
+                        <div class="contact-actions grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <template x-if="hasDebt(contact)">
                             <div class="w-full rounded-xl border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold leading-5 text-clay text-center">
                               <i class="fa-solid fa-triangle-exclamation mr-1.5"></i>
@@ -461,39 +461,39 @@
               </template>
             </select>
           </div>
-          <div class="overflow-hidden rounded-[1.5rem] border border-ink/8">
-            <div class="overflow-x-auto">
-              <table class="min-w-full text-sm">
-                <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
-                  <tr>
-                    <th class="px-4 py-3">Host AP</th>
-                    <th class="px-4 py-3">Status</th>
-                    <th class="px-4 py-3">Since</th>
-                    <th class="px-4 py-3">Interval</th>
-                    <th class="px-4 py-3">Timeout</th>
-                    <th class="px-4 py-3">Comment</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-ink/6 bg-white/70">
-                  <template x-if="!filteredApMonitors.length">
-                    <tr><td colspan="6" class="px-4 py-8 text-center text-ink/45">Belum ada data Netwatch.</td></tr>
-                  </template>
-                  <template x-for="ap in paginatedApMonitors" :key="'ap-' + ap.id + '-' + ap.host">
-                    <tr>
-                      <td class="px-4 py-4 font-medium text-ink" data-label="Host AP" x-text="ap.host || '-'"></td>
-                      <td class="px-4 py-4" data-label="Status">
-                        <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getApStatusClass(ap.status)" x-text="ap.status || 'UNKNOWN'"></span>
-                      </td>
-                      <td class="px-4 py-4 text-ink/65" data-label="Since" x-text="ap.since || '-'"></td>
-                      <td class="px-4 py-4 text-ink/65" data-label="Interval" x-text="ap.interval || '-'"></td>
-                      <td class="px-4 py-4 text-ink/65" data-label="Timeout" x-text="ap.timeout || '-'"></td>
-                      <td class="px-4 py-4 text-ink/65" data-label="Comment" x-text="ap.comment || '-'"></td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-          </div>
+       <div class="overflow-hidden rounded-[1.5rem] border border-ink/8">
+  <div class="overflow-x-auto">
+    <table class="min-w-full text-sm">
+      <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
+        <tr>
+          <th class="px-4 py-3">Host AP</th>
+          <th class="px-4 py-3">Status</th>
+          <th class="px-4 py-3">Since</th>
+          <th class="px-4 py-3">Interval</th>
+          <th class="px-4 py-3">Timeout</th>
+          <th class="px-4 py-3">Comment</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-ink/6 bg-white/70">
+        <template x-if="!filteredApMonitors.length">
+          <tr><td colspan="6" class="px-4 py-8 text-center text-ink/45">Belum ada data Netwatch.</td></tr>
+        </template>
+        <template x-for="ap in paginatedApMonitors" :key="'ap-' + ap.id + '-' + ap.host">
+          <tr>
+            <td class="px-4 py-4 font-medium text-ink" data-label="Host AP" x-text="ap.host || '-'"></td>
+            <td class="px-4 py-4" data-label="Status">
+              <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getApStatusClass(ap.status)" x-text="ap.status || 'UNKNOWN'"></span>
+            </td>
+            <td class="px-4 py-4 text-ink/65" data-label="Since" x-text="ap.since || '-'"></td>
+            <td class="px-4 py-4 text-ink/65" data-label="Interval" x-text="ap.interval || '-'"></td>
+            <td class="px-4 py-4 text-ink/65" data-label="Timeout" x-text="ap.timeout || '-'"></td>
+            <td class="px-4 py-4 text-ink/65" data-label="Comment" x-text="ap.comment || '-'"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+</div>
           <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
             <div class="min-w-0" x-text="paginationLabel('monitorAp', filteredApMonitors.length)"></div>
             <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
@@ -623,35 +623,35 @@
             </label>
             <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Template Baru</button>
           </form>
-          <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
-            <div class="overflow-x-auto">
-              <table class="min-w-full text-sm">
-                <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
-                  <tr>
-                    <th class="px-4 py-3"><i class="fa-solid fa-file-lines mr-2"></i>Template</th>
-                    <th class="px-4 py-3"><i class="fa-solid fa-clock-rotate-left mr-2"></i>Update</th>
-                    <th class="px-4 py-3"><i class="fa-solid fa-eye mr-2"></i>Preview</th>
-                    <th class="px-4 py-3"><i class="fa-solid fa-bolt mr-2"></i>Aksi</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-ink/6 bg-white/70">
-                  <template x-if="!templates.length">
-                    <tr><td colspan="4" class="px-4 py-8 text-center text-ink/45">Belum ada template.</td></tr>
-                  </template>
-                  <template x-for="template in templates" :key="template.name">
-                    <tr>
-                      <td class="px-4 py-4 font-medium" data-label="Template" x-text="template.name"></td>
-                      <td class="px-4 py-4 text-ink/65" data-label="Update" x-text="formatDateTime(template.updatedAt)"></td>
-                      <td class="px-4 py-4 text-ink/65" data-label="Preview" x-text="(template.content || '').slice(0, 120)"></td>
-                      <td class="px-4 py-4" data-label="Aksi">
-                        <button @click="removeTemplate(template)" class="rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Delete</button>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-          </div>
+         <div class="overflow-hidden rounded-[1.5rem] border border-ink/8">
+  <div class="overflow-x-auto">
+    <table class="min-w-full text-sm">
+      <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
+        <tr>
+          <th class="px-4 py-3"><i class="fa-solid fa-file-lines mr-2"></i>Template</th>
+          <th class="px-4 py-3"><i class="fa-solid fa-clock-rotate-left mr-2"></i>Update</th>
+          <th class="px-4 py-3"><i class="fa-solid fa-eye mr-2"></i>Preview</th>
+          <th class="px-4 py-3"><i class="fa-solid fa-bolt mr-2"></i>Aksi</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-ink/6 bg-white/70">
+        <template x-if="!templates.length">
+          <tr><td colspan="4" class="px-4 py-8 text-center text-ink/45">Belum ada template.</td></tr>
+        </template>
+        <template x-for="template in templates" :key="template.name">
+          <tr>
+            <td class="px-4 py-4 font-medium" data-label="Template" x-text="template.name"></td>
+            <td class="px-4 py-4 text-ink/65" data-label="Update" x-text="formatDateTime(template.updatedAt)"></td>
+            <td class="px-4 py-4 text-ink/65" data-label="Preview" x-text="(template.content || '').slice(0, 120)"></td>
+            <td class="px-4 py-4" data-label="Aksi">
+              <button @click="removeTemplate(template)" class="rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Delete</button>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+</div>
         </section>
 
         <section x-show="activeMenu === 'settings'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
