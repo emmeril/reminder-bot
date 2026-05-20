@@ -472,14 +472,14 @@
                   </template>
                   <template x-for="ap in paginatedApMonitors" :key="'ap-' + ap.id + '-' + ap.host">
                     <tr>
-                      <td class="px-4 py-4 font-medium text-ink" x-text="ap.host || '-'"></td>
-                      <td class="px-4 py-4">
+                      <td class="px-4 py-4 font-medium text-ink" data-label="Host AP" x-text="ap.host || '-'"></td>
+                      <td class="px-4 py-4" data-label="Status">
                         <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getApStatusClass(ap.status)" x-text="ap.status || 'UNKNOWN'"></span>
                       </td>
-                      <td class="px-4 py-4 text-ink/65" x-text="ap.since || '-'"></td>
-                      <td class="px-4 py-4 text-ink/65" x-text="ap.interval || '-'"></td>
-                      <td class="px-4 py-4 text-ink/65" x-text="ap.timeout || '-'"></td>
-                      <td class="px-4 py-4 text-ink/65" x-text="ap.comment || '-'"></td>
+                      <td class="px-4 py-4 text-ink/65" data-label="Since" x-text="ap.since || '-'"></td>
+                      <td class="px-4 py-4 text-ink/65" data-label="Interval" x-text="ap.interval || '-'"></td>
+                      <td class="px-4 py-4 text-ink/65" data-label="Timeout" x-text="ap.timeout || '-'"></td>
+                      <td class="px-4 py-4 text-ink/65" data-label="Comment" x-text="ap.comment || '-'"></td>
                     </tr>
                   </template>
                 </tbody>
