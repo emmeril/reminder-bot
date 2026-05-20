@@ -2,12 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, minimum-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-  <meta name="description" content="Dashboard Reminder Bot - Kelola notifikasi, kontak, dan pengiriman pesan WhatsApp secara terpusat">
-  <meta name="theme-color" content="#12856f">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Reminder Bot">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>__DASHBOARD_TITLE__</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -33,11 +28,7 @@
     };
   </script>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
-  <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
-  <link rel="preconnect" href="https://cdn.jsdelivr.net">
-  <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" media="print" onload="this.media='all'">
-  <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"></noscript>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css">
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
@@ -45,18 +36,18 @@
   <div
     x-data="dashboardApp()"
     x-init="init()"
-    x-cloak
-    class="app-container mx-auto w-[min(1500px,calc(100%-24px))] py-4 sm:w-[min(1500px,calc(100%-36px))] sm:py-5 md:w-[min(1500px,calc(100%-40px))] md:py-6 lg:w-[min(1500px,calc(100%-48px))] lg:py-7"
+    class="app-container mx-auto w-[min(1500px,calc(100%-24px))] py-4 sm:w-[min(1500px,calc(100%-36px))] sm:py-6"
   >
-    <div class="grid gap-3 sm:gap-4 md:gap-5 lg:gap-6 xl:grid-cols-[280px,minmax(0,1fr)]">
+    <div class="grid gap-4 xl:grid-cols-[280px,minmax(0,1fr)]">
       <aside class="hidden xl:flex xl:flex-col xl:gap-4">
-        <section class="panel-shell rounded-[1.4rem] p-4 sm:p-5 md:p-5 lg:p-6 shadow-soft backdrop-blur-xl md:rounded-[1.6rem]">
+        <section class="panel-shell rounded-[1.4rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="flex items-center gap-3">
             <div class="hero-mark !h-12 !w-12 !rounded-[1rem]">
               <i class="fa-solid fa-bell"></i>
             </div>
             <div class="min-w-0">
               <div class="section-caption">Reminder Operations</div>
+              <!-- <h1 class="mt-1 text-[1.5rem] whitespace-nowrap font-semibold leading-tight text-ink">__DASHBOARD_TITLE__</h1> -->
             </div>
           </div>
         </section>
@@ -107,16 +98,16 @@
       </aside>
 
       <div class="min-w-0 space-y-4">
-        <header class="panel-shell rounded-[1.4rem] p-4 shadow-soft backdrop-blur-xl sm:p-5 md:p-6 md:rounded-[1.6rem] lg:p-6">
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
+        <header class="panel-shell rounded-[1.4rem] p-4 shadow-soft backdrop-blur-xl sm:p-5">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div class="min-w-0">
               <div class="section-caption">Dashboard</div>
-              <h1 class="mt-2 text-2xl font-semibold leading-tight tracking-tight text-ink sm:text-3xl md:text-3.5xl lg:text-4xl">__DASHBOARD_TITLE__</h1>
-              <p class="mt-2 max-w-2xl text-sm leading-6 text-ink/60 sm:text-base md:mt-3">
+              <h1 class="mt-2 text-2xl font-semibold leading-tight tracking-tight text-ink sm:text-3xl">__DASHBOARD_TITLE__</h1>
+              <p class="mt-2 max-w-2xl text-sm leading-6 text-ink/60">
                 Panel operasional untuk monitoring WhatsApp, reminder, kontak, template, dan log aktivitas.
               </p>
             </div>
-            <div class="hidden lg:flex flex-wrap justify-end gap-2 md:gap-3">
+            <div class="hidden lg:flex flex-wrap justify-end gap-2">
               <a href="/qr" target="_blank" rel="noreferrer" class="action-chip rounded-2xl bg-clay px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
                 <i class="fa-brands fa-whatsapp mr-2"></i>Hubungkan WA
               </a>
@@ -133,13 +124,13 @@
           </div>
         </header>
 
-        <section class="panel-shell rounded-[1.25rem] p-3 shadow-soft backdrop-blur-xl sm:rounded-[1.4rem] sm:p-4 md:rounded-[1.5rem] md:p-4 xl:hidden">
-          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 md:gap-2.5">
+        <section class="panel-shell rounded-[1.25rem] p-3 shadow-soft backdrop-blur-xl xl:hidden">
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <template x-for="menu in navMenus" :key="menu.key">
               <button
                 type="button"
                 @click="activeMenu = menu.key"
-                class="menu-pill rounded-full border px-4 py-2 text-sm font-semibold transition sm:px-4 sm:py-2.5"
+                class="menu-pill rounded-full border px-4 py-2 text-sm font-semibold transition"
                 :class="activeMenu === menu.key ? 'border-moss bg-moss text-white shadow-lg shadow-moss/20' : 'border-ink/10 bg-white text-ink hover:bg-haze'"
               >
                 <i :class="menu.icon + ' mr-2'"></i><span x-text="menu.label"></span>
@@ -148,36 +139,36 @@
           </div>
         </section>
 
-        <section class="panel-shell rounded-[1.25rem] p-3 shadow-soft backdrop-blur-xl sm:rounded-[1.4rem] sm:p-4 md:rounded-[1.5rem] md:p-4 lg:hidden">
-          <div class="grid grid-cols-2 gap-2 sm:grid-cols-4 md:gap-2.5">
-            <a href="/qr" target="_blank" rel="noreferrer" class="action-chip rounded-2xl bg-clay px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5 sm:px-4 sm:py-3.5">
+        <section class="panel-shell rounded-[1.25rem] p-3 shadow-soft backdrop-blur-xl lg:hidden">
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <a href="/qr" target="_blank" rel="noreferrer" class="action-chip rounded-2xl bg-clay px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
               <i class="fa-brands fa-whatsapp mr-2"></i>Hubungkan WA
             </a>
-            <button @click="refreshAll()" class="action-chip rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze sm:px-4 sm:py-3.5">
+            <button @click="refreshAll()" class="action-chip rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze">
               <i class="fa-solid fa-rotate mr-2"></i>Refresh
             </button>
-            <button @click="runScheduler()" class="action-chip rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white transition hover:bg-moss sm:px-4 sm:py-3.5">
+            <button @click="runScheduler()" class="action-chip rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white transition hover:bg-moss">
               <i class="fa-solid fa-play mr-2"></i>Run Scheduler
             </button>
-            <button @click="logout()" class="action-chip rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-clay hover:text-white sm:px-4 sm:py-3.5">
+            <button @click="logout()" class="action-chip rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-clay hover:text-white">
               <i class="fa-solid fa-right-from-bracket mr-2"></i>Logout
             </button>
           </div>
         </section>
 
         <div
-          class="grid gap-4 sm:gap-5 md:gap-6"
+          class="grid gap-6"
           :class="activeMenu === 'overview' ? 'xl:grid-cols-2 xl:items-stretch' : 'grid-cols-1'"
         >
       <aside
         x-show="['overview','notifications'].includes(activeMenu)"
         x-transition.opacity
-        class="space-y-4 sm:space-y-5 md:space-y-6"
-        :class="activeMenu === 'overview' ? 'xl:self-stretch' : 'space-y-0 grid gap-4 sm:gap-5 md:grid-cols-2 md:gap-6 xl:grid-cols-3 w-full'"
+        class="space-y-6"
+        :class="activeMenu === 'overview' ? 'xl:self-stretch' : 'space-y-0 grid gap-6 md:grid-cols-2 xl:grid-cols-3 w-full'"
       >
-        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-4 sm:p-5 md:p-6 shadow-soft backdrop-blur-xl md:rounded-[1.9rem] xl:flex xl:h-full xl:flex-col">
-          <div class="mb-4 sm:mb-5 flex items-center justify-between">
-            <h2 class="font-display text-xl sm:text-2xl md:text-2xl lg:text-2xl"><i class="fa-solid fa-signal mr-2 text-moss"></i>Status Bot</h2>
+        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl xl:flex xl:h-full xl:flex-col">
+          <div class="mb-4 flex items-center justify-between">
+            <h2 class="font-display text-2xl"><i class="fa-solid fa-signal mr-2 text-moss"></i>Status Bot</h2>
             <template x-if="loading.status">
               <span class="inline-flex items-center gap-2 text-xs font-bold uppercase text-ink/45"><i class="fa-solid fa-circle-notch fa-spin"></i>Loading</span>
             </template>
@@ -198,11 +189,11 @@
         </section>
 
         <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
-          <h2 class="font-display text-lg sm:text-xl md:text-2xl"><i class="fa-solid fa-paper-plane mr-2 text-clay"></i>Kirim Notifikasi Manual</h2>
-          <form class="mt-4 sm:mt-5 md:mt-6 space-y-4 sm:space-y-4 md:space-y-5" @submit.prevent="sendManualNotification()">
+          <h2 class="font-display text-2xl"><i class="fa-solid fa-paper-plane mr-2 text-clay"></i>Kirim Notifikasi Manual</h2>
+          <form class="mt-4 space-y-4" @submit.prevent="sendManualNotification()">
             <label class="block text-sm text-ink/60">
               Pilih contact (opsional)
-              <select x-model="forms.manual.contactId" @change="onManualContactChange()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 sm:py-3.5 outline-none transition focus:border-clay text-sm sm:text-base">
+              <select x-model="forms.manual.contactId" @change="onManualContactChange()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
                 <option value="">-- Isi manual nomor tujuan --</option>
                 <template x-for="contact in contacts" :key="'manual-contact-' + contact.id">
                   <option :value="contact.id" x-text="contact.name + ' (' + contact.phoneNumber + ')'"></option>
@@ -211,11 +202,11 @@
             </label>
             <label class="block text-sm text-ink/60">
               Nomor tujuan
-              <input x-model="forms.manual.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 sm:py-3.5 outline-none ring-0 transition focus:border-clay text-sm sm:text-base" placeholder="628xxx" required>
+              <input x-model="forms.manual.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none ring-0 transition focus:border-clay" placeholder="628xxx" required>
             </label>
             <label class="block text-sm text-ink/60">
               Template pesan (opsional)
-              <select x-model="forms.manual.templateName" @change="applyManualTemplate()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 sm:py-3.5 outline-none transition focus:border-clay text-sm sm:text-base">
+              <select x-model="forms.manual.templateName" @change="applyManualTemplate()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
                 <option value="">-- Tulis pesan manual --</option>
                 <template x-for="t in templates" :key="'manual-template-' + t.name">
                   <option :value="t.name" x-text="t.name"></option>
@@ -238,11 +229,11 @@
           <form class="mt-4 space-y-4" @submit.prevent="sendBroadcast()">
             <label class="block text-sm text-ink/60">
               Judul
-              <input x-model="forms.broadcast.title" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 sm:py-3.5 outline-none ring-0 transition focus:border-clay text-sm sm:text-base" placeholder="Pengumuman" required>
+              <input x-model="forms.broadcast.title" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none ring-0 transition focus:border-clay" placeholder="Pengumuman" required>
             </label>
             <label class="block text-sm text-ink/60">
               Template (opsional)
-              <select x-model="forms.broadcast.templateName" @change="applyBroadcastTemplate()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 sm:py-3.5 outline-none transition focus:border-clay text-sm sm:text-base">
+              <select x-model="forms.broadcast.templateName" @change="applyBroadcastTemplate()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
                 <option value="">-- Tulis manual --</option>
                 <template x-for="t in templates" :key="'broadcast-template-' + t.name">
                   <option :value="t.name" x-text="t.name"></option>
@@ -251,32 +242,33 @@
             </label>
             <label class="block text-sm text-ink/60">
               Pesan
-              <textarea x-model="forms.broadcast.message" class="mt-2 min-h-28 sm:min-h-32 md:min-h-36 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 sm:py-3.5 outline-none transition focus:border-clay text-sm sm:text-base" placeholder="Tulis pesan broadcast..." required></textarea>
+              <textarea x-model="forms.broadcast.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Tulis pesan broadcast..." required></textarea>
             </label>
-            <button type="submit" class="w-full rounded-full bg-gradient-to-r from-moss to-green-400 px-5 py-3 sm:py-3.5 text-sm sm:text-base font-semibold text-white shadow-lg shadow-moss/20">
+            <button type="submit" class="w-full rounded-full bg-gradient-to-r from-moss to-green-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20">
               <i class="fa-solid fa-bullhorn mr-2"></i>Kirim Broadcast
             </button>
           </form>
         </section>
 
-        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-4 sm:p-5 md:p-6 shadow-soft backdrop-blur-xl md:rounded-[1.9rem]">
-          <h2 class="font-display text-lg sm:text-xl md:text-2xl"><i class="fa-solid fa-user-shield mr-2 text-ink/70"></i>Admin Recipients</h2>
-          <form class="mt-4 sm:mt-5 md:mt-6 space-y-4 md:space-y-5" @submit.prevent="saveRecipients()">
+        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
+          <h2 class="font-display text-2xl"><i class="fa-solid fa-user-shield mr-2 text-ink/70"></i>Admin Recipients</h2>
+          <form class="mt-4 space-y-4" @submit.prevent="saveRecipients()">
             <label class="block text-sm text-ink/60">
               Nomor admin
-              <textarea x-model="forms.recipients" class="mt-2 min-h-32 sm:min-h-36 md:min-h-40 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 sm:py-3.5 outline-none transition focus:border-clay text-sm sm:text-base" placeholder="Satu nomor per baris, format 628xxx"></textarea>
+              <textarea x-model="forms.recipients" class="mt-2 min-h-36 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Satu nomor per baris, format 628xxx"></textarea>
             </label>
-            <button class="w-full rounded-full border border-ink/10 bg-white px-5 py-3 sm:py-3.5 text-sm sm:text-base font-semibold text-ink transition hover:bg-ink hover:text-white">
+            <button class="w-full rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
               <i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Recipients
             </button>
           </form>
         </section>
       </aside>
 
-      <main class="space-y-4 sm:space-y-5 md:space-y-6" :class="activeMenu === 'overview' ? 'xl:h-full' : 'w-full max-w-none'">
-        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-4 sm:p-5 md:p-6 shadow-soft backdrop-blur-xl md:rounded-[1.9rem] xl:h-full">
-          <div class="mb-4 sm:mb-5 md:mb-6">
-            <h2 class="font-display text-lg sm:text-xl md:text-2xl lg:text-2xl"><i class="fa-solid fa-chart-line mr-2 text-moss"></i>Overview</h2>
+      <main class="space-y-6" :class="activeMenu === 'overview' ? 'xl:h-full' : 'w-full max-w-none'">
+        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl xl:h-full">
+          <div class="mb-5">
+            <h2 class="font-display text-2xl"><i class="fa-solid fa-chart-line mr-2 text-moss"></i>Overview</h2>
+            <!-- <p class="mt-1 text-sm text-ink/60">Ringkasan health bot, antrean notifikasi, dan hasil kirim.</p> -->
           </div>
           <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <template x-for="metric in summaryMetrics" :key="metric.label">
