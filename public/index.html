@@ -683,10 +683,6 @@
               <textarea x-model="forms.settings.apDownMessageTemplate" class="mt-2 min-h-36 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Gunakan placeholder: {{name}}, {{host}}, {{status}}, {{supportSignature}}, {{companyName}}"></textarea>
             </label>
             <label class="block text-sm text-ink/60">
-              Template Notifikasi Status Pembayaran
-              <textarea x-model="forms.settings.paymentStatusMessageTemplate" class="mt-2 min-h-36 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Gunakan placeholder: {{name}}, {{transactionId}}, {{paymentDate}}, {{statusText}}, {{noteText}}, {{companyName}}, {{companyNameUpper}}, {{supportSignature}}"></textarea>
-            </label>
-            <label class="block text-sm text-ink/60">
               Template Pembayaran: Hanya Tunggakan
               <textarea x-model="forms.settings.paymentMessageTemplateArrearsOnly" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Template khusus untuk tipe ARREARS-ONLY"></textarea>
             </label>
@@ -1290,7 +1286,6 @@
             companyName: "",
             supportSignature: "",
             apDownMessageTemplate: "",
-            paymentStatusMessageTemplate: "",
             paymentMessageTemplateArrearsOnly: "",
             paymentMessageTemplateCurrentOnly: "",
             paymentMessageTemplateFullPaid: "",
@@ -1760,7 +1755,6 @@
                 companyName: data.settings.companyName || "",
                 supportSignature: data.settings.supportSignature || "",
                 apDownMessageTemplate: data.settings.apDownMessageTemplate || "",
-                paymentStatusMessageTemplate: data.settings.paymentStatusMessageTemplate || "",
                 paymentMessageTemplateArrearsOnly: data.settings.paymentMessageTemplateArrearsOnly || "",
                 paymentMessageTemplateCurrentOnly: data.settings.paymentMessageTemplateCurrentOnly || "",
                 paymentMessageTemplateFullPaid: data.settings.paymentMessageTemplateFullPaid || "",

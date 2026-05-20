@@ -87,10 +87,9 @@ const DEFAULT_SETTINGS = {
   companyName: "Emmeril Hotspot",
   supportSignature: "CS Emmeril Hotspot",
   apDownMessageTemplate: "Halo {{name}},\n\nKami mendeteksi perangkat AP *{{host}}* sedang *DOWN*.\nTim kami sedang melakukan pengecekan.\n\nMohon maaf atas ketidaknyamanannya.\n\n{{supportSignature}}",
-  paymentStatusMessageTemplate: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nTerima kasih telah melakukan pembayaran.\nBerikut detail transaksi Anda:\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
-  paymentMessageTemplateArrearsOnly: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nPembayaran tunggakan Anda sudah kami terima.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
-  paymentMessageTemplateCurrentOnly: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nPembayaran bulan ini sudah kami terima.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
-  paymentMessageTemplateFullPaid: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nPembayaran Anda sudah lunas semua.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
+  paymentMessageTemplateArrearsOnly: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nTerima kasih. Pembayaran tunggakan bulan sebelumnya telah kami terima.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
+  paymentMessageTemplateCurrentOnly: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nTerima kasih. Pembayaran bulan ini telah kami terima.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
+  paymentMessageTemplateFullPaid: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nTerima kasih. Semua tagihan Anda sudah lunas.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
   timezone: "Asia/Jakarta",
   lastPaymentResetPeriod: "",
   autoRescheduleMonthly: true,
@@ -1388,9 +1387,6 @@ class DataManager {
       apDownMessageTemplate: payload.apDownMessageTemplate !== undefined
         ? sanitizeMultilineText(payload.apDownMessageTemplate) || current.apDownMessageTemplate
         : current.apDownMessageTemplate,
-      paymentStatusMessageTemplate: payload.paymentStatusMessageTemplate !== undefined
-        ? sanitizeMultilineText(payload.paymentStatusMessageTemplate) || current.paymentStatusMessageTemplate
-        : current.paymentStatusMessageTemplate,
       paymentMessageTemplateArrearsOnly: payload.paymentMessageTemplateArrearsOnly !== undefined
         ? sanitizeMultilineText(payload.paymentMessageTemplateArrearsOnly) || current.paymentMessageTemplateArrearsOnly
         : current.paymentMessageTemplateArrearsOnly,
@@ -1983,20 +1979,14 @@ class NotificationBot {
     }
 
     const settings = this.dataManager.getSettings();
-    let messageTemplate = sanitizeMultilineText(settings.paymentStatusMessageTemplate)
-      || DEFAULT_SETTINGS.paymentStatusMessageTemplate;
+    let messageTemplate = sanitizeMultilineText(settings.paymentMessageTemplateCurrentOnly)
+      || DEFAULT_SETTINGS.paymentMessageTemplateCurrentOnly;
     if (paymentType === PAYMENT_TYPES.ARREARS_ONLY) {
       messageTemplate = sanitizeMultilineText(settings.paymentMessageTemplateArrearsOnly)
-        || DEFAULT_SETTINGS.paymentMessageTemplateArrearsOnly
-        || messageTemplate;
-    } else if (paymentType === PAYMENT_TYPES.CURRENT_ONLY) {
-      messageTemplate = sanitizeMultilineText(settings.paymentMessageTemplateCurrentOnly)
-        || DEFAULT_SETTINGS.paymentMessageTemplateCurrentOnly
-        || messageTemplate;
+        || DEFAULT_SETTINGS.paymentMessageTemplateArrearsOnly;
     } else if (paymentType === PAYMENT_TYPES.FULL_PAID) {
       messageTemplate = sanitizeMultilineText(settings.paymentMessageTemplateFullPaid)
-        || DEFAULT_SETTINGS.paymentMessageTemplateFullPaid
-        || messageTemplate;
+        || DEFAULT_SETTINGS.paymentMessageTemplateFullPaid;
     }
     const companyName = sanitizeInput(settings.companyName) || "Emmeril Hotspot";
     const supportSignature = sanitizeInput(settings.supportSignature) || "CS Emmeril Hotspot";
