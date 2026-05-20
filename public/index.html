@@ -158,24 +158,24 @@
 
         <div
           class="grid gap-6"
-          :class="activeMenu === 'overview' ? 'xl:grid-cols-2' : 'grid-cols-1'"
+          :class="activeMenu === 'overview' ? 'xl:grid-cols-2 xl:items-stretch' : 'grid-cols-1'"
         >
       <aside
         x-show="['overview','notifications'].includes(activeMenu)"
         x-transition.opacity
         class="space-y-6"
-        :class="activeMenu === 'overview' ? 'xl:sticky xl:top-4 xl:self-start' : 'space-y-0 grid gap-6 md:grid-cols-2 xl:grid-cols-3 w-full'"
+        :class="activeMenu === 'overview' ? 'xl:self-stretch' : 'space-y-0 grid gap-6 md:grid-cols-2 xl:grid-cols-3 w-full'"
       >
-        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl xl:flex xl:h-full xl:flex-col">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-signal mr-2 text-moss"></i>Status Bot</h2>
             <template x-if="loading.status">
               <span class="inline-flex items-center gap-2 text-xs font-bold uppercase text-ink/45"><i class="fa-solid fa-circle-notch fa-spin"></i>Loading</span>
             </template>
           </div>
-          <div class="grid gap-3">
+          <div class="grid gap-3 xl:flex-1 xl:auto-rows-fr">
             <template x-for="card in statusCards" :key="card.label">
-              <div class="metric-card rounded-3xl border border-ink/8 bg-haze px-4 py-4">
+              <div class="metric-card rounded-3xl border border-ink/8 bg-haze px-4 py-4 xl:h-full">
                 <div class="flex items-center gap-3">
                   <span class="icon-chip"><i :class="card.icon"></i></span>
                   <div>
@@ -264,8 +264,8 @@
         </section>
       </aside>
 
-      <main class="space-y-6" :class="activeMenu === 'overview' ? '' : 'w-full max-w-none'">
-        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
+      <main class="space-y-6" :class="activeMenu === 'overview' ? 'xl:h-full' : 'w-full max-w-none'">
+        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl xl:h-full">
           <div class="mb-5">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-chart-line mr-2 text-moss"></i>Overview</h2>
             <!-- <p class="mt-1 text-sm text-ink/60">Ringkasan health bot, antrean notifikasi, dan hasil kirim.</p> -->
