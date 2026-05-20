@@ -282,8 +282,14 @@ main > section:hover {
 }
 
 @media (max-width: 640px) {
+  body {
+    background-attachment: scroll;
+  }
+
   body::before {
-    background-size: auto, auto, 42px 42px, 42px 42px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.9));
+    background-size: auto;
   }
 
   .app-container {
@@ -448,6 +454,27 @@ main > section:hover {
   .quick-action {
     min-height: 2.8rem;
   }
+
+  .backdrop-blur-xl {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .shadow-soft,
+  aside > section,
+  main > section,
+  .metric-card {
+    box-shadow: 0 8px 16px rgba(15, 23, 42, 0.06) !important;
+  }
+
+  button,
+  a,
+  .metric-card,
+  aside > section,
+  main > section {
+    transition: none !important;
+    transform: none !important;
+  }
 }
 
 @media (max-width: 480px) {
@@ -461,5 +488,15 @@ main > section:hover {
 
   .min-h-32 {
     min-height: 6rem !important;
+  }
+}
+
+@media (pointer: coarse) {
+  button:hover,
+  a.rounded-full:hover,
+  .metric-card:hover,
+  aside > section:hover,
+  main > section:hover {
+    transform: none !important;
   }
 }

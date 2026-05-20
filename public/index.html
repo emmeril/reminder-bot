@@ -1238,6 +1238,8 @@
         statusCards: [],
         summaryMetrics: [],
         settingsDirty: false,
+        isMobile: window.matchMedia("(max-width: 768px)").matches,
+        pollers: [],
         paymentTypeSelection: {},
         expandedMessages: {},
         billingPeriod: "",
@@ -1273,9 +1275,44 @@
         },
 
         async init() {
-          await this.refreshAll();
-          setInterval(() => this.loadStatus(), 20000);
-          setInterval(() => this.loadLogs(), 20000);
+          await this.loadStatus();
+          await Promise.all([
+            this.loadContacts(),
+            this.loadReminders(),
+            this.loadTemplates(),
+          ]);
+
+          setTimeout(() => {
+            this.loadNonCriticalData();
+          }, this.isMobile ? 900 : 250);
+
+          this.startPolling();
+        },
+
+        startPolling() {
+          const statusInterval = this.isMobile ? 45000 : 25000;
+          const logsInterval = this.isMobile ? 120000 : 60000;
+
+          this.pollers.push(setInterval(() => {
+            if (!document.hidden) {
+              this.loadStatus();
+            }
+          }, statusInterval));
+
+          this.pollers.push(setInterval(() => {
+            if (!document.hidden && this.activeMenu === "logs") {
+              this.loadLogs();
+            }
+          }, logsInterval));
+        },
+
+        async loadNonCriticalData() {
+          await Promise.allSettled([
+            this.loadApMonitors(),
+            this.loadSent(),
+            this.loadRecipients(),
+            this.loadLogs(),
+          ]);
         },
 
         async api(path, options = {}) {
@@ -1616,16 +1653,13 @@
         },
 
         async refreshAll() {
+          await this.loadStatus();
           await Promise.all([
-            this.loadStatus(),
             this.loadContacts(),
-            this.loadApMonitors(),
             this.loadReminders(),
-            this.loadSent(),
             this.loadTemplates(),
-            this.loadRecipients(),
-            this.loadLogs(),
           ]);
+          await this.loadNonCriticalData();
         },
 
         async loadStatus() {
