@@ -445,7 +445,7 @@ main > section:hover {
 
   table.min-w-full td[data-label] {
     display: grid;
-    grid-template-columns: minmax(5.75rem, 38%) minmax(0, 1fr);
+    grid-template-columns: minmax(6.75rem, 40%) minmax(0, 1fr);
     gap: 0.75rem;
     align-items: start;
   }
@@ -457,6 +457,7 @@ main > section:hover {
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.12em;
+    white-space: nowrap;
   }
 
   table.min-w-full td:not([data-label])::before {
