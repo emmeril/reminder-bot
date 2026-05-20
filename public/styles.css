@@ -73,8 +73,6 @@ p,
 label,
 th,
 td,
-button,
-a,
 span {
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -125,8 +123,21 @@ a.rounded-full {
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  white-space: normal;
+  white-space: nowrap;
   text-align: center;
+}
+
+button,
+a,
+select,
+option {
+  white-space: nowrap;
+  word-break: normal;
+}
+
+input,
+textarea {
+  word-break: break-word;
 }
 
 .quick-actions-list {
