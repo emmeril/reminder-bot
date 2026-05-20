@@ -571,7 +571,6 @@ main > section:hover {
   }
 }
 
-
 @media (pointer: coarse) {
   button:hover,
   a.rounded-full:hover,

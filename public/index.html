@@ -66,7 +66,6 @@
               </button>
             </template>
           </div>
-          
         </section>
 
         <section class="panel-shell rounded-[1.4rem] p-5 shadow-soft backdrop-blur-xl">
@@ -814,13 +813,13 @@
               <h2 class="font-display text-2xl"><i class="fa-solid fa-list-check mr-2 text-moss"></i>Activity Log</h2>
               <!-- <p class="mt-1 text-sm text-ink/60">Monitoring internal untuk koneksi, scheduler, API, dan delivery.</p> -->
             </div>
-            <div class="filter-inline">
-              <select x-model.number="filters.logs.pageSize" @change="resetPage('logs')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+            <div class="filter-grid filter-grid-logs">
+              <select x-model.number="filters.logs.pageSize" @change="resetPage('logs')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-2 text-sm outline-none transition focus:border-clay">
                 <template x-for="size in pageSizes" :key="'logs-size-' + size">
                   <option :value="size" x-text="size + ' / page'"></option>
                 </template>
               </select>
-              <button @click="loadLogs()" class="rounded-full border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white"><i class="fa-solid fa-rotate mr-2"></i>Reload</button>
+              <button @click="loadLogs()" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white"><i class="fa-solid fa-rotate mr-2"></i>Reload</button>
             </div>
           </div>
           <div class="space-y-3">
