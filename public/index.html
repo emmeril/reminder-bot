@@ -303,23 +303,23 @@
               <i class="fa-solid fa-plus mr-2"></i>Tambah Contact
             </button>
           </div>
-          <div class="filter-grid filter-grid-4 mt-5">
-            <input x-model="filters.contacts.search" @input="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama atau nomor WA">
-<select x-model="filters.contacts.status" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+          <div class="filter-inline mt-5">
+            <input x-model="filters.contacts.search" @input="resetPage('contacts')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama atau nomor WA">
+<select x-model="filters.contacts.status" @change="resetPage('contacts')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
                <option value="ALL">Semua status bayar</option>
                <option value="ARREARS-ONLY">Hanya Tunggakan</option>
                <option value="UNPAID">Belum Bayar</option>
                <option value="CURRENT-ONLY">Bulan Ini Saja</option>
                <option value="FULL-PAID">Lunas Semua</option>
              </select>
-            <select x-model="filters.contacts.dueStatus" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+            <select x-model="filters.contacts.dueStatus" @change="resetPage('contacts')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <option value="ALL">Semua status jatuh tempo</option>
               <option value="NOT_SCHEDULED">Belum Dijadwalkan</option>
               <option value="UPCOMING">Belum Jatuh Tempo</option>
               <option value="OVERDUE">Jatuh Tempo</option>
               <option value="PAID">Lunas</option>
             </select>
-            <select x-model.number="filters.contacts.pageSize" @change="resetPage('contacts')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+            <select x-model.number="filters.contacts.pageSize" @change="resetPage('contacts')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <template x-for="size in pageSizes" :key="'contacts-size-' + size">
                 <option :value="size" x-text="size + ' / page'"></option>
               </template>
@@ -447,15 +447,15 @@
               <i class="fa-solid fa-rotate mr-2"></i>Reload
             </button>
           </div>
-          <div class="filter-grid filter-grid-3 mb-5">
-            <input x-model="filters.monitorAp.search" @input="resetPage('monitorAp')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari host, status, comment, interval">
-            <select x-model="filters.monitorAp.status" @change="resetPage('monitorAp')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+          <div class="filter-inline mb-5">
+            <input x-model="filters.monitorAp.search" @input="resetPage('monitorAp')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari host, status, comment, interval">
+            <select x-model="filters.monitorAp.status" @change="resetPage('monitorAp')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <option value="ALL">Semua status</option>
               <option value="UP">UP</option>
               <option value="DOWN">DOWN</option>
               <option value="UNKNOWN">UNKNOWN</option>
             </select>
-            <select x-model.number="filters.monitorAp.pageSize" @change="resetPage('monitorAp')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+            <select x-model.number="filters.monitorAp.pageSize" @change="resetPage('monitorAp')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <template x-for="size in pageSizes" :key="'ap-size-' + size">
                 <option :value="size" x-text="size + ' / page'"></option>
               </template>
@@ -517,15 +517,15 @@
               <i class="fa-solid fa-calendar-plus mr-2"></i>Buat Reminder
             </button>
           </div>
-          <div class="filter-grid filter-grid-3 mt-5">
-            <input x-model="filters.reminders.search" @input="resetPage('reminders')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari tujuan, nomor, template, atau pesan">
-            <select x-model="filters.reminders.schedule" @change="resetPage('reminders')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+          <div class="filter-inline mt-5">
+            <input x-model="filters.reminders.search" @input="resetPage('reminders')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari tujuan, nomor, template, atau pesan">
+            <select x-model="filters.reminders.schedule" @change="resetPage('reminders')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <option value="ALL">Semua jadwal</option>
               <option value="TODAY">Hari ini</option>
               <option value="UPCOMING">Akan datang</option>
               <option value="OVERDUE">Terlambat</option>
             </select>
-            <select x-model.number="filters.reminders.pageSize" @change="resetPage('reminders')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+            <select x-model.number="filters.reminders.pageSize" @change="resetPage('reminders')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <template x-for="size in pageSizes" :key="'reminders-size-' + size">
                 <option :value="size" x-text="size + ' / page'"></option>
               </template>
@@ -709,14 +709,14 @@
             <h2 class="font-display text-2xl"><i class="fa-solid fa-paper-plane mr-2 text-clay"></i>Sent History</h2>
             <!-- <p class="mt-1 text-sm text-ink/60">Output notifikasi yang sudah keluar dari bot.</p> -->
           </div>
-          <div class="filter-grid filter-grid-3 mb-5">
-            <input x-model="filters.sent.search" @input="resetPage('sent')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari tujuan, nomor, status, atau pesan">
-            <select x-model="filters.sent.status" @change="resetPage('sent')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+          <div class="filter-inline mb-5">
+            <input x-model="filters.sent.search" @input="resetPage('sent')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari tujuan, nomor, status, atau pesan">
+            <select x-model="filters.sent.status" @change="resetPage('sent')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <option value="ALL">Semua status</option>
               <option value="SENT">Sent</option>
               <option value="FAILED">Failed</option>
             </select>
-            <select x-model.number="filters.sent.pageSize" @change="resetPage('sent')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+            <select x-model.number="filters.sent.pageSize" @change="resetPage('sent')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <template x-for="size in pageSizes" :key="'sent-size-' + size">
                 <option :value="size" x-text="size + ' / page'"></option>
               </template>

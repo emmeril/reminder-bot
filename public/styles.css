@@ -291,23 +291,30 @@ main > section {
   background: rgba(255, 255, 255, 0.92);
 }
 
-.filter-grid {
-  display: grid;
-  gap: 0.75rem;
+.filter-inline {
+  display: flex;
   align-items: center;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.15rem;
 }
 
-.filter-grid.filter-grid-3 {
-  grid-template-columns: minmax(0, 1fr) minmax(170px, 200px) minmax(130px, 150px);
+.filter-inline > * {
+  flex: 0 0 auto;
 }
 
-.filter-grid.filter-grid-4 {
-  grid-template-columns: minmax(0, 1fr) minmax(170px, 220px) minmax(190px, 250px) minmax(130px, 150px);
+.filter-inline-search {
+  min-width: 260px;
+  width: 100%;
+  flex: 1 1 auto !important;
 }
 
-.filter-grid.filter-grid-logs {
-  grid-template-columns: minmax(130px, 150px) auto;
-  justify-content: end;
+.filter-inline-select {
+  min-width: 180px;
+}
+
+.filter-inline-size {
+  min-width: 130px;
 }
 
 .metric-card:hover,
@@ -504,10 +511,12 @@ main > section:hover {
     min-height: 2.8rem;
   }
 
-  .filter-grid.filter-grid-3,
-  .filter-grid.filter-grid-4,
-  .filter-grid.filter-grid-logs {
-    grid-template-columns: 1fr;
+  .filter-inline {
+    gap: 0.6rem;
+  }
+
+  .filter-inline-search {
+    min-width: 220px;
   }
 
   .backdrop-blur-xl {
@@ -532,17 +541,6 @@ main > section:hover {
   }
 }
 
-@media (max-width: 1024px) and (min-width: 641px) {
-  .filter-grid.filter-grid-3,
-  .filter-grid.filter-grid-4 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .filter-grid.filter-grid-logs {
-    grid-template-columns: minmax(140px, 180px) auto;
-    justify-content: end;
-  }
-}
 
 @media (max-width: 480px) {
   h1 {
