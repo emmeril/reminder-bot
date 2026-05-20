@@ -333,6 +333,7 @@
                     <th class="px-4 py-3"><i class="fa-solid fa-user mr-2"></i>Nama</th>
                     <th class="px-4 py-3"><i class="fa-brands fa-whatsapp mr-2"></i>No. WA</th>
                     <th class="px-4 py-3"><i class="fa-solid fa-wifi mr-2"></i>AP Tujuan</th>
+                    <th class="px-4 py-3"><i class="fa-solid fa-signal mr-2"></i>Status AP</th>
                     <th class="px-4 py-3"><i class="fa-regular fa-calendar mr-2"></i>Tgl Jatuh Tempo</th>
                     <th class="px-4 py-3"><i class="fa-solid fa-hourglass-half mr-2"></i>Status Jatuh Tempo</th>
                     <th class="px-4 py-3"><i class="fa-solid fa-receipt mr-2"></i>Status Bayar</th>
@@ -341,13 +342,20 @@
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white/70">
                   <template x-if="!filteredContacts.length">
-                    <tr><td colspan="7" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada contact yang cocok.' : 'Belum ada contact.'"></td></tr>
+                    <tr><td colspan="8" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada contact yang cocok.' : 'Belum ada contact.'"></td></tr>
                   </template>
                   <template x-for="contact in paginatedContacts" :key="contact.id">
                     <tr>
                       <td class="px-4 py-4 font-medium" data-label="Nama" x-text="contact.name"></td>
                       <td class="px-4 py-4 text-ink/65" data-label="No. WA" x-text="contact.phoneNumber"></td>
                       <td class="px-4 py-4 text-ink/65" data-label="AP Tujuan" x-text="contact.linkedApHost || '-'"></td>
+                      <td class="px-4 py-4" data-label="Status AP">
+                        <span
+                          class="inline-flex rounded-full px-3 py-1 text-xs font-semibold"
+                          :class="getContactApStatusClass(contact)"
+                          x-text="getContactApStatusLabel(contact)"
+                        ></span>
+                      </td>
                       <td class="px-4 py-4 text-ink/65" data-label="Tgl Jatuh Tempo" x-text="contact.dueDate ? formatDateTime(contact.dueDate) : '-'"></td>
                       <td class="px-4 py-4" data-label="Status Jatuh Tempo">
                         <span
@@ -1522,6 +1530,40 @@
           if (["UP", "ONLINE", "OK"].includes(normalized)) return "bg-moss/10 text-moss";
           if (["DOWN", "OFFLINE", "FAIL"].includes(normalized)) return "bg-clay/10 text-clay";
           return "bg-slate-200/70 text-slate-700";
+        },
+
+        normalizeHost(value) {
+          return String(value || "").trim().toLowerCase();
+        },
+
+        getApMonitorByHost(host) {
+          const needle = this.normalizeHost(host);
+          if (!needle) return null;
+          return this.apMonitors.find((ap) => this.normalizeHost(ap.host) === needle) || null;
+        },
+
+        getContactApStatus(contact) {
+          const linkedHost = this.normalizeHost(contact?.linkedApHost);
+          if (!linkedHost) return "NOT_LINKED";
+          if (!this.apMonitors.length) return "UNKNOWN";
+          const monitor = this.getApMonitorByHost(linkedHost);
+          if (!monitor) return "NOT_MONITORED";
+          return String(monitor.status || "UNKNOWN").toUpperCase();
+        },
+
+        getContactApStatusLabel(contact) {
+          const status = this.getContactApStatus(contact);
+          if (status === "NOT_LINKED") return "Belum dipilih";
+          if (status === "NOT_MONITORED") return "Tidak ada di Netwatch";
+          return status;
+        },
+
+        getContactApStatusClass(contact) {
+          const status = this.getContactApStatus(contact);
+          if (status === "NOT_LINKED" || status === "NOT_MONITORED") {
+            return "bg-slate-200/70 text-slate-700";
+          }
+          return this.getApStatusClass(status);
         },
 
         searchMatches(item, fields, search) {
