@@ -41,10 +41,11 @@
   <link rel="stylesheet" href="/public/styles.css">
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
-<body class="min-h-screen bg-slate-100 font-body text-ink" x-cloak>
+<body class="min-h-screen bg-slate-100 font-body text-ink">
   <div
     x-data="dashboardApp()"
     x-init="init()"
+    x-cloak
     class="app-container mx-auto w-[min(1500px,calc(100%-24px))] py-4 sm:w-[min(1500px,calc(100%-36px))] sm:py-5 md:w-[min(1500px,calc(100%-40px))] md:py-6 lg:w-[min(1500px,calc(100%-48px))] lg:py-7"
   >
     <div class="grid gap-3 sm:gap-4 md:gap-5 lg:gap-6 xl:grid-cols-[280px,minmax(0,1fr)]">
