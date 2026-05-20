@@ -64,6 +64,20 @@ h1,
 h2,
 h3 {
   letter-spacing: 0 !important;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+p,
+label,
+th,
+td,
+button,
+a,
+span {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 h1 {
@@ -111,6 +125,8 @@ a.rounded-full {
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
+  white-space: normal;
+  text-align: center;
 }
 
 .quick-actions-list {
@@ -336,9 +352,12 @@ main > section:hover {
   .action-chip {
     width: 100%;
     min-width: 0;
-    white-space: normal;
     text-align: center;
     line-height: 1.25;
+  }
+
+  .section-caption {
+    letter-spacing: 0.1em;
   }
 
   form .flex.flex-wrap.gap-2 > * {
