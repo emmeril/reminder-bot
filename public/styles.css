@@ -317,6 +317,17 @@ main > section {
   min-width: 130px;
 }
 
+.contacts-table th,
+.contacts-table td {
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.contacts-table td:last-child {
+  white-space: normal;
+}
+
 .pagination-controls {
   display: inline-flex;
   align-items: center;
@@ -445,7 +456,7 @@ main > section:hover {
 
   table.min-w-full td[data-label] {
     display: grid;
-    grid-template-columns: minmax(8.5rem, 46%) minmax(0, 1fr);
+    grid-template-columns: minmax(10.5rem, 54%) minmax(0, 1fr);
     gap: 0.75rem;
     align-items: start;
   }
@@ -453,10 +464,11 @@ main > section:hover {
   table.min-w-full td[data-label]::before {
     content: attr(data-label);
     color: rgba(23, 32, 51, 0.42);
-    font-size: 0.68rem;
+    font-size: 0.63rem;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.045em;
+    line-height: 1.1;
     white-space: nowrap;
   }
 
