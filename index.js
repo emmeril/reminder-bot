@@ -8,6 +8,7 @@ const cron = require("node-cron");
 const crypto = require("crypto");
 const qrcode = require("qrcode-terminal");
 const QRCode = require("qrcode");
+const ftp = require("basic-ftp");
 const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js");
 const { RouterOSClient } = require("routeros-client");
 const { Sequelize, DataTypes } = require("sequelize");
@@ -42,6 +43,7 @@ const CONFIG = {
     user: process.env.USER_MIKROTIK,
     password: process.env.PASSWORD_MIKROTIK,
     port: Number(process.env.PORT_MIKROTIK || 8728),
+    ftpPort: Number(process.env.PORT_MIKROTIK_FTP || 21),
     timeout: 30_000,
     keepalive: true,
   },
@@ -50,6 +52,7 @@ const CONFIG = {
     user: process.env.USER_MIKROTIK,
     password: process.env.PASSWORD_MIKROTIK,
     port: Number(process.env.PORT_MIKROTIK_BACKUP || process.env.PORT_MIKROTIK || 8728),
+    ftpPort: Number(process.env.PORT_MIKROTIK_BACKUP_FTP || process.env.PORT_MIKROTIK_FTP || 21),
     timeout: 30_000,
     keepalive: true,
   },
@@ -506,7 +509,7 @@ class MikrotikService {
     }
 
     try {
-      return await operation(connectionObj.connection);
+      return await operation(connectionObj.connection, connectionObj);
     } finally {
       connectionObj.client.close();
     }
@@ -613,31 +616,6 @@ class MikrotikService {
     });
   }
 
-  async createConfigExportSnapshot() {
-    return this.withConnection(async (conn) => {
-      const result = await conn.menu("/").exec("export", {
-        compact: true,
-        "show-sensitive": true,
-      });
-
-      const lines = Array.isArray(result)
-        ? result
-            .map((row) => {
-              if (!row || typeof row !== "object") return "";
-              return String(row.ret || row.message || "").trim();
-            })
-            .filter(Boolean)
-        : [];
-
-      const content = lines.join("\n").trim();
-      if (!content) {
-        throw new Error("Export konfigurasi MikroTik kosong.");
-      }
-
-      return content;
-    });
-  }
-
   async generateDailyBackupFile() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const backupDir = path.join(CONFIG.DB_PATH, "backups", "mikrotik");
@@ -645,15 +623,90 @@ class MikrotikService {
 
     const fileName = `mikrotik-export-${timestamp}.rsc`;
     const filePath = path.join(backupDir, fileName);
-    const content = await this.createConfigExportSnapshot();
+    const remoteBaseName = `reminder-bot-${timestamp}`;
+    const remoteFileName = `${remoteBaseName}.rsc`;
 
-    await fs.writeFile(filePath, `${content}\n`, "utf-8");
+    await this.withConnection(async (conn, connectionObj) => {
+      await this.createRouterExportFile(conn, remoteBaseName);
+      await this.waitForRouterFile(conn, remoteFileName);
+      const ftpPort = await this.resolveFtpPort(conn, connectionObj.config);
+      await this.downloadRouterFile({ ...connectionObj.config, ftpPort }, remoteFileName, filePath);
+      await conn.menu("/file").where("name", remoteFileName).remove().catch(() => {});
+    });
 
     this.activityLog.push("info", "mikrotik", "Backup konfigurasi MikroTik berhasil dibuat", {
       filePath,
     });
 
     return { fileName, filePath };
+  }
+
+  async createRouterExportFile(conn, remoteBaseName) {
+    const exportAttempts = [
+      { file: remoteBaseName, compact: true, "show-sensitive": true },
+      { file: remoteBaseName, compact: true },
+      { file: remoteBaseName, "show-sensitive": true },
+      { file: remoteBaseName },
+    ];
+
+    let lastError = null;
+    for (const params of exportAttempts) {
+      try {
+        await conn.menu("/").exec("export", params);
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError || new Error("Gagal membuat file export di MikroTik.");
+  }
+
+  async waitForRouterFile(conn, remoteFileName) {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const files = await conn.menu("/file").print();
+      const file = (files || []).find((item) => String(item.name || "") === remoteFileName);
+      const rawSize = String(file?.size || file?.fileSize || "0").replace(/[^0-9]/g, "");
+      if (file && Number(rawSize || 0) > 0) return file;
+      await sleep(1000);
+    }
+
+    throw new Error(`File export ${remoteFileName} belum siap di MikroTik.`);
+  }
+
+  async resolveFtpPort(conn, config) {
+    if (config.ftpPort && config.ftpPort !== 21) return config.ftpPort;
+
+    const services = await conn.menu("/ip/service").print().catch(() => []);
+    const ftpService = (services || []).find((item) => String(item.name || "").toLowerCase() === "ftp");
+    const port = Number(ftpService?.port || config.ftpPort || 21);
+    if (String(ftpService?.disabled).toLowerCase() === "true") {
+      throw new Error("Service FTP MikroTik sedang disabled. Aktifkan FTP atau isi port FTP yang benar.");
+    }
+    return port || 21;
+  }
+
+  async downloadRouterFile(config, remoteFileName, destinationPath) {
+    const ftpClient = new ftp.Client(CONFIG.MIKROTIK_FTP_TIMEOUT || 30_000);
+    ftpClient.ftp.verbose = false;
+
+    try {
+      await ftpClient.access({
+        host: config.host,
+        user: config.user,
+        password: config.password,
+        port: config.ftpPort || 21,
+        secure: false,
+      });
+      await ftpClient.downloadTo(destinationPath, remoteFileName);
+    } finally {
+      ftpClient.close();
+    }
+
+    const stats = await fs.stat(destinationPath);
+    if (!stats.size) {
+      throw new Error("File backup MikroTik berhasil diunduh tapi kosong.");
+    }
   }
 }
 
@@ -2025,6 +2078,9 @@ class NotificationBot {
     }
 
     const media = MessageMedia.fromFilePath(filePath);
+    media.mimetype = media.mimetype || "text/plain";
+    media.filename = path.basename(filePath);
+
     await this.client.sendMessage(`${normalized}@c.us`, media, {
       caption: String(caption || ""),
       sendMediaAsDocument: true,
@@ -2284,16 +2340,28 @@ class MikrotikBackupScheduler {
     if (this.isProcessing) return;
 
     const settings = this.dataManager.getSettings();
-    if (!settings.enableMikrotikBackupToWa) return;
+    if (!settings.enableMikrotikBackupToWa) {
+      return;
+    }
 
     const recipients = this.dataManager.getAdminRecipients();
-    if (recipients.length === 0) return;
+    if (recipients.length === 0) {
+      this.activityLog.push("warn", "mikrotik-backup", "Backup MikroTik dilewati karena admin recipients kosong");
+      return;
+    }
 
     const scheduleCheck = this.isDueNow(settings);
     if (!scheduleCheck.due) return;
 
-    if (settings.mikrotikBackupLastRunDate === scheduleCheck.nowParts.dateKey) return;
-    if (!this.notificationBot.isReady) return;
+    if (settings.mikrotikBackupLastRunDate === scheduleCheck.nowParts.dateKey) {
+      this.activityLog.push("info", "mikrotik-backup", "Backup MikroTik sudah dikirim untuk hari ini");
+      return;
+    }
+
+    if (!this.notificationBot.isReady) {
+      this.activityLog.push("warn", "mikrotik-backup", "Backup MikroTik dilewati karena WhatsApp belum online");
+      return;
+    }
 
     this.isProcessing = true;
     try {
