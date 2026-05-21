@@ -341,6 +341,10 @@ main > section:hover {
 }
 
 @media (min-width: 641px) {
+  .dashboard-table th,
+  .dashboard-table td,
+  .dashboard-table td span,
+  .dashboard-table td button,
   .contacts-table th,
   .contacts-table td,
   .contacts-table td span,
