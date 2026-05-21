@@ -425,6 +425,19 @@ class MikrotikService {
     this.activityLog = activityLog;
   }
 
+  findUniqueHotspotUsersByName(rows, username) {
+    const matches = (rows || []).filter(
+      (row) => String(row.name || "").toLowerCase() === String(username || "").toLowerCase()
+    );
+    if (matches.length > 1) {
+      throw new Error(
+        `Ditemukan ${matches.length} user hotspot dengan username "${username}". ` +
+        "Perbaiki duplikasi username di MikroTik terlebih dahulu."
+      );
+    }
+    return matches;
+  }
+
   getConnectionConfigs() {
     return [
       { label: "primary", config: CONFIG.MIKROTIK_PRIMARY },
@@ -545,9 +558,8 @@ class MikrotikService {
 
     return this.withConnection(async (conn) => {
       const users = await conn.menu("/ip/hotspot/user").print();
-      const found = (users || []).find(
-        (user) => String(user.name || "").toLowerCase() === normalizedUsername.toLowerCase()
-      );
+      const matches = this.findUniqueHotspotUsersByName(users, normalizedUsername);
+      const found = matches[0];
       if (!found) return null;
 
       return {
@@ -565,14 +577,18 @@ class MikrotikService {
 
     return this.withConnection(async (conn) => {
       const users = await conn.menu("/ip/hotspot/user").print();
-      const matches = (users || []).filter(
-        (user) => String(user.name || "").toLowerCase() === normalizedUsername.toLowerCase()
-      );
+      const matches = this.findUniqueHotspotUsersByName(users, normalizedUsername);
       if (matches.length === 0) {
         throw new Error(`User hotspot "${normalizedUsername}" tidak ditemukan.`);
       }
 
+      let isDynamicUser = false;
       for (const row of matches) {
+        const dynamic = parseBoolean(row.dynamic) || String(row.dynamic || "").toLowerCase() === "true";
+        if (dynamic) {
+          isDynamicUser = true;
+          continue;
+        }
         const rowId = row[".id"] || row.id || row.numbers || row.number;
         if (!rowId) continue;
         await conn.menu("/ip/hotspot/user").set({
@@ -596,7 +612,16 @@ class MikrotikService {
         }
       }
 
-      return { username: normalizedUsername, disabled, updated: matches.length, activeKilled };
+      return {
+        username: normalizedUsername,
+        disabled,
+        updated: isDynamicUser ? 0 : matches.length,
+        activeKilled,
+        isDynamicUser,
+        note: isDynamicUser
+          ? "User hotspot bertipe dynamic, flag disabled tidak bisa diubah. Sistem hanya memutus sesi aktif."
+          : "",
+      };
     });
   }
 
@@ -641,6 +666,12 @@ class MikrotikService {
 
       if (addResult?.["!trap"]) {
         const message = addResult["!trap"]?.[0]?.message || "Error tidak diketahui dari MikroTik.";
+        if (String(message).toLowerCase().includes("already have user with this name for this server")) {
+          throw new Error(
+            `Username "${username}" bentrok di server MikroTik. ` +
+            "Silakan ganti nama pelanggan agar username hotspot unik."
+          );
+        }
         throw new Error(`Gagal membuat user hotspot: ${message}`);
       }
 

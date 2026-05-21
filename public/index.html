@@ -2098,9 +2098,17 @@
 
           if (result.action === "disable") {
             const killed = Number(result.activeKilled || 0);
-            this.notify(`Hotspot ${result.username} berhasil di-disable. Sesi aktif diputus: ${killed}.`);
+            if (result.isDynamicUser) {
+              this.notify(`User ${result.username} bertipe dynamic. Tidak bisa set disable permanen, sesi aktif diputus: ${killed}.`);
+            } else {
+              this.notify(`Hotspot ${result.username} berhasil di-disable. Sesi aktif diputus: ${killed}.`);
+            }
           } else {
-            this.notify(`Hotspot ${result.username} berhasil di-enable.`);
+            if (result.isDynamicUser) {
+              this.notify(`User ${result.username} bertipe dynamic. Tidak ada flag disable yang bisa di-enable.`);
+            } else {
+              this.notify(`Hotspot ${result.username} berhasil di-enable.`);
+            }
           }
           await Promise.all([this.loadContacts(), this.loadLogs()]);
           setTimeout(() => {
