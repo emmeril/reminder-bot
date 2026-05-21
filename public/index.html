@@ -1283,6 +1283,7 @@
         pollers: [],
         paymentTypeSelection: {},
         hotspotUsersByName: {},
+        hotspotPendingOverrides: {},
         expandedMessages: {},
         billingPeriod: "",
         pageSizes: [10, 25, 50, 100],
@@ -1816,6 +1817,10 @@
         getHotspotState(contact) {
           const username = String(contact?.mikrotikUsername || "").trim().toLowerCase();
           if (!username) return null;
+          const pending = this.hotspotPendingOverrides[username];
+          if (pending && pending.expiresAt > Date.now()) {
+            return { disabled: Boolean(pending.disabled), profile: pending.profile || "" };
+          }
           return this.hotspotUsersByName[username] || null;
         },
 
@@ -2070,11 +2075,20 @@
             .toLowerCase();
           if (normalizedUsername) {
             const prev = this.hotspotUsersByName[normalizedUsername] || {};
+            const nextDisabled = result.action === "disable";
             this.hotspotUsersByName = {
               ...this.hotspotUsersByName,
               [normalizedUsername]: {
                 ...prev,
-                disabled: result.action === "disable",
+                disabled: nextDisabled,
+              },
+            };
+            this.hotspotPendingOverrides = {
+              ...this.hotspotPendingOverrides,
+              [normalizedUsername]: {
+                disabled: nextDisabled,
+                profile: prev.profile || "",
+                expiresAt: Date.now() + 8000,
               },
             };
           }
@@ -2085,7 +2099,10 @@
           } else {
             this.notify(`Hotspot ${result.username} berhasil di-enable.`);
           }
-          await Promise.all([this.loadContacts(), this.loadHotspotUsers(), this.loadLogs()]);
+          await Promise.all([this.loadContacts(), this.loadLogs()]);
+          setTimeout(() => {
+            this.loadHotspotUsers().catch(() => {});
+          }, 1200);
         },
 
         removeContact(contact) {
