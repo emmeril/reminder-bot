@@ -2135,7 +2135,7 @@ class NotificationBot {
   }
 
   canSendBackup() {
-    return this.isFonnteBackupEnabled() || this.canSendBackupViaWaWeb();
+    return this.canSendBackupViaWaWeb();
   }
 
   async sendMessageViaFonnte(phoneNumber, message = "") {
@@ -2226,17 +2226,6 @@ class NotificationBot {
   }
 
   async sendBackupFile(phoneNumber, filePath, caption = "") {
-    if (this.isFonnteBackupEnabled()) {
-      try {
-        await this.sendFileViaFonnte(phoneNumber, filePath, caption);
-        return { transport: "fonnte" };
-      } catch (error) {
-        this.activityLog.push("warn", "mikrotik-backup", `Fonnte gagal untuk ${phoneNumber}, fallback WA Web`, {
-          error: error.message,
-        });
-      }
-    }
-
     await this.sendFile(phoneNumber, filePath, caption);
     return { transport: "whatsapp-web.js" };
   }
@@ -2885,7 +2874,7 @@ class WebServer {
     }));
     this.app.post("/api/mikrotik/backup/send", requireApiAuth, handleApi(async () => {
       if (!this.notificationBot.canSendBackup()) {
-        throw new Error("Transport backup belum siap. Hubungkan WhatsApp Web atau aktifkan Fonnte.");
+        throw new Error("Transport backup belum siap. Hubungkan WhatsApp Web terlebih dahulu.");
       }
 
       const recipients = this.dataManager.getAdminRecipients();
