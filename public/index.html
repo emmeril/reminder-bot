@@ -1374,6 +1374,7 @@
         async api(path, options = {}) {
           const response = await fetch(path, {
             ...options,
+            cache: "no-store",
             credentials: "same-origin",
             headers: {
               "Content-Type": "application/json",
@@ -2063,6 +2064,21 @@
               username: contact.mikrotikUsername,
             }),
           });
+
+          const normalizedUsername = String(result.username || contact.mikrotikUsername || "")
+            .trim()
+            .toLowerCase();
+          if (normalizedUsername) {
+            const prev = this.hotspotUsersByName[normalizedUsername] || {};
+            this.hotspotUsersByName = {
+              ...this.hotspotUsersByName,
+              [normalizedUsername]: {
+                ...prev,
+                disabled: result.action === "disable",
+              },
+            };
+          }
+
           if (result.action === "disable") {
             const killed = Number(result.activeKilled || 0);
             this.notify(`Hotspot ${result.username} berhasil di-disable. Sesi aktif diputus: ${killed}.`);
