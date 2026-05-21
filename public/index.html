@@ -383,97 +383,56 @@
                         </template> -->
                       </td>
                       <td class="px-4 py-4 align-top" data-label="Aksi">
-                        <div class="relative w-full" @click.outside="if (actionMenuContactId === contact.id) closeActionMenu()">
+                        <div class="flex flex-col items-start gap-2">
                           <template x-if="hasDebt(contact)">
                             <div class="w-full rounded-xl border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold leading-5 text-clay text-center">
                               <i class="fa-solid fa-triangle-exclamation mr-1.5"></i>
                               <span x-text="getDebtNote(contact)"></span>
                             </div>
                           </template>
-
-                          <button
-                            type="button"
-                            @click="toggleActionMenu(contact.id)"
-                            class="w-full rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:bg-ink hover:text-white"
-                          >
-                            <i class="fa-solid fa-ellipsis mr-1.5"></i>Aksi
-                          </button>
-
-                          <div
-                            x-show="actionMenuContactId === contact.id"
-                            x-transition.opacity
-                            class="absolute right-0 z-30 mt-2 w-56 rounded-2xl border border-ink/10 bg-white p-2 shadow-soft"
-                          >
-                            <button
-                              @click="openContactEditModal(contact); closeActionMenu()"
-                              class="flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-semibold text-ink transition hover:bg-haze"
-                            >
-                              <i class="fa-solid fa-pen-to-square mr-2 w-4"></i>Edit Contact
-                            </button>
-
-                            <template x-if="contact.mikrotikUsername">
+<template x-if="contact.paymentStatus !== 'PAID'">
+                             <div class="grid w-full gap-2">
+                               <button x-show="hasDebt(contact)" type="button" @click="togglePayment(contact.id, 'UNPAID', 'ARREARS-ONLY')" class="w-full rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:bg-ink hover:text-white">
+                                 <i class="fa-solid fa-circle-check mr-1.5"></i>Bayar tunggakan
+                               </button>
+                               <button type="button" @click="togglePayment(contact.id, 'PAID', 'CURRENT-ONLY')" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white">
+                                 <i class="fa-solid fa-calendar-check mr-1.5"></i>Bulan ini saja
+                               </button>
+                               <button type="button" @click="togglePayment(contact.id, 'PAID', 'FULL-PAID')" class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white">
+                                 <i class="fa-solid fa-sack-dollar mr-1.5"></i>Lunas semua
+                               </button>
+                             </div>
+                           </template>
+                          <template x-if="contact.paymentStatus === 'PAID'">
+                            <div class="grid w-full gap-2">
                               <button
-                                @click="toggleHotspotState(contact); closeActionMenu()"
-                                class="mt-1 flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-semibold transition"
-                                :class="getHotspotToggleButtonClass(contact)"
+                                x-show="hasDebt(contact)"
+                                @click="togglePayment(contact.id, 'PAID', 'FULL-PAID')"
+                                class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"
                               >
-                                <i :class="getHotspotToggleIconClass(contact) + ' mr-2 w-4'"></i>
-                                <span x-text="getHotspotToggleLabel(contact)"></span>
+                                <i class="fa-solid fa-sack-dollar mr-1.5"></i>Lunasi hutang
                               </button>
-                            </template>
-
-                            <div class="my-2 border-t border-ink/10"></div>
-
-                            <template x-if="contact.paymentStatus !== 'PAID'">
-                              <div class="space-y-1">
-                                <button
-                                  x-show="hasDebt(contact)"
-                                  @click="togglePayment(contact.id, 'UNPAID', 'ARREARS-ONLY'); closeActionMenu()"
-                                  class="flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-semibold text-ink transition hover:bg-haze"
-                                >
-                                  <i class="fa-solid fa-circle-check mr-2 w-4"></i>Bayar Tunggakan
-                                </button>
-                                <button
-                                  @click="togglePayment(contact.id, 'PAID', 'CURRENT-ONLY'); closeActionMenu()"
-                                  class="flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-semibold text-moss transition hover:bg-moss/10"
-                                >
-                                  <i class="fa-solid fa-calendar-check mr-2 w-4"></i>Bayar Bulan Ini
-                                </button>
-                                <button
-                                  @click="togglePayment(contact.id, 'PAID', 'FULL-PAID'); closeActionMenu()"
-                                  class="flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-semibold text-clay transition hover:bg-clay/10"
-                                >
-                                  <i class="fa-solid fa-sack-dollar mr-2 w-4"></i>Lunas Semua
-                                </button>
-                              </div>
-                            </template>
-
-                            <template x-if="contact.paymentStatus === 'PAID'">
-                              <div class="space-y-1">
-                                <button
-                                  x-show="hasDebt(contact)"
-                                  @click="togglePayment(contact.id, 'PAID', 'FULL-PAID'); closeActionMenu()"
-                                  class="flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-semibold text-clay transition hover:bg-clay/10"
-                                >
-                                  <i class="fa-solid fa-sack-dollar mr-2 w-4"></i>Lunasi Hutang
-                                </button>
-                                <button
-                                  @click="togglePayment(contact.id, 'UNPAID'); closeActionMenu()"
-                                  class="flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-semibold text-ink transition hover:bg-haze"
-                                >
-                                  <i class="fa-solid fa-rotate-left mr-2 w-4"></i>Reset Belum Bayar
-                                </button>
-                              </div>
-                            </template>
-
-                            <div class="my-2 border-t border-ink/10"></div>
+                              <button
+                                @click="togglePayment(contact.id, 'UNPAID')"
+                                class="w-full rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:bg-ink hover:text-white"
+                              >
+                                <i class="fa-solid fa-circle-check mr-1.5"></i>Reset ke belum bayar
+                              </button>
+                            </div>
+                          </template>
+                          <button @click="openContactEditModal(contact)" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit</button>
+                          <template x-if="contact.mikrotikUsername">
                             <button
-                              @click="removeContact(contact); closeActionMenu()"
-                              class="flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-semibold text-clay transition hover:bg-clay/10"
+                              type="button"
+                              @click="toggleHotspotState(contact)"
+                              class="w-full rounded-full px-3 py-2 text-xs font-semibold transition"
+                              :class="getHotspotToggleButtonClass(contact)"
                             >
-                              <i class="fa-solid fa-trash mr-2 w-4"></i>Hapus Contact
+                              <i :class="getHotspotToggleIconClass(contact) + ' mr-1.5'"></i>
+                              <span x-text="getHotspotToggleLabel(contact)"></span>
                             </button>
-                          </div>
+                          </template>
+                          <button @click="removeContact(contact)" class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Delete</button>
                         </div>
                       </td>
                     </tr>
@@ -1345,7 +1304,6 @@
         hotspotUsersByName: {},
         hotspotPendingOverrides: {},
         hotspotStateVersion: 0,
-        actionMenuContactId: null,
         expandedMessages: {},
         billingPeriod: "",
         pageSizes: [10, 25, 50, 100],
@@ -1839,15 +1797,6 @@
 
         resetPage(key) {
           this.filters[key].page = 1;
-          this.closeActionMenu();
-        },
-
-        toggleActionMenu(contactId) {
-          this.actionMenuContactId = this.actionMenuContactId === contactId ? null : contactId;
-        },
-
-        closeActionMenu() {
-          this.actionMenuContactId = null;
         },
 
         paginationLabel(key, total) {
