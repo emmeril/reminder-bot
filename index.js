@@ -615,10 +615,33 @@ class MikrotikService {
 
   async createConfigExportSnapshot() {
     return this.withConnection(async (conn) => {
-      const result = await conn.menu("/").exec("export", {
-        compact: true,
-        "show-sensitive": true,
-      });
+      const exportOptions = [
+        { compact: true, "show-sensitive": true },
+        { compact: true },
+        undefined,
+      ];
+
+      let result = null;
+      let lastError = null;
+
+      for (const options of exportOptions) {
+        try {
+          result = options
+            ? await conn.menu("/").exec("export", options)
+            : await conn.menu("/").exec("export");
+          break;
+        } catch (error) {
+          lastError = error;
+          const message = String(error.message || "").toLowerCase();
+          if (!message.includes("unknown parameter") && !message.includes("invalid parameter") && !message.includes("unknown command")) {
+            throw error;
+          }
+        }
+      }
+
+      if (!result) {
+        throw lastError || new Error("Gagal mengekspor konfigurasi MikroTik.");
+      }
 
       const lines = Array.isArray(result)
         ? result
