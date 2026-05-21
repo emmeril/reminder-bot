@@ -345,7 +345,7 @@
                   <template x-if="!filteredContacts.length">
                     <tr><td colspan="9" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada contact yang cocok.' : 'Belum ada contact.'"></td></tr>
                   </template>
-                  <template x-for="contact in paginatedContacts" :key="contact.id">
+                  <template x-for="contact in paginatedContacts" :key="contact.id + '-' + hotspotStateVersion">
                     <tr>
                       <td class="px-4 py-4 font-medium" data-label="Nama" x-text="contact.name"></td>
                       <td class="px-4 py-4 text-ink/65 whitespace-nowrap tabular-nums" data-label="No. WA" x-text="contact.phoneNumber"></td>
@@ -1284,6 +1284,7 @@
         paymentTypeSelection: {},
         hotspotUsersByName: {},
         hotspotPendingOverrides: {},
+        hotspotStateVersion: 0,
         expandedMessages: {},
         billingPeriod: "",
         pageSizes: [10, 25, 50, 100],
@@ -1812,6 +1813,7 @@
             };
           }
           this.hotspotUsersByName = nextMap;
+          this.hotspotStateVersion += 1;
         },
 
         getHotspotState(contact) {
@@ -2091,6 +2093,7 @@
                 expiresAt: Date.now() + 8000,
               },
             };
+            this.hotspotStateVersion += 1;
           }
 
           if (result.action === "disable") {
