@@ -590,11 +590,31 @@ class MikrotikService {
           continue;
         }
         const rowId = row[".id"] || row.id || row.numbers || row.number;
-        if (!rowId) continue;
-        await conn.menu("/ip/hotspot/user").set({
-          ".id": String(rowId),
-          disabled: disabled ? "yes" : "no",
-        });
+        try {
+          if (rowId) {
+            await conn.menu("/ip/hotspot/user").set({
+              ".id": String(rowId),
+              disabled: disabled ? "yes" : "no",
+            });
+          } else {
+            await conn.menu("/ip/hotspot/user").where("name", row.name || normalizedUsername).set({
+              disabled: disabled ? "yes" : "no",
+            });
+          }
+        } catch (setError) {
+          const setMessage = String(setError?.message || setError || "");
+          try {
+            await conn.menu("/ip/hotspot/user").where("name", row.name || normalizedUsername).set({
+              disabled: disabled ? "yes" : "no",
+            });
+          } catch (fallbackError) {
+            const fallbackMessage = String(fallbackError?.message || fallbackError || "");
+            throw new Error(
+              `Gagal mengubah status user hotspot "${normalizedUsername}" ` +
+              `(id: ${rowId || "-"}). Error utama: ${setMessage}. Fallback error: ${fallbackMessage}`
+            );
+          }
+        }
       }
 
       let activeKilled = 0;
