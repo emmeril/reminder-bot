@@ -615,59 +615,21 @@ class MikrotikService {
 
   async createConfigExportSnapshot() {
     return this.withConnection(async (conn) => {
-      const exportOptions = [
-        { compact: true, "show-sensitive": true },
-        { compact: true },
-        undefined,
-      ];
+      const result = await conn.menu("/").exec("export", {
+        compact: true,
+        "show-sensitive": true,
+      });
 
-      let result = null;
-      let lastError = null;
+      const lines = Array.isArray(result)
+        ? result
+            .map((row) => {
+              if (!row || typeof row !== "object") return "";
+              return String(row.ret || row.message || "").trim();
+            })
+            .filter(Boolean)
+        : [];
 
-      for (const options of exportOptions) {
-        try {
-          result = options
-            ? await conn.menu("/").exec("export", options)
-            : await conn.menu("/").exec("export");
-          break;
-        } catch (error) {
-          lastError = error;
-          const message = String(error.message || "").toLowerCase();
-          if (!message.includes("unknown parameter") && !message.includes("invalid parameter") && !message.includes("unknown command")) {
-            throw error;
-          }
-        }
-      }
-
-      if (!result) {
-        throw lastError || new Error("Gagal mengekspor konfigurasi MikroTik.");
-      }
-
-      const collectExportLines = (item) => {
-        if (item == null) return [];
-        if (typeof item === "string") {
-          const trimmed = item.trim();
-          return trimmed ? [trimmed] : [];
-        }
-        if (typeof item === "number" || typeof item === "boolean") {
-          return [String(item)];
-        }
-        if (Array.isArray(item)) {
-          return item.flatMap(collectExportLines);
-        }
-        if (typeof item === "object") {
-          const primary = String(item.ret || item.message || item.value || item.sentence || "").trim();
-          if (primary) return [primary];
-
-          return Object.values(item).flatMap(collectExportLines);
-        }
-        return [];
-      };
-
-      const normalizedResult = Array.isArray(result) ? result : [result];
-      const lines = normalizedResult.flatMap(collectExportLines).filter(Boolean);
       const content = lines.join("\n").trim();
-
       if (!content) {
         throw new Error("Export konfigurasi MikroTik kosong.");
       }
@@ -2063,12 +2025,8 @@ class NotificationBot {
     }
 
     const media = MessageMedia.fromFilePath(filePath);
-
-    if (caption) {
-      await this.client.sendMessage(`${normalized}@c.us`, String(caption));
-    }
-
     await this.client.sendMessage(`${normalized}@c.us`, media, {
+      caption: String(caption || ""),
       sendMediaAsDocument: true,
     });
   }
