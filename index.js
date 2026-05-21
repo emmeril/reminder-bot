@@ -581,7 +581,22 @@ class MikrotikService {
         });
       }
 
-      return { username: normalizedUsername, disabled, updated: matches.length };
+      let activeKilled = 0;
+      if (disabled) {
+        const activeSessions = await conn.menu("/ip/hotspot/active").print();
+        const activeMatches = (activeSessions || []).filter(
+          (session) => String(session.user || "").toLowerCase() === normalizedUsername.toLowerCase()
+        );
+
+        for (const session of activeMatches) {
+          const sessionId = session[".id"] || session.id || session.numbers || session.number;
+          if (!sessionId) continue;
+          await conn.menu("/ip/hotspot/active").remove(String(sessionId));
+          activeKilled += 1;
+        }
+      }
+
+      return { username: normalizedUsername, disabled, updated: matches.length, activeKilled };
     });
   }
 

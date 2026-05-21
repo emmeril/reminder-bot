@@ -2063,7 +2063,12 @@
               username: contact.mikrotikUsername,
             }),
           });
-          this.notify(`Hotspot ${result.username} berhasil di-${result.action}.`);
+          if (result.action === "disable") {
+            const killed = Number(result.activeKilled || 0);
+            this.notify(`Hotspot ${result.username} berhasil di-disable. Sesi aktif diputus: ${killed}.`);
+          } else {
+            this.notify(`Hotspot ${result.username} berhasil di-enable.`);
+          }
           await Promise.all([this.loadContacts(), this.loadHotspotUsers(), this.loadLogs()]);
         },
 
