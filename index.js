@@ -484,7 +484,7 @@ class MikrotikService {
       const connection = await client.connect();
       await connection.menu("/system/identity").getOnly();
       this.activityLog.push("info", "mikrotik", `Terhubung ke MikroTik ${label}`);
-      return { client, connection, label };
+      return { client, connection, label, config };
     } catch (error) {
       client.close();
       this.activityLog.push("error", "mikrotik", `Gagal konek MikroTik ${label}: ${error.message}`);
@@ -675,6 +675,10 @@ class MikrotikService {
   }
 
   async resolveFtpPort(conn, config) {
+    if (!config) {
+      throw new Error("Konfigurasi koneksi MikroTik tidak tersedia untuk download backup.");
+    }
+
     if (config.ftpPort && config.ftpPort !== 21) return config.ftpPort;
 
     const services = await conn.menu("/ip/service").print().catch(() => []);
