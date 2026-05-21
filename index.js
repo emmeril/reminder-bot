@@ -643,32 +643,31 @@ class MikrotikService {
         throw lastError || new Error("Gagal mengekspor konfigurasi MikroTik.");
       }
 
-      const stringifyExportRow = (row) => {
-        if (row == null) return "";
-        if (typeof row === "string") return row.trim();
-        if (Array.isArray(row)) return row.map(stringifyExportRow).filter(Boolean).join("\n");
-        if (typeof row === "object") {
-          const mainValue = String(row.ret || row.message || "").trim();
-          if (mainValue) return mainValue;
-
-          const values = Object.values(row)
-            .map((item) => {
-              if (item == null) return "";
-              if (typeof item === "object") return stringifyExportRow(item);
-              return String(item).trim();
-            })
-            .filter(Boolean);
-
-          return values.join(" ");
+      const collectExportLines = (item) => {
+        if (item == null) return [];
+        if (typeof item === "string") {
+          const trimmed = item.trim();
+          return trimmed ? [trimmed] : [];
         }
-        return "";
+        if (typeof item === "number" || typeof item === "boolean") {
+          return [String(item)];
+        }
+        if (Array.isArray(item)) {
+          return item.flatMap(collectExportLines);
+        }
+        if (typeof item === "object") {
+          const primary = String(item.ret || item.message || item.value || item.sentence || "").trim();
+          if (primary) return [primary];
+
+          return Object.values(item).flatMap(collectExportLines);
+        }
+        return [];
       };
 
-      const lines = Array.isArray(result)
-        ? result.map(stringifyExportRow).filter(Boolean)
-        : [];
-
+      const normalizedResult = Array.isArray(result) ? result : [result];
+      const lines = normalizedResult.flatMap(collectExportLines).filter(Boolean);
       const content = lines.join("\n").trim();
+
       if (!content) {
         throw new Error("Export konfigurasi MikroTik kosong.");
       }
