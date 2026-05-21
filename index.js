@@ -643,13 +643,29 @@ class MikrotikService {
         throw lastError || new Error("Gagal mengekspor konfigurasi MikroTik.");
       }
 
-      const lines = Array.isArray(result)
-        ? result
-            .map((row) => {
-              if (!row || typeof row !== "object") return "";
-              return String(row.ret || row.message || "").trim();
+      const stringifyExportRow = (row) => {
+        if (row == null) return "";
+        if (typeof row === "string") return row.trim();
+        if (Array.isArray(row)) return row.map(stringifyExportRow).filter(Boolean).join("\n");
+        if (typeof row === "object") {
+          const mainValue = String(row.ret || row.message || "").trim();
+          if (mainValue) return mainValue;
+
+          const values = Object.values(row)
+            .map((item) => {
+              if (item == null) return "";
+              if (typeof item === "object") return stringifyExportRow(item);
+              return String(item).trim();
             })
-            .filter(Boolean)
+            .filter(Boolean);
+
+          return values.join(" ");
+        }
+        return "";
+      };
+
+      const lines = Array.isArray(result)
+        ? result.map(stringifyExportRow).filter(Boolean)
         : [];
 
       const content = lines.join("\n").trim();
