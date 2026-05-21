@@ -340,6 +340,17 @@ main > section:hover {
   line-height: 1;
 }
 
+@media (min-width: 641px) {
+  .contacts-table th,
+  .contacts-table td,
+  .contacts-table td span,
+  .contacts-table td button {
+    white-space: nowrap;
+    word-break: normal;
+    overflow-wrap: normal;
+  }
+}
+
 /* Hide elements with x-cloak until Alpine initializes */
 [x-cloak] {
   display: none !important;
