@@ -10,6 +10,7 @@ body {
   text-rendering: optimizeLegibility;
   background: #eef2f7;
   background-attachment: fixed;
+  line-height: 1.5;
 }
 
 body::before {
@@ -80,6 +81,8 @@ span {
 
 h1 {
   font-weight: 850;
+  font-size: clamp(1.7rem, 1.35rem + 1.4vw, 2.35rem);
+  line-height: 1.15;
 }
 
 h2 {
@@ -87,10 +90,11 @@ h2 {
   align-items: center;
   line-height: 1.15;
   font-weight: 800;
+  font-size: clamp(1.05rem, 0.95rem + 0.8vw, 1.5rem);
 }
 
 .section-caption {
-  font-size: 0.75rem;
+  font-size: clamp(0.68rem, 0.64rem + 0.25vw, 0.78rem);
   text-transform: uppercase;
   letter-spacing: 0.14em;
   font-weight: 800;
@@ -123,8 +127,10 @@ a.rounded-full {
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   text-align: center;
+  line-height: 1.25;
 }
 
 button,
@@ -291,6 +297,11 @@ main > section {
   background: rgba(255, 255, 255, 0.92);
 }
 
+.panel-shell,
+.metric-card {
+  min-width: 0;
+}
+
 .filter-inline {
   display: flex;
   align-items: center;
@@ -391,10 +402,24 @@ main > section:hover {
     min-width: 0;
     text-align: center;
     line-height: 1.25;
+    padding-top: 0.75rem !important;
+    padding-bottom: 0.75rem !important;
   }
 
   .section-caption {
     letter-spacing: 0.1em;
+  }
+
+  p,
+  label,
+  td,
+  span,
+  input,
+  select,
+  textarea,
+  button,
+  a {
+    font-size: 0.92rem;
   }
 
   form .flex.flex-wrap.gap-2 > * {
@@ -559,15 +584,58 @@ main > section:hover {
 
 @media (max-width: 480px) {
   h1 {
-    font-size: 1.7rem !important;
+    font-size: clamp(1.35rem, 1.12rem + 1.1vw, 1.65rem) !important;
   }
 
   h2 {
-    font-size: 1.05rem !important;
+    font-size: clamp(1rem, 0.92rem + 0.7vw, 1.18rem) !important;
   }
 
   .min-h-32 {
     min-height: 6rem !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .app-container {
+    width: calc(100% - 12px);
+  }
+
+  [class*="fixed inset-0 z-[60]"] {
+    align-items: flex-start !important;
+    padding: 0.75rem !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  [class*="fixed inset-0 z-[60]"] > div[class*="max-w-"] {
+    width: 100% !important;
+    max-height: calc(100dvh - 1.5rem);
+    overflow-y: auto;
+    border-radius: 1.1rem !important;
+    padding: 0.9rem !important;
+  }
+
+  table.min-w-full td[data-label],
+  .sent-history-table table.min-w-full td {
+    grid-template-columns: minmax(4.9rem, 34%) minmax(0, 1fr);
+    gap: 0.55rem;
+  }
+
+  table.min-w-full td[data-label]::before,
+  .sent-history-table table.min-w-full td::before {
+    font-size: 0.66rem;
+    letter-spacing: 0.1em;
+  }
+
+  table.min-w-full td,
+  .sent-history-table table.min-w-full td {
+    font-size: 0.88rem;
+    line-height: 1.35;
+  }
+
+  .filter-inline {
+    gap: 0.5rem;
   }
 }
 
