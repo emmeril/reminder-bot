@@ -8,7 +8,7 @@ const cron = require("node-cron");
 const crypto = require("crypto");
 const qrcode = require("qrcode-terminal");
 const QRCode = require("qrcode");
-const { Client, LocalAuth } = require("whatsapp-web.js");
+const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js");
 const { RouterOSClient } = require("routeros-client");
 const { Sequelize, DataTypes } = require("sequelize");
 
@@ -96,6 +96,10 @@ const DEFAULT_SETTINGS = {
   notifyAdminsOnDelivery: true,
   notifyAdminsOnConnectionChange: true,
   notifyAdminsOnPaymentReset: true,
+  enableMikrotikBackupToWa: false,
+  mikrotikBackupTime: "02:00",
+  mikrotikBackupTimezone: "Asia/Jakarta",
+  mikrotikBackupLastRunDate: "",
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -134,6 +138,45 @@ function parseBoolean(value, fallback = false) {
   if (["true", "1", "yes", "on"].includes(normalized)) return true;
   if (["false", "0", "no", "off", ""].includes(normalized)) return false;
   return fallback;
+}
+
+function sanitizeTimeHHMM(value, fallback = "02:00") {
+  const normalized = sanitizeInput(value);
+  if (!normalized) return fallback;
+  const match = normalized.match(/^(\d{2}):(\d{2})$/);
+  if (!match) return fallback;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return fallback;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return fallback;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function getDateTimePartsInTimezone(date = new Date(), timeZone = "Asia/Jakarta") {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(date).reduce((acc, item) => {
+    if (item.type !== "literal") acc[item.type] = item.value;
+    return acc;
+  }, {});
+
+  return {
+    year: parts.year || "",
+    month: parts.month || "",
+    day: parts.day || "",
+    hour: parts.hour || "00",
+    minute: parts.minute || "00",
+    dateKey: `${parts.year || "0000"}-${parts.month || "00"}-${parts.day || "00"}`,
+    timeKey: `${parts.hour || "00"}:${parts.minute || "00"}`,
+  };
 }
 
 function collectSecurityWarnings() {
@@ -568,6 +611,49 @@ class MikrotikService {
         profile: profileName,
       };
     });
+  }
+
+  async createConfigExportSnapshot() {
+    return this.withConnection(async (conn) => {
+      const result = await conn.menu("/").exec("export", {
+        compact: true,
+        "show-sensitive": true,
+      });
+
+      const lines = Array.isArray(result)
+        ? result
+            .map((row) => {
+              if (!row || typeof row !== "object") return "";
+              return String(row.ret || row.message || "").trim();
+            })
+            .filter(Boolean)
+        : [];
+
+      const content = lines.join("\n").trim();
+      if (!content) {
+        throw new Error("Export konfigurasi MikroTik kosong.");
+      }
+
+      return content;
+    });
+  }
+
+  async generateDailyBackupFile() {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backupDir = path.join(CONFIG.DB_PATH, "backups", "mikrotik");
+    await fs.mkdir(backupDir, { recursive: true });
+
+    const fileName = `mikrotik-export-${timestamp}.rsc`;
+    const filePath = path.join(backupDir, fileName);
+    const content = await this.createConfigExportSnapshot();
+
+    await fs.writeFile(filePath, `${content}\n`, "utf-8");
+
+    this.activityLog.push("info", "mikrotik", "Backup konfigurasi MikroTik berhasil dibuat", {
+      filePath,
+    });
+
+    return { fileName, filePath };
   }
 }
 
@@ -1401,9 +1487,30 @@ class DataManager {
       notifyAdminsOnDelivery: payload.notifyAdminsOnDelivery !== undefined ? parseBoolean(payload.notifyAdminsOnDelivery, current.notifyAdminsOnDelivery) : current.notifyAdminsOnDelivery,
       notifyAdminsOnConnectionChange: payload.notifyAdminsOnConnectionChange !== undefined ? parseBoolean(payload.notifyAdminsOnConnectionChange, current.notifyAdminsOnConnectionChange) : current.notifyAdminsOnConnectionChange,
       notifyAdminsOnPaymentReset: payload.notifyAdminsOnPaymentReset !== undefined ? parseBoolean(payload.notifyAdminsOnPaymentReset, current.notifyAdminsOnPaymentReset) : current.notifyAdminsOnPaymentReset,
+      enableMikrotikBackupToWa: payload.enableMikrotikBackupToWa !== undefined
+        ? parseBoolean(payload.enableMikrotikBackupToWa, current.enableMikrotikBackupToWa)
+        : current.enableMikrotikBackupToWa,
+      mikrotikBackupTime: payload.mikrotikBackupTime !== undefined
+        ? sanitizeTimeHHMM(payload.mikrotikBackupTime, current.mikrotikBackupTime || DEFAULT_SETTINGS.mikrotikBackupTime)
+        : current.mikrotikBackupTime,
+      mikrotikBackupTimezone: payload.mikrotikBackupTimezone !== undefined
+        ? sanitizeInput(payload.mikrotikBackupTimezone) || current.mikrotikBackupTimezone || current.timezone
+        : current.mikrotikBackupTimezone,
+      mikrotikBackupLastRunDate: payload.mikrotikBackupLastRunDate !== undefined
+        ? sanitizeInput(payload.mikrotikBackupLastRunDate)
+        : current.mikrotikBackupLastRunDate,
     };
     await this.saveSettings();
     return this.getSettings();
+  }
+
+  async markMikrotikBackupRun(dateKey) {
+    this.settings = {
+      ...this.getSettings(),
+      mikrotikBackupLastRunDate: sanitizeInput(dateKey),
+    };
+    await this.saveSettings();
+    return this.settings.mikrotikBackupLastRunDate;
   }
 
   getContactsByStatus(status) {
@@ -1903,6 +2010,27 @@ class NotificationBot {
     await this.client.sendMessage(`${normalized}@c.us`, String(message));
   }
 
+  async sendFile(phoneNumber, filePath, caption = "") {
+    if (!this.isReady || !this.client) {
+      throw new Error("WhatsApp not ready");
+    }
+
+    const normalized = normalizePhoneNumber(phoneNumber);
+    if (!isValidPhoneNumber(normalized)) {
+      throw new Error("Invalid target phone number");
+    }
+
+    if (!filePath || !fsSync.existsSync(filePath)) {
+      throw new Error("File backup tidak ditemukan.");
+    }
+
+    const media = MessageMedia.fromFilePath(filePath);
+    await this.client.sendMessage(`${normalized}@c.us`, media, {
+      caption: String(caption || ""),
+      sendMediaAsDocument: true,
+    });
+  }
+
   async sendAdminBroadcast(title, body, options = {}) {
     const recipients = this.dataManager.getAdminRecipients();
     if (recipients.length === 0) return [];
@@ -2125,6 +2253,78 @@ class ReminderScheduler {
           }
         }
       }
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+}
+
+class MikrotikBackupScheduler {
+  constructor(mikrotikService, notificationBot, dataManager, activityLog) {
+    this.mikrotikService = mikrotikService;
+    this.notificationBot = notificationBot;
+    this.dataManager = dataManager;
+    this.activityLog = activityLog;
+    this.isProcessing = false;
+  }
+
+  isDueNow(settings) {
+    const timeZone = settings.mikrotikBackupTimezone || settings.timezone || "Asia/Jakarta";
+    const configuredTime = sanitizeTimeHHMM(settings.mikrotikBackupTime, DEFAULT_SETTINGS.mikrotikBackupTime);
+    const nowParts = getDateTimePartsInTimezone(new Date(), timeZone);
+    return {
+      due: nowParts.timeKey === configuredTime,
+      nowParts,
+      configuredTime,
+      timeZone,
+    };
+  }
+
+  async processDailyBackup() {
+    if (this.isProcessing) return;
+
+    const settings = this.dataManager.getSettings();
+    if (!settings.enableMikrotikBackupToWa) return;
+
+    const recipients = this.dataManager.getAdminRecipients();
+    if (recipients.length === 0) return;
+
+    const scheduleCheck = this.isDueNow(settings);
+    if (!scheduleCheck.due) return;
+
+    if (settings.mikrotikBackupLastRunDate === scheduleCheck.nowParts.dateKey) return;
+    if (!this.notificationBot.isReady) return;
+
+    this.isProcessing = true;
+    try {
+      const { filePath, fileName } = await this.mikrotikService.generateDailyBackupFile();
+      const caption = `Backup MikroTik harian (${scheduleCheck.nowParts.dateKey})\nWaktu: ${scheduleCheck.configuredTime} ${scheduleCheck.timeZone}`;
+
+      const results = [];
+      for (const phoneNumber of recipients) {
+        try {
+          await this.notificationBot.sendFile(phoneNumber, filePath, caption);
+          results.push({ phoneNumber, status: "sent" });
+        } catch (error) {
+          results.push({ phoneNumber, status: "failed", error: error.message });
+        }
+      }
+
+      const sentCount = results.filter((item) => item.status === "sent").length;
+      const failedCount = results.length - sentCount;
+
+      if (sentCount > 0) {
+        await this.dataManager.markMikrotikBackupRun(scheduleCheck.nowParts.dateKey);
+      }
+
+      this.activityLog.push("info", "mikrotik-backup", "Pengiriman backup MikroTik harian selesai", {
+        fileName,
+        sentCount,
+        failedCount,
+        schedule: `${scheduleCheck.configuredTime} ${scheduleCheck.timeZone}`,
+      });
+    } catch (error) {
+      this.activityLog.push("error", "mikrotik-backup", `Backup MikroTik harian gagal: ${error.message}`);
     } finally {
       this.isProcessing = false;
     }
@@ -2458,6 +2658,39 @@ class WebServer {
         notification,
       };
     }));
+    this.app.post("/api/mikrotik/backup/send", requireApiAuth, handleApi(async () => {
+      if (!this.notificationBot.isReady) {
+        throw new Error("WhatsApp belum online.");
+      }
+
+      const recipients = this.dataManager.getAdminRecipients();
+      if (recipients.length === 0) {
+        throw new Error("Admin recipients masih kosong.");
+      }
+
+      const backup = await this.mikrotikService.generateDailyBackupFile();
+      const caption = `Backup MikroTik manual\nWaktu: ${new Date().toLocaleString("id-ID")}`;
+      const results = [];
+
+      for (const phoneNumber of recipients) {
+        try {
+          await this.notificationBot.sendFile(phoneNumber, backup.filePath, caption);
+          results.push({ phoneNumber, status: "sent" });
+        } catch (error) {
+          results.push({ phoneNumber, status: "failed", error: error.message });
+        }
+      }
+
+      this.activityLog.push("info", "mikrotik-backup", "Pengiriman backup MikroTik manual dieksekusi", {
+        fileName: backup.fileName,
+        results,
+      });
+
+      return {
+        fileName: backup.fileName,
+        results,
+      };
+    }));
 
     this.app.post("/api/contacts/:id/payment", requireApiAuth, handleApi(async (req) => {
       const status = sanitizeInput(req.body.status).toUpperCase();
@@ -2722,6 +2955,12 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
   const notificationBot = new NotificationBot(dataManager, activityLog);
   const mikrotikService = new MikrotikService(activityLog);
   const apDownNotifier = new ApDownNotifier(mikrotikService, notificationBot, dataManager, activityLog);
+  const mikrotikBackupScheduler = new MikrotikBackupScheduler(
+    mikrotikService,
+    notificationBot,
+    dataManager,
+    activityLog
+  );
 
   await dataManager.loadAll();
 
@@ -2742,6 +2981,7 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
     Promise.all([
       reminderScheduler.processDueReminders(),
       apDownNotifier.processNetwatchChanges(),
+      mikrotikBackupScheduler.processDailyBackup(),
     ]).catch((error) => {
       activityLog.push("error", "scheduler", `Cron execution failed: ${error.message}`);
     });

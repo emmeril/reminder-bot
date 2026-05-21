@@ -677,6 +677,14 @@
                 Timezone
                 <input x-model="forms.settings.timezone" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               </label>
+              <label class="block text-sm text-ink/60">
+                Jam backup MikroTik harian (HH:MM)
+                <input x-model="forms.settings.mikrotikBackupTime" placeholder="02:00" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+              </label>
+              <label class="block text-sm text-ink/60">
+                Timezone backup MikroTik
+                <input x-model="forms.settings.mikrotikBackupTimezone" placeholder="Asia/Jakarta" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+              </label>
             </div>
             <label class="block text-sm text-ink/60">
               Template Notifikasi AP Down
@@ -711,8 +719,17 @@
                 <input x-model="forms.settings.notifyAdminsOnPaymentReset" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
                 <span>Kirim alert reset pembayaran bulanan</span>
               </label>
+              <label class="flex items-start gap-3 text-sm text-ink/75">
+                <input x-model="forms.settings.enableMikrotikBackupToWa" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
+                <span>Aktifkan backup MikroTik harian dan kirim file ke admin recipients</span>
+              </label>
             </div>
-            <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Settings</button>
+            <div class="flex flex-wrap gap-2">
+              <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Settings</button>
+              <button type="button" @click="sendMikrotikBackupNow()" class="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-haze">
+                <i class="fa-solid fa-file-export mr-2"></i>Kirim Backup Sekarang
+              </button>
+            </div>
           </form>
         </section>
 
@@ -1290,10 +1307,13 @@
             paymentMessageTemplateCurrentOnly: "",
             paymentMessageTemplateFullPaid: "",
             timezone: "",
+            mikrotikBackupTime: "02:00",
+            mikrotikBackupTimezone: "Asia/Jakarta",
             autoRescheduleMonthly: false,
             notifyAdminsOnDelivery: false,
             notifyAdminsOnConnectionChange: false,
             notifyAdminsOnPaymentReset: false,
+            enableMikrotikBackupToWa: false,
           },
         },
 
@@ -1759,10 +1779,13 @@
                 paymentMessageTemplateCurrentOnly: data.settings.paymentMessageTemplateCurrentOnly || "",
                 paymentMessageTemplateFullPaid: data.settings.paymentMessageTemplateFullPaid || "",
                 timezone: data.settings.timezone || "",
+                mikrotikBackupTime: data.settings.mikrotikBackupTime || "02:00",
+                mikrotikBackupTimezone: data.settings.mikrotikBackupTimezone || data.settings.timezone || "Asia/Jakarta",
                 autoRescheduleMonthly: Boolean(data.settings.autoRescheduleMonthly),
                 notifyAdminsOnDelivery: Boolean(data.settings.notifyAdminsOnDelivery),
                 notifyAdminsOnConnectionChange: Boolean(data.settings.notifyAdminsOnConnectionChange),
                 notifyAdminsOnPaymentReset: Boolean(data.settings.notifyAdminsOnPaymentReset),
+                enableMikrotikBackupToWa: Boolean(data.settings.enableMikrotikBackupToWa),
               };
             }
           } finally {
@@ -2207,6 +2230,17 @@
           this.settingsDirty = false;
           this.notify("Settings diperbarui.");
           await this.loadStatus();
+        },
+
+        async sendMikrotikBackupNow() {
+          const result = await this.api("/api/mikrotik/backup/send", {
+            method: "POST",
+            body: JSON.stringify({}),
+          });
+          const sent = (result.results || []).filter((item) => item.status === "sent").length;
+          const failed = (result.results || []).filter((item) => item.status === "failed").length;
+          this.notify(`Backup manual: ${sent} terkirim, ${failed} gagal.`);
+          await this.loadLogs();
         },
 
         async sendManualNotification() {
