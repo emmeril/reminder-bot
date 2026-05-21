@@ -524,6 +524,60 @@ class MikrotikService {
     return this.withConnection((conn) => this.removeHotspotUsersByName(conn, username));
   }
 
+  async getHotspotUserByName(username) {
+    const normalizedUsername = sanitizeInput(username);
+    if (!normalizedUsername) throw new Error("Username hotspot wajib diisi.");
+
+    return this.withConnection(async (conn) => {
+      const users = await conn.menu("/ip/hotspot/user").print();
+      const found = (users || []).find(
+        (user) => String(user.name || "").toLowerCase() === normalizedUsername.toLowerCase()
+      );
+      if (!found) return null;
+
+      return {
+        id: found[".id"] || found.id || found.numbers || found.number || "",
+        name: found.name || normalizedUsername,
+        profile: found.profile || "",
+        disabled: parseBoolean(found.disabled),
+      };
+    });
+  }
+
+  async setHotspotUserDisabled(username, disabled = true) {
+    const normalizedUsername = sanitizeInput(username);
+    if (!normalizedUsername) throw new Error("Username hotspot wajib diisi.");
+
+    return this.withConnection(async (conn) => {
+      const users = await conn.menu("/ip/hotspot/user").print();
+      const matches = (users || []).filter(
+        (user) => String(user.name || "").toLowerCase() === normalizedUsername.toLowerCase()
+      );
+      if (matches.length === 0) {
+        throw new Error(`User hotspot "${normalizedUsername}" tidak ditemukan.`);
+      }
+
+      for (const row of matches) {
+        const rowId = row[".id"] || row.id || row.numbers || row.number;
+        if (!rowId) continue;
+        await conn.menu("/ip/hotspot/user").set({
+          ".id": String(rowId),
+          disabled: disabled ? "yes" : "no",
+        });
+      }
+
+      return { username: normalizedUsername, disabled, updated: matches.length };
+    });
+  }
+
+  async disableHotspotUser(username) {
+    return this.setHotspotUserDisabled(username, true);
+  }
+
+  async enableHotspotUser(username) {
+    return this.setHotspotUserDisabled(username, false);
+  }
+
   async createHotspotCustomer({ name, phoneNumber, profile }) {
     const customerName = sanitizeInput(name);
     const normalizedPhone = normalizePhoneNumber(phoneNumber);
@@ -884,6 +938,8 @@ class DataManager {
       const normalizedType = String(contact.paymentType || "").toUpperCase();
       contact.paymentType = Object.values(PAYMENT_TYPES).includes(normalizedType) ? normalizedType : null;
       contact.linkedApHost = sanitizeInput(String(contact.linkedApHost || ""));
+      contact.mikrotikUsername = sanitizeInput(String(contact.mikrotikUsername || ""));
+      contact.mikrotikProfile = sanitizeInput(String(contact.mikrotikProfile || ""));
       if (!contact.paymentMonths || typeof contact.paymentMonths !== "object" || Array.isArray(contact.paymentMonths)) {
         contact.paymentMonths = {};
       }
@@ -1145,6 +1201,7 @@ class DataManager {
     const name = sanitizeInput(payload.name);
     const phoneNumber = normalizePhoneNumber(payload.phoneNumber);
     const linkedApHost = sanitizeInput(String(payload.linkedApHost || ""));
+    const mikrotikUsername = sanitizeInput(String(payload.mikrotikUsername || ""));
 
     if (!name) throw new Error("Nama kontak wajib diisi.");
     if (!isValidPhoneNumber(phoneNumber)) throw new Error("Nomor kontak harus berformat 628xxx.");
@@ -1158,6 +1215,7 @@ class DataManager {
       paymentDate: payload.paymentStatus === PAYMENT_STATUS.PAID ? new Date().toISOString() : null,
       paymentMonths: payload.paymentMonths || {},
       linkedApHost,
+      mikrotikUsername,
       createdAt: payload.createdAt || new Date().toISOString(),
       updatedAt: payload.updatedAt || new Date().toISOString(),
     };
@@ -1233,6 +1291,9 @@ class DataManager {
     const nextLinkedApHost = payload.linkedApHost !== undefined
       ? sanitizeInput(String(payload.linkedApHost || ""))
       : sanitizeInput(String(contact.linkedApHost || ""));
+    const nextMikrotikUsername = payload.mikrotikUsername !== undefined
+      ? sanitizeInput(String(payload.mikrotikUsername || ""))
+      : sanitizeInput(String(contact.mikrotikUsername || ""));
 
     if (!nextName) throw new Error("Nama kontak wajib diisi.");
     if (!isValidPhoneNumber(nextPhone)) throw new Error("Nomor kontak harus berformat 628xxx.");
@@ -1241,6 +1302,8 @@ class DataManager {
     contact.name = nextName;
     contact.phoneNumber = nextPhone;
     contact.linkedApHost = nextLinkedApHost;
+    contact.mikrotikUsername = nextMikrotikUsername;
+    contact.updatedAt = new Date().toISOString();
 
     for (const reminder of this.reminders.values()) {
       if (String(reminder.contactId) === String(id) || reminder.phoneNumber === previousPhone) {
@@ -2412,6 +2475,26 @@ class WebServer {
     this.app.post("/api/contacts", requireApiAuth, handleApi(async (req) => this.dataManager.addContact(req.body)));
     this.app.put("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.dataManager.updateContact(req.params.id, req.body)));
     this.app.delete("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.dataManager.deleteContact(req.params.id)));
+    this.app.post("/api/contacts/:id/hotspot/state", requireApiAuth, handleApi(async (req) => {
+      const contact = this.dataManager.getContact(req.params.id);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      const username = sanitizeInput(req.body.username || contact.mikrotikUsername || "");
+      if (!username) throw new Error("Contact belum punya username hotspot.");
+      const action = sanitizeInput(req.body.action).toLowerCase();
+      if (!["enable", "disable"].includes(action)) {
+        throw new Error("Action hotspot harus enable atau disable.");
+      }
+
+      const result = action === "disable"
+        ? await this.mikrotikService.disableHotspotUser(username)
+        : await this.mikrotikService.enableHotspotUser(username);
+
+      await this.dataManager.updateContact(contact.id, { mikrotikUsername: username });
+      this.activityLog.push("info", "mikrotik", `Hotspot ${username} di-${action} via dashboard`, {
+        contactId: contact.id,
+      });
+      return { ...result, contactId: contact.id };
+    }));
 
     this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotProfiles()));
     this.app.get("/api/mikrotik/netwatch", requireApiAuth, handleApi(async () => this.mikrotikService.getNetwatchStatus()));

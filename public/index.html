@@ -333,6 +333,7 @@
                     <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-user mr-2"></i>Nama</th>
                     <th class="px-4 py-3 whitespace-nowrap"><i class="fa-brands fa-whatsapp mr-2"></i>No. WA</th>
                     <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-wifi mr-2"></i>AP Tujuan</th>
+                    <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-user-lock mr-2"></i>User Hotspot</th>
                     <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-signal mr-2"></i>Status AP</th>
                     <th class="px-4 py-3 whitespace-nowrap"><i class="fa-regular fa-calendar mr-2"></i>Tgl Jatuh Tempo</th>
                     <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-hourglass-half mr-2"></i>Status Jatuh Tempo</th>
@@ -342,13 +343,14 @@
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white/70">
                   <template x-if="!filteredContacts.length">
-                    <tr><td colspan="8" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada contact yang cocok.' : 'Belum ada contact.'"></td></tr>
+                    <tr><td colspan="9" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada contact yang cocok.' : 'Belum ada contact.'"></td></tr>
                   </template>
                   <template x-for="contact in paginatedContacts" :key="contact.id">
                     <tr>
                       <td class="px-4 py-4 font-medium" data-label="Nama" x-text="contact.name"></td>
                       <td class="px-4 py-4 text-ink/65 whitespace-nowrap tabular-nums" data-label="No. WA" x-text="contact.phoneNumber"></td>
                       <td class="px-4 py-4 text-ink/65" data-label="AP Tujuan" x-text="contact.linkedApHost || '-'"></td>
+                      <td class="px-4 py-4 text-ink/65 whitespace-nowrap tabular-nums" data-label="User Hotspot" x-text="contact.mikrotikUsername || '-'"></td>
                       <td class="px-4 py-4" data-label="Status AP">
                         <span
                           class="inline-flex rounded-full px-3 py-1 text-xs font-semibold"
@@ -419,6 +421,24 @@
                             </div>
                           </template>
                           <button @click="openContactEditModal(contact)" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit</button>
+                          <template x-if="contact.mikrotikUsername">
+                            <div class="grid w-full gap-2">
+                              <button
+                                type="button"
+                                @click="toggleHotspotState(contact, 'disable')"
+                                class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"
+                              >
+                                <i class="fa-solid fa-user-slash mr-1.5"></i>Disable Hotspot
+                              </button>
+                              <button
+                                type="button"
+                                @click="toggleHotspotState(contact, 'enable')"
+                                class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"
+                              >
+                                <i class="fa-solid fa-user-check mr-1.5"></i>Enable Hotspot
+                              </button>
+                            </div>
+                          </template>
                           <button @click="removeContact(contact)" class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Delete</button>
                         </div>
                       </td>
@@ -890,6 +910,10 @@
               </template>
             </select>
           </label>
+          <label class="block text-sm text-ink/60">
+            Username hotspot (opsional)
+            <input x-model="forms.contact.mikrotikUsername" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="misal: budi_setiawan">
+          </label>
           <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" @click="closeContactCreateModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="contactCreateModal.loading">Batal</button>
             <button type="submit" class="rounded-2xl bg-moss px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20 transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60" :disabled="contactCreateModal.loading">
@@ -1064,6 +1088,10 @@
                 <option :value="ap.host" x-text="ap.host + ' (' + (ap.status || 'UNKNOWN') + ')'"></option>
               </template>
             </select>
+          </label>
+          <label class="block text-sm text-ink/60">
+            Username hotspot (opsional)
+            <input x-model="forms.contactEdit.mikrotikUsername" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="misal: budi_setiawan">
           </label>
           <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" @click="closeContactEditModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="contactEditModal.loading">Batal</button>
@@ -1275,10 +1303,10 @@
           manual: { contactId: "", phoneNumber: "", templateName: "", message: "" },
           broadcast: { title: "", templateName: "", message: "" },
           recipients: "",
-          contact: { id: "", name: "", phoneNumber: "", linkedApHost: "" },
+          contact: { id: "", name: "", phoneNumber: "", linkedApHost: "", mikrotikUsername: "" },
           mikrotikCustomer: { name: "", phoneNumber: "", profile: "", sendCredentials: true },
           reminder: { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
-          contactEdit: { id: "", name: "", phoneNumber: "", linkedApHost: "" },
+          contactEdit: { id: "", name: "", phoneNumber: "", linkedApHost: "", mikrotikUsername: "" },
           reminderEdit: { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
           template: { name: "", content: "" },
           settings: {
@@ -1839,17 +1867,18 @@
             name: this.forms.contact.name,
             phoneNumber: this.forms.contact.phoneNumber,
             linkedApHost: this.forms.contact.linkedApHost,
+            mikrotikUsername: this.forms.contact.mikrotikUsername,
           };
           await this.api("/api/contacts", {
             method: "POST",
             body: JSON.stringify(payload),
           });
-          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "" };
+          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "", mikrotikUsername: "" };
           await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
         },
 
         openContactCreateModal() {
-          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "" };
+          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "", mikrotikUsername: "" };
           this.contactCreateModal.open = true;
           document.body.classList.add("overflow-hidden");
         },
@@ -1857,7 +1886,7 @@
         closeContactCreateModal() {
           this.contactCreateModal.open = false;
           this.contactCreateModal.loading = false;
-          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "" };
+          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "", mikrotikUsername: "" };
           document.body.classList.remove("overflow-hidden");
         },
 
@@ -1879,6 +1908,7 @@
             name: contact.name || "",
             phoneNumber: contact.phoneNumber || "",
             linkedApHost: contact.linkedApHost || "",
+            mikrotikUsername: contact.mikrotikUsername || "",
           };
           this.contactEditModal.open = true;
           document.body.classList.add("overflow-hidden");
@@ -1887,7 +1917,7 @@
         closeContactEditModal() {
           this.contactEditModal.open = false;
           this.contactEditModal.loading = false;
-          this.forms.contactEdit = { id: "", name: "", phoneNumber: "", linkedApHost: "" };
+          this.forms.contactEdit = { id: "", name: "", phoneNumber: "", linkedApHost: "", mikrotikUsername: "" };
           document.body.classList.remove("overflow-hidden");
         },
 
@@ -1901,6 +1931,7 @@
                 name: this.forms.contactEdit.name,
                 phoneNumber: this.forms.contactEdit.phoneNumber,
                 linkedApHost: this.forms.contactEdit.linkedApHost,
+                mikrotikUsername: this.forms.contactEdit.mikrotikUsername,
               }),
             });
             this.notify("Contact diperbarui.");
@@ -1983,6 +2014,19 @@
             this.notify("Status pembayaran diperbarui.");
           }
           await Promise.all([this.loadContacts(), this.loadStatus()]);
+        },
+
+        async toggleHotspotState(contact, action) {
+          if (!contact?.id) return;
+          const result = await this.api(`/api/contacts/${contact.id}/hotspot/state`, {
+            method: "POST",
+            body: JSON.stringify({
+              action,
+              username: contact.mikrotikUsername,
+            }),
+          });
+          this.notify(`Hotspot ${result.username} berhasil di-${action}.`);
+          await Promise.all([this.loadContacts(), this.loadLogs()]);
         },
 
         removeContact(contact) {
