@@ -422,22 +422,13 @@
                           </template>
                           <button @click="openContactEditModal(contact)" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit</button>
                           <template x-if="contact.mikrotikUsername">
-                            <div class="grid w-full gap-2">
-                              <button
-                                type="button"
-                                @click="toggleHotspotState(contact, 'disable')"
-                                class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"
-                              >
-                                <i class="fa-solid fa-user-slash mr-1.5"></i>Disable Hotspot
-                              </button>
-                              <button
-                                type="button"
-                                @click="toggleHotspotState(contact, 'enable')"
-                                class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"
-                              >
-                                <i class="fa-solid fa-user-check mr-1.5"></i>Enable Hotspot
-                              </button>
-                            </div>
+                            <button
+                              type="button"
+                              @click="toggleHotspotState(contact)"
+                              class="w-full rounded-full border border-amber-300/40 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 transition hover:bg-amber-500 hover:text-white"
+                            >
+                              <i class="fa-solid fa-toggle-on mr-1.5"></i>Toggle Hotspot
+                            </button>
                           </template>
                           <button @click="removeContact(contact)" class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Delete</button>
                         </div>
@@ -2016,16 +2007,16 @@
           await Promise.all([this.loadContacts(), this.loadStatus()]);
         },
 
-        async toggleHotspotState(contact, action) {
+        async toggleHotspotState(contact) {
           if (!contact?.id) return;
           const result = await this.api(`/api/contacts/${contact.id}/hotspot/state`, {
             method: "POST",
             body: JSON.stringify({
-              action,
+              action: "toggle",
               username: contact.mikrotikUsername,
             }),
           });
-          this.notify(`Hotspot ${result.username} berhasil di-${action}.`);
+          this.notify(`Hotspot ${result.username} berhasil di-${result.action}.`);
           await Promise.all([this.loadContacts(), this.loadLogs()]);
         },
 

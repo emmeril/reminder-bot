@@ -2481,19 +2481,26 @@ class WebServer {
       const username = sanitizeInput(req.body.username || contact.mikrotikUsername || "");
       if (!username) throw new Error("Contact belum punya username hotspot.");
       const action = sanitizeInput(req.body.action).toLowerCase();
-      if (!["enable", "disable"].includes(action)) {
-        throw new Error("Action hotspot harus enable atau disable.");
+      if (!["enable", "disable", "toggle"].includes(action)) {
+        throw new Error("Action hotspot harus enable, disable, atau toggle.");
       }
 
-      const result = action === "disable"
+      let resolvedAction = action;
+      if (action === "toggle") {
+        const user = await this.mikrotikService.getHotspotUserByName(username);
+        if (!user) throw new Error(`User hotspot "${username}" tidak ditemukan.`);
+        resolvedAction = user.disabled ? "enable" : "disable";
+      }
+
+      const result = resolvedAction === "disable"
         ? await this.mikrotikService.disableHotspotUser(username)
         : await this.mikrotikService.enableHotspotUser(username);
 
       await this.dataManager.updateContact(contact.id, { mikrotikUsername: username });
-      this.activityLog.push("info", "mikrotik", `Hotspot ${username} di-${action} via dashboard`, {
+      this.activityLog.push("info", "mikrotik", `Hotspot ${username} di-${resolvedAction} via dashboard`, {
         contactId: contact.id,
       });
-      return { ...result, contactId: contact.id };
+      return { ...result, action: resolvedAction, contactId: contact.id };
     }));
 
     this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotProfiles()));
