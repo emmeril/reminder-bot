@@ -813,8 +813,8 @@
               <h2 class="font-display text-2xl"><i class="fa-solid fa-list-check mr-2 text-moss"></i>Activity Log</h2>
               <!-- <p class="mt-1 text-sm text-ink/60">Monitoring internal untuk koneksi, scheduler, API, dan delivery.</p> -->
             </div>
-            <div class="filter-grid filter-grid-logs">
-              <select x-model.number="filters.logs.pageSize" @change="resetPage('logs')" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-2 text-sm outline-none transition focus:border-clay">
+            <div class="flex w-full items-center gap-2 sm:w-auto">
+              <select x-model.number="filters.logs.pageSize" @change="resetPage('logs')" class="min-w-[120px] flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-2 text-sm outline-none transition focus:border-clay sm:flex-none">
                 <template x-for="size in pageSizes" :key="'logs-size-' + size">
                   <option :value="size" x-text="size + ' / page'"></option>
                 </template>
