@@ -425,19 +425,6 @@ class MikrotikService {
     this.activityLog = activityLog;
   }
 
-  findUniqueHotspotUsersByName(rows, username) {
-    const matches = (rows || []).filter(
-      (row) => String(row.name || "").toLowerCase() === String(username || "").toLowerCase()
-    );
-    if (matches.length > 1) {
-      throw new Error(
-        `Ditemukan ${matches.length} user hotspot dengan username "${username}". ` +
-        "Perbaiki duplikasi username di MikroTik terlebih dahulu."
-      );
-    }
-    return matches;
-  }
-
   getConnectionConfigs() {
     return [
       { label: "primary", config: CONFIG.MIKROTIK_PRIMARY },
@@ -495,21 +482,6 @@ class MikrotikService {
     });
   }
 
-  async getHotspotUsers() {
-    return this.withConnection(async (conn) => {
-      const users = await conn.menu("/ip/hotspot/user").print();
-      return (users || [])
-        .map((user) => ({
-          id: user[".id"] || user.id || user.numbers || user.number || "",
-          name: user.name || "",
-          profile: user.profile || "",
-          disabled: parseBoolean(user.disabled),
-        }))
-        .filter((user) => user.name)
-        .sort((a, b) => String(a.name).localeCompare(String(b.name), "id-ID"));
-    });
-  }
-
   async getNetwatchStatus() {
     return this.withConnection(async (conn) => {
       const rows = await conn.menu("/tool/netwatch").print();
@@ -552,107 +524,6 @@ class MikrotikService {
     return this.withConnection((conn) => this.removeHotspotUsersByName(conn, username));
   }
 
-  async getHotspotUserByName(username) {
-    const normalizedUsername = sanitizeInput(username);
-    if (!normalizedUsername) throw new Error("Username hotspot wajib diisi.");
-
-    return this.withConnection(async (conn) => {
-      const users = await conn.menu("/ip/hotspot/user").print();
-      const matches = this.findUniqueHotspotUsersByName(users, normalizedUsername);
-      const found = matches[0];
-      if (!found) return null;
-
-      return {
-        id: found[".id"] || found.id || found.numbers || found.number || "",
-        name: found.name || normalizedUsername,
-        profile: found.profile || "",
-        disabled: parseBoolean(found.disabled),
-      };
-    });
-  }
-
-  async setHotspotUserDisabled(username, disabled = true) {
-    const normalizedUsername = sanitizeInput(username);
-    if (!normalizedUsername) throw new Error("Username hotspot wajib diisi.");
-
-    return this.withConnection(async (conn) => {
-      const users = await conn.menu("/ip/hotspot/user").print();
-      const matches = this.findUniqueHotspotUsersByName(users, normalizedUsername);
-      if (matches.length === 0) {
-        throw new Error(`User hotspot "${normalizedUsername}" tidak ditemukan.`);
-      }
-
-      let isDynamicUser = false;
-      for (const row of matches) {
-        const dynamic = parseBoolean(row.dynamic) || String(row.dynamic || "").toLowerCase() === "true";
-        if (dynamic) {
-          isDynamicUser = true;
-          continue;
-        }
-        const rowId = row[".id"] || row.id || row.numbers || row.number;
-        try {
-          if (rowId) {
-            await conn.menu("/ip/hotspot/user").set({
-              ".id": String(rowId),
-              disabled: disabled ? "yes" : "no",
-            });
-          } else {
-            await conn.menu("/ip/hotspot/user").where("name", row.name || normalizedUsername).set({
-              disabled: disabled ? "yes" : "no",
-            });
-          }
-        } catch (setError) {
-          const setMessage = String(setError?.message || setError || "");
-          try {
-            await conn.menu("/ip/hotspot/user").where("name", row.name || normalizedUsername).set({
-              disabled: disabled ? "yes" : "no",
-            });
-          } catch (fallbackError) {
-            const fallbackMessage = String(fallbackError?.message || fallbackError || "");
-            throw new Error(
-              `Gagal mengubah status user hotspot "${normalizedUsername}" ` +
-              `(id: ${rowId || "-"}). Error utama: ${setMessage}. Fallback error: ${fallbackMessage}`
-            );
-          }
-        }
-      }
-
-      let activeKilled = 0;
-      if (disabled) {
-        const activeSessions = await conn.menu("/ip/hotspot/active").print();
-        const activeMatches = (activeSessions || []).filter(
-          (session) => String(session.user || "").toLowerCase() === normalizedUsername.toLowerCase()
-        );
-
-        for (const session of activeMatches) {
-          const sessionId = session[".id"] || session.id || session.numbers || session.number;
-          if (!sessionId) continue;
-          await conn.menu("/ip/hotspot/active").remove(String(sessionId));
-          activeKilled += 1;
-        }
-      }
-
-      return {
-        username: normalizedUsername,
-        disabled,
-        updated: isDynamicUser ? 0 : matches.length,
-        activeKilled,
-        isDynamicUser,
-        note: isDynamicUser
-          ? "User hotspot bertipe dynamic, flag disabled tidak bisa diubah. Sistem hanya memutus sesi aktif."
-          : "",
-      };
-    });
-  }
-
-  async disableHotspotUser(username) {
-    return this.setHotspotUserDisabled(username, true);
-  }
-
-  async enableHotspotUser(username) {
-    return this.setHotspotUserDisabled(username, false);
-  }
-
   async createHotspotCustomer({ name, phoneNumber, profile }) {
     const customerName = sanitizeInput(name);
     const normalizedPhone = normalizePhoneNumber(phoneNumber);
@@ -686,12 +557,6 @@ class MikrotikService {
 
       if (addResult?.["!trap"]) {
         const message = addResult["!trap"]?.[0]?.message || "Error tidak diketahui dari MikroTik.";
-        if (String(message).toLowerCase().includes("already have user with this name for this server")) {
-          throw new Error(
-            `Username "${username}" bentrok di server MikroTik. ` +
-            "Silakan ganti nama pelanggan agar username hotspot unik."
-          );
-        }
         throw new Error(`Gagal membuat user hotspot: ${message}`);
       }
 
@@ -1019,8 +884,6 @@ class DataManager {
       const normalizedType = String(contact.paymentType || "").toUpperCase();
       contact.paymentType = Object.values(PAYMENT_TYPES).includes(normalizedType) ? normalizedType : null;
       contact.linkedApHost = sanitizeInput(String(contact.linkedApHost || ""));
-      contact.mikrotikUsername = sanitizeInput(String(contact.mikrotikUsername || ""));
-      contact.mikrotikProfile = sanitizeInput(String(contact.mikrotikProfile || ""));
       if (!contact.paymentMonths || typeof contact.paymentMonths !== "object" || Array.isArray(contact.paymentMonths)) {
         contact.paymentMonths = {};
       }
@@ -1282,7 +1145,6 @@ class DataManager {
     const name = sanitizeInput(payload.name);
     const phoneNumber = normalizePhoneNumber(payload.phoneNumber);
     const linkedApHost = sanitizeInput(String(payload.linkedApHost || ""));
-    const mikrotikUsername = sanitizeInput(String(payload.mikrotikUsername || ""));
 
     if (!name) throw new Error("Nama kontak wajib diisi.");
     if (!isValidPhoneNumber(phoneNumber)) throw new Error("Nomor kontak harus berformat 628xxx.");
@@ -1296,7 +1158,6 @@ class DataManager {
       paymentDate: payload.paymentStatus === PAYMENT_STATUS.PAID ? new Date().toISOString() : null,
       paymentMonths: payload.paymentMonths || {},
       linkedApHost,
-      mikrotikUsername,
       createdAt: payload.createdAt || new Date().toISOString(),
       updatedAt: payload.updatedAt || new Date().toISOString(),
     };
@@ -1372,9 +1233,6 @@ class DataManager {
     const nextLinkedApHost = payload.linkedApHost !== undefined
       ? sanitizeInput(String(payload.linkedApHost || ""))
       : sanitizeInput(String(contact.linkedApHost || ""));
-    const nextMikrotikUsername = payload.mikrotikUsername !== undefined
-      ? sanitizeInput(String(payload.mikrotikUsername || ""))
-      : sanitizeInput(String(contact.mikrotikUsername || ""));
 
     if (!nextName) throw new Error("Nama kontak wajib diisi.");
     if (!isValidPhoneNumber(nextPhone)) throw new Error("Nomor kontak harus berformat 628xxx.");
@@ -1383,8 +1241,6 @@ class DataManager {
     contact.name = nextName;
     contact.phoneNumber = nextPhone;
     contact.linkedApHost = nextLinkedApHost;
-    contact.mikrotikUsername = nextMikrotikUsername;
-    contact.updatedAt = new Date().toISOString();
 
     for (const reminder of this.reminders.values()) {
       if (String(reminder.contactId) === String(id) || reminder.phoneNumber === previousPhone) {
@@ -2556,36 +2412,8 @@ class WebServer {
     this.app.post("/api/contacts", requireApiAuth, handleApi(async (req) => this.dataManager.addContact(req.body)));
     this.app.put("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.dataManager.updateContact(req.params.id, req.body)));
     this.app.delete("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.dataManager.deleteContact(req.params.id)));
-    this.app.post("/api/contacts/:id/hotspot/state", requireApiAuth, handleApi(async (req) => {
-      const contact = this.dataManager.getContact(req.params.id);
-      if (!contact) throw new Error("Kontak tidak ditemukan.");
-      const username = sanitizeInput(req.body.username || contact.mikrotikUsername || "");
-      if (!username) throw new Error("Contact belum punya username hotspot.");
-      const action = sanitizeInput(req.body.action).toLowerCase();
-      if (!["enable", "disable", "toggle"].includes(action)) {
-        throw new Error("Action hotspot harus enable, disable, atau toggle.");
-      }
-
-      let resolvedAction = action;
-      if (action === "toggle") {
-        const user = await this.mikrotikService.getHotspotUserByName(username);
-        if (!user) throw new Error(`User hotspot "${username}" tidak ditemukan.`);
-        resolvedAction = user.disabled ? "enable" : "disable";
-      }
-
-      const result = resolvedAction === "disable"
-        ? await this.mikrotikService.disableHotspotUser(username)
-        : await this.mikrotikService.enableHotspotUser(username);
-
-      await this.dataManager.updateContact(contact.id, { mikrotikUsername: username });
-      this.activityLog.push("info", "mikrotik", `Hotspot ${username} di-${resolvedAction} via dashboard`, {
-        contactId: contact.id,
-      });
-      return { ...result, action: resolvedAction, contactId: contact.id };
-    }));
 
     this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotProfiles()));
-    this.app.get("/api/mikrotik/hotspot-users", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotUsers()));
     this.app.get("/api/mikrotik/netwatch", requireApiAuth, handleApi(async () => this.mikrotikService.getNetwatchStatus()));
     this.app.post("/api/mikrotik/customers", requireApiAuth, handleApi(async (req) => {
       const registered = await this.mikrotikService.createHotspotCustomer({
