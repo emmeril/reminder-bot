@@ -56,6 +56,10 @@ const CONFIG = {
     timeout: 30_000,
     keepalive: true,
   },
+  FONNTE_TOKEN: String(process.env.FONNTE_TOKEN || "").trim(),
+  FONNTE_API_URL: String(process.env.FONNTE_API_URL || "https://api.fonnte.com/send").trim(),
+  FONNTE_ENABLED: String(process.env.FONNTE_ENABLED || "").trim().toLowerCase() === "true",
+  FONNTE_BACKUP_ENABLED: String(process.env.FONNTE_BACKUP_ENABLED || "").trim().toLowerCase() === "true",
 };
 
 const MONTH_NAMES = [
@@ -2057,14 +2061,33 @@ class NotificationBot {
   }
 
   async sendMessage(phoneNumber, message) {
-    if (!this.isReady || !this.client) {
-      throw new Error("WhatsApp not ready");
-    }
     const normalized = normalizePhoneNumber(phoneNumber);
     if (!isValidPhoneNumber(normalized)) {
       throw new Error("Invalid target phone number");
     }
-    await this.client.sendMessage(`${normalized}@c.us`, String(message));
+
+    const messageText = String(message || "");
+
+    if (this.canSendViaWaWeb()) {
+      try {
+        await this.client.sendMessage(`${normalized}@c.us`, messageText);
+        return { transport: "whatsapp-web.js" };
+      } catch (error) {
+        if (!this.isFonnteEnabled()) {
+          throw error;
+        }
+        this.activityLog.push("warn", "notification", `WA Web gagal untuk ${normalized}, fallback ke Fonnte`, {
+          error: error.message,
+        });
+      }
+    }
+
+    if (this.isFonnteEnabled()) {
+      await this.sendMessageViaFonnte(normalized, messageText);
+      return { transport: "fonnte" };
+    }
+
+    throw new Error("Transport not ready");
   }
 
   async sendFile(phoneNumber, filePath, caption = "") {
@@ -2089,6 +2112,133 @@ class NotificationBot {
       caption: String(caption || ""),
       sendMediaAsDocument: true,
     });
+  }
+
+  isFonnteEnabled() {
+    return (CONFIG.FONNTE_ENABLED || CONFIG.FONNTE_BACKUP_ENABLED) && Boolean(CONFIG.FONNTE_TOKEN);
+  }
+
+  canSendViaWaWeb() {
+    return Boolean(this.isReady && this.client);
+  }
+
+  canSendMessages() {
+    return this.isFonnteEnabled() || this.canSendViaWaWeb();
+  }
+
+  isFonnteBackupEnabled() {
+    return (CONFIG.FONNTE_BACKUP_ENABLED || CONFIG.FONNTE_ENABLED) && Boolean(CONFIG.FONNTE_TOKEN);
+  }
+
+  canSendBackupViaWaWeb() {
+    return this.canSendViaWaWeb();
+  }
+
+  canSendBackup() {
+    return this.isFonnteBackupEnabled() || this.canSendBackupViaWaWeb();
+  }
+
+  async sendMessageViaFonnte(phoneNumber, message = "") {
+    if (!this.isFonnteEnabled()) {
+      throw new Error("Fonnte belum dikonfigurasi.");
+    }
+
+    const normalized = normalizePhoneNumber(phoneNumber);
+    if (!isValidPhoneNumber(normalized)) {
+      throw new Error("Invalid target phone number");
+    }
+
+    const formData = new FormData();
+    formData.append("target", normalized);
+    formData.append("message", String(message || ""));
+
+    const response = await fetch(CONFIG.FONNTE_API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: CONFIG.FONNTE_TOKEN,
+      },
+      body: formData,
+    });
+
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+
+    if (!response.ok || payload?.status === false) {
+      const errorMessage = payload?.reason
+        || payload?.detail
+        || payload?.message
+        || `HTTP ${response.status}`;
+      throw new Error(`Fonnte gagal mengirim pesan: ${errorMessage}`);
+    }
+
+    return payload;
+  }
+
+  async sendFileViaFonnte(phoneNumber, filePath, caption = "") {
+    if (!this.isFonnteBackupEnabled()) {
+      throw new Error("Fonnte backup belum dikonfigurasi.");
+    }
+
+    const normalized = normalizePhoneNumber(phoneNumber);
+    if (!isValidPhoneNumber(normalized)) {
+      throw new Error("Invalid target phone number");
+    }
+
+    if (!filePath || !fsSync.existsSync(filePath)) {
+      throw new Error("File backup tidak ditemukan.");
+    }
+
+    const fileBuffer = await fs.readFile(filePath);
+    const fileBlob = new Blob([fileBuffer]);
+    const formData = new FormData();
+    formData.append("target", normalized);
+    formData.append("message", String(caption || ""));
+    formData.append("file", fileBlob, path.basename(filePath));
+
+    const response = await fetch(CONFIG.FONNTE_API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: CONFIG.FONNTE_TOKEN,
+      },
+      body: formData,
+    });
+
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+
+    if (!response.ok || payload?.status === false) {
+      const errorMessage = payload?.reason
+        || payload?.detail
+        || payload?.message
+        || `HTTP ${response.status}`;
+      throw new Error(`Fonnte gagal mengirim file: ${errorMessage}`);
+    }
+
+    return payload;
+  }
+
+  async sendBackupFile(phoneNumber, filePath, caption = "") {
+    if (this.isFonnteBackupEnabled()) {
+      try {
+        await this.sendFileViaFonnte(phoneNumber, filePath, caption);
+        return { transport: "fonnte" };
+      } catch (error) {
+        this.activityLog.push("warn", "mikrotik-backup", `Fonnte gagal untuk ${phoneNumber}, fallback WA Web`, {
+          error: error.message,
+        });
+      }
+    }
+
+    await this.sendFile(phoneNumber, filePath, caption);
+    return { transport: "whatsapp-web.js" };
   }
 
   async sendAdminBroadcast(title, body, options = {}) {
@@ -2217,6 +2367,9 @@ class NotificationBot {
       hasQR: Boolean(this.currentQR),
       reconnectAttempts: this.reconnectAttempts,
       isReconnecting: this.isReconnecting,
+      canSendMessages: this.canSendMessages(),
+      fonnteEnabled: this.isFonnteEnabled(),
+      fonnteBackupEnabled: this.isFonnteBackupEnabled(),
       adminRecipients: this.dataManager.getAdminRecipients(),
     };
   }
@@ -2252,8 +2405,8 @@ class ReminderScheduler {
       return;
     }
 
-    if (!this.notificationBot.isReady) {
-      this.activityLog.push("info", "scheduler", "Skipping run because WhatsApp is not ready");
+    if (!this.notificationBot.canSendMessages()) {
+      this.activityLog.push("info", "scheduler", "Skipping run because notification transport is not ready");
       return;
     }
 
@@ -2362,8 +2515,8 @@ class MikrotikBackupScheduler {
       return;
     }
 
-    if (!this.notificationBot.isReady) {
-      this.activityLog.push("warn", "mikrotik-backup", "Backup MikroTik dilewati karena WhatsApp belum online");
+    if (!this.notificationBot.canSendBackup()) {
+      this.activityLog.push("warn", "mikrotik-backup", "Backup MikroTik dilewati karena transport backup belum siap");
       return;
     }
 
@@ -2375,8 +2528,8 @@ class MikrotikBackupScheduler {
       const results = [];
       for (const phoneNumber of recipients) {
         try {
-          await this.notificationBot.sendFile(phoneNumber, filePath, caption);
-          results.push({ phoneNumber, status: "sent" });
+          const transport = await this.notificationBot.sendBackupFile(phoneNumber, filePath, caption);
+          results.push({ phoneNumber, status: "sent", transport: transport.transport });
         } catch (error) {
           results.push({ phoneNumber, status: "failed", error: error.message });
         }
@@ -2705,7 +2858,7 @@ class WebServer {
       }
 
       let notification = { sent: false };
-      if (parseBoolean(req.body.sendCredentials) && this.notificationBot.isReady) {
+      if (parseBoolean(req.body.sendCredentials) && this.notificationBot.canSendMessages()) {
         const message = `Yth. Bapak/Ibu *${registered.name}*,\n\nAkun hotspot Anda sudah berhasil dibuat.\n\nDetail Akun Hotspot:\n*Username:* ${registered.username}\n*Password:* ${registered.password}\n*Profile:* ${registered.profile}\n\nSilakan simpan data ini. Terimakasih.`;
         try {
           await this.notificationBot.sendMessage(registered.phoneNumber, message);
@@ -2714,7 +2867,7 @@ class WebServer {
           notification = { sent: false, error: error.message };
         }
       } else if (parseBoolean(req.body.sendCredentials)) {
-        notification = { sent: false, error: "WhatsApp belum online." };
+        notification = { sent: false, error: "Transport notifikasi belum online." };
       }
 
       this.activityLog.push("info", "mikrotik", `Pelanggan ${registered.name} dibuat sebagai ${registered.username}`, {
@@ -2731,8 +2884,8 @@ class WebServer {
       };
     }));
     this.app.post("/api/mikrotik/backup/send", requireApiAuth, handleApi(async () => {
-      if (!this.notificationBot.isReady) {
-        throw new Error("WhatsApp belum online.");
+      if (!this.notificationBot.canSendBackup()) {
+        throw new Error("Transport backup belum siap. Hubungkan WhatsApp Web atau aktifkan Fonnte.");
       }
 
       const recipients = this.dataManager.getAdminRecipients();
@@ -2746,8 +2899,8 @@ class WebServer {
 
       for (const phoneNumber of recipients) {
         try {
-          await this.notificationBot.sendFile(phoneNumber, backup.filePath, caption);
-          results.push({ phoneNumber, status: "sent" });
+          const transport = await this.notificationBot.sendBackupFile(phoneNumber, backup.filePath, caption);
+          results.push({ phoneNumber, status: "sent", transport: transport.transport });
         } catch (error) {
           results.push({ phoneNumber, status: "failed", error: error.message });
         }
@@ -2998,7 +3151,7 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
 
   activityLog.push("info", "billing", `Monthly payment status reset completed for ${count} contact(s)`);
 
-  if (!settings.notifyAdminsOnPaymentReset || !notificationBot.isReady) {
+  if (!settings.notifyAdminsOnPaymentReset || !notificationBot.canSendMessages()) {
     return;
   }
 
