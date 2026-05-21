@@ -2025,8 +2025,12 @@ class NotificationBot {
     }
 
     const media = MessageMedia.fromFilePath(filePath);
+
+    if (caption) {
+      await this.client.sendMessage(`${normalized}@c.us`, String(caption));
+    }
+
     await this.client.sendMessage(`${normalized}@c.us`, media, {
-      caption: String(caption || ""),
       sendMediaAsDocument: true,
     });
   }
