@@ -1248,6 +1248,7 @@
           startedAt: 0,
           paused: false,
         },
+        toastQueue: [],
         deleteConfirm: {
           open: false,
           loading: false,
@@ -1370,13 +1371,13 @@
 
           this.pollers.push(setInterval(() => {
             if (!document.hidden) {
-              this.loadStatus();
+              this.loadStatus({ silent: true });
             }
           }, statusInterval));
 
           this.pollers.push(setInterval(() => {
             if (!document.hidden && this.activeMenu === "logs") {
-              this.loadLogs();
+              this.loadLogs({ silent: true });
             }
           }, logsInterval));
         },
@@ -1392,13 +1393,14 @@
         },
 
         async api(path, options = {}) {
+          const { silent = false, ...fetchOptions } = options;
           const response = await fetch(path, {
-            ...options,
+            ...fetchOptions,
             cache: "no-store",
             credentials: "same-origin",
             headers: {
               "Content-Type": "application/json",
-              ...(options.headers || {}),
+              ...(fetchOptions.headers || {}),
             },
           });
 
@@ -1413,7 +1415,7 @@
             : { success: false, error: await response.text() || "Request failed" };
           if (!response.ok || !payload.success) {
             const message = payload.error || `Request failed (${response.status})`;
-            this.notify(message);
+            if (!silent) this.notify(message);
             throw new Error(message);
           }
 
@@ -1421,6 +1423,16 @@
         },
 
         notify(message) {
+          const text = String(message || "").trim();
+          if (!text) return;
+          if (this.toast.show) {
+            this.toastQueue.push(text);
+            return;
+          }
+          this.showToast(text);
+        },
+
+        showToast(message) {
           this.toast.message = message;
           this.toast.show = true;
           this.toast.paused = false;
@@ -1456,6 +1468,10 @@
           clearTimeout(this.toast.timer);
           this.toast.timer = null;
           this.toast.remaining = this.toast.duration;
+          const next = this.toastQueue.shift();
+          if (next) {
+            setTimeout(() => this.showToast(next), 120);
+          }
         },
 
         openDeleteConfirm({ title, description, action }) {
@@ -1802,10 +1818,10 @@
           await this.loadNonCriticalData();
         },
 
-        async loadStatus() {
+        async loadStatus(options = {}) {
           this.loading.status = true;
           try {
-            const data = await this.api("/api/status");
+            const data = await this.api("/api/status", { silent: Boolean(options.silent) });
             this.billingPeriod = data.billingPeriod || this.billingPeriod;
             this.statusCards = [
               { label: "Transport", value: data.bot.isReady ? "Online" : "Offline", icon: data.bot.isReady ? "fa-solid fa-plug-circle-check" : "fa-solid fa-plug-circle-xmark" },
@@ -1950,8 +1966,8 @@
           this.forms.recipients = recipients.join("\n");
         },
 
-        async loadLogs() {
-          this.logs = await this.api("/api/logs");
+        async loadLogs(options = {}) {
+          this.logs = await this.api("/api/logs", { silent: Boolean(options.silent) });
           this.clampPage("logs", this.logs.length);
         },
 
