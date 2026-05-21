@@ -482,6 +482,21 @@ class MikrotikService {
     });
   }
 
+  async getHotspotUsers() {
+    return this.withConnection(async (conn) => {
+      const users = await conn.menu("/ip/hotspot/user").print();
+      return (users || [])
+        .map((user) => ({
+          id: user[".id"] || user.id || user.numbers || user.number || "",
+          name: user.name || "",
+          profile: user.profile || "",
+          disabled: parseBoolean(user.disabled),
+        }))
+        .filter((user) => user.name)
+        .sort((a, b) => String(a.name).localeCompare(String(b.name), "id-ID"));
+    });
+  }
+
   async getNetwatchStatus() {
     return this.withConnection(async (conn) => {
       const rows = await conn.menu("/tool/netwatch").print();
@@ -2504,6 +2519,7 @@ class WebServer {
     }));
 
     this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotProfiles()));
+    this.app.get("/api/mikrotik/hotspot-users", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotUsers()));
     this.app.get("/api/mikrotik/netwatch", requireApiAuth, handleApi(async () => this.mikrotikService.getNetwatchStatus()));
     this.app.post("/api/mikrotik/customers", requireApiAuth, handleApi(async (req) => {
       const registered = await this.mikrotikService.createHotspotCustomer({

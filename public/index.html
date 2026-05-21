@@ -425,9 +425,11 @@
                             <button
                               type="button"
                               @click="toggleHotspotState(contact)"
-                              class="w-full rounded-full border border-amber-300/40 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 transition hover:bg-amber-500 hover:text-white"
+                              class="w-full rounded-full px-3 py-2 text-xs font-semibold transition"
+                              :class="getHotspotToggleButtonClass(contact)"
                             >
-                              <i class="fa-solid fa-toggle-on mr-1.5"></i>Toggle Hotspot
+                              <i :class="getHotspotToggleIconClass(contact) + ' mr-1.5'"></i>
+                              <span x-text="getHotspotToggleLabel(contact)"></span>
                             </button>
                           </template>
                           <button @click="removeContact(contact)" class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Delete</button>
@@ -1280,6 +1282,7 @@
         isMobile: window.matchMedia("(max-width: 768px)").matches,
         pollers: [],
         paymentTypeSelection: {},
+        hotspotUsersByName: {},
         expandedMessages: {},
         billingPeriod: "",
         pageSizes: [10, 25, 50, 100],
@@ -1361,6 +1364,7 @@
         async loadNonCriticalData() {
           await Promise.allSettled([
             this.loadApMonitors(),
+            this.loadHotspotUsers(),
             this.loadSent(),
             this.loadRecipients(),
             this.loadLogs(),
@@ -1794,6 +1798,49 @@
           this.clampPage("contacts", this.filteredContacts.length);
         },
 
+        async loadHotspotUsers() {
+          const users = await this.api("/api/mikrotik/hotspot-users");
+          const nextMap = {};
+          for (const user of users || []) {
+            const key = String(user?.name || "").trim().toLowerCase();
+            if (!key) continue;
+            nextMap[key] = {
+              disabled: Boolean(user.disabled),
+              profile: user.profile || "",
+            };
+          }
+          this.hotspotUsersByName = nextMap;
+        },
+
+        getHotspotState(contact) {
+          const username = String(contact?.mikrotikUsername || "").trim().toLowerCase();
+          if (!username) return null;
+          return this.hotspotUsersByName[username] || null;
+        },
+
+        getHotspotToggleLabel(contact) {
+          const state = this.getHotspotState(contact);
+          if (!state) return "Toggle Hotspot";
+          return state.disabled ? "Enable Hotspot" : "Disable Hotspot";
+        },
+
+        getHotspotToggleIconClass(contact) {
+          const state = this.getHotspotState(contact);
+          if (!state) return "fa-solid fa-toggle-on";
+          return state.disabled ? "fa-solid fa-user-check" : "fa-solid fa-user-slash";
+        },
+
+        getHotspotToggleButtonClass(contact) {
+          const state = this.getHotspotState(contact);
+          if (!state) {
+            return "border border-amber-300/40 bg-amber-50 text-amber-700 hover:bg-amber-500 hover:text-white";
+          }
+          if (state.disabled) {
+            return "border border-moss/20 bg-moss/5 text-moss hover:bg-moss hover:text-white";
+          }
+          return "border border-clay/20 bg-clay/5 text-clay hover:bg-clay hover:text-white";
+        },
+
         async loadMikrotikProfiles() {
           this.mikrotikProfiles = await this.api("/api/mikrotik/profiles");
           this.notify(`${this.mikrotikProfiles.length} profile MikroTik dimuat.`);
@@ -2017,7 +2064,7 @@
             }),
           });
           this.notify(`Hotspot ${result.username} berhasil di-${result.action}.`);
-          await Promise.all([this.loadContacts(), this.loadLogs()]);
+          await Promise.all([this.loadContacts(), this.loadHotspotUsers(), this.loadLogs()]);
         },
 
         removeContact(contact) {
