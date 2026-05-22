@@ -1171,10 +1171,15 @@ class DataManager {
   buildDueDateInfo(contact) {
     const { year, month } = getBillingPeriodParts();
     const activePeriodKey = makeBillingPeriodKey(year, month);
-    const reminders = Array.from(this.reminders.values()).filter((reminder) => {
+    const isContactReminder = (reminder) => {
       if (String(reminder.contactId || "") === String(contact.id)) return true;
       return reminder.phoneNumber && reminder.phoneNumber === contact.phoneNumber;
-    });
+    };
+
+    const reminders = [
+      ...Array.from(this.reminders.values()).filter(isContactReminder),
+      ...Array.from(this.sentReminders.values()).filter(isContactReminder),
+    ];
 
     const parsedReminders = reminders
       .map((reminder) => ({
