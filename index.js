@@ -23,6 +23,8 @@ const CONFIG = {
   PUBLIC_PATH: path.join(__dirname, "public"),
   AUTO_SAVE_INTERVAL: 24 * 60 * 60 * 1000,
   BACKUP_INTERVAL: 24 * 60 * 60 * 1000,
+  SENT_HISTORY_RETENTION_MONTHS: Number(process.env.SENT_HISTORY_RETENTION_MONTHS || 3),
+  SENT_HISTORY_CLEANUP_SCHEDULE: process.env.SENT_HISTORY_CLEANUP_SCHEDULE || "15 0 * * *",
   KEEP_ALIVE_INTERVAL: 5 * 60 * 1000,
   MAX_RECONNECT_ATTEMPTS: 10,
   MIN_RECONNECT_INTERVAL: 30_000,
@@ -973,6 +975,7 @@ class DataManager {
 
     this.normalizeLoadedContacts();
     await this.normalizeReminderRelations();
+    await this.cleanupSentHistory();
     this.activityLog.push("info", "boot", "Data load complete", {
       contacts: this.contacts.size,
       pelanggan: this.pelanggan.size,
@@ -1008,6 +1011,46 @@ class DataManager {
 
   async saveSentReminders() {
     await this.replaceJsonPayloadTable(this.models.SentReminder, "id", this.sentReminders.values());
+  }
+
+  async cleanupSentHistory(options = {}) {
+    const retentionMonths = Number(options.retentionMonths || CONFIG.SENT_HISTORY_RETENTION_MONTHS);
+    if (!Number.isFinite(retentionMonths) || retentionMonths <= 0) {
+      return { deleted: 0, cutoff: null, remaining: this.sentReminders.size };
+    }
+
+    const cutoffDate = options.cutoffDate || addMonthsSafely(new Date(), -retentionMonths);
+    const cutoffTime = cutoffDate.getTime();
+    if (Number.isNaN(cutoffTime)) {
+      return { deleted: 0, cutoff: null, remaining: this.sentReminders.size };
+    }
+
+    const deletedIds = [];
+    for (const [id, reminder] of this.sentReminders.entries()) {
+      const sentDate = new Date(reminder?.sentAt || reminder?.reminderDateTime);
+      if (Number.isNaN(sentDate.getTime())) continue;
+      if (sentDate.getTime() < cutoffTime) {
+        deletedIds.push(id);
+      }
+    }
+
+    for (const id of deletedIds) {
+      this.sentReminders.delete(id);
+    }
+
+    if (deletedIds.length > 0) {
+      await this.saveSentReminders();
+      this.activityLog.push("info", "storage", `Sent History auto-clean removed ${deletedIds.length} old item(s)`, {
+        retentionMonths,
+        cutoff: cutoffDate.toISOString(),
+      });
+    }
+
+    return {
+      deleted: deletedIds.length,
+      cutoff: cutoffDate.toISOString(),
+      remaining: this.sentReminders.size,
+    };
   }
 
   async saveRoles() {
@@ -3209,6 +3252,12 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
   cron.schedule(CONFIG.RESET_PAYMENT_SCHEDULE, () => {
     sendMonthlyResetNotification(notificationBot, dataManager, activityLog).catch((error) => {
       activityLog.push("error", "billing", `Monthly reset failed: ${error.message}`);
+    });
+  });
+
+  cron.schedule(CONFIG.SENT_HISTORY_CLEANUP_SCHEDULE, () => {
+    dataManager.cleanupSentHistory().catch((error) => {
+      activityLog.push("error", "storage", `Sent History auto-clean failed: ${error.message}`);
     });
   });
 
