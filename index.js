@@ -96,6 +96,7 @@ const DEFAULT_SETTINGS = {
   companyName: "Emmeril Hotspot",
   supportSignature: "CS Emmeril Hotspot",
   apDownMessageTemplate: "Halo {{name}},\n\nKami mendeteksi perangkat AP *{{host}}* sedang *DOWN*.\nTim kami sedang melakukan pengecekan.\n\nMohon maaf atas ketidaknyamanannya.\n\n{{supportSignature}}",
+  apDownMinimumDownMinutes: 5,
   paymentMessageTemplateArrearsOnly: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nTerima kasih. Pembayaran tunggakan bulan sebelumnya telah kami terima.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
   paymentMessageTemplateCurrentOnly: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nTerima kasih. Pembayaran bulan ini telah kami terima.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
   paymentMessageTemplateFullPaid: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nTerima kasih. Semua tagihan Anda sudah lunas.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
@@ -159,6 +160,72 @@ function sanitizeTimeHHMM(value, fallback = "02:00") {
   if (Number.isNaN(hours) || Number.isNaN(minutes)) return fallback;
   if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return fallback;
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function sanitizePositiveInteger(value, fallback = 1, min = 1, max = 10) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+
+  const normalized = Math.floor(parsed);
+  if (normalized < min || normalized > max) return fallback;
+
+  return normalized;
+}
+
+function parseNetwatchSinceDate(value) {
+  const input = sanitizeInput(value);
+  if (!input) return null;
+
+  const directDate = new Date(input);
+  if (!Number.isNaN(directDate.getTime())) {
+    return directDate;
+  }
+
+  const normalized = input.toLowerCase();
+  const monthMap = {
+    jan: 0,
+    feb: 1,
+    mar: 2,
+    apr: 3,
+    may: 4,
+    jun: 5,
+    jul: 6,
+    aug: 7,
+    sep: 8,
+    oct: 9,
+    nov: 10,
+    dec: 11,
+  };
+
+  let match = normalized.match(/^([a-z]{3})\/(\d{1,2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
+  if (match && monthMap[match[1]] !== undefined) {
+    const [, monthName, day, year, hour, minute, second] = match;
+    const date = new Date(
+      Number(year),
+      monthMap[monthName],
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second)
+    );
+    if (!Number.isNaN(date.getTime())) return date;
+  }
+
+  match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (match) {
+    const [, year, month, day, hour, minute, second = "00"] = match;
+    const date = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second)
+    );
+    if (!Number.isNaN(date.getTime())) return date;
+  }
+
+  return null;
 }
 
 function getDateTimePartsInTimezone(date = new Date(), timeZone = "Asia/Jakarta") {
@@ -1591,6 +1658,14 @@ class DataManager {
       paymentMessageTemplateFullPaid: payload.paymentMessageTemplateFullPaid !== undefined
         ? sanitizeMultilineText(payload.paymentMessageTemplateFullPaid) || current.paymentMessageTemplateFullPaid
         : current.paymentMessageTemplateFullPaid,
+      apDownMinimumDownMinutes: payload.apDownMinimumDownMinutes !== undefined
+        ? sanitizePositiveInteger(
+            payload.apDownMinimumDownMinutes,
+            current.apDownMinimumDownMinutes || current.apDownConfirmationChecks || DEFAULT_SETTINGS.apDownMinimumDownMinutes,
+            1,
+            120
+          )
+        : (current.apDownMinimumDownMinutes || current.apDownConfirmationChecks || DEFAULT_SETTINGS.apDownMinimumDownMinutes),
       timezone: payload.timezone !== undefined ? sanitizeInput(payload.timezone) || current.timezone : current.timezone,
       autoRescheduleMonthly: payload.autoRescheduleMonthly !== undefined ? parseBoolean(payload.autoRescheduleMonthly, current.autoRescheduleMonthly) : current.autoRescheduleMonthly,
       notifyAdminsOnDelivery: payload.notifyAdminsOnDelivery !== undefined ? parseBoolean(payload.notifyAdminsOnDelivery, current.notifyAdminsOnDelivery) : current.notifyAdminsOnDelivery,
@@ -2599,12 +2674,72 @@ class ApDownNotifier {
     this.notificationBot = notificationBot;
     this.dataManager = dataManager;
     this.activityLog = activityLog;
-    this.lastStatuses = new Map();
+    this.monitorStates = new Map();
     this.isInitialized = false;
   }
 
   normalizeStatus(value) {
     return String(value || "UNKNOWN").trim().toUpperCase();
+  }
+
+  getMinimumDownMinutes() {
+    const settings = this.dataManager.getSettings();
+    return sanitizePositiveInteger(
+      settings.apDownMinimumDownMinutes || settings.apDownConfirmationChecks,
+      DEFAULT_SETTINGS.apDownMinimumDownMinutes,
+      1,
+      120
+    );
+  }
+
+  getSinceAgeMinutes(monitor, state) {
+    const sinceDate = parseNetwatchSinceDate(monitor.since);
+    if (sinceDate) {
+      return Math.max(0, (Date.now() - sinceDate.getTime()) / 60000);
+    }
+
+    if (!state.firstObservedAt) {
+      return null;
+    }
+
+    return Math.max(0, (Date.now() - state.firstObservedAt) / 60000);
+  }
+
+  syncMonitorState(host, monitor) {
+    const currentStatus = this.normalizeStatus(monitor.status);
+    const currentSince = sanitizeInput(monitor.since || "");
+    const previousState = this.monitorStates.get(host) || {
+      alertSent: false,
+      lastStatus: "UNKNOWN",
+      lastSince: "",
+      firstObservedAt: null,
+    };
+
+    if (currentStatus !== "DOWN") {
+      if (previousState.alertSent || previousState.lastStatus === "DOWN") {
+        this.activityLog.push("info", "ap-monitor", `AP ${host} kembali ${currentStatus}; status alert direset`);
+      }
+
+      const nextState = {
+        alertSent: false,
+        lastStatus: currentStatus,
+        lastSince: currentSince,
+        firstObservedAt: null,
+      };
+      this.monitorStates.set(host, nextState);
+      return nextState;
+    }
+
+    const sinceChanged = previousState.lastSince !== currentSince;
+    const nextState = {
+      ...previousState,
+      lastStatus: currentStatus,
+      lastSince: currentSince,
+      firstObservedAt: sinceChanged || !previousState.firstObservedAt ? Date.now() : previousState.firstObservedAt,
+    };
+
+    this.monitorStates.set(host, nextState);
+    return nextState;
   }
 
   renderApDownMessage(template, context) {
@@ -2618,33 +2753,71 @@ class ApDownNotifier {
 
   async processNetwatchChanges() {
     const monitors = await this.mikrotikService.getNetwatchStatus();
-    const currentStatuses = new Map(
-      monitors.map((item) => [String(item.host || ""), this.normalizeStatus(item.status)])
-    );
+    const currentStatuses = new Map();
 
     if (!this.isInitialized) {
-      this.lastStatuses = currentStatuses;
+      for (const monitor of monitors) {
+        const host = String(monitor.host || "");
+        if (!host) continue;
+
+        const status = this.normalizeStatus(monitor.status);
+        const currentSince = sanitizeInput(monitor.since || "");
+        currentStatuses.set(host, status);
+        this.monitorStates.set(host, {
+          alertSent: false,
+          lastStatus: status,
+          lastSince: currentSince,
+          firstObservedAt: status === "DOWN" ? Date.now() : null,
+        });
+      }
+
       this.isInitialized = true;
       return;
     }
+
+    const minimumDownMinutes = this.getMinimumDownMinutes();
 
     for (const monitor of monitors) {
       const host = String(monitor.host || "");
       if (!host) continue;
 
       const currentStatus = this.normalizeStatus(monitor.status);
-      const previousStatus = this.lastStatuses.get(host);
-      const isTransitionToDown = previousStatus
-        && previousStatus !== "DOWN"
-        && currentStatus === "DOWN";
+      currentStatuses.set(host, currentStatus);
 
-      if (!isTransitionToDown) continue;
+      const state = this.syncMonitorState(host, monitor);
+      if (currentStatus !== "DOWN") continue;
+      if (state.alertSent) continue;
+
+      const sinceAgeMinutes = this.getSinceAgeMinutes(monitor, state);
+      if (sinceAgeMinutes === null) {
+        this.activityLog.push(
+          "warn",
+          "ap-monitor",
+          `AP ${host} status DOWN tapi nilai since belum bisa dibaca, menunggu pembacaan berikutnya`
+        );
+        continue;
+      }
+
+      if (sinceAgeMinutes < minimumDownMinutes) {
+        this.activityLog.push(
+          "info",
+          "ap-monitor",
+          `AP ${host} DOWN sejak ${sanitizeInput(monitor.since || "-")} (${sinceAgeMinutes.toFixed(1)} menit), menunggu hingga ${minimumDownMinutes} menit`
+        );
+        continue;
+      }
 
       const linkedContacts = this.dataManager
         .getContacts()
         .filter((contact) => String(contact.linkedApHost || "") === host);
 
-      if (linkedContacts.length === 0) continue;
+      if (linkedContacts.length === 0) {
+        this.monitorStates.set(host, {
+          ...state,
+          alertSent: true,
+        });
+        continue;
+      }
 
       for (const contact of linkedContacts) {
         try {
@@ -2672,9 +2845,18 @@ class ApDownNotifier {
           });
         }
       }
+
+      this.monitorStates.set(host, {
+        ...state,
+        alertSent: true,
+      });
     }
 
-    this.lastStatuses = currentStatuses;
+    for (const host of Array.from(this.monitorStates.keys())) {
+      if (!currentStatuses.has(host)) {
+        this.monitorStates.delete(host);
+      }
+    }
   }
 }
 
