@@ -11,7 +11,11 @@ const QRCode = require("qrcode");
 const ftp = require("basic-ftp");
 const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js");
 const { RouterOSClient } = require("routeros-client");
-const { Sequelize, DataTypes } = require("sequelize");
+const { Sequelize, DataTypes, Op } = require("sequelize");
+
+// ===============================
+// KONFIGURASI & KONSTANTA
+// ===============================
 
 const CONFIG = {
   PORT: Number(process.env.PORT || 3025),
@@ -62,6 +66,13 @@ const CONFIG = {
   FONNTE_API_URL: String(process.env.FONNTE_API_URL || "https://api.fonnte.com/send").trim(),
   FONNTE_ENABLED: String(process.env.FONNTE_ENABLED || "").trim().toLowerCase() === "true",
   FONNTE_BACKUP_ENABLED: String(process.env.FONNTE_BACKUP_ENABLED || "").trim().toLowerCase() === "true",
+  WA_MAX_RECONNECT_ATTEMPTS: Number(process.env.WA_MAX_RECONNECT_ATTEMPTS || 3),
+  WA_RECONNECT_DELAY: Number(process.env.WA_RECONNECT_DELAY || 5000),
+  WA_MIN_RECONNECT_INTERVAL: Number(process.env.WA_MIN_RECONNECT_INTERVAL || 30000),
+  WA_KEEP_ALIVE_INTERVAL: Number(process.env.WA_KEEP_ALIVE_INTERVAL || 60000),
+  WA_MAX_QUEUE_PROCESS: Number(process.env.WA_MAX_QUEUE_PROCESS || 5),
+  WA_MESSAGE_DELAY: Number(process.env.WA_MESSAGE_DELAY || 2000),
+  WA_INITIALIZATION_DELAY: Number(process.env.WA_INITIALIZATION_DELAY || 10000),
 };
 
 const MONTH_NAMES = [
@@ -111,6 +122,63 @@ const DEFAULT_SETTINGS = {
   mikrotikBackupTimezone: "Asia/Jakarta",
   mikrotikBackupLastRunDate: "",
 };
+
+const WA_STATES = {
+  CONNECTED: "CONNECTED",
+  OPENING: "OPENING",
+  PAIRING: "PAIRING",
+  UNPAIRED: "UNPAIRED",
+  UNPAIRED_IDLE: "UNPAIRED_IDLE",
+  CONFLICT: "CONFLICT",
+  TIMEOUT: "TIMEOUT",
+  TOS_BLOCK: "TOS_BLOCK",
+  SMB_TOS_BLOCK: "SMB_TOS_BLOCK",
+  PROXYBLOCK: "PROXYBLOCK",
+  DEPRECATED_VERSION: "DEPRECATED_VERSION",
+  UNLAUNCHED: "UNLAUNCHED",
+};
+
+const WA_DISCONNECT_REASONS = new Set(["UNAUTHORIZED", "CONFLICT"]);
+const WA_CRITICAL_STATES = new Set([WA_STATES.TIMEOUT, WA_STATES.UNPAIRED, WA_STATES.CONFLICT]);
+
+// ===============================
+// ASYNC LOCK (Mutex)
+// ===============================
+
+class AsyncLock {
+  constructor() {
+    this._locks = new Map();
+  }
+
+  async acquire(key) {
+    while (this._locks.has(key)) {
+      await this._locks.get(key);
+    }
+    let releaseResolver;
+    const releasePromise = new Promise((resolve) => {
+      releaseResolver = resolve;
+    });
+    this._locks.set(key, releasePromise);
+    const release = () => {
+      this._locks.delete(key);
+      releaseResolver();
+    };
+    return release;
+  }
+
+  async runExclusive(key, fn) {
+    const release = await this.acquire(key);
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+}
+
+// ===============================
+// UTILITY FUNCTIONS
+// ===============================
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -446,6 +514,728 @@ function resolveChromeExecutablePath() {
   return null;
 }
 
+// ===============================
+// FONNTE MANAGER (BACKUP)
+// ===============================
+
+class FonnteManager {
+  static isConfigured() {
+    return (CONFIG.FONNTE_ENABLED || CONFIG.FONNTE_BACKUP_ENABLED) && Boolean(CONFIG.FONNTE_TOKEN);
+  }
+
+  static async sendMessage(number, message) {
+    if (!this.isConfigured()) {
+      throw new Error("Fonnte backup is not configured");
+    }
+
+    const normalized = normalizePhoneNumber(number);
+    if (!isValidPhoneNumber(normalized)) {
+      throw new Error("Invalid target phone number");
+    }
+
+    const formData = new FormData();
+    formData.append("target", normalized);
+    formData.append("message", String(message || ""));
+
+    const response = await fetch(CONFIG.FONNTE_API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: CONFIG.FONNTE_TOKEN,
+      },
+      body: formData,
+    });
+
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+
+    if (!response.ok || payload?.status === false) {
+      const errorMessage = payload?.reason
+        || payload?.detail
+        || payload?.message
+        || `HTTP ${response.status}`;
+      throw new Error(`Fonnte gagal mengirim pesan: ${errorMessage}`);
+    }
+
+    return {
+      status: "success",
+      provider: "fonnte",
+      message: payload.detail || "Message sent via Fonnte",
+      messageId: Array.isArray(payload.id) ? payload.id[0] : payload.id,
+      requestId: payload.requestid,
+    };
+  }
+}
+
+// ===============================
+// MESSAGE QUEUE (WhatsApp)
+// ===============================
+
+class MessageQueue {
+  constructor(waManager, dataManager, activityLog) {
+    this.waManager = waManager;
+    this.dataManager = dataManager;
+    this.activityLog = activityLog;
+    this.pending = [];
+    this.failed = [];
+    this.isProcessing = false;
+    this.saveChain = Promise.resolve();
+    this.queueLock = new AsyncLock();
+  }
+
+  async loadFromDB() {
+    const models = this.dataManager.models;
+    const pendingItems = await models.WhatsappQueueItem.findAll({ where: { status: "pending" } });
+    const failedItems = await models.WhatsappQueueItem.findAll({ where: { status: "failed" } });
+
+    this.pending = pendingItems.map((item) => this._mapItem(item));
+    this.failed = failedItems.map((item) => this._mapItem(item));
+
+    this.activityLog.push("info", "queue", `Loaded queue: ${this.pending.length} pending, ${this.failed.length} failed`);
+  }
+
+  _mapItem(item) {
+    return {
+      id: item.id,
+      number: item.number,
+      message: item.message,
+      metadata: item.metadata,
+      createdAt: item.createdAt,
+      attempts: item.attempts,
+      maxAttempts: item.maxAttempts,
+      errorMsg: item.errorMsg,
+    };
+  }
+
+  async save() {
+    this.saveChain = this.saveChain
+      .then(async () => {
+        await this.queueLock.runExclusive("whatsapp_queue_save", async () => {
+          const items = [
+            ...this.pending.map((i) => ({ ...i, status: "pending" })),
+            ...this.failed.map((i) => ({ ...i, status: "failed" })),
+          ];
+
+          const models = this.dataManager.models;
+          await models.sequelize.transaction(async (transaction) => {
+            await models.WhatsappQueueItem.destroy({
+              where: { status: { [Op.in]: ["pending", "failed"] } },
+              transaction,
+            });
+
+            if (items.length) {
+              await models.WhatsappQueueItem.bulkCreate(items, { transaction });
+            }
+          });
+        });
+      })
+      .catch((error) => {
+        this.activityLog.push("error", "queue", `Failed to save queue: ${error.message}`);
+      });
+
+    return this.saveChain;
+  }
+
+  add(number, message, metadata = {}) {
+    if (metadata?.orderId && metadata?.type) {
+      const existingItem = [...this.pending, ...this.failed].find(
+        (item) => item.metadata?.orderId === metadata.orderId && item.metadata?.type === metadata.type
+      );
+      if (existingItem) {
+        return existingItem.id;
+      }
+    }
+
+    const item = {
+      id: crypto.randomBytes(8).toString("hex"),
+      number,
+      message,
+      metadata,
+      createdAt: new Date(),
+      attempts: 0,
+      maxAttempts: 3,
+    };
+
+    this.pending.push(item);
+    this.save();
+    this.activityLog.push("info", "queue", `Added to queue: ${item.id} for ${number}`);
+
+    if (this.canProcess()) {
+      setTimeout(() => this.process(), 5000);
+    } else if (this.waManager.reconnectAttempts === 0 && !this.waManager.isReconnecting) {
+      this.waManager.scheduleReconnect();
+    }
+
+    return item.id;
+  }
+
+  canUseWhatsAppWeb() {
+    return this.waManager.state === WA_STATES.CONNECTED && !this.waManager.isReconnecting;
+  }
+
+  canUseBackup() {
+    return FonnteManager.isConfigured();
+  }
+
+  canProcess() {
+    return this.pending.length > 0 && (this.canUseWhatsAppWeb() || this.canUseBackup());
+  }
+
+  async process() {
+    await this.queueLock.runExclusive("whatsapp_queue_process", async () => {
+      if (this.isProcessing) return;
+
+      if (!this.canProcess() || (this.waManager.isReconnecting && !this.canUseBackup())) {
+        if (this.pending.length > 0 && !this.canUseWhatsAppWeb() && !this.canUseBackup()) {
+          this.activityLog.push("info", "queue", `Queue waiting for WA/Fonnte (State: ${this.waManager.state})`);
+        }
+        return;
+      }
+
+      this.isProcessing = true;
+      this.activityLog.push("info", "queue", `Processing ${this.pending.length} messages`);
+
+      try {
+        const items = this.pending.splice(0, CONFIG.WA_MAX_QUEUE_PROCESS);
+        await this.save();
+
+        for (const item of items) {
+          try {
+            this.activityLog.push("info", "queue", `Processing ${item.id} (attempt ${item.attempts + 1}/${item.maxAttempts})`);
+
+            const result = await this._sendWithAvailableProvider(item);
+
+            if (result.status === "success") {
+              this.activityLog.push("info", "queue", `Sent successfully: ${item.id} via ${result.provider || "whatsapp-web"}`);
+
+              // Kirim notifikasi ke admin via WhatsApp (jika bukan directRequest)
+              if (process.env.ADMIN_NUMBER && item.metadata?.directRequest !== true) {
+                setTimeout(() => {
+                  this._sendAdminDeliveryNotification(item, result.provider || "whatsapp-web").catch((error) => {
+                    this.activityLog.push("error", "queue", "Admin notification failed", { error: error.message });
+                  });
+                }, 1000);
+              }
+
+              await new Promise((resolve) => setTimeout(resolve, CONFIG.WA_MESSAGE_DELAY));
+            } else {
+              this._handleFailure(item, result.message);
+              break;
+            }
+          } catch (error) {
+            this._handleFailure(item, error.message);
+            break;
+          }
+        }
+      } finally {
+        this.isProcessing = false;
+      }
+
+      // Periksa kembali setelah proses selesai
+      if (this.pending.length > 0 && this.canProcess()) {
+        setTimeout(() => this.process(), 1000);
+      }
+    });
+  }
+
+  async _sendWithAvailableProvider(item) {
+    if (this.canUseWhatsAppWeb() && this.waManager.client) {
+      const result = await this.waManager.sendMessage(item.number, item.message);
+      if (result.status === "success") {
+        return { ...result, provider: "whatsapp-web" };
+      }
+
+      if (!this.canUseBackup()) {
+        return result;
+      }
+
+      this.activityLog.push("warn", "queue", `WhatsApp Web failed for ${item.id}, trying Fonnte backup`, {
+        error: result.message,
+      });
+    }
+
+    if (this.canUseBackup()) {
+      return await FonnteManager.sendMessage(item.number, item.message);
+    }
+
+    if (this.waManager.state !== WA_STATES.CONNECTED) this.waManager.scheduleReconnect();
+    return {
+      status: "error",
+      message: `WhatsApp not ready (State: ${this.waManager.state}) and Fonnte backup is not configured`,
+    };
+  }
+
+  async _sendAdminDeliveryNotification(item, provider) {
+    const message = `[OK] WhatsApp sent (${item.id})\nProvider: ${provider}\nTo: ${item.number}\n${item.message.substring(0, 50)}...`;
+    const adminNumber = process.env.ADMIN_NUMBER;
+    if (!adminNumber) return;
+
+    if (this.canUseWhatsAppWeb() && this.waManager.client) {
+      const result = await this.waManager.sendMessage(adminNumber, message);
+      if (result.status === "success") return result;
+    }
+
+    if (this.canUseBackup()) {
+      return await FonnteManager.sendMessage(adminNumber, message);
+    }
+
+    throw new Error("No WhatsApp provider available for admin notification");
+  }
+
+  _handleFailure(item, errorMsg) {
+    this.activityLog.push("error", "queue", `Send failed for ${item.id}: ${errorMsg} (State: ${this.waManager.state})`);
+
+    const isWAError =
+      /not ready|timed out|protocolTimeout|detached Frame|connection|timeout|undefined|getChat|pupPage|not initialized|browser|page|disconnected|failed|error/i.test(
+        errorMsg
+      );
+
+    if (isWAError || this.waManager.state !== WA_STATES.CONNECTED) {
+      this.activityLog.push("info", "queue", `WhatsApp issue, requeuing (State: ${this.waManager.state})`);
+      if (isWAError) this.waManager.state = WA_STATES.TIMEOUT;
+
+      this.pending.unshift(item);
+      this.save();
+
+      if (WA_CRITICAL_STATES.has(this.waManager.state)) {
+        if (this.waManager.reconnectAttempts < CONFIG.WA_MAX_RECONNECT_ATTEMPTS) {
+          this.waManager.scheduleReconnect();
+        } else {
+          this.activityLog.push("error", "queue", "Max reconnect attempts, manual intervention required.");
+        }
+      }
+      return;
+    }
+
+    item.attempts++;
+    if (item.attempts >= item.maxAttempts) {
+      this.failed.push({ ...item, errorMsg });
+      this.save();
+      this.activityLog.push("info", "queue", `Message ${item.id} moved to failed after ${item.maxAttempts} attempts`);
+
+      // Kirim notifikasi ke admin via EMAIL (bukan WhatsApp) jika tersedia
+      const adminEmail = process.env.ADMIN_EMAIL;
+      if (adminEmail) {
+        // Kirim email (fungsi sederhana)
+        const nodemailer = require("nodemailer");
+        const transporter = nodemailer.createTransport({
+          service: "gmail",
+          auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASSWORD },
+        });
+        transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: adminEmail,
+          subject: `[FAILED] WhatsApp message failed after ${item.maxAttempts} attempts`,
+          text: `ID: ${item.id}\nTo: ${item.number}\nError: ${errorMsg.substring(0, 200)}`,
+        }).catch((error) => {
+          this.activityLog.push("error", "queue", "Admin email notification failed", { error: error.message });
+        });
+      }
+    } else {
+      const delay = Math.min(60000, 5000 * Math.pow(2, item.attempts));
+      this.activityLog.push("info", "queue", `Retrying ${item.id} in ${delay / 1000}s`);
+      setTimeout(() => {
+        this.pending.push(item);
+        this.save();
+        if (this.waManager.state === WA_STATES.CONNECTED) {
+          setTimeout(() => this.process(), 1000);
+        }
+      }, delay);
+    }
+  }
+
+  restoreFailed() {
+    if (this.failed.length > 0) {
+      this.activityLog.push("info", "queue", `Restoring ${this.failed.length} failed messages`);
+      this.pending.push(
+        ...this.failed.map((item) => ({
+          ...item,
+          attempts: 0,
+          status: "retrying",
+          retriedAt: new Date().toISOString(),
+        }))
+      );
+      this.failed = [];
+      this.save();
+    }
+  }
+}
+
+// ===============================
+// WHATSAPP MANAGER
+// ===============================
+
+class WhatsAppManager {
+  constructor(dataManager, activityLog) {
+    this.dataManager = dataManager;
+    this.activityLog = activityLog;
+    this.client = null;
+    this.state = WA_STATES.UNLAUNCHED;
+    this.isReady = false;
+    this.isReconnecting = false;
+    this.reconnectAttempts = 0;
+    this.lastReconnectTime = null;
+    this.currentQR = null;
+    this.reconnectTimer = null;
+    this.keepAliveTimer = null;
+    this.queue = new MessageQueue(this, dataManager, activityLog);
+    this._reconnectLock = new AsyncLock();
+    this._stateLock = new AsyncLock();
+  }
+
+  createClient() {
+    const executablePath = resolveChromeExecutablePath();
+    const puppeteerOptions = {
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--no-zygote",
+        "--disable-gpu",
+        "--disable-software-rasterizer",
+        "--disable-features=VizDisplayCompositor",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+        "--max-old-space-size=512",
+      ],
+      ignoreHTTPSErrors: true,
+    };
+
+    if (executablePath) {
+      puppeteerOptions.executablePath = executablePath;
+      this.activityLog.push("info", "whatsapp", `Using Chrome executable ${executablePath}`);
+    }
+
+    return new Client({
+      authStrategy: new LocalAuth({ dataPath: CONFIG.DB_PATH }),
+      puppeteer: puppeteerOptions,
+      webVersionCache: {
+        type: "remote",
+        remotePath: "https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1033090211-alpha.html",
+      },
+    });
+  }
+
+  setupEvents() {
+    if (!this.client) return;
+    this.client.removeAllListeners();
+
+    this.client.on("qr", (qr) => {
+      this.currentQR = qr;
+      this.state = WA_STATES.PAIRING;
+      this.activityLog.push("info", "whatsapp", "QR code generated");
+      qrcode.generate(qr, { small: true });
+    });
+
+    this.client.on("authenticated", () => {
+      this.activityLog.push("info", "whatsapp", "WhatsApp authenticated");
+      this.reconnectAttempts = 0;
+      this.isReconnecting = false;
+      this.state = WA_STATES.OPENING;
+    });
+
+    this.client.on("auth_failure", (msg) => {
+      this.activityLog.push("error", "whatsapp", `Auth failure: ${msg}`);
+      this.state = WA_STATES.UNPAIRED;
+      this.scheduleReconnect();
+    });
+
+    this.client.on("ready", () => {
+      this._stateLock.runExclusive("ready", async () => {
+        this.state = WA_STATES.CONNECTED;
+        this.isReady = true;
+        this.currentQR = null;
+        this.reconnectAttempts = 0;
+        this.isReconnecting = false;
+        this.lastReconnectTime = null;
+        this.activityLog.push("info", "whatsapp", "WhatsApp ready");
+
+        this.queue.restoreFailed();
+        setTimeout(() => this.queue.process(), CONFIG.WA_INITIALIZATION_DELAY);
+      }).catch((error) => {
+        this.activityLog.push("error", "whatsapp", "Failed to handle ready", { error: error.message });
+      });
+    });
+
+    this.client.on("change_state", (newState) => {
+      this.activityLog.push("info", "whatsapp", `WA State change: ${newState}`);
+      this._stateLock.runExclusive("change_state", async () => {
+        this.state = newState;
+
+        if ([WA_STATES.CONNECTED, WA_STATES.OPENING, WA_STATES.PAIRING].includes(newState)) {
+          // lastActivity not used in index.js, but keep for potential future use
+        }
+
+        if (newState === WA_STATES.CONNECTED) {
+          this.isReady = true;
+          this.reconnectAttempts = 0;
+          this.isReconnecting = false;
+        }
+
+        if ([WA_STATES.CONFLICT, WA_STATES.TIMEOUT, WA_STATES.UNPAIRED].includes(newState)) {
+          this.isReady = false;
+          this.scheduleReconnect();
+        }
+      }).catch((error) => {
+        this.activityLog.push("error", "whatsapp", "Failed to update state", { error: error.message });
+      });
+    });
+
+    this.client.on("disconnected", async (reason) => {
+      this.activityLog.push("info", "whatsapp", `WhatsApp disconnected: ${reason}`);
+      await this._stateLock.runExclusive("disconnected", async () => {
+        this.state = WA_STATES.UNPAIRED;
+        this.isReady = false;
+        this.currentQR = null;
+
+        if (WA_DISCONNECT_REASONS.has(reason)) {
+          const sessionPath = path.join(CONFIG.DB_PATH, ".wwebjs_auth");
+          await fs.rm(sessionPath, { recursive: true, force: true }).catch(() => {});
+          this.activityLog.push("info", "whatsapp", "Session cleared");
+        }
+
+        this.scheduleReconnect();
+      }).catch((error) => {
+        this.activityLog.push("error", "whatsapp", "Failed to handle disconnect", { error: error.message });
+      });
+    });
+
+    this.client.on("error", (error) => {
+      this.activityLog.push("error", "whatsapp", `WhatsApp error: ${error.message}`);
+      if (!this.isReconnecting && [WA_STATES.UNPAIRED, WA_STATES.UNPAIRED_IDLE, WA_STATES.TIMEOUT].includes(this.state)) {
+        this.scheduleReconnect();
+      }
+    });
+  }
+
+  async initialize() {
+    return this._stateLock.runExclusive("initialize", async () => {
+      if (!this.client) {
+        this.client = this.createClient();
+        this.setupEvents();
+      }
+
+      try {
+        await this.client.initialize();
+      } catch (error) {
+        this.activityLog.push("error", "whatsapp", `Failed to initialize WhatsApp: ${error.message}`);
+        this.isReconnecting = false;
+        this.scheduleReconnect();
+      }
+    });
+  }
+
+  scheduleReconnect() {
+    return this._reconnectLock.runExclusive("schedule", async () => {
+      if (this.isReconnecting || this.reconnectAttempts >= CONFIG.WA_MAX_RECONNECT_ATTEMPTS) return;
+
+      const now = Date.now();
+      if (this.lastReconnectTime && now - this.lastReconnectTime < CONFIG.WA_MIN_RECONNECT_INTERVAL) {
+        const wait = Math.ceil((CONFIG.WA_MIN_RECONNECT_INTERVAL - (now - this.lastReconnectTime)) / 1000);
+        this.activityLog.push("info", "whatsapp", `Wait ${wait}s before reconnect`);
+        return;
+      }
+
+      this.reconnectAttempts++;
+      this.lastReconnectTime = now;
+      this.isReconnecting = true;
+      this.state = WA_STATES.TIMEOUT;
+
+      const delay = Math.min(30000, CONFIG.WA_RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts));
+      this.activityLog.push("info", "whatsapp", `Reconnect in ${delay / 1000}s (${this.reconnectAttempts}/${CONFIG.WA_MAX_RECONNECT_ATTEMPTS})`);
+
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = setTimeout(() => this.performReconnect(), delay);
+    });
+  }
+
+  async performReconnect() {
+    const release = await this._reconnectLock.acquire("perform");
+    try {
+      try {
+        if (this.client) {
+          this.activityLog.push("info", "whatsapp", "Destroying old WhatsApp client");
+          await this.client.destroy().catch((error) => {
+            this.activityLog.push("warn", "whatsapp", "Failed to destroy old WhatsApp client", { error: error.message });
+          });
+          this.client = null;
+        }
+
+        this.activityLog.push("info", "whatsapp", "Creating new WhatsApp client");
+        this.client = this.createClient();
+        this.setupEvents();
+        await this.client.initialize();
+      } catch (error) {
+        this.activityLog.push("error", "whatsapp", `Reconnect failed: ${error.message}`);
+        this.isReconnecting = false;
+        this.scheduleReconnect();
+      } finally {
+        setTimeout(() => {
+          if (this.state !== WA_STATES.CONNECTED) this.isReconnecting = false;
+        }, 15000);
+      }
+    } finally {
+      release();
+    }
+  }
+
+  startKeepAlive() {
+    if (this.keepAliveTimer) return;
+
+    this.keepAliveTimer = setInterval(async () => {
+      if (!this.client || this.isReconnecting) return;
+
+      try {
+        const currentState = await this.client.getState();
+
+        if (currentState !== WA_STATES.CONNECTED || !this.client.pupPage || this.client.pupPage.isClosed()) {
+          throw new Error("WhatsApp page not healthy");
+        }
+
+        this.activityLog.push("info", "whatsapp", `Keep-alive OK (State: ${currentState})`);
+
+        await this._stateLock.runExclusive("keepalive", async () => {
+          this.reconnectAttempts = 0;
+          this.isReady = true;
+
+          if (this.state !== currentState) {
+            this.activityLog.push("info", "whatsapp", `State sync: ${this.state} -> ${currentState}`);
+            this.state = currentState;
+          }
+        });
+      } catch (err) {
+        this.activityLog.push("error", "whatsapp", `Keep-alive failed: ${err.message}`);
+        await this._stateLock.runExclusive("keepalive_error", async () => {
+          this.isReady = false;
+          this.state = WA_STATES.TIMEOUT;
+
+          if (this.reconnectAttempts >= CONFIG.WA_MAX_RECONNECT_ATTEMPTS) {
+            this.activityLog.push("error", "whatsapp", "Max reconnection attempts reached. Manual intervention required.");
+          } else {
+            this.scheduleReconnect();
+          }
+        });
+      }
+    }, CONFIG.WA_KEEP_ALIVE_INTERVAL);
+  }
+
+  async sendMessage(number, message) {
+    return this._stateLock.runExclusive("send", async () => {
+      try {
+        if (this.state !== WA_STATES.CONNECTED) {
+          throw new Error(`WhatsApp not ready (State: ${this.state})`);
+        }
+
+        if (!this.client || !this.client.pupPage || this.client.pupPage.isClosed()) {
+          throw new Error("WhatsApp client or page not available");
+        }
+
+        await this.client.getState(); // verify connection
+
+        const formattedNumber = normalizePhoneNumber(number);
+        const chatId = `${formattedNumber}@c.us`;
+
+        const result = await this.client.sendMessage(chatId, message, {
+          sendSeen: false,
+          linkPreview: false,
+        });
+
+        this.activityLog.push("info", "whatsapp", `Message sent to ${formattedNumber}`);
+
+        return {
+          status: "success",
+          message: "Message sent",
+          messageId: result.id?.id,
+          timestamp: new Date().toISOString(),
+        };
+      } catch (error) {
+        this.activityLog.push("error", "whatsapp", "Send message error", { error: error.message, state: this.state });
+        if (error.message.includes("not ready") || error.message.includes("connection")) {
+          this.state = WA_STATES.TIMEOUT;
+        }
+        return {
+          status: "error",
+          message: error.message,
+          waState: this.state,
+          timestamp: new Date().toISOString(),
+        };
+      }
+    });
+  }
+
+  async sendFile(phoneNumber, filePath, caption = "") {
+    if (this.state !== WA_STATES.CONNECTED || !this.client || !this.client.pupPage || this.client.pupPage.isClosed()) {
+      throw new Error("WhatsApp not ready");
+    }
+
+    const normalized = normalizePhoneNumber(phoneNumber);
+    if (!isValidPhoneNumber(normalized)) {
+      throw new Error("Invalid target phone number");
+    }
+
+    if (!filePath || !fsSync.existsSync(filePath)) {
+      throw new Error("File backup tidak ditemukan.");
+    }
+
+    const media = MessageMedia.fromFilePath(filePath);
+    media.mimetype = media.mimetype || "text/plain";
+    media.filename = path.basename(filePath);
+
+    await this.client.sendMessage(`${normalized}@c.us`, media, {
+      caption: String(caption || ""),
+      sendMediaAsDocument: true,
+    });
+  }
+
+  getStatus() {
+    return {
+      state: this.state,
+      isAvailable:
+        this.state === WA_STATES.CONNECTED &&
+        this.isReady &&
+        !!this.client?.pupPage &&
+        !this.client.pupPage.isClosed() &&
+        !this.isReconnecting,
+      hasClient: !!this.client,
+      hasPage: !!this.client?.pupPage && !this.client.pupPage.isClosed(),
+      reconnecting: this.isReconnecting,
+      reconnectAttempts: this.reconnectAttempts,
+      pendingQueue: this.queue.pending.length,
+      failedQueue: this.queue.failed.length,
+      currentQR: !!this.currentQR,
+      fonnteEnabled: FonnteManager.isConfigured(),
+    };
+  }
+
+  async destroy() {
+    await this._stateLock.runExclusive("destroy", async () => {
+      if (this.client) {
+        await this.client.destroy().catch((error) => {
+          this.activityLog.push("error", "whatsapp", "Error destroying client", { error: error.message });
+        });
+        this.client = null;
+      }
+      clearInterval(this.keepAliveTimer);
+      clearTimeout(this.reconnectTimer);
+      this.isReady = false;
+      this.isReconnecting = false;
+      this.reconnectAttempts = 0;
+      this.state = WA_STATES.UNLAUNCHED;
+    });
+  }
+}
+
+// ===============================
+// ACTIVITY LOG
+// ===============================
+
 class ActivityLog {
   constructor(limit = CONFIG.LOG_LIMIT) {
     this.limit = limit;
@@ -482,6 +1272,10 @@ class ActivityLog {
     return this.entries;
   }
 }
+
+// ===============================
+// AUTH MANAGER
+// ===============================
 
 class AuthManager {
   constructor(activityLog) {
@@ -538,6 +1332,10 @@ class AuthManager {
     this.sessions.delete(token);
   }
 }
+
+// ===============================
+// MIKROTIK SERVICE
+// ===============================
 
 class MikrotikService {
   constructor(activityLog) {
@@ -787,6 +1585,10 @@ class MikrotikService {
   }
 }
 
+// ===============================
+// DATA MANAGER (Sequelize)
+// ===============================
+
 class DataManager {
   constructor(activityLog) {
     this.activityLog = activityLog;
@@ -872,6 +1674,17 @@ class DataManager {
       tableName: "settings",
       timestamps: true,
     });
+
+    this.models.WhatsappQueueItem = this.sequelize.define("WhatsappQueueItem", {
+      id: { type: DataTypes.STRING, primaryKey: true },
+      number: DataTypes.STRING,
+      message: DataTypes.TEXT,
+      metadata: DataTypes.JSON,
+      attempts: DataTypes.INTEGER,
+      maxAttempts: DataTypes.INTEGER,
+      status: DataTypes.STRING,
+      errorMsg: DataTypes.TEXT,
+    }, { tableName: "whatsapp_queue", timestamps: true });
 
     await this.sequelize.authenticate();
     await this.sequelize.sync();
@@ -1906,6 +2719,10 @@ class DataManager {
   }
 }
 
+// ===============================
+// TEMPLATE MANAGER
+// ===============================
+
 class TemplateManager {
   constructor(activityLog) {
     this.activityLog = activityLog;
@@ -1987,370 +2804,30 @@ class TemplateManager {
   }
 }
 
+// ===============================
+// NOTIFICATION BOT (Wrapper around WhatsAppManager)
+// ===============================
+
 class NotificationBot {
   constructor(dataManager, activityLog) {
     this.dataManager = dataManager;
     this.activityLog = activityLog;
-    this.client = null;
-    this.currentQR = null;
-    this.isReady = false;
-    this.isReconnecting = false;
-    this.reconnectAttempts = 0;
-    this.lastReconnectTime = null;
-    this.reconnectTimer = null;
-    this.keepAliveTimer = null;
-  }
-
-  createClient() {
-    const executablePath = resolveChromeExecutablePath();
-    const puppeteerOptions = {
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-accelerated-2d-canvas",
-        "--no-first-run",
-        "--no-zygote",
-        "--disable-gpu",
-        "--disable-software-rasterizer",
-        "--disable-features=VizDisplayCompositor",
-        "--disable-background-timer-throttling",
-        "--disable-backgrounding-occluded-windows",
-        "--disable-renderer-backgrounding",
-        "--max-old-space-size=512",
-      ],
-      ignoreHTTPSErrors: true,
-    };
-
-    if (executablePath) {
-      puppeteerOptions.executablePath = executablePath;
-      this.activityLog.push("info", "whatsapp", `Using Chrome executable ${executablePath}`);
-    }
-
-    return new Client({
-      authStrategy: new LocalAuth({ dataPath: CONFIG.DB_PATH }),
-      puppeteer: puppeteerOptions,
-      webVersionCache: {
-        type: "remote",
-        remotePath: "https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1033090211-alpha.html",
-      },
-    });
+    this.waManager = new WhatsAppManager(dataManager, activityLog);
   }
 
   async initialize() {
-    if (this.client) {
-      try {
-        await this.client.destroy();
-      } catch {}
-    }
-
-    this.client = this.createClient();
-    this.setupEvents();
-    await this.client.initialize();
-    this.activityLog.push("info", "whatsapp", "WhatsApp client initialization started");
-  }
-
-  setupEvents() {
-    if (!this.client) return;
-    this.client.removeAllListeners();
-
-    this.client.on("qr", (qr) => {
-      this.currentQR = qr;
-      this.isReady = false;
-      this.reconnectAttempts = 0;
-      this.isReconnecting = false;
-      this.activityLog.push("info", "whatsapp", "QR code generated");
-      qrcode.generate(qr, { small: true });
-    });
-
-    this.client.on("authenticated", () => {
-      this.activityLog.push("info", "whatsapp", "WhatsApp authenticated");
-      this.reconnectAttempts = 0;
-      this.isReconnecting = false;
-    });
-
-    this.client.on("auth_failure", async (message) => {
-      this.isReady = false;
-      this.activityLog.push("error", "whatsapp", "Authentication failed", { message });
-      await this.notifyAdminsIfEnabled("Perubahan status bot", `Autentikasi WhatsApp gagal.\n\nDetail:\n${message}`);
-      this.scheduleReconnect();
-    });
-
-    this.client.on("ready", async () => {
-      this.isReady = true;
-      this.currentQR = null;
-      this.reconnectAttempts = 0;
-      this.isReconnecting = false;
-      this.lastReconnectTime = null;
-      this.activityLog.push("info", "whatsapp", "WhatsApp ready");
-      await this.notifyAdminsIfEnabled(
-        "Bot kembali online",
-        "Transport WhatsApp siap mengirim notifikasi dari dashboard dan scheduler."
-      );
-    });
-
-    this.client.on("change_state", async (state) => {
-      this.activityLog.push("info", "whatsapp", `WA state changed to ${state}`);
-      if (state === "CONNECTED") {
-        this.isReady = true;
-        this.reconnectAttempts = 0;
-        this.isReconnecting = false;
-        return;
-      }
-
-      if (["DISCONNECTED", "CONFLICT"].includes(state)) {
-        this.isReady = false;
-        await this.notifyAdminsIfEnabled(
-          "Transport WA terganggu",
-          `State WhatsApp berubah menjadi ${state}. Bot akan mencoba reconnect otomatis.`
-        );
-        this.scheduleReconnect();
-      }
-    });
-
-    this.client.on("disconnected", async (reason) => {
-      this.isReady = false;
-      this.currentQR = null;
-      this.activityLog.push("error", "whatsapp", "WhatsApp disconnected", { reason });
-      if (["UNAUTHORIZED", "CONFLICT"].includes(reason)) {
-        const sessionPath = path.join(CONFIG.DB_PATH, ".wwebjs_auth");
-        await fs.rm(sessionPath, { recursive: true, force: true }).catch(() => {});
-      }
-      await this.notifyAdminsIfEnabled(
-        "WhatsApp terputus",
-        `Koneksi terputus dengan alasan: ${reason}. Bot akan mencoba pemulihan otomatis.`
-      );
-      this.scheduleReconnect();
-    });
-
-    this.client.on("error", async (error) => {
-      this.activityLog.push("error", "whatsapp", "WhatsApp runtime error", { error: error.message });
-      if (!this.isReady && !this.isReconnecting) {
-        await this.notifyAdminsIfEnabled(
-          "Error transport WA",
-          `Terjadi error pada transport WhatsApp:\n${error.message}`
-        );
-        this.scheduleReconnect();
-      }
-    });
-
-  }
-
-  scheduleReconnect() {
-    if (this.isReconnecting) return;
-    if (this.reconnectAttempts >= CONFIG.MAX_RECONNECT_ATTEMPTS) {
-      this.activityLog.push("error", "whatsapp", "Maximum reconnect attempts reached");
-      return;
-    }
-
-    const now = Date.now();
-    if (this.lastReconnectTime && now - this.lastReconnectTime < CONFIG.MIN_RECONNECT_INTERVAL) {
-      const waitMs = CONFIG.MIN_RECONNECT_INTERVAL - (now - this.lastReconnectTime);
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = setTimeout(() => this.scheduleReconnect(), waitMs);
-      return;
-    }
-
-    this.isReconnecting = true;
-    this.reconnectAttempts += 1;
-    this.lastReconnectTime = now;
-
-    clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = setTimeout(async () => {
-      try {
-        this.activityLog.push("info", "whatsapp", `Reconnect attempt ${this.reconnectAttempts}/${CONFIG.MAX_RECONNECT_ATTEMPTS}`);
-        await this.initialize();
-      } catch (error) {
-        this.activityLog.push("error", "whatsapp", "Reconnect failed", { error: error.message });
-      } finally {
-        this.isReconnecting = false;
-      }
-    }, CONFIG.RECONNECT_DELAY);
-  }
-
-  startKeepAlive() {
-    clearInterval(this.keepAliveTimer);
-    this.keepAliveTimer = setInterval(async () => {
-      if (!this.client) return;
-      try {
-        await this.client.getState();
-      } catch {
-        this.isReady = false;
-        this.activityLog.push("error", "whatsapp", "Keep-alive failed");
-        this.scheduleReconnect();
-      }
-    }, CONFIG.KEEP_ALIVE_INTERVAL);
+    await this.waManager.initialize();
+    this.waManager.startKeepAlive();
   }
 
   async sendMessage(phoneNumber, message) {
-    const normalized = normalizePhoneNumber(phoneNumber);
-    if (!isValidPhoneNumber(normalized)) {
-      throw new Error("Invalid target phone number");
-    }
-
-    const messageText = String(message || "");
-
-    if (this.canSendViaWaWeb()) {
-      try {
-        await this.client.sendMessage(`${normalized}@c.us`, messageText);
-        return { transport: "whatsapp-web.js" };
-      } catch (error) {
-        if (!this.isFonnteEnabled()) {
-          throw error;
-        }
-        this.activityLog.push("warn", "notification", `WA Web gagal untuk ${normalized}, fallback ke Fonnte`, {
-          error: error.message,
-        });
-      }
-    }
-
-    if (this.isFonnteEnabled()) {
-      await this.sendMessageViaFonnte(normalized, messageText);
-      return { transport: "fonnte" };
-    }
-
-    throw new Error("Transport not ready");
+    const result = await this.waManager.sendMessage(phoneNumber, message);
+    if (result.status === "success") return;
+    throw new Error(result.message);
   }
 
   async sendFile(phoneNumber, filePath, caption = "") {
-    if (!this.isReady || !this.client) {
-      throw new Error("WhatsApp not ready");
-    }
-
-    const normalized = normalizePhoneNumber(phoneNumber);
-    if (!isValidPhoneNumber(normalized)) {
-      throw new Error("Invalid target phone number");
-    }
-
-    if (!filePath || !fsSync.existsSync(filePath)) {
-      throw new Error("File backup tidak ditemukan.");
-    }
-
-    const media = MessageMedia.fromFilePath(filePath);
-    media.mimetype = media.mimetype || "text/plain";
-    media.filename = path.basename(filePath);
-
-    await this.client.sendMessage(`${normalized}@c.us`, media, {
-      caption: String(caption || ""),
-      sendMediaAsDocument: true,
-    });
-  }
-
-  isFonnteEnabled() {
-    return (CONFIG.FONNTE_ENABLED || CONFIG.FONNTE_BACKUP_ENABLED) && Boolean(CONFIG.FONNTE_TOKEN);
-  }
-
-  canSendViaWaWeb() {
-    return Boolean(this.isReady && this.client);
-  }
-
-  canSendMessages() {
-    return this.isFonnteEnabled() || this.canSendViaWaWeb();
-  }
-
-  isFonnteBackupEnabled() {
-    return (CONFIG.FONNTE_BACKUP_ENABLED || CONFIG.FONNTE_ENABLED) && Boolean(CONFIG.FONNTE_TOKEN);
-  }
-
-  canSendBackupViaWaWeb() {
-    return this.canSendViaWaWeb();
-  }
-
-  canSendBackup() {
-    return this.canSendBackupViaWaWeb();
-  }
-
-  async sendMessageViaFonnte(phoneNumber, message = "") {
-    if (!this.isFonnteEnabled()) {
-      throw new Error("Fonnte belum dikonfigurasi.");
-    }
-
-    const normalized = normalizePhoneNumber(phoneNumber);
-    if (!isValidPhoneNumber(normalized)) {
-      throw new Error("Invalid target phone number");
-    }
-
-    const formData = new FormData();
-    formData.append("target", normalized);
-    formData.append("message", String(message || ""));
-
-    const response = await fetch(CONFIG.FONNTE_API_URL, {
-      method: "POST",
-      headers: {
-        Authorization: CONFIG.FONNTE_TOKEN,
-      },
-      body: formData,
-    });
-
-    let payload = null;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
-    }
-
-    if (!response.ok || payload?.status === false) {
-      const errorMessage = payload?.reason
-        || payload?.detail
-        || payload?.message
-        || `HTTP ${response.status}`;
-      throw new Error(`Fonnte gagal mengirim pesan: ${errorMessage}`);
-    }
-
-    return payload;
-  }
-
-  async sendFileViaFonnte(phoneNumber, filePath, caption = "") {
-    if (!this.isFonnteBackupEnabled()) {
-      throw new Error("Fonnte backup belum dikonfigurasi.");
-    }
-
-    const normalized = normalizePhoneNumber(phoneNumber);
-    if (!isValidPhoneNumber(normalized)) {
-      throw new Error("Invalid target phone number");
-    }
-
-    if (!filePath || !fsSync.existsSync(filePath)) {
-      throw new Error("File backup tidak ditemukan.");
-    }
-
-    const fileBuffer = await fs.readFile(filePath);
-    const fileBlob = new Blob([fileBuffer]);
-    const formData = new FormData();
-    formData.append("target", normalized);
-    formData.append("message", String(caption || ""));
-    formData.append("file", fileBlob, path.basename(filePath));
-
-    const response = await fetch(CONFIG.FONNTE_API_URL, {
-      method: "POST",
-      headers: {
-        Authorization: CONFIG.FONNTE_TOKEN,
-      },
-      body: formData,
-    });
-
-    let payload = null;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
-    }
-
-    if (!response.ok || payload?.status === false) {
-      const errorMessage = payload?.reason
-        || payload?.detail
-        || payload?.message
-        || `HTTP ${response.status}`;
-      throw new Error(`Fonnte gagal mengirim file: ${errorMessage}`);
-    }
-
-    return payload;
-  }
-
-  async sendBackupFile(phoneNumber, filePath, caption = "") {
-    await this.sendFile(phoneNumber, filePath, caption);
-    return { transport: "whatsapp-web.js" };
+    await this.waManager.sendFile(phoneNumber, filePath, caption);
   }
 
   async sendAdminBroadcast(title, body, options = {}) {
@@ -2474,18 +2951,13 @@ class NotificationBot {
   }
 
   getStatus() {
-    return {
-      isReady: this.isReady,
-      hasQR: Boolean(this.currentQR),
-      reconnectAttempts: this.reconnectAttempts,
-      isReconnecting: this.isReconnecting,
-      canSendMessages: this.canSendMessages(),
-      fonnteEnabled: this.isFonnteEnabled(),
-      fonnteBackupEnabled: this.isFonnteBackupEnabled(),
-      adminRecipients: this.dataManager.getAdminRecipients(),
-    };
+    return this.waManager.getStatus();
   }
 }
+
+// ===============================
+// REMINDER SCHEDULER
+// ===============================
 
 class ReminderScheduler {
   constructor(notificationBot, dataManager, activityLog) {
@@ -2517,7 +2989,8 @@ class ReminderScheduler {
       return;
     }
 
-    if (!this.notificationBot.canSendMessages()) {
+    const status = this.notificationBot.getStatus();
+    if (!status.isAvailable && !status.fonnteEnabled) {
       this.activityLog.push("info", "scheduler", "Skipping run because notification transport is not ready");
       return;
     }
@@ -2573,7 +3046,7 @@ class ReminderScheduler {
             phoneNumber: reminder.phoneNumber,
           });
           if (String(error.message).toLowerCase().includes("not ready")) {
-            this.notificationBot.scheduleReconnect();
+            // The WhatsAppManager handles reconnect automatically
             break;
           }
         }
@@ -2583,6 +3056,10 @@ class ReminderScheduler {
     }
   }
 }
+
+// ===============================
+// MIKROTIK BACKUP SCHEDULER
+// ===============================
 
 class MikrotikBackupScheduler {
   constructor(mikrotikService, notificationBot, dataManager, activityLog) {
@@ -2627,8 +3104,9 @@ class MikrotikBackupScheduler {
       return;
     }
 
-    if (!this.notificationBot.canSendBackup()) {
-      this.activityLog.push("warn", "mikrotik-backup", "Backup MikroTik dilewati karena transport backup belum siap");
+    const status = this.notificationBot.getStatus();
+    if (!status.isAvailable) {
+      this.activityLog.push("warn", "mikrotik-backup", "Backup MikroTik dilewati karena transport WA belum siap");
       return;
     }
 
@@ -2640,8 +3118,8 @@ class MikrotikBackupScheduler {
       const results = [];
       for (const phoneNumber of recipients) {
         try {
-          const transport = await this.notificationBot.sendBackupFile(phoneNumber, filePath, caption);
-          results.push({ phoneNumber, status: "sent", transport: transport.transport });
+          await this.notificationBot.sendFile(phoneNumber, filePath, caption);
+          results.push({ phoneNumber, status: "sent" });
         } catch (error) {
           results.push({ phoneNumber, status: "failed", error: error.message });
         }
@@ -2667,6 +3145,10 @@ class MikrotikBackupScheduler {
     }
   }
 }
+
+// ===============================
+// AP DOWN NOTIFIER
+// ===============================
 
 class ApDownNotifier {
   constructor(mikrotikService, notificationBot, dataManager, activityLog) {
@@ -2860,6 +3342,10 @@ class ApDownNotifier {
   }
 }
 
+// ===============================
+// WEB SERVER
+// ===============================
+
 class WebServer {
   constructor(notificationBot, dataManager, templateManager, activityLog, reminderScheduler, authManager, mikrotikService) {
     this.app = express();
@@ -3012,7 +3498,8 @@ class WebServer {
       }
     });
     this.app.get("/qr", requirePageAuth, async (req, res) => {
-      if (this.notificationBot.isReady) {
+      const status = this.notificationBot.getStatus();
+      if (status.isAvailable) {
         return res.send(`
           <html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#f4f5ef;font-family:Georgia,serif;">
             <div style="padding:28px 34px;border-radius:20px;background:white;box-shadow:0 20px 60px rgba(0,0,0,.12);color:#204b57;font-size:1.3rem;">
@@ -3022,11 +3509,11 @@ class WebServer {
         `);
       }
 
-      if (!this.notificationBot.currentQR) {
+      if (!status.currentQR) {
         return res.send("Menunggu QR code...");
       }
 
-      const qrImage = await QRCode.toDataURL(this.notificationBot.currentQR);
+      const qrImage = await QRCode.toDataURL(this.notificationBot.waManager.currentQR);
       return res.send(`
         <html>
           <head><meta http-equiv="refresh" content="15"><title>Scan QR</title></head>
@@ -3035,7 +3522,7 @@ class WebServer {
               <h1 style="margin-top:0;color:#204b57;">Hubungkan Transport WhatsApp</h1>
               <img src="${qrImage}" style="max-width:320px;width:100%;border-radius:18px;">
               <p>Scan QR ini dari WhatsApp untuk mengaktifkan channel notifikasi.</p>
-              <p>Reconnect attempts: ${this.notificationBot.reconnectAttempts}/${CONFIG.MAX_RECONNECT_ATTEMPTS}</p>
+              <p>Reconnect attempts: ${status.reconnectAttempts}/${CONFIG.WA_MAX_RECONNECT_ATTEMPTS}</p>
             </div>
           </body>
         </html>
@@ -3077,7 +3564,7 @@ class WebServer {
       }
 
       let notification = { sent: false };
-      if (parseBoolean(req.body.sendCredentials) && this.notificationBot.canSendMessages()) {
+      if (parseBoolean(req.body.sendCredentials) && this.notificationBot.getStatus().isAvailable) {
         const message = `Yth. Bapak/Ibu *${registered.name}*,\n\nAkun hotspot Anda sudah berhasil dibuat.\n\nDetail Akun Hotspot:\n*Username:* ${registered.username}\n*Password:* ${registered.password}\n*Profile:* ${registered.profile}\n\nSilakan simpan data ini. Terimakasih.`;
         try {
           await this.notificationBot.sendMessage(registered.phoneNumber, message);
@@ -3103,7 +3590,8 @@ class WebServer {
       };
     }));
     this.app.post("/api/mikrotik/backup/send", requireApiAuth, handleApi(async () => {
-      if (!this.notificationBot.canSendBackup()) {
+      const status = this.notificationBot.getStatus();
+      if (!status.isAvailable) {
         throw new Error("Transport backup belum siap. Hubungkan WhatsApp Web terlebih dahulu.");
       }
 
@@ -3118,8 +3606,8 @@ class WebServer {
 
       for (const phoneNumber of recipients) {
         try {
-          const transport = await this.notificationBot.sendBackupFile(phoneNumber, backup.filePath, caption);
-          results.push({ phoneNumber, status: "sent", transport: transport.transport });
+          await this.notificationBot.sendFile(phoneNumber, backup.filePath, caption);
+          results.push({ phoneNumber, status: "sent" });
         } catch (error) {
           results.push({ phoneNumber, status: "failed", error: error.message });
         }
@@ -3353,6 +3841,10 @@ class WebServer {
   }
 }
 
+// ===============================
+// SEND MONTHLY RESET NOTIFICATION
+// ===============================
+
 async function sendMonthlyResetNotification(notificationBot, dataManager, activityLog) {
   const resetResult = await dataManager.ensureMonthlyPaymentReset();
   if (!resetResult.reset) {
@@ -3370,7 +3862,7 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
 
   activityLog.push("info", "billing", `Monthly payment status reset completed for ${count} contact(s)`);
 
-  if (!settings.notifyAdminsOnPaymentReset || !notificationBot.canSendMessages()) {
+  if (!settings.notifyAdminsOnPaymentReset || !notificationBot.getStatus().isAvailable) {
     return;
   }
 
@@ -3386,6 +3878,10 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
 
   await notificationBot.sendAdminBroadcast("Reset pembayaran bulanan", body);
 }
+
+// ===============================
+// MAIN ENTRY POINT
+// ===============================
 
 (async () => {
   const activityLog = new ActivityLog();
@@ -3480,9 +3976,8 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
 
   webServer.start();
   notificationBot.initialize()
-    .then(() => notificationBot.startKeepAlive())
+    .then(() => activityLog.push("info", "whatsapp", "WhatsApp manager initialized"))
     .catch((error) => {
       activityLog.push("error", "whatsapp", `Initial WhatsApp startup failed: ${error.message}`);
-      notificationBot.scheduleReconnect();
     });
 })();
