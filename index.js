@@ -33,6 +33,7 @@ const CONFIG = {
   MAX_RECONNECT_ATTEMPTS: 10,
   MIN_RECONNECT_INTERVAL: 30_000,
   RECONNECT_DELAY: 5_000,
+  SQLITE_BUSY_TIMEOUT: Number(process.env.SQLITE_BUSY_TIMEOUT || 10_000),
   CRON_SCHEDULE: "*/1 * * * *",
   RESET_PAYMENT_SCHEDULE: "0 0 1 * *",
   MAX_LOCK_WAIT: 10_000,
@@ -620,16 +621,18 @@ class MessageQueue {
           ];
 
           const models = this.dataManager.models;
-          await models.sequelize.transaction(async (transaction) => {
-            await models.WhatsappQueueItem.destroy({
-              where: { status: { [Op.in]: ["pending", "failed"] } },
-              transaction,
-            });
+          await this.dataManager.withDatabaseWrite(() => (
+            models.sequelize.transaction(async (transaction) => {
+              await models.WhatsappQueueItem.destroy({
+                where: { status: { [Op.in]: ["pending", "failed"] } },
+                transaction,
+              });
 
-            if (items.length) {
-              await models.WhatsappQueueItem.bulkCreate(items, { transaction });
-            }
-          });
+              if (items.length) {
+                await models.WhatsappQueueItem.bulkCreate(items, { transaction });
+              }
+            })
+          ));
         });
       })
       .catch((error) => {
@@ -1599,6 +1602,7 @@ class DataManager {
     this.roles = new Map();
     this.settings = { ...DEFAULT_SETTINGS };
     this.fileLocks = new Map();
+    this.dbWriteLock = new AsyncLock();
     this.sequelize = null;
     this.models = {};
   }
@@ -1687,7 +1691,24 @@ class DataManager {
     }, { tableName: "whatsapp_queue", timestamps: true });
 
     await this.sequelize.authenticate();
+    await this.configureDatabaseConnection();
     await this.sequelize.sync();
+  }
+
+
+  async configureDatabaseConnection() {
+    if (process.env.DATABASE_URL) {
+      return;
+    }
+
+    await this.sequelize.query(`PRAGMA busy_timeout = ${CONFIG.SQLITE_BUSY_TIMEOUT}`);
+    await this.sequelize.query("PRAGMA journal_mode = WAL");
+    await this.sequelize.query("PRAGMA synchronous = NORMAL");
+    await this.sequelize.query("PRAGMA foreign_keys = ON");
+  }
+
+  async withDatabaseWrite(operation) {
+    return this.dbWriteLock.runExclusive("database_write", operation);
   }
 
   async acquireLock(filePath) {
@@ -1865,32 +1886,55 @@ class DataManager {
     });
   }
 
-  async replaceJsonPayloadTable(model, keyField, values) {
+  async replaceJsonPayloadTable(model, keyField, values, options = {}) {
     const rows = Array.from(values).map((item) => ({
       [keyField]: String(item[keyField]),
       data: item,
     }));
+    const transaction = options.transaction || null;
 
-    await model.destroy({ where: {}, truncate: true });
+    await model.destroy({ where: {}, truncate: true, transaction });
     if (rows.length > 0) {
-      await model.bulkCreate(rows);
+      await model.bulkCreate(rows, { transaction });
     }
   }
 
-  async saveContacts() {
-    await this.replaceJsonPayloadTable(this.models.Contact, "id", this.contacts.values());
+  async runSaveOperation(operation, options = {}) {
+    if (options.transaction) {
+      return operation(options.transaction);
+    }
+
+    return this.withDatabaseWrite(() => (
+      this.sequelize.transaction((transaction) => operation(transaction))
+    ));
   }
 
-  async savePelanggan() {
-    await this.replaceJsonPayloadTable(this.models.Pelanggan, "username", this.pelanggan.values());
+  async saveContacts(options = {}) {
+    await this.runSaveOperation(
+      (transaction) => this.replaceJsonPayloadTable(this.models.Contact, "id", this.contacts.values(), { transaction }),
+      options
+    );
   }
 
-  async saveReminders() {
-    await this.replaceJsonPayloadTable(this.models.Reminder, "id", this.reminders.values());
+  async savePelanggan(options = {}) {
+    await this.runSaveOperation(
+      (transaction) => this.replaceJsonPayloadTable(this.models.Pelanggan, "username", this.pelanggan.values(), { transaction }),
+      options
+    );
   }
 
-  async saveSentReminders() {
-    await this.replaceJsonPayloadTable(this.models.SentReminder, "id", this.sentReminders.values());
+  async saveReminders(options = {}) {
+    await this.runSaveOperation(
+      (transaction) => this.replaceJsonPayloadTable(this.models.Reminder, "id", this.reminders.values(), { transaction }),
+      options
+    );
+  }
+
+  async saveSentReminders(options = {}) {
+    await this.runSaveOperation(
+      (transaction) => this.replaceJsonPayloadTable(this.models.SentReminder, "id", this.sentReminders.values(), { transaction }),
+      options
+    );
   }
 
   async cleanupSentHistory(options = {}) {
@@ -1933,19 +1977,23 @@ class DataManager {
     };
   }
 
-  async saveRoles() {
-    const rows = Array.from(this.roles.entries()).map(([phoneNumber, role]) => ({ phoneNumber, role }));
-    await this.models.Role.destroy({ where: {}, truncate: true });
-    if (rows.length > 0) {
-      await this.models.Role.bulkCreate(rows);
-    }
+  async saveRoles(options = {}) {
+    await this.runSaveOperation(async (transaction) => {
+      const rows = Array.from(this.roles.entries()).map(([phoneNumber, role]) => ({ phoneNumber, role }));
+      await this.models.Role.destroy({ where: {}, truncate: true, transaction });
+      if (rows.length > 0) {
+        await this.models.Role.bulkCreate(rows, { transaction });
+      }
+    }, options);
   }
 
-  async saveSettings() {
-    await this.models.Setting.upsert({
-      key: "app",
-      value: this.settings,
-    });
+  async saveSettings(options = {}) {
+    await this.runSaveOperation((transaction) => (
+      this.models.Setting.upsert({
+        key: "app",
+        value: this.settings,
+      }, { transaction })
+    ), options);
   }
 
   normalizeLoadedContacts() {
@@ -1975,14 +2023,17 @@ class DataManager {
   }
 
   async saveAll() {
-    await Promise.all([
-      this.saveContacts(),
-      this.savePelanggan(),
-      this.saveReminders(),
-      this.saveSentReminders(),
-      this.saveRoles(),
-      this.saveSettings(),
-    ]);
+    await this.withDatabaseWrite(() => (
+      this.sequelize.transaction(async (transaction) => {
+        const options = { transaction };
+        await this.saveContacts(options);
+        await this.savePelanggan(options);
+        await this.saveReminders(options);
+        await this.saveSentReminders(options);
+        await this.saveRoles(options);
+        await this.saveSettings(options);
+      })
+    ));
   }
 
   async createBackup() {
@@ -1991,18 +2042,11 @@ class DataManager {
     await fs.mkdir(backupDir, { recursive: true });
 
     if (!process.env.DATABASE_URL) {
-      const sqliteFiles = [
-        CONFIG.DB_STORAGE,
-        `${CONFIG.DB_STORAGE}-wal`,
-        `${CONFIG.DB_STORAGE}-shm`,
-      ];
-
-      await Promise.all(
-        sqliteFiles.map(async (src) => {
-          const dest = path.join(backupDir, path.basename(src));
-          await fs.copyFile(src, dest).catch(() => {});
-        })
-      );
+      await this.withDatabaseWrite(async () => {
+        const backupFile = path.join(backupDir, path.basename(CONFIG.DB_STORAGE));
+        const escapedBackupFile = backupFile.replace(/'/g, "''");
+        await this.sequelize.query(`VACUUM INTO '${escapedBackupFile}'`);
+      });
     }
 
     this.activityLog.push("info", "storage", "Backup created", { backupDir });
