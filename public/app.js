@@ -120,6 +120,9 @@
             notifyAdminsOnDelivery: false,
             notifyAdminsOnConnectionChange: false,
             notifyAdminsOnPaymentReset: false,
+            enableMikrotikBackupToWa: false,
+            mikrotikBackupTime: "02:00",
+            mikrotikBackupTimezone: "Asia/Jakarta",
           },
         },
 
@@ -709,6 +712,9 @@
                 notifyAdminsOnDelivery: Boolean(data.settings.notifyAdminsOnDelivery),
                 notifyAdminsOnConnectionChange: Boolean(data.settings.notifyAdminsOnConnectionChange),
                 notifyAdminsOnPaymentReset: Boolean(data.settings.notifyAdminsOnPaymentReset),
+                enableMikrotikBackupToWa: Boolean(data.settings.enableMikrotikBackupToWa),
+                mikrotikBackupTime: data.settings.mikrotikBackupTime || "02:00",
+                mikrotikBackupTimezone: data.settings.mikrotikBackupTimezone || data.settings.timezone || "Asia/Jakarta",
               };
             }
           } finally {
