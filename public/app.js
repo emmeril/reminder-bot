@@ -358,13 +358,31 @@
           return this.formatDateTime(contact.hotspotReactivationAt);
         },
 
+        getHotspotUserOptionLabel(user) {
+          const profile = user?.profile ? ` - ${user.profile}` : "";
+          const disabled = user?.disabled ? " (disabled)" : "";
+          return `${user?.username || "-"}${profile}${disabled}`;
+        },
+
+        hasHotspotUser(username) {
+          const needle = String(username || "").trim().toLowerCase();
+          if (!needle) return true;
+          return this.hotspotUsers.some((user) => String(user.username || "").trim().toLowerCase() === needle);
+        },
+
+        hasMikrotikProfile(profileName) {
+          const needle = String(profileName || "").trim().toLowerCase();
+          if (!needle) return true;
+          return this.mikrotikProfiles.some((profile) => String(profile.name || "").trim().toLowerCase() === needle);
+        },
+
         syncHotspotUserToForm(formKey) {
           const form = this.forms[formKey];
           if (!form) return;
           const username = String(form.mikrotikUsername || "").trim().toLowerCase();
           if (!username) return;
           const selected = this.hotspotUsers.find((user) => String(user.username || "").trim().toLowerCase() === username);
-          if (selected?.profile && !form.mikrotikProfile) {
+          if (selected?.profile) {
             form.mikrotikProfile = selected.profile;
           }
         },
@@ -700,6 +718,22 @@
         async loadHotspotUsers(options = {}) {
           this.hotspotUsers = await this.api("/api/mikrotik/hotspot-users", { silent: Boolean(options.silent) });
           if (!options.silent) this.notify(`${this.hotspotUsers.length} user hotspot dimuat.`);
+        },
+
+        async loadHotspotOptions(formKey = "") {
+          const results = await Promise.allSettled([
+            this.loadHotspotUsers({ silent: true }),
+            this.loadMikrotikProfiles({ silent: true }),
+          ]);
+          const failed = results.find((item) => item.status === "rejected");
+          if (failed) {
+            this.notify(failed.reason?.message || "Gagal load data MikroTik.");
+            return;
+          }
+          if (formKey) {
+            this.syncHotspotUserToForm(formKey);
+          }
+          this.notify(`${this.hotspotUsers.length} user hotspot dan ${this.mikrotikProfiles.length} profile dimuat.`);
         },
 
         async loadApMonitors() {

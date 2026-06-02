@@ -937,18 +937,34 @@
                 <div class="text-sm font-semibold text-ink">Options Hotspot</div>
                 <div class="text-xs text-ink/55">Kaitkan kontak dengan user hotspot MikroTik untuk reaktivasi otomatis.</div>
               </div>
-              <button type="button" @click="Promise.allSettled([loadHotspotUsers(), loadMikrotikProfiles()])" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white">
+              <button type="button" @click="loadHotspotOptions('contact')" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white">
                 <i class="fa-solid fa-cloud-arrow-down mr-1.5"></i>Load
               </button>
             </div>
             <div class="grid gap-4 md:grid-cols-2">
               <label class="block text-sm text-ink/60">
                 User hotspot
-                <input x-model="forms.contact.mikrotikUsername" @change="syncHotspotUserToForm('contact')" list="hotspot-users" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="username hotspot">
+                <select x-model="forms.contact.mikrotikUsername" @change="syncHotspotUserToForm('contact')" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss">
+                  <option value="">-- Pilih user hotspot --</option>
+                  <template x-if="forms.contact.mikrotikUsername && !hasHotspotUser(forms.contact.mikrotikUsername)">
+                    <option :value="forms.contact.mikrotikUsername" x-text="forms.contact.mikrotikUsername"></option>
+                  </template>
+                  <template x-for="user in hotspotUsers" :key="'contact-hotspot-user-' + user.username">
+                    <option :value="user.username" x-text="getHotspotUserOptionLabel(user)"></option>
+                  </template>
+                </select>
               </label>
               <label class="block text-sm text-ink/60">
                 Profile hotspot
-                <input x-model="forms.contact.mikrotikProfile" list="mikrotik-profiles" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="profile">
+                <select x-model="forms.contact.mikrotikProfile" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss">
+                  <option value="">-- Pilih profile --</option>
+                  <template x-if="forms.contact.mikrotikProfile && !hasMikrotikProfile(forms.contact.mikrotikProfile)">
+                    <option :value="forms.contact.mikrotikProfile" x-text="forms.contact.mikrotikProfile"></option>
+                  </template>
+                  <template x-for="profile in mikrotikProfiles" :key="'contact-profile-' + profile.name">
+                    <option :value="profile.name" x-text="profile.rateLimit ? profile.name + ' - ' + profile.rateLimit : profile.name"></option>
+                  </template>
+                </select>
               </label>
               <label class="block text-sm text-ink/60">
                 Password hotspot
@@ -1148,18 +1164,34 @@
                 <div class="text-sm font-semibold text-ink">Options Hotspot</div>
                 <div class="text-xs text-ink/55">Atur user hotspot dan jadwal reaktivasi otomatis kontak ini.</div>
               </div>
-              <button type="button" @click="Promise.allSettled([loadHotspotUsers(), loadMikrotikProfiles()])" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white">
+              <button type="button" @click="loadHotspotOptions('contactEdit')" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white">
                 <i class="fa-solid fa-cloud-arrow-down mr-1.5"></i>Load
               </button>
             </div>
             <div class="grid gap-4 md:grid-cols-2">
               <label class="block text-sm text-ink/60">
                 User hotspot
-                <input x-model="forms.contactEdit.mikrotikUsername" @change="syncHotspotUserToForm('contactEdit')" list="hotspot-users" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="username hotspot">
+                <select x-model="forms.contactEdit.mikrotikUsername" @change="syncHotspotUserToForm('contactEdit')" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss">
+                  <option value="">-- Pilih user hotspot --</option>
+                  <template x-if="forms.contactEdit.mikrotikUsername && !hasHotspotUser(forms.contactEdit.mikrotikUsername)">
+                    <option :value="forms.contactEdit.mikrotikUsername" x-text="forms.contactEdit.mikrotikUsername"></option>
+                  </template>
+                  <template x-for="user in hotspotUsers" :key="'contact-edit-hotspot-user-' + user.username">
+                    <option :value="user.username" x-text="getHotspotUserOptionLabel(user)"></option>
+                  </template>
+                </select>
               </label>
               <label class="block text-sm text-ink/60">
                 Profile hotspot
-                <input x-model="forms.contactEdit.mikrotikProfile" list="mikrotik-profiles" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="profile">
+                <select x-model="forms.contactEdit.mikrotikProfile" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss">
+                  <option value="">-- Pilih profile --</option>
+                  <template x-if="forms.contactEdit.mikrotikProfile && !hasMikrotikProfile(forms.contactEdit.mikrotikProfile)">
+                    <option :value="forms.contactEdit.mikrotikProfile" x-text="forms.contactEdit.mikrotikProfile"></option>
+                  </template>
+                  <template x-for="profile in mikrotikProfiles" :key="'contact-edit-profile-' + profile.name">
+                    <option :value="profile.name" x-text="profile.rateLimit ? profile.name + ' - ' + profile.rateLimit : profile.name"></option>
+                  </template>
+                </select>
               </label>
               <label class="block text-sm text-ink/60">
                 Password hotspot
