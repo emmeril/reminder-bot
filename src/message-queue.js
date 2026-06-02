@@ -174,9 +174,17 @@ class MessageQueue {
   }
 
   async _sendWithAvailableProvider(item) {
+    let fallbackReason = "";
     if (this.canUseWhatsAppWeb() && this.waManager.client) {
       const result = await this.waManager.sendMessage(item.number, item.message);
       if (result.status === "success") {
+        if (typeof this.waManager.noteProviderUsed === "function") {
+          await this.waManager.noteProviderUsed("whatsapp-web", {
+            source: "queue",
+            itemId: item.id,
+            phoneNumber: item.number,
+          });
+        }
         return { ...result, provider: "whatsapp-web" };
       }
 
@@ -184,13 +192,24 @@ class MessageQueue {
         return result;
       }
 
+      fallbackReason = result.message;
       this.activityLog.push("warn", "queue", `WhatsApp Web failed for ${item.id}, trying Fonnte backup`, {
         error: result.message,
       });
     }
 
     if (this.canUseBackup()) {
-      return await FonnteManager.sendMessage(item.number, item.message);
+      const backupResult = await FonnteManager.sendMessage(item.number, item.message);
+      if (backupResult.status === "success" && typeof this.waManager.noteProviderUsed === "function") {
+        await this.waManager.noteProviderUsed("fonnte", {
+          source: "queue",
+          itemId: item.id,
+          phoneNumber: item.number,
+          reason: fallbackReason || `WhatsApp state: ${this.waManager.state}`,
+          waState: this.waManager.state,
+        });
+      }
+      return backupResult;
     }
 
     if (this.waManager.state !== WA_STATES.CONNECTED) this.waManager.scheduleReconnect();

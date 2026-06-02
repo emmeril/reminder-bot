@@ -77,9 +77,27 @@ class WhatsAppManager {
     this.currentQR = null;
     this.reconnectTimer = null;
     this.keepAliveTimer = null;
+    this.activeProvider = "whatsapp-web";
+    this.providerChangeHandler = null;
     this.queue = new MessageQueue(this, dataManager, activityLog);
     this._reconnectLock = new AsyncLock();
     this._stateLock = new AsyncLock();
+  }
+
+  setProviderChangeHandler(handler) {
+    this.providerChangeHandler = typeof handler === "function" ? handler : null;
+  }
+
+  async noteProviderUsed(provider, details = {}) {
+    const normalizedProvider = provider === "fonnte" ? "fonnte" : "whatsapp-web";
+    if (normalizedProvider === this.activeProvider) return;
+
+    const previousProvider = this.activeProvider;
+    this.activeProvider = normalizedProvider;
+
+    if (previousProvider === "whatsapp-web" && normalizedProvider === "fonnte" && this.providerChangeHandler) {
+      await this.providerChangeHandler(previousProvider, normalizedProvider, details);
+    }
   }
 
   createClient() {
@@ -1864,6 +1882,9 @@ class NotificationBot {
     this.dataManager = dataManager;
     this.activityLog = activityLog;
     this.waManager = new WhatsAppManager(dataManager, activityLog);
+    this.waManager.setProviderChangeHandler((previousProvider, provider, details) =>
+      this.notifyAdminsOnProviderFallback(previousProvider, provider, details)
+    );
   }
 
   async initialize() {
@@ -1874,6 +1895,10 @@ class NotificationBot {
   async sendMessage(phoneNumber, message) {
     const result = await this.waManager.sendMessage(phoneNumber, message);
     if (result.status === "success") {
+      await this.waManager.noteProviderUsed("whatsapp-web", {
+        source: "direct",
+        phoneNumber: normalizePhoneNumber(phoneNumber),
+      });
       return { ...result, provider: "whatsapp-web" };
     }
 
@@ -1890,6 +1915,14 @@ class NotificationBot {
     try {
       const backupResult = await FonnteManager.sendMessage(phoneNumber, message);
       this.activityLog.push("info", "notification", `Fallback Fonnte berhasil untuk ${normalizePhoneNumber(phoneNumber)}`);
+      if (backupResult.status === "success") {
+        await this.waManager.noteProviderUsed("fonnte", {
+          source: "direct",
+          phoneNumber: normalizePhoneNumber(phoneNumber),
+          reason: result.message,
+          waState: result.waState || this.waManager.state,
+        });
+      }
       return backupResult;
     } catch (backupError) {
       throw new Error(`WhatsApp Web gagal: ${result.message}; Fonnte gagal: ${backupError.message}`);
@@ -2009,15 +2042,40 @@ class NotificationBot {
   async notifyAdminsIfEnabled(title, body) {
     const settings = this.dataManager.getSettings();
     if (!settings.notifyAdminsOnConnectionChange) return [];
-    const connectionTitles = new Set([
-      "Perubahan status bot",
-      "Bot kembali online",
-      "Transport WA terganggu",
-      "WhatsApp terputus",
-      "Error transport WA",
-    ]);
-    if (!connectionTitles.has(title)) return [];
+    if (title !== "Fallback Fonnte aktif") return [];
     return this.sendAdminBroadcast(title, body, { silentLog: true });
+  }
+
+  async notifyAdminsOnProviderFallback(previousProvider, provider, details = {}) {
+    const settings = this.dataManager.getSettings();
+    if (!settings.notifyAdminsOnConnectionChange || provider !== "fonnte") return [];
+    if (!FonnteManager.isConfigured()) return [];
+
+    const recipients = this.dataManager.getAdminRecipients();
+    if (recipients.length === 0) return [];
+
+    const target = details.phoneNumber ? `\nTarget pesan: ${details.phoneNumber}` : "";
+    const item = details.itemId ? `\nQueue ID: ${details.itemId}` : "";
+    const reason = details.reason ? `\nAlasan: ${details.reason}` : "";
+    const waState = details.waState || this.waManager.state;
+    const message =
+      "*Fallback Fonnte aktif*\n\n" +
+      `Transport WA berubah dari ${previousProvider} ke ${provider}.` +
+      `\nStatus WA: ${waState}` +
+      `${target}${item}${reason}`;
+
+    const results = [];
+    for (const phoneNumber of recipients) {
+      try {
+        await FonnteManager.sendMessage(phoneNumber, message);
+        results.push({ phoneNumber, status: "sent", provider: "fonnte" });
+      } catch (error) {
+        results.push({ phoneNumber, status: "failed", error: error.message, provider: "fonnte" });
+      }
+    }
+
+    this.activityLog.push("info", "broadcast", `Alert fallback Fonnte dikirim ke ${recipients.length} admin recipient(s)`);
+    return results;
   }
 
   getStatus() {
