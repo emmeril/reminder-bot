@@ -195,6 +195,86 @@ class MikrotikBackupScheduler {
   }
 }
 
+class HotspotReactivationScheduler {
+  constructor(mikrotikService, dataManager, activityLog) {
+    this.mikrotikService = mikrotikService;
+    this.dataManager = dataManager;
+    this.activityLog = activityLog;
+    this.isProcessing = false;
+  }
+
+  buildPassword(contact) {
+    const savedPassword = sanitizeInput(contact.mikrotikPassword || "");
+    if (savedPassword) return savedPassword;
+    return String(contact.phoneNumber || "").slice(-5);
+  }
+
+  async reactivateContact(contact, options = {}) {
+    const password = this.buildPassword(contact);
+    if (!password) {
+      throw new Error("Password hotspot kosong. Isi password atau nomor WhatsApp yang valid.");
+    }
+
+    const result = await this.mikrotikService.reactivateHotspotUser({
+      username: contact.mikrotikUsername,
+      password,
+      profile: contact.mikrotikProfile,
+      phoneNumber: contact.phoneNumber,
+      comment: `Reaktivasi otomatis untuk ${contact.name || contact.phoneNumber || contact.id}`,
+    });
+
+    const updatedContact = await this.dataManager.markHotspotReactivated(contact.id, result, options);
+    this.activityLog.push("info", "hotspot-reactivation", `User hotspot ${result.username} direaktivasi`, {
+      contactId: contact.id,
+      username: result.username,
+      profile: result.profile,
+      activeSessionsKilled: result.activeSessionsKilled,
+      removedUsers: result.removedUsers,
+      nextSchedule: updatedContact.hotspotReactivationAt,
+    });
+
+    return {
+      contact: updatedContact,
+      ...result,
+    };
+  }
+
+  async processDueReactivations() {
+    if (this.isProcessing) {
+      this.activityLog.push("info", "hotspot-reactivation", "Reaktivasi dilewati karena proses sebelumnya masih berjalan");
+      return [];
+    }
+
+    const dueContacts = this.dataManager.getDueHotspotReactivationContacts();
+    if (dueContacts.length === 0) {
+      return [];
+    }
+
+    this.isProcessing = true;
+    const results = [];
+
+    try {
+      this.activityLog.push("info", "hotspot-reactivation", `Memproses ${dueContacts.length} reaktivasi hotspot`);
+      for (const contact of dueContacts) {
+        try {
+          const result = await this.reactivateContact(contact);
+          results.push({ contactId: contact.id, username: contact.mikrotikUsername, status: "success", result });
+        } catch (error) {
+          this.activityLog.push("error", "hotspot-reactivation", `Gagal reaktivasi hotspot ${contact.mikrotikUsername || contact.name}`, {
+            contactId: contact.id,
+            error: error.message,
+          });
+          results.push({ contactId: contact.id, username: contact.mikrotikUsername, status: "failed", error: error.message });
+        }
+      }
+    } finally {
+      this.isProcessing = false;
+    }
+
+    return results;
+  }
+}
+
 class ApDownNotifier {
   constructor(mikrotikService, notificationBot, dataManager, activityLog) {
     this.mikrotikService = mikrotikService;
@@ -389,6 +469,7 @@ class ApDownNotifier {
 
 module.exports = {
   ApDownNotifier,
+  HotspotReactivationScheduler,
   MikrotikBackupScheduler,
   ReminderScheduler,
 };

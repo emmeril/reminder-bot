@@ -39,6 +39,11 @@
     x-init="init()"
     class="app-container mx-auto w-[min(1500px,calc(100%-24px))] py-4 sm:w-[min(1500px,calc(100%-36px))] sm:py-6"
   >
+    <datalist id="hotspot-users">
+      <template x-for="user in hotspotUsers" :key="'hotspot-user-option-' + user.username">
+        <option :value="user.username" x-text="user.profile ? user.username + ' - ' + user.profile : user.username"></option>
+      </template>
+    </datalist>
     <div class="grid gap-4 xl:grid-cols-[280px,minmax(0,1fr)]">
       <aside class="hidden xl:flex xl:flex-col xl:gap-4">
         <section class="panel-shell rounded-[1.4rem] p-5 shadow-soft backdrop-blur-xl">
@@ -334,6 +339,8 @@
                     <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-user mr-2"></i>Nama</th>
                     <th class="px-4 py-3 whitespace-nowrap"><i class="fa-brands fa-whatsapp mr-2"></i>No. WA</th>
                     <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-wifi mr-2"></i>AP Tujuan</th>
+                    <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-user-shield mr-2"></i>User Hotspot</th>
+                    <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-rotate-right mr-2"></i>Reaktivasi</th>
                     <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-signal mr-2"></i>Status AP</th>
                     <th class="px-4 py-3 whitespace-nowrap"><i class="fa-regular fa-calendar mr-2"></i>Tgl Jatuh Tempo</th>
                     <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-hourglass-half mr-2"></i>Status Jatuh Tempo</th>
@@ -343,13 +350,21 @@
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white/70">
                   <template x-if="!filteredContacts.length">
-                    <tr><td colspan="8" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada contact yang cocok.' : 'Belum ada contact.'"></td></tr>
+                    <tr><td colspan="10" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada contact yang cocok.' : 'Belum ada contact.'"></td></tr>
                   </template>
                   <template x-for="contact in paginatedContacts" :key="contact.id">
                     <tr>
                       <td class="px-4 py-4 font-medium" data-label="Nama" x-text="contact.name"></td>
                       <td class="px-4 py-4 text-ink/65 whitespace-nowrap tabular-nums" data-label="No. WA" x-text="contact.phoneNumber"></td>
                       <td class="px-4 py-4 text-ink/65" data-label="AP Tujuan" x-text="contact.linkedApHost || '-'"></td>
+                      <td class="px-4 py-4 text-ink/65" data-label="User Hotspot" x-text="getContactHotspotLabel(contact)"></td>
+                      <td class="px-4 py-4 text-ink/65" data-label="Reaktivasi">
+                        <span
+                          class="inline-flex rounded-full px-3 py-1 text-xs font-semibold"
+                          :class="contact.hotspotReactivationEnabled ? 'bg-moss/10 text-moss' : 'bg-slate-200/70 text-slate-700'"
+                          x-text="getReactivationLabel(contact)"
+                        ></span>
+                      </td>
                       <td class="px-4 py-4" data-label="Status AP">
                         <span
                           class="inline-flex rounded-full px-3 py-1 text-xs font-semibold"
@@ -419,6 +434,14 @@
                               </button>
                             </div>
                           </template>
+                          <button
+                            x-show="contact.mikrotikUsername && contact.mikrotikProfile"
+                            type="button"
+                            @click="reactivateHotspotContact(contact)"
+                            class="w-full rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"
+                          >
+                            <i class="fa-solid fa-rotate-right mr-1.5"></i>Reaktivasi hotspot
+                          </button>
                           <button @click="openContactEditModal(contact)" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit</button>
                           <button @click="removeContact(contact)" class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Delete</button>
                         </div>
@@ -882,7 +905,7 @@
       <div
         x-show="contactCreateModal.open"
         x-transition.scale.origin.center
-        class="w-full max-w-xl rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
+        class="w-full max-w-3xl rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
       >
         <div class="mb-4 flex items-center justify-between">
           <h3 class="text-lg font-semibold text-ink">Tambah Contact</h3>
@@ -908,6 +931,42 @@
               </template>
             </select>
           </label>
+          <div class="rounded-[1.25rem] border border-ink/10 bg-haze/60 p-4">
+            <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div class="text-sm font-semibold text-ink">Options Hotspot</div>
+                <div class="text-xs text-ink/55">Kaitkan kontak dengan user hotspot MikroTik untuk reaktivasi otomatis.</div>
+              </div>
+              <button type="button" @click="Promise.allSettled([loadHotspotUsers(), loadMikrotikProfiles()])" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white">
+                <i class="fa-solid fa-cloud-arrow-down mr-1.5"></i>Load
+              </button>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2">
+              <label class="block text-sm text-ink/60">
+                User hotspot
+                <input x-model="forms.contact.mikrotikUsername" @change="syncHotspotUserToForm('contact')" list="hotspot-users" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="username hotspot">
+              </label>
+              <label class="block text-sm text-ink/60">
+                Profile hotspot
+                <input x-model="forms.contact.mikrotikProfile" list="mikrotik-profiles" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="profile">
+              </label>
+              <label class="block text-sm text-ink/60">
+                Password hotspot
+                <input x-model="forms.contact.mikrotikPassword" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="Kosong = 5 digit akhir WA">
+              </label>
+              <label class="block text-sm text-ink/60">
+                Jadwal reaktivasi
+                <div class="mt-2 grid grid-cols-2 gap-2">
+                  <input type="date" x-model="forms.contact.hotspotReactivationDate" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.contact.hotspotReactivationEnabled">
+                  <input type="time" x-model="forms.contact.hotspotReactivationTime" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.contact.hotspotReactivationEnabled">
+                </div>
+              </label>
+            </div>
+            <label class="mt-4 flex items-center gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink">
+              <input type="checkbox" x-model="forms.contact.hotspotReactivationEnabled" class="h-4 w-4 accent-moss">
+              Aktifkan reaktivasi otomatis bulanan
+            </label>
+          </div>
           <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" @click="closeContactCreateModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="contactCreateModal.loading">Batal</button>
             <button type="submit" class="rounded-2xl bg-moss px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20 transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60" :disabled="contactCreateModal.loading">
@@ -1057,7 +1116,7 @@
       <div
         x-show="contactEditModal.open"
         x-transition.scale.origin.center
-        class="w-full max-w-xl rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
+        class="w-full max-w-3xl rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
       >
         <div class="mb-4 flex items-center justify-between">
           <h3 class="text-lg font-semibold text-ink">Edit Contact</h3>
@@ -1083,6 +1142,42 @@
               </template>
             </select>
           </label>
+          <div class="rounded-[1.25rem] border border-ink/10 bg-haze/60 p-4">
+            <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div class="text-sm font-semibold text-ink">Options Hotspot</div>
+                <div class="text-xs text-ink/55">Atur user hotspot dan jadwal reaktivasi otomatis kontak ini.</div>
+              </div>
+              <button type="button" @click="Promise.allSettled([loadHotspotUsers(), loadMikrotikProfiles()])" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white">
+                <i class="fa-solid fa-cloud-arrow-down mr-1.5"></i>Load
+              </button>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2">
+              <label class="block text-sm text-ink/60">
+                User hotspot
+                <input x-model="forms.contactEdit.mikrotikUsername" @change="syncHotspotUserToForm('contactEdit')" list="hotspot-users" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="username hotspot">
+              </label>
+              <label class="block text-sm text-ink/60">
+                Profile hotspot
+                <input x-model="forms.contactEdit.mikrotikProfile" list="mikrotik-profiles" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="profile">
+              </label>
+              <label class="block text-sm text-ink/60">
+                Password hotspot
+                <input x-model="forms.contactEdit.mikrotikPassword" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="Kosong = 5 digit akhir WA">
+              </label>
+              <label class="block text-sm text-ink/60">
+                Jadwal reaktivasi
+                <div class="mt-2 grid grid-cols-2 gap-2">
+                  <input type="date" x-model="forms.contactEdit.hotspotReactivationDate" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.contactEdit.hotspotReactivationEnabled">
+                  <input type="time" x-model="forms.contactEdit.hotspotReactivationTime" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.contactEdit.hotspotReactivationEnabled">
+                </div>
+              </label>
+            </div>
+            <label class="mt-4 flex items-center gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink">
+              <input type="checkbox" x-model="forms.contactEdit.hotspotReactivationEnabled" class="h-4 w-4 accent-moss">
+              Aktifkan reaktivasi otomatis bulanan
+            </label>
+          </div>
           <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" @click="closeContactEditModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="contactEditModal.loading">Batal</button>
             <button type="submit" class="rounded-2xl bg-moss px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20 transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60" :disabled="contactEditModal.loading">

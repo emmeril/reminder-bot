@@ -29,6 +29,7 @@ const FonnteManager = require("./fonnte-manager");
 const MessageQueue = require("./message-queue");
 const {
   ApDownNotifier,
+  HotspotReactivationScheduler,
   MikrotikBackupScheduler,
   ReminderScheduler,
 } = require("./schedulers");
@@ -512,6 +513,23 @@ class MikrotikService {
     });
   }
 
+  async getHotspotUsers() {
+    return this.withConnection(async (conn) => {
+      const users = await conn.menu("/ip/hotspot/user").print();
+      return (users || [])
+        .map((user) => ({
+          id: user[".id"] || user.id || user.numbers || "",
+          username: user.name || "",
+          profile: user.profile || "",
+          comment: user.comment || "",
+          disabled: String(user.disabled || "false").toLowerCase() === "true",
+          email: user.email || "",
+        }))
+        .filter((user) => user.username)
+        .sort((a, b) => a.username.localeCompare(b.username, "id-ID"));
+    });
+  }
+
   async getNetwatchStatus() {
     return this.withConnection(async (conn) => {
       const rows = await conn.menu("/tool/netwatch").print();
@@ -550,8 +568,78 @@ class MikrotikService {
     return { removed };
   }
 
+  async removeActiveHotspotSessionsByName(conn, username) {
+    const activeSessions = await conn.menu("/ip/hotspot/active").print();
+    const matches = (activeSessions || []).filter((session) => {
+      const sessionUser = session.user || session.name || "";
+      return String(sessionUser).toLowerCase() === String(username).toLowerCase();
+    });
+    let killed = 0;
+
+    for (const row of matches) {
+      const rowId = row[".id"] || row.id || row.numbers || row.number;
+      if (rowId) {
+        await conn.menu("/ip/hotspot/active").remove(String(rowId));
+      } else {
+        await conn.menu("/ip/hotspot/active").where("user", row.user || username).remove();
+      }
+      killed += 1;
+    }
+
+    return { killed };
+  }
+
   async deleteHotspotUser(username) {
     return this.withConnection((conn) => this.removeHotspotUsersByName(conn, username));
+  }
+
+  async reactivateHotspotUser({ username, password, profile, phoneNumber, comment }) {
+    const hotspotUsername = sanitizeInput(username);
+    const hotspotPassword = sanitizeInput(password);
+    const profileName = sanitizeInput(profile);
+    const normalizedPhone = normalizePhoneNumber(phoneNumber);
+    const hotspotComment = sanitizeInput(comment);
+
+    if (!hotspotUsername) throw new Error("Username hotspot wajib diisi.");
+    if (!hotspotPassword) throw new Error("Password hotspot wajib diisi.");
+    if (!profileName) throw new Error("Profile hotspot wajib dipilih.");
+
+    return this.withConnection(async (conn) => {
+      const profiles = await conn.menu("/ip/hotspot/user/profile").print();
+      if (!(profiles || []).some((item) => item.name === profileName)) {
+        throw new Error(`Profile "${profileName}" tidak ditemukan di MikroTik.`);
+      }
+
+      const activeResult = await this.removeActiveHotspotSessionsByName(conn, hotspotUsername);
+      const removeResult = await this.removeHotspotUsersByName(conn, hotspotUsername);
+      const addPayload = {
+        name: hotspotUsername,
+        password: hotspotPassword,
+        profile: profileName,
+      };
+
+      if (normalizedPhone) {
+        addPayload.email = buildHotspotEmailFromPhone(normalizedPhone);
+      }
+
+      if (hotspotComment) {
+        addPayload.comment = hotspotComment;
+      }
+
+      const addResult = await conn.menu("/ip/hotspot/user").add(addPayload);
+      if (addResult?.["!trap"]) {
+        const message = addResult["!trap"]?.[0]?.message || "Error tidak diketahui dari MikroTik.";
+        throw new Error(`Gagal membuat ulang user hotspot: ${message}`);
+      }
+
+      return {
+        username: hotspotUsername,
+        password: hotspotPassword,
+        profile: profileName,
+        activeSessionsKilled: activeResult.killed,
+        removedUsers: removeResult.removed,
+      };
+    });
   }
 
   async createHotspotCustomer({ name, phoneNumber, profile }) {
@@ -1112,6 +1200,12 @@ class DataManager {
       const normalizedType = String(contact.paymentType || "").toUpperCase();
       contact.paymentType = Object.values(PAYMENT_TYPES).includes(normalizedType) ? normalizedType : null;
       contact.linkedApHost = sanitizeInput(String(contact.linkedApHost || ""));
+      contact.mikrotikUsername = sanitizeInput(String(contact.mikrotikUsername || ""));
+      contact.mikrotikProfile = sanitizeInput(String(contact.mikrotikProfile || ""));
+      contact.mikrotikPassword = sanitizeInput(String(contact.mikrotikPassword || ""));
+      contact.hotspotReactivationEnabled = parseBoolean(contact.hotspotReactivationEnabled, false);
+      contact.hotspotReactivationAt = this.normalizeOptionalDate(contact.hotspotReactivationAt);
+      contact.hotspotLastReactivatedAt = this.normalizeOptionalDate(contact.hotspotLastReactivatedAt);
       if (!contact.paymentMonths || typeof contact.paymentMonths !== "object" || Array.isArray(contact.paymentMonths)) {
         contact.paymentMonths = {};
       }
@@ -1130,6 +1224,43 @@ class DataManager {
         }
       }
     }
+  }
+
+  normalizeOptionalDate(value) {
+    const raw = sanitizeInput(String(value || ""));
+    if (!raw) return null;
+    const date = parseDateTimeInput(raw) || new Date(raw);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+
+  normalizeContactHotspotFields(payload, current = {}) {
+    const enabled = payload.hotspotReactivationEnabled !== undefined
+      ? parseBoolean(payload.hotspotReactivationEnabled, false)
+      : parseBoolean(current.hotspotReactivationEnabled, false);
+    const username = payload.mikrotikUsername !== undefined
+      ? sanitizeInput(String(payload.mikrotikUsername || ""))
+      : sanitizeInput(String(current.mikrotikUsername || ""));
+    const profile = payload.mikrotikProfile !== undefined
+      ? sanitizeInput(String(payload.mikrotikProfile || ""))
+      : sanitizeInput(String(current.mikrotikProfile || ""));
+    const password = payload.mikrotikPassword !== undefined
+      ? sanitizeInput(String(payload.mikrotikPassword || ""))
+      : sanitizeInput(String(current.mikrotikPassword || ""));
+    const reactivationAt = payload.hotspotReactivationAt !== undefined
+      ? this.normalizeOptionalDate(payload.hotspotReactivationAt)
+      : this.normalizeOptionalDate(current.hotspotReactivationAt);
+
+    if (enabled && !username) throw new Error("Username hotspot wajib diisi untuk reaktivasi.");
+    if (enabled && !profile) throw new Error("Profile hotspot wajib diisi untuk reaktivasi.");
+    if (enabled && !reactivationAt) throw new Error("Jadwal reaktivasi wajib diisi.");
+
+    return {
+      mikrotikUsername: username,
+      mikrotikProfile: profile,
+      mikrotikPassword: password,
+      hotspotReactivationEnabled: enabled,
+      hotspotReactivationAt: reactivationAt,
+    };
   }
 
   async saveAll() {
@@ -1374,6 +1505,7 @@ class DataManager {
     const name = sanitizeInput(payload.name);
     const phoneNumber = normalizePhoneNumber(payload.phoneNumber);
     const linkedApHost = sanitizeInput(String(payload.linkedApHost || ""));
+    const hotspotFields = this.normalizeContactHotspotFields(payload);
 
     if (!name) throw new Error("Nama kontak wajib diisi.");
     if (!isValidPhoneNumber(phoneNumber)) throw new Error("Nomor kontak harus berformat 628xxx.");
@@ -1387,6 +1519,8 @@ class DataManager {
       paymentDate: payload.paymentStatus === PAYMENT_STATUS.PAID ? new Date().toISOString() : null,
       paymentMonths: payload.paymentMonths || {},
       linkedApHost,
+      ...hotspotFields,
+      hotspotLastReactivatedAt: this.normalizeOptionalDate(payload.hotspotLastReactivatedAt),
       createdAt: payload.createdAt || new Date().toISOString(),
       updatedAt: payload.updatedAt || new Date().toISOString(),
     };
@@ -1422,6 +1556,10 @@ class DataManager {
         paymentMonths: {},
         mikrotikUsername: username,
         mikrotikProfile: profile,
+        mikrotikPassword: password,
+        hotspotReactivationEnabled: false,
+        hotspotReactivationAt: null,
+        hotspotLastReactivatedAt: null,
         createdAt: now,
         updatedAt: now,
       };
@@ -1430,6 +1568,7 @@ class DataManager {
       contact.name = name;
       contact.mikrotikUsername = username;
       contact.mikrotikProfile = profile;
+      contact.mikrotikPassword = password;
       contact.updatedAt = now;
     }
 
@@ -1462,6 +1601,7 @@ class DataManager {
     const nextLinkedApHost = payload.linkedApHost !== undefined
       ? sanitizeInput(String(payload.linkedApHost || ""))
       : sanitizeInput(String(contact.linkedApHost || ""));
+    const hotspotFields = this.normalizeContactHotspotFields(payload, contact);
 
     if (!nextName) throw new Error("Nama kontak wajib diisi.");
     if (!isValidPhoneNumber(nextPhone)) throw new Error("Nomor kontak harus berformat 628xxx.");
@@ -1470,6 +1610,8 @@ class DataManager {
     contact.name = nextName;
     contact.phoneNumber = nextPhone;
     contact.linkedApHost = nextLinkedApHost;
+    Object.assign(contact, hotspotFields);
+    contact.updatedAt = new Date().toISOString();
 
     for (const reminder of this.reminders.values()) {
       if (String(reminder.contactId) === String(id) || reminder.phoneNumber === previousPhone) {
@@ -1481,6 +1623,34 @@ class DataManager {
 
     await Promise.all([this.saveContacts(), this.saveReminders()]);
     return contact;
+  }
+
+  getDueHotspotReactivationContacts(now = new Date()) {
+    const nowTime = now.getTime();
+    if (Number.isNaN(nowTime)) return [];
+
+    return this.getSortedContacts().filter((contact) => {
+      if (!contact.hotspotReactivationEnabled) return false;
+      if (!contact.mikrotikUsername || !contact.mikrotikProfile || !contact.hotspotReactivationAt) return false;
+      const dueTime = new Date(contact.hotspotReactivationAt).getTime();
+      return Number.isFinite(dueTime) && dueTime <= nowTime;
+    });
+  }
+
+  async markHotspotReactivated(contactId, result, options = {}) {
+    const contact = this.getContact(contactId);
+    if (!contact) throw new Error("Kontak tidak ditemukan.");
+
+    const now = new Date();
+    const previousSchedule = contact.hotspotReactivationAt || now.toISOString();
+    contact.hotspotLastReactivatedAt = now.toISOString();
+    contact.hotspotReactivationAt = addMonthsSafely(previousSchedule, 1).toISOString();
+    contact.mikrotikPassword = sanitizeInput(result?.password || contact.mikrotikPassword || "");
+    contact.mikrotikProfile = sanitizeInput(result?.profile || contact.mikrotikProfile || "");
+    contact.updatedAt = now.toISOString();
+
+    await this.saveContacts(options);
+    return this.hydrateContact(contact);
   }
 
   async deleteContact(id) {
@@ -2088,7 +2258,7 @@ class NotificationBot {
 // ===============================
 
 class WebServer {
-  constructor(notificationBot, dataManager, templateManager, activityLog, reminderScheduler, authManager, mikrotikService) {
+  constructor(notificationBot, dataManager, templateManager, activityLog, reminderScheduler, authManager, mikrotikService, hotspotReactivationScheduler) {
     this.app = express();
     this.notificationBot = notificationBot;
     this.dataManager = dataManager;
@@ -2097,6 +2267,7 @@ class WebServer {
     this.reminderScheduler = reminderScheduler;
     this.authManager = authManager;
     this.mikrotikService = mikrotikService;
+    this.hotspotReactivationScheduler = hotspotReactivationScheduler;
     this.setupRoutes();
   }
 
@@ -2275,7 +2446,10 @@ class WebServer {
       summary: this.dataManager.getDashboardSummary(),
       settings: this.dataManager.getSettings(),
       billingPeriod: getBillingPeriodKey(),
-      scheduler: { isProcessing: this.reminderScheduler.isProcessing },
+      scheduler: {
+        isProcessing: this.reminderScheduler.isProcessing,
+        hotspotReactivationProcessing: this.hotspotReactivationScheduler?.isProcessing || false,
+      },
     })));
 
     this.app.get("/api/logs", requireApiAuth, handleApi(async () => this.activityLog.list()));
@@ -2286,7 +2460,15 @@ class WebServer {
     this.app.delete("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.dataManager.deleteContact(req.params.id)));
 
     this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotProfiles()));
+    this.app.get("/api/mikrotik/hotspot-users", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotUsers()));
     this.app.get("/api/mikrotik/netwatch", requireApiAuth, handleApi(async () => this.mikrotikService.getNetwatchStatus()));
+    this.app.post("/api/contacts/:id/hotspot/reactivate", requireApiAuth, handleApi(async (req) => {
+      const contact = this.dataManager.getContact(req.params.id);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      const result = await this.hotspotReactivationScheduler.reactivateContact(this.dataManager.hydrateContact(contact));
+      return result;
+    }));
+    this.app.post("/api/hotspot/reactivations/run", requireApiAuth, handleApi(async () => this.hotspotReactivationScheduler.processDueReactivations()));
     this.app.post("/api/mikrotik/customers", requireApiAuth, handleApi(async (req) => {
       const registered = await this.mikrotikService.createHotspotCustomer({
         name: req.body.name,
@@ -2642,6 +2824,11 @@ async function bootstrap() {
     dataManager,
     activityLog
   );
+  const hotspotReactivationScheduler = new HotspotReactivationScheduler(
+    mikrotikService,
+    dataManager,
+    activityLog
+  );
 
   await dataManager.loadAll();
 
@@ -2653,7 +2840,8 @@ async function bootstrap() {
     activityLog,
     reminderScheduler,
     authManager,
-    mikrotikService
+    mikrotikService,
+    hotspotReactivationScheduler
   );
 
   await dataManager.ensureMonthlyPaymentReset();
@@ -2663,6 +2851,7 @@ async function bootstrap() {
       reminderScheduler.processDueReminders(),
       apDownNotifier.processNetwatchChanges(),
       mikrotikBackupScheduler.processDailyBackup(),
+      hotspotReactivationScheduler.processDueReactivations(),
     ]).catch((error) => {
       activityLog.push("error", "scheduler", `Cron execution failed: ${error.message}`);
     });

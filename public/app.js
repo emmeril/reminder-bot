@@ -54,6 +54,7 @@
         ],
         contacts: [],
         mikrotikProfiles: [],
+        hotspotUsers: [],
         apMonitors: [],
         reminders: [],
         sent: [],
@@ -79,10 +80,32 @@
           manual: { contactId: "", phoneNumber: "", templateName: "", message: "" },
           broadcast: { title: "", templateName: "", message: "" },
           recipients: "",
-          contact: { id: "", name: "", phoneNumber: "", linkedApHost: "" },
+          contact: {
+            id: "",
+            name: "",
+            phoneNumber: "",
+            linkedApHost: "",
+            mikrotikUsername: "",
+            mikrotikProfile: "",
+            mikrotikPassword: "",
+            hotspotReactivationEnabled: false,
+            hotspotReactivationDate: "",
+            hotspotReactivationTime: "",
+          },
           mikrotikCustomer: { name: "", phoneNumber: "", profile: "", sendCredentials: true },
           reminder: { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
-          contactEdit: { id: "", name: "", phoneNumber: "", linkedApHost: "" },
+          contactEdit: {
+            id: "",
+            name: "",
+            phoneNumber: "",
+            linkedApHost: "",
+            mikrotikUsername: "",
+            mikrotikProfile: "",
+            mikrotikPassword: "",
+            hotspotReactivationEnabled: false,
+            hotspotReactivationDate: "",
+            hotspotReactivationTime: "",
+          },
           reminderEdit: { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
           template: { name: "", content: "" },
           settings: {
@@ -146,6 +169,8 @@
         async loadNonCriticalData() {
           await Promise.allSettled([
             this.loadApMonitors(),
+            this.loadMikrotikProfiles({ silent: true }),
+            this.loadHotspotUsers({ silent: true }),
             this.loadSent(),
             this.loadRecipients(),
             this.loadLogs(),
@@ -299,6 +324,49 @@
           const hours = String(date.getHours()).padStart(2, "0");
           const minutes = String(date.getMinutes()).padStart(2, "0");
           return `${hours}:${minutes}`;
+        },
+
+        blankContactForm() {
+          return {
+            id: "",
+            name: "",
+            phoneNumber: "",
+            linkedApHost: "",
+            mikrotikUsername: "",
+            mikrotikProfile: "",
+            mikrotikPassword: "",
+            hotspotReactivationEnabled: false,
+            hotspotReactivationDate: "",
+            hotspotReactivationTime: "",
+          };
+        },
+
+        buildHotspotReactivationAt(form) {
+          if (!form.hotspotReactivationEnabled || !form.hotspotReactivationDate) return "";
+          return `${form.hotspotReactivationDate} ${form.hotspotReactivationTime || "00:00"}`;
+        },
+
+        getContactHotspotLabel(contact) {
+          if (!contact.mikrotikUsername) return "-";
+          const profile = contact.mikrotikProfile ? ` / ${contact.mikrotikProfile}` : "";
+          return `${contact.mikrotikUsername}${profile}`;
+        },
+
+        getReactivationLabel(contact) {
+          if (!contact.hotspotReactivationEnabled) return "Nonaktif";
+          if (!contact.hotspotReactivationAt) return "Belum dijadwalkan";
+          return this.formatDateTime(contact.hotspotReactivationAt);
+        },
+
+        syncHotspotUserToForm(formKey) {
+          const form = this.forms[formKey];
+          if (!form) return;
+          const username = String(form.mikrotikUsername || "").trim().toLowerCase();
+          if (!username) return;
+          const selected = this.hotspotUsers.find((user) => String(user.username || "").trim().toLowerCase() === username);
+          if (selected?.profile && !form.mikrotikProfile) {
+            form.mikrotikProfile = selected.profile;
+          }
         },
 
         inferPaymentType(contact, options = {}) {
@@ -463,7 +531,7 @@
 
             return this.searchMatches(
               contact,
-              ["name", "phoneNumber", "linkedApHost", "paymentStatus", "paymentType", "debtNote", "dueStatus", "dueDate"],
+              ["name", "phoneNumber", "linkedApHost", "mikrotikUsername", "mikrotikProfile", "paymentStatus", "paymentType", "debtNote", "dueStatus", "dueDate", "hotspotReactivationAt"],
               this.filters.contacts.search
             );
           });
@@ -624,9 +692,14 @@
           this.clampPage("contacts", this.filteredContacts.length);
         },
 
-        async loadMikrotikProfiles() {
-          this.mikrotikProfiles = await this.api("/api/mikrotik/profiles");
-          this.notify(`${this.mikrotikProfiles.length} profile MikroTik dimuat.`);
+        async loadMikrotikProfiles(options = {}) {
+          this.mikrotikProfiles = await this.api("/api/mikrotik/profiles", { silent: Boolean(options.silent) });
+          if (!options.silent) this.notify(`${this.mikrotikProfiles.length} profile MikroTik dimuat.`);
+        },
+
+        async loadHotspotUsers(options = {}) {
+          this.hotspotUsers = await this.api("/api/mikrotik/hotspot-users", { silent: Boolean(options.silent) });
+          if (!options.silent) this.notify(`${this.hotspotUsers.length} user hotspot dimuat.`);
         },
 
         async loadApMonitors() {
@@ -688,17 +761,22 @@
             name: this.forms.contact.name,
             phoneNumber: this.forms.contact.phoneNumber,
             linkedApHost: this.forms.contact.linkedApHost,
+            mikrotikUsername: this.forms.contact.mikrotikUsername,
+            mikrotikProfile: this.forms.contact.mikrotikProfile,
+            mikrotikPassword: this.forms.contact.mikrotikPassword,
+            hotspotReactivationEnabled: this.forms.contact.hotspotReactivationEnabled,
+            hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contact),
           };
           await this.api("/api/contacts", {
             method: "POST",
             body: JSON.stringify(payload),
           });
-          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "" };
+          this.forms.contact = this.blankContactForm();
           await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
         },
 
         openContactCreateModal() {
-          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "" };
+          this.forms.contact = this.blankContactForm();
           this.contactCreateModal.open = true;
           document.body.classList.add("overflow-hidden");
         },
@@ -706,7 +784,7 @@
         closeContactCreateModal() {
           this.contactCreateModal.open = false;
           this.contactCreateModal.loading = false;
-          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "" };
+          this.forms.contact = this.blankContactForm();
           document.body.classList.remove("overflow-hidden");
         },
 
@@ -728,6 +806,12 @@
             name: contact.name || "",
             phoneNumber: contact.phoneNumber || "",
             linkedApHost: contact.linkedApHost || "",
+            mikrotikUsername: contact.mikrotikUsername || "",
+            mikrotikProfile: contact.mikrotikProfile || "",
+            mikrotikPassword: contact.mikrotikPassword || "",
+            hotspotReactivationEnabled: Boolean(contact.hotspotReactivationEnabled),
+            hotspotReactivationDate: this.formatDateInput(contact.hotspotReactivationAt),
+            hotspotReactivationTime: this.formatTimeInput(contact.hotspotReactivationAt) || "00:00",
           };
           this.contactEditModal.open = true;
           document.body.classList.add("overflow-hidden");
@@ -736,7 +820,7 @@
         closeContactEditModal() {
           this.contactEditModal.open = false;
           this.contactEditModal.loading = false;
-          this.forms.contactEdit = { id: "", name: "", phoneNumber: "", linkedApHost: "" };
+          this.forms.contactEdit = this.blankContactForm();
           document.body.classList.remove("overflow-hidden");
         },
 
@@ -750,6 +834,11 @@
                 name: this.forms.contactEdit.name,
                 phoneNumber: this.forms.contactEdit.phoneNumber,
                 linkedApHost: this.forms.contactEdit.linkedApHost,
+                mikrotikUsername: this.forms.contactEdit.mikrotikUsername,
+                mikrotikProfile: this.forms.contactEdit.mikrotikProfile,
+                mikrotikPassword: this.forms.contactEdit.mikrotikPassword,
+                hotspotReactivationEnabled: this.forms.contactEdit.hotspotReactivationEnabled,
+                hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contactEdit),
               }),
             });
             this.notify("Contact diperbarui.");
@@ -832,6 +921,20 @@
             this.notify("Status pembayaran diperbarui.");
           }
           await Promise.all([this.loadContacts(), this.loadStatus()]);
+        },
+
+        async reactivateHotspotContact(contact) {
+          if (!contact?.id) return;
+          const result = await this.api(`/api/contacts/${contact.id}/hotspot/reactivate`, {
+            method: "POST",
+            body: JSON.stringify({}),
+          });
+          if (result.contact.hotspotReactivationEnabled && result.contact.hotspotReactivationAt) {
+            this.notify(`Hotspot ${result.username} direaktivasi. Jadwal berikutnya ${this.formatDateTime(result.contact.hotspotReactivationAt)}.`);
+          } else {
+            this.notify(`Hotspot ${result.username} direaktivasi.`);
+          }
+          await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
         },
 
         removeContact(contact) {
