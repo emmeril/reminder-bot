@@ -65,9 +65,6 @@
         isMobile: window.matchMedia("(max-width: 768px)").matches,
         pollers: [],
         paymentTypeSelection: {},
-        hotspotUsersByName: {},
-        hotspotPendingOverrides: {},
-        hotspotStateVersion: 0,
         expandedMessages: {},
         billingPeriod: "",
         pageSizes: [10, 25, 50, 100],
@@ -82,10 +79,10 @@
           manual: { contactId: "", phoneNumber: "", templateName: "", message: "" },
           broadcast: { title: "", templateName: "", message: "" },
           recipients: "",
-          contact: { id: "", name: "", phoneNumber: "", linkedApHost: "", mikrotikUsername: "" },
+          contact: { id: "", name: "", phoneNumber: "", linkedApHost: "" },
           mikrotikCustomer: { name: "", phoneNumber: "", profile: "", sendCredentials: true },
           reminder: { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
-          contactEdit: { id: "", name: "", phoneNumber: "", linkedApHost: "", mikrotikUsername: "" },
+          contactEdit: { id: "", name: "", phoneNumber: "", linkedApHost: "" },
           reminderEdit: { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
           template: { name: "", content: "" },
           settings: {
@@ -149,7 +146,6 @@
         async loadNonCriticalData() {
           await Promise.allSettled([
             this.loadApMonitors(),
-            this.loadHotspotUsers(),
             this.loadSent(),
             this.loadRecipients(),
             this.loadLogs(),
@@ -588,8 +584,8 @@
             const data = await this.api("/api/status", { silent: Boolean(options.silent) });
             this.billingPeriod = data.billingPeriod || this.billingPeriod;
             this.statusCards = [
-              { label: "Transport", value: data.bot.isReady ? "Online" : "Offline", icon: data.bot.isReady ? "fa-solid fa-plug-circle-check" : "fa-solid fa-plug-circle-xmark" },
-              { label: "QR", value: data.bot.hasQR ? "Ready to scan" : "No QR", icon: "fa-solid fa-qrcode" },
+              { label: "Transport", value: data.bot.isAvailable ? "Online" : "Offline", icon: data.bot.isAvailable ? "fa-solid fa-plug-circle-check" : "fa-solid fa-plug-circle-xmark" },
+              { label: "QR", value: data.bot.currentQR ? "Ready to scan" : "No QR", icon: "fa-solid fa-qrcode" },
               { label: "Reconnect", value: data.bot.reconnectAttempts, icon: "fa-solid fa-rotate" },
             ];
             this.summaryMetrics = [
@@ -626,54 +622,6 @@
         async loadContacts() {
           this.contacts = await this.api("/api/contacts");
           this.clampPage("contacts", this.filteredContacts.length);
-        },
-
-        async loadHotspotUsers() {
-          const users = await this.api("/api/mikrotik/hotspot-users");
-          const nextMap = {};
-          for (const user of users || []) {
-            const key = String(user?.name || "").trim().toLowerCase();
-            if (!key) continue;
-            nextMap[key] = {
-              disabled: Boolean(user.disabled),
-              profile: user.profile || "",
-            };
-          }
-          this.hotspotUsersByName = nextMap;
-          this.hotspotStateVersion += 1;
-        },
-
-        getHotspotState(contact) {
-          const username = String(contact?.mikrotikUsername || "").trim().toLowerCase();
-          if (!username) return null;
-          const pending = this.hotspotPendingOverrides[username];
-          if (pending && pending.expiresAt > Date.now()) {
-            return { disabled: Boolean(pending.disabled), profile: pending.profile || "" };
-          }
-          return this.hotspotUsersByName[username] || null;
-        },
-
-        getHotspotToggleLabel(contact) {
-          const state = this.getHotspotState(contact);
-          if (!state) return "Toggle Hotspot";
-          return state.disabled ? "Enable Hotspot" : "Disable Hotspot";
-        },
-
-        getHotspotToggleIconClass(contact) {
-          const state = this.getHotspotState(contact);
-          if (!state) return "fa-solid fa-toggle-on";
-          return state.disabled ? "fa-solid fa-user-check" : "fa-solid fa-user-slash";
-        },
-
-        getHotspotToggleButtonClass(contact) {
-          const state = this.getHotspotState(contact);
-          if (!state) {
-            return "border border-amber-300/40 bg-amber-50 text-amber-700 hover:bg-amber-500 hover:text-white";
-          }
-          if (state.disabled) {
-            return "border border-moss/20 bg-moss/5 text-moss hover:bg-moss hover:text-white";
-          }
-          return "border border-clay/20 bg-clay/5 text-clay hover:bg-clay hover:text-white";
         },
 
         async loadMikrotikProfiles() {
@@ -740,18 +688,17 @@
             name: this.forms.contact.name,
             phoneNumber: this.forms.contact.phoneNumber,
             linkedApHost: this.forms.contact.linkedApHost,
-            mikrotikUsername: this.forms.contact.mikrotikUsername,
           };
           await this.api("/api/contacts", {
             method: "POST",
             body: JSON.stringify(payload),
           });
-          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "", mikrotikUsername: "" };
+          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "" };
           await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
         },
 
         openContactCreateModal() {
-          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "", mikrotikUsername: "" };
+          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "" };
           this.contactCreateModal.open = true;
           document.body.classList.add("overflow-hidden");
         },
@@ -759,7 +706,7 @@
         closeContactCreateModal() {
           this.contactCreateModal.open = false;
           this.contactCreateModal.loading = false;
-          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "", mikrotikUsername: "" };
+          this.forms.contact = { id: "", name: "", phoneNumber: "", linkedApHost: "" };
           document.body.classList.remove("overflow-hidden");
         },
 
@@ -781,7 +728,6 @@
             name: contact.name || "",
             phoneNumber: contact.phoneNumber || "",
             linkedApHost: contact.linkedApHost || "",
-            mikrotikUsername: contact.mikrotikUsername || "",
           };
           this.contactEditModal.open = true;
           document.body.classList.add("overflow-hidden");
@@ -790,7 +736,7 @@
         closeContactEditModal() {
           this.contactEditModal.open = false;
           this.contactEditModal.loading = false;
-          this.forms.contactEdit = { id: "", name: "", phoneNumber: "", linkedApHost: "", mikrotikUsername: "" };
+          this.forms.contactEdit = { id: "", name: "", phoneNumber: "", linkedApHost: "" };
           document.body.classList.remove("overflow-hidden");
         },
 
@@ -804,7 +750,6 @@
                 name: this.forms.contactEdit.name,
                 phoneNumber: this.forms.contactEdit.phoneNumber,
                 linkedApHost: this.forms.contactEdit.linkedApHost,
-                mikrotikUsername: this.forms.contactEdit.mikrotikUsername,
               }),
             });
             this.notify("Contact diperbarui.");
@@ -887,60 +832,6 @@
             this.notify("Status pembayaran diperbarui.");
           }
           await Promise.all([this.loadContacts(), this.loadStatus()]);
-        },
-
-        async toggleHotspotState(contact) {
-          if (!contact?.id) return;
-          const result = await this.api(`/api/contacts/${contact.id}/hotspot/state`, {
-            method: "POST",
-            body: JSON.stringify({
-              action: "toggle",
-              username: contact.mikrotikUsername,
-            }),
-          });
-
-          const normalizedUsername = String(result.username || contact.mikrotikUsername || "")
-            .trim()
-            .toLowerCase();
-          if (normalizedUsername) {
-            const prev = this.hotspotUsersByName[normalizedUsername] || {};
-            const nextDisabled = result.action === "disable";
-            this.hotspotUsersByName = {
-              ...this.hotspotUsersByName,
-              [normalizedUsername]: {
-                ...prev,
-                disabled: nextDisabled,
-              },
-            };
-            this.hotspotPendingOverrides = {
-              ...this.hotspotPendingOverrides,
-              [normalizedUsername]: {
-                disabled: nextDisabled,
-                profile: prev.profile || "",
-                expiresAt: Date.now() + 8000,
-              },
-            };
-            this.hotspotStateVersion += 1;
-          }
-
-          if (result.action === "disable") {
-            const killed = Number(result.activeKilled || 0);
-            if (result.isDynamicUser) {
-              this.notify(`User ${result.username} bertipe dynamic. Tidak bisa set disable permanen, sesi aktif diputus: ${killed}.`);
-            } else {
-              this.notify(`Hotspot ${result.username} berhasil di-disable. Sesi aktif diputus: ${killed}.`);
-            }
-          } else {
-            if (result.isDynamicUser) {
-              this.notify(`User ${result.username} bertipe dynamic. Tidak ada flag disable yang bisa di-enable.`);
-            } else {
-              this.notify(`Hotspot ${result.username} berhasil di-enable.`);
-            }
-          }
-          await Promise.all([this.loadContacts(), this.loadLogs()]);
-          setTimeout(() => {
-            this.loadHotspotUsers().catch(() => {});
-          }, 1200);
         },
 
         removeContact(contact) {
