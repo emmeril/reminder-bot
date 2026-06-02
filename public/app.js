@@ -360,8 +360,9 @@
 
         getHotspotUserOptionLabel(user) {
           const profile = user?.profile ? ` - ${user.profile}` : "";
+          const source = user?.source === "active" ? " - aktif" : "";
           const disabled = user?.disabled ? " (disabled)" : "";
-          return `${user?.username || "-"}${profile}${disabled}`;
+          return `${user?.username || "-"}${profile}${source}${disabled}`;
         },
 
         hasHotspotUser(username) {

@@ -515,17 +515,56 @@ class MikrotikService {
 
   async getHotspotUsers() {
     return this.withConnection(async (conn) => {
-      const users = await conn.menu("/ip/hotspot/user").print();
-      return (users || [])
-        .map((user) => ({
+      const [users, activeSessions] = await Promise.all([
+        conn.menu("/ip/hotspot/user").print(),
+        conn.menu("/ip/hotspot/active").print(),
+      ]);
+
+      const byUsername = new Map();
+      for (const user of users || []) {
+        const username = sanitizeInput(user.name || user.user || "");
+        if (!username) continue;
+        byUsername.set(username.toLowerCase(), {
           id: user[".id"] || user.id || user.numbers || "",
-          username: user.name || "",
+          username,
           profile: user.profile || "",
           comment: user.comment || "",
           disabled: String(user.disabled || "false").toLowerCase() === "true",
           email: user.email || "",
-        }))
-        .filter((user) => user.username)
+          active: false,
+          source: "user",
+        });
+      }
+
+      for (const session of activeSessions || []) {
+        const username = sanitizeInput(session.user || session.name || "");
+        if (!username) continue;
+        const key = username.toLowerCase();
+        const existing = byUsername.get(key);
+        if (existing) {
+          existing.active = true;
+          existing.address = session.address || session["mac-address"] || "";
+          existing.uptime = session.uptime || "";
+          existing.server = session.server || "";
+          continue;
+        }
+
+        byUsername.set(key, {
+          id: session[".id"] || session.id || session.numbers || "",
+          username,
+          profile: "",
+          comment: session.comment || "",
+          disabled: false,
+          email: "",
+          active: true,
+          address: session.address || session["mac-address"] || "",
+          uptime: session.uptime || "",
+          server: session.server || "",
+          source: "active",
+        });
+      }
+
+      return Array.from(byUsername.values())
         .sort((a, b) => a.username.localeCompare(b.username, "id-ID"));
     });
   }
