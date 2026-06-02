@@ -2,6 +2,7 @@
       return {
         loading: {
           status: false,
+          mikrotikBackup: false,
         },
         toast: {
           show: false,
@@ -1244,6 +1245,33 @@
           this.forms.broadcast = { title: "", templateName: "", message: "" };
           this.notify(`Broadcast terkirim: ${successCount} berhasil, ${failedCount} gagal.`);
           await this.loadLogs();
+        },
+
+        async sendMikrotikBackupNow() {
+          if (this.loading.mikrotikBackup) return;
+          this.loading.mikrotikBackup = true;
+          try {
+            const response = await this.api("/api/mikrotik/backup/send", {
+              method: "POST",
+              body: JSON.stringify({}),
+            });
+            const results = Array.isArray(response.results) ? response.results : [];
+            const successCount = results.filter((item) => item.status === "sent").length;
+            const failedCount = results.filter((item) => item.status === "failed").length;
+            const fileName = response.fileName ? ` (${response.fileName})` : "";
+
+            if (successCount > 0 && failedCount === 0) {
+              this.notify(`Backup MikroTik terkirim ke ${successCount} admin${fileName}.`);
+            } else if (successCount > 0) {
+              this.notify(`Backup MikroTik terkirim ${successCount}, gagal ${failedCount}${fileName}.`);
+            } else {
+              this.notify(`Backup MikroTik dibuat, tapi gagal dikirim ke semua admin${fileName}.`);
+            }
+
+            await Promise.allSettled([this.loadLogs(), this.loadStatus()]);
+          } finally {
+            this.loading.mikrotikBackup = false;
+          }
         },
 
         async saveRecipients() {

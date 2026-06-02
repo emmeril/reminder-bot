@@ -764,8 +764,9 @@
             </div>
             <div class="flex flex-wrap gap-2">
               <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Settings</button>
-              <button type="button" @click="sendMikrotikBackupNow()" class="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-haze">
-                <i class="fa-solid fa-file-export mr-2"></i>Kirim Backup Sekarang
+              <button type="button" @click="sendMikrotikBackupNow()" :disabled="loading.mikrotikBackup" class="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-haze disabled:cursor-not-allowed disabled:opacity-60">
+                <i :class="loading.mikrotikBackup ? 'fa-solid fa-spinner fa-spin mr-2' : 'fa-solid fa-file-export mr-2'"></i>
+                <span x-text="loading.mikrotikBackup ? 'Mengirim Backup...' : 'Kirim Backup Sekarang'"></span>
               </button>
             </div>
           </form>

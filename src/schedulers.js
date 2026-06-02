@@ -120,11 +120,22 @@ class MikrotikBackupScheduler {
   }
 
   isDueNow(settings) {
-    const timeZone = settings.mikrotikBackupTimezone || settings.timezone || "Asia/Jakarta";
+    let timeZone = settings.mikrotikBackupTimezone || settings.timezone || "Asia/Jakarta";
     const configuredTime = sanitizeTimeHHMM(settings.mikrotikBackupTime, DEFAULT_SETTINGS.mikrotikBackupTime);
-    const nowParts = getDateTimePartsInTimezone(new Date(), timeZone);
+    let nowParts;
+
+    try {
+      nowParts = getDateTimePartsInTimezone(new Date(), timeZone);
+    } catch (error) {
+      const fallbackTimeZones = [settings.timezone, "Asia/Jakarta"].filter(Boolean);
+      const fallbackTimeZone = fallbackTimeZones.find((candidate) => candidate !== timeZone) || "Asia/Jakarta";
+      this.activityLog.push("warn", "mikrotik-backup", `Timezone backup MikroTik tidak valid (${timeZone}), fallback ke ${fallbackTimeZone}`);
+      timeZone = fallbackTimeZone;
+      nowParts = getDateTimePartsInTimezone(new Date(), timeZone);
+    }
+
     return {
-      due: nowParts.timeKey === configuredTime,
+      due: nowParts.timeKey >= configuredTime,
       nowParts,
       configuredTime,
       timeZone,
@@ -139,17 +150,17 @@ class MikrotikBackupScheduler {
       return;
     }
 
-    const recipients = this.dataManager.getAdminRecipients();
-    if (recipients.length === 0) {
-      this.activityLog.push("warn", "mikrotik-backup", "Backup MikroTik dilewati karena admin recipients kosong");
-      return;
-    }
-
     const scheduleCheck = this.isDueNow(settings);
     if (!scheduleCheck.due) return;
 
     if (settings.mikrotikBackupLastRunDate === scheduleCheck.nowParts.dateKey) {
       this.activityLog.push("info", "mikrotik-backup", "Backup MikroTik sudah dikirim untuk hari ini");
+      return;
+    }
+
+    const recipients = this.dataManager.getAdminRecipients();
+    if (recipients.length === 0) {
+      this.activityLog.push("warn", "mikrotik-backup", "Backup MikroTik dilewati karena admin recipients kosong");
       return;
     }
 
