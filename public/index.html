@@ -302,11 +302,8 @@
             </button>
           </div>
           <div class="mb-4 flex items-center justify-start gap-2">
-            <button type="button" @click="openMikrotikCreateModal()" class="min-w-0 flex-1 inline-flex items-center justify-center rounded-full bg-moss px-3 py-3 text-xs font-semibold text-white transition hover:bg-ink sm:flex-none sm:px-5 sm:text-sm">
-              <i class="fa-solid fa-user-plus mr-2"></i>Registrasi Pelanggan
-            </button>
-            <button type="button" @click="openContactCreateModal()" class="min-w-0 flex-1 inline-flex items-center justify-center rounded-full bg-ink px-3 py-3 text-xs font-semibold text-white transition hover:bg-moss sm:flex-none sm:px-5 sm:text-sm">
-              <i class="fa-solid fa-plus mr-2"></i>Tambah Contact
+            <button type="button" @click="openContactCreateModal()" class="min-w-0 flex-1 inline-flex items-center justify-center rounded-full bg-moss px-3 py-3 text-xs font-semibold text-white transition hover:bg-ink sm:flex-none sm:px-5 sm:text-sm">
+              <i class="fa-solid fa-user-plus mr-2"></i>Tambah Pelanggan
             </button>
           </div>
           <div class="filter-inline mt-5">
@@ -908,7 +905,7 @@
         class="w-full max-w-3xl rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
       >
         <div class="mb-4 flex items-center justify-between">
-          <h3 class="text-lg font-semibold text-ink">Tambah Contact</h3>
+          <h3 class="text-lg font-semibold text-ink">Tambah Pelanggan</h3>
           <button type="button" @click="closeContactCreateModal()" class="rounded-full border border-ink/10 px-3 py-1 text-sm font-semibold text-ink hover:bg-haze">
             <i class="fa-solid fa-xmark"></i>
           </button>
@@ -935,16 +932,20 @@
             <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div class="text-sm font-semibold text-ink">Options Hotspot</div>
-                <div class="text-xs text-ink/55">Kaitkan kontak dengan user hotspot MikroTik untuk reaktivasi otomatis.</div>
+                <div class="text-xs text-ink/55">Buat akun hotspot baru atau kaitkan ke user MikroTik yang sudah ada.</div>
               </div>
               <button type="button" @click="loadHotspotOptions('contact')" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white">
                 <i class="fa-solid fa-cloud-arrow-down mr-1.5"></i>Load
               </button>
             </div>
+            <label class="mb-4 flex items-center gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink">
+              <input type="checkbox" x-model="forms.contact.createHotspotAccount" class="h-4 w-4 accent-moss">
+              Buat akun hotspot MikroTik baru
+            </label>
             <div class="grid gap-4 md:grid-cols-2">
               <label class="block text-sm text-ink/60">
-                User hotspot
-                <select x-model="forms.contact.mikrotikUsername" @change="syncHotspotUserToForm('contact')" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss">
+                <span x-text="forms.contact.createHotspotAccount ? 'Username hotspot' : 'User hotspot'"></span>
+                <select x-show="!forms.contact.createHotspotAccount" x-model="forms.contact.mikrotikUsername" @change="syncHotspotUserToForm('contact')" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss">
                   <option value="">-- Pilih user hotspot --</option>
                   <template x-if="forms.contact.mikrotikUsername && !hasHotspotUser(forms.contact.mikrotikUsername)">
                     <option :value="forms.contact.mikrotikUsername" x-text="forms.contact.mikrotikUsername"></option>
@@ -953,10 +954,11 @@
                     <option :value="user.username" x-text="getHotspotUserOptionLabel(user)"></option>
                   </template>
                 </select>
+                <input x-show="forms.contact.createHotspotAccount" :value="forms.contact.name ? forms.contact.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) : ''" class="mt-2 w-full rounded-2xl border border-ink/10 bg-haze px-4 py-3 text-ink/60 outline-none" readonly>
               </label>
               <label class="block text-sm text-ink/60">
                 Profile hotspot
-                <select x-model="forms.contact.mikrotikProfile" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss">
+                <select x-model="forms.contact.mikrotikProfile" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.contact.createHotspotAccount">
                   <option value="">-- Pilih profile --</option>
                   <template x-if="forms.contact.mikrotikProfile && !hasMikrotikProfile(forms.contact.mikrotikProfile)">
                     <option :value="forms.contact.mikrotikProfile" x-text="forms.contact.mikrotikProfile"></option>
@@ -966,7 +968,7 @@
                   </template>
                 </select>
               </label>
-              <label class="block text-sm text-ink/60">
+              <label x-show="!forms.contact.createHotspotAccount" class="block text-sm text-ink/60">
                 Password hotspot
                 <input x-model="forms.contact.mikrotikPassword" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="Kosong = 5 digit akhir WA">
               </label>
@@ -978,6 +980,10 @@
                 </div>
               </label>
             </div>
+            <label x-show="forms.contact.createHotspotAccount" class="mt-4 flex items-center gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink">
+              <input type="checkbox" x-model="forms.contact.sendCredentials" class="h-4 w-4 accent-moss">
+              Kirim akun WA
+            </label>
             <label class="mt-4 flex items-center gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink">
               <input type="checkbox" x-model="forms.contact.hotspotReactivationEnabled" class="h-4 w-4 accent-moss">
               Aktifkan reaktivasi otomatis bulanan
@@ -986,69 +992,8 @@
           <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" @click="closeContactCreateModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="contactCreateModal.loading">Batal</button>
             <button type="submit" class="rounded-2xl bg-moss px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20 transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60" :disabled="contactCreateModal.loading">
-              <span x-show="!contactCreateModal.loading">Simpan Contact</span>
+              <span x-show="!contactCreateModal.loading" x-text="forms.contact.createHotspotAccount ? 'Registrasi Pelanggan' : 'Simpan Contact'"></span>
               <span x-show="contactCreateModal.loading" class="inline-flex items-center gap-2">
-                <i class="fa-solid fa-circle-notch fa-spin"></i>Menyimpan...
-              </span>
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <div
-      x-cloak
-      x-show="mikrotikCreateModal.open"
-      x-transition.opacity
-      @keydown.escape.window="closeMikrotikCreateModal()"
-      @click.self="closeMikrotikCreateModal()"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
-    >
-      <div
-        x-show="mikrotikCreateModal.open"
-        x-transition.scale.origin.center
-        class="w-full max-w-3xl rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
-      >
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="text-lg font-semibold text-ink">Registrasi Pelanggan</h3>
-          <button type="button" @click="closeMikrotikCreateModal()" class="rounded-full border border-ink/10 px-3 py-1 text-sm font-semibold text-ink hover:bg-haze">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-        <form class="space-y-4" @submit.prevent="submitMikrotikCreate()">
-          <div class="grid gap-4 md:grid-cols-2">
-            <label class="block text-sm text-ink/60">
-              Nama pelanggan
-              <input x-model="forms.mikrotikCustomer.name" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" required>
-            </label>
-            <label class="block text-sm text-ink/60">
-              Nomor WhatsApp
-              <input x-model="forms.mikrotikCustomer.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="628xxx" required>
-            </label>
-          </div>
-          <div class="grid gap-4 md:grid-cols-[minmax(0,1fr),auto] md:items-end">
-            <label class="block text-sm text-ink/60">
-              Profile hotspot
-              <input x-model="forms.mikrotikCustomer.profile" list="mikrotik-profiles" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="Pilih/ketik profile" required>
-              <datalist id="mikrotik-profiles">
-                <template x-for="profile in mikrotikProfiles" :key="'modal-profile-' + profile.name">
-                  <option :value="profile.name" x-text="profile.rateLimit ? profile.name + ' - ' + profile.rateLimit : profile.name"></option>
-                </template>
-              </datalist>
-            </label>
-            <button type="button" @click="loadMikrotikProfiles()" class="rounded-full border border-moss/20 bg-white px-4 py-3 text-sm font-semibold text-moss transition hover:bg-moss hover:text-white">
-              <i class="fa-solid fa-cloud-arrow-down mr-2"></i>Load Profile
-            </button>
-          </div>
-          <label class="flex items-center gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink">
-            <input type="checkbox" x-model="forms.mikrotikCustomer.sendCredentials" class="h-4 w-4 accent-moss">
-            Kirim akun WA
-          </label>
-          <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <button type="button" @click="closeMikrotikCreateModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="mikrotikCreateModal.loading">Batal</button>
-            <button type="submit" class="rounded-2xl bg-moss px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20 transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60" :disabled="mikrotikCreateModal.loading">
-              <span x-show="!mikrotikCreateModal.loading">Registrasi</span>
-              <span x-show="mikrotikCreateModal.loading" class="inline-flex items-center gap-2">
                 <i class="fa-solid fa-circle-notch fa-spin"></i>Menyimpan...
               </span>
             </button>

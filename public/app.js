@@ -28,10 +28,6 @@
           open: false,
           loading: false,
         },
-        mikrotikCreateModal: {
-          open: false,
-          loading: false,
-        },
         reminderEditModal: {
           open: false,
           loading: false,
@@ -88,11 +84,12 @@
             mikrotikUsername: "",
             mikrotikProfile: "",
             mikrotikPassword: "",
+            createHotspotAccount: false,
+            sendCredentials: true,
             hotspotReactivationEnabled: false,
             hotspotReactivationDate: "",
             hotspotReactivationTime: "",
           },
-          mikrotikCustomer: { name: "", phoneNumber: "", profile: "", sendCredentials: true },
           reminder: { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
           contactEdit: {
             id: "",
@@ -335,6 +332,8 @@
             mikrotikUsername: "",
             mikrotikProfile: "",
             mikrotikPassword: "",
+            createHotspotAccount: false,
+            sendCredentials: true,
             hotspotReactivationEnabled: false,
             hotspotReactivationDate: "",
             hotspotReactivationTime: "",
@@ -791,8 +790,8 @@
           this.clampPage("logs", this.logs.length);
         },
 
-        async createContact() {
-          const payload = {
+        getContactCreatePayload() {
+          return {
             name: this.forms.contact.name,
             phoneNumber: this.forms.contact.phoneNumber,
             linkedApHost: this.forms.contact.linkedApHost,
@@ -802,6 +801,19 @@
             hotspotReactivationEnabled: this.forms.contact.hotspotReactivationEnabled,
             hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contact),
           };
+        },
+
+        getMikrotikCustomerPayload() {
+          return {
+            name: this.forms.contact.name,
+            phoneNumber: this.forms.contact.phoneNumber,
+            profile: this.forms.contact.mikrotikProfile,
+            sendCredentials: this.forms.contact.sendCredentials,
+          };
+        },
+
+        async createContact() {
+          const payload = this.getContactCreatePayload();
           await this.api("/api/contacts", {
             method: "POST",
             body: JSON.stringify(payload),
@@ -827,8 +839,24 @@
           if (this.contactCreateModal.loading) return;
           this.contactCreateModal.loading = true;
           try {
-            await this.createContact();
-            this.notify("Contact ditambahkan.");
+            if (this.forms.contact.createHotspotAccount) {
+              const result = await this.registerMikrotikCustomer(this.getMikrotikCustomerPayload(), { reload: false, resetForm: false });
+              if (result?.contact?.id && (this.forms.contact.linkedApHost || this.forms.contact.hotspotReactivationEnabled)) {
+                await this.api(`/api/contacts/${result.contact.id}`, {
+                  method: "PUT",
+                  body: JSON.stringify({
+                    ...result.contact,
+                    linkedApHost: this.forms.contact.linkedApHost,
+                    hotspotReactivationEnabled: this.forms.contact.hotspotReactivationEnabled,
+                    hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contact),
+                  }),
+                });
+              }
+              await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus(), this.loadLogs()]);
+            } else {
+              await this.createContact();
+              this.notify("Contact ditambahkan.");
+            }
             this.closeContactCreateModal();
           } finally {
             this.contactCreateModal.loading = false;
@@ -884,12 +912,14 @@
           }
         },
 
-        async registerMikrotikCustomer() {
+        async registerMikrotikCustomer(payload = null, options = {}) {
           const result = await this.api("/api/mikrotik/customers", {
             method: "POST",
-            body: JSON.stringify(this.forms.mikrotikCustomer),
+            body: JSON.stringify(payload || this.getMikrotikCustomerPayload()),
           });
-          this.forms.mikrotikCustomer = { name: "", phoneNumber: "", profile: "", sendCredentials: true };
+          if (options.resetForm !== false) {
+            this.forms.contact = this.blankContactForm();
+          }
 
           if (result.notification?.sent) {
             this.notify(`Pelanggan dibuat: ${result.username}. Akun terkirim ke WhatsApp.`);
@@ -899,31 +929,10 @@
             this.notify(`Pelanggan dibuat: ${result.username}.`);
           }
 
-          await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
-        },
-
-        openMikrotikCreateModal() {
-          this.forms.mikrotikCustomer = { name: "", phoneNumber: "", profile: "", sendCredentials: true };
-          this.mikrotikCreateModal.open = true;
-          document.body.classList.add("overflow-hidden");
-        },
-
-        closeMikrotikCreateModal() {
-          this.mikrotikCreateModal.open = false;
-          this.mikrotikCreateModal.loading = false;
-          this.forms.mikrotikCustomer = { name: "", phoneNumber: "", profile: "", sendCredentials: true };
-          document.body.classList.remove("overflow-hidden");
-        },
-
-        async submitMikrotikCreate() {
-          if (this.mikrotikCreateModal.loading) return;
-          this.mikrotikCreateModal.loading = true;
-          try {
-            await this.registerMikrotikCustomer();
-            this.closeMikrotikCreateModal();
-          } finally {
-            this.mikrotikCreateModal.loading = false;
+          if (options.reload !== false) {
+            await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
           }
+          return result;
         },
 
         async togglePayment(id, status, paymentType = "") {
