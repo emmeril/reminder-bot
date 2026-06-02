@@ -220,7 +220,6 @@ class HotspotReactivationScheduler {
       password,
       profile: contact.mikrotikProfile,
       phoneNumber: contact.phoneNumber,
-      comment: `Reaktivasi otomatis untuk ${contact.name || contact.phoneNumber || contact.id}`,
     });
 
     const updatedContact = await this.dataManager.markHotspotReactivated(contact.id, result, options);

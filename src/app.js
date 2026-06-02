@@ -632,12 +632,11 @@ class MikrotikService {
     return this.withConnection((conn) => this.removeHotspotUsersByName(conn, username));
   }
 
-  async reactivateHotspotUser({ username, password, profile, phoneNumber, comment }) {
+  async reactivateHotspotUser({ username, password, profile, phoneNumber }) {
     const hotspotUsername = sanitizeInput(username);
     const hotspotPassword = sanitizeInput(password);
     const profileName = sanitizeInput(profile);
     const normalizedPhone = normalizePhoneNumber(phoneNumber);
-    const hotspotComment = sanitizeInput(comment);
 
     if (!hotspotUsername) throw new Error("Username hotspot wajib diisi.");
     if (!hotspotPassword) throw new Error("Password hotspot wajib diisi.");
@@ -659,10 +658,6 @@ class MikrotikService {
 
       if (normalizedPhone) {
         addPayload.email = buildHotspotEmailFromPhone(normalizedPhone);
-      }
-
-      if (hotspotComment) {
-        addPayload.comment = hotspotComment;
       }
 
       const addResult = await conn.menu("/ip/hotspot/user").add(addPayload);
