@@ -44,8 +44,11 @@
         <option :value="user.username" x-text="user.profile ? user.username + ' - ' + user.profile : user.username"></option>
       </template>
     </datalist>
-    <div class="grid gap-4 xl:grid-cols-[280px,minmax(0,1fr)]">
-      <aside class="hidden xl:flex xl:flex-col xl:gap-4">
+    <div
+      class="grid gap-4"
+      :class="sidebarHidden ? 'xl:grid-cols-1' : 'xl:grid-cols-[280px,minmax(0,1fr)]'"
+    >
+      <aside x-show="!sidebarHidden" x-transition.opacity class="hidden xl:flex xl:flex-col xl:gap-4">
         <section class="panel-shell rounded-[1.4rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="flex items-center gap-3">
             <div class="hero-mark !h-12 !w-12 !rounded-[1rem]">
@@ -114,6 +117,16 @@
               </p>
             </div>
             <div class="hidden lg:flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                @click="toggleSidebar()"
+                class="hidden rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze xl:inline-flex"
+                :aria-label="sidebarHidden ? 'Tampilkan sidebar' : 'Sembunyikan sidebar'"
+                :title="sidebarHidden ? 'Tampilkan sidebar' : 'Sembunyikan sidebar'"
+              >
+                <i :class="sidebarHidden ? 'fa-solid fa-table-columns mr-2' : 'fa-solid fa-left-long mr-2'"></i>
+                <span x-text="sidebarHidden ? 'Tampilkan Sidebar' : 'Hide Sidebar'"></span>
+              </button>
               <a href="/qr" target="_blank" rel="noreferrer" class="action-chip rounded-2xl bg-clay px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
                 <i class="fa-brands fa-whatsapp mr-2"></i>Hubungkan WA
               </a>

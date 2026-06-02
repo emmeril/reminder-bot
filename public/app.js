@@ -37,6 +37,7 @@
           loading: false,
         },
         activeMenu: "overview",
+        sidebarHidden: false,
         navMenus: [
           { key: "overview", label: "Overview", icon: "fa-solid fa-chart-pie" },
           { key: "notifications", label: "Notifikasi", icon: "fa-solid fa-paper-plane" },
@@ -127,9 +128,13 @@
           if (isValidSavedMenu) {
             this.activeMenu = savedMenu;
           }
+          this.sidebarHidden = localStorage.getItem("dashboardSidebarHidden") === "true";
 
           this.$watch("activeMenu", (value) => {
             localStorage.setItem("dashboardActiveMenu", value);
+          });
+          this.$watch("sidebarHidden", (value) => {
+            localStorage.setItem("dashboardSidebarHidden", value ? "true" : "false");
           });
 
           await this.loadStatus();
@@ -161,6 +166,10 @@
               this.loadLogs({ silent: true });
             }
           }, logsInterval));
+        },
+
+        toggleSidebar() {
+          this.sidebarHidden = !this.sidebarHidden;
         },
 
         async loadNonCriticalData() {
