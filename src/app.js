@@ -1873,8 +1873,27 @@ class NotificationBot {
 
   async sendMessage(phoneNumber, message) {
     const result = await this.waManager.sendMessage(phoneNumber, message);
-    if (result.status === "success") return;
-    throw new Error(result.message);
+    if (result.status === "success") {
+      return { ...result, provider: "whatsapp-web" };
+    }
+
+    if (!FonnteManager.isConfigured()) {
+      throw new Error(result.message);
+    }
+
+    this.activityLog.push("warn", "notification", "WhatsApp Web gagal, mencoba fallback Fonnte", {
+      phoneNumber: normalizePhoneNumber(phoneNumber),
+      error: result.message,
+      waState: result.waState || this.waManager.state,
+    });
+
+    try {
+      const backupResult = await FonnteManager.sendMessage(phoneNumber, message);
+      this.activityLog.push("info", "notification", `Fallback Fonnte berhasil untuk ${normalizePhoneNumber(phoneNumber)}`);
+      return backupResult;
+    } catch (backupError) {
+      throw new Error(`WhatsApp Web gagal: ${result.message}; Fonnte gagal: ${backupError.message}`);
+    }
   }
 
   async sendFile(phoneNumber, filePath, caption = "") {
