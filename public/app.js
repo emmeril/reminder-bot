@@ -111,6 +111,7 @@
             companyName: "",
             supportSignature: "",
             apDownMessageTemplate: "",
+            hotspotReactivationMessageTemplate: "",
             paymentMessageTemplateArrearsOnly: "",
             paymentMessageTemplateCurrentOnly: "",
             paymentMessageTemplateFullPaid: "",
@@ -699,6 +700,7 @@
                 companyName: data.settings.companyName || "",
                 supportSignature: data.settings.supportSignature || "",
                 apDownMessageTemplate: data.settings.apDownMessageTemplate || "",
+                hotspotReactivationMessageTemplate: data.settings.hotspotReactivationMessageTemplate || "",
                 paymentMessageTemplateArrearsOnly: data.settings.paymentMessageTemplateArrearsOnly || "",
                 paymentMessageTemplateCurrentOnly: data.settings.paymentMessageTemplateCurrentOnly || "",
                 paymentMessageTemplateFullPaid: data.settings.paymentMessageTemplateFullPaid || "",
@@ -983,9 +985,11 @@
             body: JSON.stringify({}),
           });
           if (result.contact.hotspotReactivationEnabled && result.contact.hotspotReactivationAt) {
-            this.notify(`Hotspot ${result.username} direaktivasi. Jadwal berikutnya ${this.formatDateTime(result.contact.hotspotReactivationAt)}.`);
+            const notificationText = result.notification?.sent ? " Akun terkirim ke WhatsApp." : (result.notification?.error ? ` WA gagal: ${result.notification.error}` : "");
+            this.notify(`Hotspot ${result.username} direaktivasi. Jadwal berikutnya ${this.formatDateTime(result.contact.hotspotReactivationAt)}.${notificationText}`);
           } else {
-            this.notify(`Hotspot ${result.username} direaktivasi.`);
+            const notificationText = result.notification?.sent ? " Akun terkirim ke WhatsApp." : (result.notification?.error ? ` WA gagal: ${result.notification.error}` : "");
+            this.notify(`Hotspot ${result.username} direaktivasi.${notificationText}`);
           }
           await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
         },

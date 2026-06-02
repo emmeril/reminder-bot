@@ -1820,6 +1820,9 @@ class DataManager {
       apDownMessageTemplate: payload.apDownMessageTemplate !== undefined
         ? sanitizeMultilineText(payload.apDownMessageTemplate) || current.apDownMessageTemplate
         : current.apDownMessageTemplate,
+      hotspotReactivationMessageTemplate: payload.hotspotReactivationMessageTemplate !== undefined
+        ? sanitizeMultilineText(payload.hotspotReactivationMessageTemplate) || current.hotspotReactivationMessageTemplate
+        : current.hotspotReactivationMessageTemplate,
       paymentMessageTemplateArrearsOnly: payload.paymentMessageTemplateArrearsOnly !== undefined
         ? sanitizeMultilineText(payload.paymentMessageTemplateArrearsOnly) || current.paymentMessageTemplateArrearsOnly
         : current.paymentMessageTemplateArrearsOnly,
@@ -2861,7 +2864,8 @@ async function bootstrap() {
   const hotspotReactivationScheduler = new HotspotReactivationScheduler(
     mikrotikService,
     dataManager,
-    activityLog
+    activityLog,
+    notificationBot
   );
 
   await dataManager.loadAll();

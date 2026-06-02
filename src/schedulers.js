@@ -196,10 +196,11 @@ class MikrotikBackupScheduler {
 }
 
 class HotspotReactivationScheduler {
-  constructor(mikrotikService, dataManager, activityLog) {
+  constructor(mikrotikService, dataManager, activityLog, notificationBot = null) {
     this.mikrotikService = mikrotikService;
     this.dataManager = dataManager;
     this.activityLog = activityLog;
+    this.notificationBot = notificationBot;
     this.isProcessing = false;
   }
 
@@ -207,6 +208,57 @@ class HotspotReactivationScheduler {
     const savedPassword = sanitizeInput(contact.mikrotikPassword || "");
     if (savedPassword) return savedPassword;
     return String(contact.phoneNumber || "").slice(-5);
+  }
+
+  renderReactivationMessage(template, context) {
+    return String(template || "")
+      .replace(/{{\s*name\s*}}/gi, context.name || "")
+      .replace(/{{\s*phoneNumber\s*}}/gi, context.phoneNumber || "")
+      .replace(/{{\s*username\s*}}/gi, context.username || "")
+      .replace(/{{\s*password\s*}}/gi, context.password || "")
+      .replace(/{{\s*profile\s*}}/gi, context.profile || "")
+      .replace(/{{\s*reactivatedAt\s*}}/gi, context.reactivatedAt || "")
+      .replace(/{{\s*nextReactivationAt\s*}}/gi, context.nextReactivationAt || "")
+      .replace(/{{\s*supportSignature\s*}}/gi, context.supportSignature || "CS Emmeril Hotspot")
+      .replace(/{{\s*companyName\s*}}/gi, context.companyName || "");
+  }
+
+  async sendReactivationNotification(contact, reactivationResult, updatedContact) {
+    if (!this.notificationBot) {
+      return { sent: false, error: "Transport notifikasi belum tersedia." };
+    }
+
+    const settings = this.dataManager.getSettings();
+    const template = sanitizeInput(settings.hotspotReactivationMessageTemplate)
+      ? settings.hotspotReactivationMessageTemplate
+      : DEFAULT_SETTINGS.hotspotReactivationMessageTemplate;
+    const message = this.renderReactivationMessage(template, {
+      name: updatedContact.name || contact.name,
+      phoneNumber: updatedContact.phoneNumber || contact.phoneNumber,
+      username: reactivationResult.username,
+      password: reactivationResult.password,
+      profile: reactivationResult.profile,
+      reactivatedAt: formatDateTime(updatedContact.hotspotLastReactivatedAt || new Date()),
+      nextReactivationAt: updatedContact.hotspotReactivationAt ? formatDateTime(updatedContact.hotspotReactivationAt) : "",
+      supportSignature: settings.supportSignature || "CS Emmeril Hotspot",
+      companyName: settings.companyName || "",
+    });
+
+    try {
+      await this.notificationBot.sendMessage(updatedContact.phoneNumber || contact.phoneNumber, message);
+      this.activityLog.push("info", "hotspot-reactivation", `Notifikasi akun hotspot terkirim ke ${updatedContact.phoneNumber || contact.phoneNumber}`, {
+        contactId: updatedContact.id || contact.id,
+        username: reactivationResult.username,
+      });
+      return { sent: true };
+    } catch (error) {
+      this.activityLog.push("error", "hotspot-reactivation", `Gagal kirim notifikasi akun hotspot ke ${updatedContact.phoneNumber || contact.phoneNumber}`, {
+        contactId: updatedContact.id || contact.id,
+        username: reactivationResult.username,
+        error: error.message,
+      });
+      return { sent: false, error: error.message };
+    }
   }
 
   async reactivateContact(contact, options = {}) {
@@ -232,8 +284,11 @@ class HotspotReactivationScheduler {
       nextSchedule: updatedContact.hotspotReactivationAt,
     });
 
+    const notification = await this.sendReactivationNotification(contact, result, updatedContact);
+
     return {
       contact: updatedContact,
+      notification,
       ...result,
     };
   }
