@@ -108,7 +108,7 @@
 
       <div class="min-w-0 space-y-4">
         <header class="panel-shell rounded-[1.4rem] p-4 shadow-soft backdrop-blur-xl sm:p-5">
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div class="min-w-0">
               <div class="section-caption">Dashboard</div>
               <h1 class="mt-2 text-2xl font-semibold leading-tight tracking-tight text-ink sm:text-3xl">__DASHBOARD_TITLE__</h1>
@@ -116,27 +116,27 @@
                 Panel operasional untuk monitoring WhatsApp, reminder, kontak, template, dan log aktivitas.
               </p>
             </div>
-            <div class="hidden lg:flex flex-wrap justify-end gap-2">
+            <div class="hidden flex-none items-center justify-end gap-2 lg:flex lg:flex-nowrap">
               <button
                 type="button"
                 @click="toggleSidebar()"
-                class="hidden rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze xl:inline-flex"
+                class="hidden shrink-0 whitespace-nowrap rounded-2xl border border-ink/10 bg-white px-3 py-2.5 text-sm font-semibold text-ink transition hover:bg-haze xl:inline-flex"
                 :aria-label="sidebarHidden ? 'Tampilkan sidebar' : 'Sembunyikan sidebar'"
                 :title="sidebarHidden ? 'Tampilkan sidebar' : 'Sembunyikan sidebar'"
               >
                 <i :class="sidebarHidden ? 'fa-solid fa-table-columns mr-2' : 'fa-solid fa-left-long mr-2'"></i>
                 <span x-text="sidebarHidden ? 'Tampilkan Sidebar' : 'Hide Sidebar'"></span>
               </button>
-              <a href="/qr" target="_blank" rel="noreferrer" class="action-chip rounded-2xl bg-clay px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
+              <a href="/qr" target="_blank" rel="noreferrer" class="action-chip shrink-0 whitespace-nowrap rounded-2xl bg-clay px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
                 <i class="fa-brands fa-whatsapp mr-2"></i>Hubungkan WA
               </a>
-              <button @click="refreshAll()" class="action-chip rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze">
+              <button @click="refreshAll()" class="action-chip shrink-0 whitespace-nowrap rounded-2xl border border-ink/10 bg-white px-3 py-2.5 text-sm font-semibold text-ink transition hover:bg-haze">
                 <i class="fa-solid fa-rotate mr-2"></i>Refresh
               </button>
-              <button @click="runScheduler()" class="action-chip rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white transition hover:bg-moss">
+              <button @click="runScheduler()" class="action-chip shrink-0 whitespace-nowrap rounded-2xl bg-ink px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-moss">
                 <i class="fa-solid fa-play mr-2"></i>Run Scheduler
               </button>
-              <button @click="logout()" class="action-chip rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-clay hover:text-white">
+              <button @click="logout()" class="action-chip shrink-0 whitespace-nowrap rounded-2xl border border-ink/10 bg-white px-3 py-2.5 text-sm font-semibold text-ink transition hover:bg-clay hover:text-white">
                 <i class="fa-solid fa-right-from-bracket mr-2"></i>Logout
               </button>
             </div>
