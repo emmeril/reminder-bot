@@ -857,24 +857,19 @@
           if (this.contactCreateModal.loading) return;
           this.contactCreateModal.loading = true;
           try {
-            if (this.forms.contact.createHotspotAccount) {
-              const result = await this.registerMikrotikCustomer(this.getMikrotikCustomerPayload(), { reload: false, resetForm: false });
-              if (result?.contact?.id && (this.forms.contact.linkedApHost || this.forms.contact.hotspotReactivationEnabled)) {
-                await this.api(`/api/contacts/${result.contact.id}`, {
-                  method: "PUT",
-                  body: JSON.stringify({
-                    ...result.contact,
-                    linkedApHost: this.forms.contact.linkedApHost,
-                    hotspotReactivationEnabled: this.forms.contact.hotspotReactivationEnabled,
-                    hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contact),
-                  }),
-                });
-              }
-              await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus(), this.loadLogs()]);
-            } else {
-              await this.createContact();
-              this.notify("Contact ditambahkan.");
+            const result = await this.registerMikrotikCustomer(this.getMikrotikCustomerPayload(), { reload: false, resetForm: false });
+            if (result?.contact?.id && (this.forms.contact.linkedApHost || this.forms.contact.hotspotReactivationEnabled)) {
+              await this.api(`/api/contacts/${result.contact.id}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  ...result.contact,
+                  linkedApHost: this.forms.contact.linkedApHost,
+                  hotspotReactivationEnabled: this.forms.contact.hotspotReactivationEnabled,
+                  hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contact),
+                }),
+              });
             }
+            await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus(), this.loadLogs()]);
             this.closeContactCreateModal();
           } finally {
             this.contactCreateModal.loading = false;
