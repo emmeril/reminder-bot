@@ -2,63 +2,87 @@ const path = require("path");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
 
+function envString(name, fallback = "") {
+  return String(process.env[name] || fallback).trim();
+}
+
+function envNumber(name, fallback) {
+  const value = envString(name);
+  if (!value) return fallback;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function envBoolean(name, fallback = false) {
+  const value = envString(name).toLowerCase();
+  if (!value) return fallback;
+  return ["true", "1", "yes", "on"].includes(value);
+}
+
+function resolveFromRoot(value, fallback) {
+  if (!value) return fallback;
+  return path.isAbsolute(value) ? value : path.join(ROOT_DIR, value);
+}
+
 const CONFIG = {
-  PORT: Number(process.env.PORT || 3025),
+  PORT: envNumber("PORT", 3025),
   DB_PATH: path.join(ROOT_DIR, "database"),
-  DB_STORAGE: process.env.DB_STORAGE
-    ? (path.isAbsolute(process.env.DB_STORAGE) ? process.env.DB_STORAGE : path.join(ROOT_DIR, process.env.DB_STORAGE))
-    : path.join(ROOT_DIR, "database", "reminder_bot.sqlite"),
+  DB_STORAGE: resolveFromRoot(
+    process.env.DB_STORAGE,
+    path.join(ROOT_DIR, "database", "reminder_bot.sqlite")
+  ),
   TEMPLATE_PATH: path.join(ROOT_DIR, "templates"),
   PUBLIC_PATH: path.join(ROOT_DIR, "public"),
   AUTO_SAVE_INTERVAL: 24 * 60 * 60 * 1000,
   BACKUP_INTERVAL: 24 * 60 * 60 * 1000,
-  SENT_HISTORY_RETENTION_MONTHS: Number(process.env.SENT_HISTORY_RETENTION_MONTHS || 3),
+  SENT_HISTORY_RETENTION_MONTHS: envNumber("SENT_HISTORY_RETENTION_MONTHS", 3),
   SENT_HISTORY_CLEANUP_SCHEDULE: process.env.SENT_HISTORY_CLEANUP_SCHEDULE || "15 0 * * *",
   KEEP_ALIVE_INTERVAL: 5 * 60 * 1000,
   MAX_RECONNECT_ATTEMPTS: 10,
   MIN_RECONNECT_INTERVAL: 30_000,
   RECONNECT_DELAY: 5_000,
-  SQLITE_BUSY_TIMEOUT: Number(process.env.SQLITE_BUSY_TIMEOUT || 10_000),
+  SQLITE_BUSY_TIMEOUT: envNumber("SQLITE_BUSY_TIMEOUT", 10_000),
   CRON_SCHEDULE: "*/1 * * * *",
   RESET_PAYMENT_SCHEDULE: "0 0 1 * *",
   MAX_LOCK_WAIT: 10_000,
   LOCK_POLL_INTERVAL: 50,
-  WEB_API_KEY: process.env.WEB_API_KEY || "dev-key-change-in-production",
-  AUTH_USERNAME: process.env.AUTH_USERNAME || "admin",
-  AUTH_PASSWORD: process.env.AUTH_PASSWORD || "admin123",
+  WEB_API_KEY: envString("WEB_API_KEY", "dev-key-change-in-production"),
+  AUTH_USERNAME: envString("AUTH_USERNAME", "admin"),
+  AUTH_PASSWORD: envString("AUTH_PASSWORD", "admin123"),
   SESSION_COOKIE_NAME: "reminder_bot_session",
   SESSION_TTL: 24 * 60 * 60 * 1000,
-  SESSION_SECRET: process.env.SESSION_SECRET || "change-this-session-secret",
+  SESSION_SECRET: envString("SESSION_SECRET", "change-this-session-secret"),
   LOG_LIMIT: 250,
   MIKROTIK_PRIMARY: {
-    host: process.env.IP_MIKROTIK,
-    user: process.env.USER_MIKROTIK,
-    password: process.env.PASSWORD_MIKROTIK,
-    port: Number(process.env.PORT_MIKROTIK || 8728),
-    ftpPort: Number(process.env.PORT_MIKROTIK_FTP || 21),
+    host: envString("IP_MIKROTIK"),
+    user: envString("USER_MIKROTIK"),
+    password: envString("PASSWORD_MIKROTIK"),
+    port: envNumber("PORT_MIKROTIK", 8728),
+    ftpPort: envNumber("PORT_MIKROTIK_FTP", 21),
     timeout: 30_000,
     keepalive: true,
   },
   MIKROTIK_BACKUP: {
-    host: process.env.IP_MIKROTIK_BACKUP,
-    user: process.env.USER_MIKROTIK,
-    password: process.env.PASSWORD_MIKROTIK,
-    port: Number(process.env.PORT_MIKROTIK_BACKUP || process.env.PORT_MIKROTIK || 8728),
-    ftpPort: Number(process.env.PORT_MIKROTIK_BACKUP_FTP || process.env.PORT_MIKROTIK_FTP || 21),
+    host: envString("IP_MIKROTIK_BACKUP"),
+    user: envString("USER_MIKROTIK"),
+    password: envString("PASSWORD_MIKROTIK"),
+    port: envNumber("PORT_MIKROTIK_BACKUP", envNumber("PORT_MIKROTIK", 8728)),
+    ftpPort: envNumber("PORT_MIKROTIK_BACKUP_FTP", envNumber("PORT_MIKROTIK_FTP", 21)),
     timeout: 30_000,
     keepalive: true,
   },
-  FONNTE_TOKEN: String(process.env.FONNTE_TOKEN || "").trim(),
-  FONNTE_API_URL: String(process.env.FONNTE_API_URL || "https://api.fonnte.com/send").trim(),
-  FONNTE_ENABLED: String(process.env.FONNTE_ENABLED || "").trim().toLowerCase() === "true",
-  FONNTE_BACKUP_ENABLED: String(process.env.FONNTE_BACKUP_ENABLED || "").trim().toLowerCase() === "true",
-  WA_MAX_RECONNECT_ATTEMPTS: Number(process.env.WA_MAX_RECONNECT_ATTEMPTS || 3),
-  WA_RECONNECT_DELAY: Number(process.env.WA_RECONNECT_DELAY || 5000),
-  WA_MIN_RECONNECT_INTERVAL: Number(process.env.WA_MIN_RECONNECT_INTERVAL || 30000),
-  WA_KEEP_ALIVE_INTERVAL: Number(process.env.WA_KEEP_ALIVE_INTERVAL || 60000),
-  WA_MAX_QUEUE_PROCESS: Number(process.env.WA_MAX_QUEUE_PROCESS || 5),
-  WA_MESSAGE_DELAY: Number(process.env.WA_MESSAGE_DELAY || 2000),
-  WA_INITIALIZATION_DELAY: Number(process.env.WA_INITIALIZATION_DELAY || 10000),
+  FONNTE_TOKEN: envString("FONNTE_TOKEN"),
+  FONNTE_API_URL: envString("FONNTE_API_URL", "https://api.fonnte.com/send"),
+  FONNTE_ENABLED: envBoolean("FONNTE_ENABLED"),
+  FONNTE_BACKUP_ENABLED: envBoolean("FONNTE_BACKUP_ENABLED"),
+  WA_MAX_RECONNECT_ATTEMPTS: envNumber("WA_MAX_RECONNECT_ATTEMPTS", 3),
+  WA_RECONNECT_DELAY: envNumber("WA_RECONNECT_DELAY", 5000),
+  WA_MIN_RECONNECT_INTERVAL: envNumber("WA_MIN_RECONNECT_INTERVAL", 30000),
+  WA_KEEP_ALIVE_INTERVAL: envNumber("WA_KEEP_ALIVE_INTERVAL", 60000),
+  WA_MAX_QUEUE_PROCESS: envNumber("WA_MAX_QUEUE_PROCESS", 5),
+  WA_MESSAGE_DELAY: envNumber("WA_MESSAGE_DELAY", 2000),
+  WA_INITIALIZATION_DELAY: envNumber("WA_INITIALIZATION_DELAY", 10000),
 };
 
 const MONTH_NAMES = [

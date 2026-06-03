@@ -4,6 +4,9 @@ const AsyncLock = require("./async-lock");
 const { CONFIG, WA_CRITICAL_STATES, WA_STATES } = require("./config");
 const FonnteManager = require("./fonnte-manager");
 
+const WHATSAPP_ERROR_PATTERN =
+  /not ready|timed out|protocolTimeout|detached Frame|connection|timeout|undefined|getChat|pupPage|not initialized|browser|page|disconnected|failed|error/i;
+
 class MessageQueue {
   constructor(waManager, dataManager, activityLog) {
     this.waManager = waManager;
@@ -236,65 +239,97 @@ class MessageQueue {
     throw new Error("No WhatsApp provider available for admin notification");
   }
 
+  _isWhatsAppError(errorMsg) {
+    return WHATSAPP_ERROR_PATTERN.test(String(errorMsg || ""));
+  }
+
+  _requeueForWhatsAppRecovery(item, isWAError) {
+    this.activityLog.push("info", "queue", `WhatsApp issue, requeuing (State: ${this.waManager.state})`);
+    if (isWAError) this.waManager.state = WA_STATES.TIMEOUT;
+
+    this.pending.unshift(item);
+    this.save();
+
+    if (!WA_CRITICAL_STATES.has(this.waManager.state)) return;
+
+    if (this.waManager.reconnectAttempts < CONFIG.WA_MAX_RECONNECT_ATTEMPTS) {
+      this.waManager.scheduleReconnect();
+      return;
+    }
+
+    this.activityLog.push("error", "queue", "Max reconnect attempts, manual intervention required.");
+  }
+
+  _scheduleRetry(item) {
+    const delay = Math.min(60000, 5000 * Math.pow(2, item.attempts));
+    this.activityLog.push("info", "queue", `Retrying ${item.id} in ${delay / 1000}s`);
+
+    setTimeout(() => {
+      this.pending.push(item);
+      this.save();
+
+      if (this.waManager.state === WA_STATES.CONNECTED) {
+        setTimeout(() => this.process(), 1000);
+      }
+    }, delay);
+  }
+
+  _moveToFailed(item, errorMsg) {
+    this.failed.push({ ...item, errorMsg });
+    this.save();
+    this.activityLog.push("info", "queue", `Message ${item.id} moved to failed after ${item.maxAttempts} attempts`);
+    this._sendAdminFailureEmail(item, errorMsg);
+  }
+
+  _sendAdminFailureEmail(item, errorMsg) {
+    const { ADMIN_EMAIL, EMAIL_USER, EMAIL_PASSWORD } = process.env;
+    if (!ADMIN_EMAIL) return;
+
+    if (!EMAIL_USER || !EMAIL_PASSWORD) {
+      this.activityLog.push("warn", "queue", "Admin email notification skipped because email credentials are incomplete");
+      return;
+    }
+
+    let nodemailer;
+    try {
+      nodemailer = require("nodemailer");
+    } catch (error) {
+      this.activityLog.push("warn", "queue", "Admin email notification skipped because nodemailer is not installed", {
+        error: error.message,
+      });
+      return;
+    }
+
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user: EMAIL_USER, pass: EMAIL_PASSWORD },
+    });
+
+    transporter.sendMail({
+      from: EMAIL_USER,
+      to: ADMIN_EMAIL,
+      subject: `[FAILED] WhatsApp message failed after ${item.maxAttempts} attempts`,
+      text: `ID: ${item.id}\nTo: ${item.number}\nError: ${String(errorMsg || "").substring(0, 200)}`,
+    }).catch((error) => {
+      this.activityLog.push("error", "queue", "Admin email notification failed", { error: error.message });
+    });
+  }
+
   _handleFailure(item, errorMsg) {
     this.activityLog.push("error", "queue", `Send failed for ${item.id}: ${errorMsg} (State: ${this.waManager.state})`);
 
-    const isWAError =
-      /not ready|timed out|protocolTimeout|detached Frame|connection|timeout|undefined|getChat|pupPage|not initialized|browser|page|disconnected|failed|error/i.test(
-        errorMsg
-      );
+    const isWAError = this._isWhatsAppError(errorMsg);
 
     if (isWAError || this.waManager.state !== WA_STATES.CONNECTED) {
-      this.activityLog.push("info", "queue", `WhatsApp issue, requeuing (State: ${this.waManager.state})`);
-      if (isWAError) this.waManager.state = WA_STATES.TIMEOUT;
-
-      this.pending.unshift(item);
-      this.save();
-
-      if (WA_CRITICAL_STATES.has(this.waManager.state)) {
-        if (this.waManager.reconnectAttempts < CONFIG.WA_MAX_RECONNECT_ATTEMPTS) {
-          this.waManager.scheduleReconnect();
-        } else {
-          this.activityLog.push("error", "queue", "Max reconnect attempts, manual intervention required.");
-        }
-      }
+      this._requeueForWhatsAppRecovery(item, isWAError);
       return;
     }
 
     item.attempts++;
     if (item.attempts >= item.maxAttempts) {
-      this.failed.push({ ...item, errorMsg });
-      this.save();
-      this.activityLog.push("info", "queue", `Message ${item.id} moved to failed after ${item.maxAttempts} attempts`);
-
-      // Kirim notifikasi ke admin via EMAIL (bukan WhatsApp) jika tersedia
-      const adminEmail = process.env.ADMIN_EMAIL;
-      if (adminEmail) {
-        // Kirim email (fungsi sederhana)
-        const nodemailer = require("nodemailer");
-        const transporter = nodemailer.createTransport({
-          service: "gmail",
-          auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASSWORD },
-        });
-        transporter.sendMail({
-          from: process.env.EMAIL_USER,
-          to: adminEmail,
-          subject: `[FAILED] WhatsApp message failed after ${item.maxAttempts} attempts`,
-          text: `ID: ${item.id}\nTo: ${item.number}\nError: ${errorMsg.substring(0, 200)}`,
-        }).catch((error) => {
-          this.activityLog.push("error", "queue", "Admin email notification failed", { error: error.message });
-        });
-      }
+      this._moveToFailed(item, errorMsg);
     } else {
-      const delay = Math.min(60000, 5000 * Math.pow(2, item.attempts));
-      this.activityLog.push("info", "queue", `Retrying ${item.id} in ${delay / 1000}s`);
-      setTimeout(() => {
-        this.pending.push(item);
-        this.save();
-        if (this.waManager.state === WA_STATES.CONNECTED) {
-          setTimeout(() => this.process(), 1000);
-        }
-      }, delay);
+      this._scheduleRetry(item);
     }
   }
 
