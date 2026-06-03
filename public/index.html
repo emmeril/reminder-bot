@@ -1095,8 +1095,9 @@
                 <div class="text-sm font-semibold text-ink">Options Hotspot</div>
                 <div class="text-xs text-ink/55">Atur user hotspot dan jadwal reaktivasi otomatis kontak ini.</div>
               </div>
-              <button type="button" @click="loadHotspotOptions('contactEdit')" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white">
-                <i class="fa-solid fa-cloud-arrow-down mr-1.5"></i>Load
+              <button type="button" @click="loadHotspotOptions('contactEdit')" :disabled="loading.hotspotOptions" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white disabled:cursor-not-allowed disabled:opacity-60">
+                <i :class="loading.hotspotOptions ? 'fa-solid fa-circle-notch fa-spin mr-1.5' : 'fa-solid fa-cloud-arrow-down mr-1.5'"></i>
+                <span x-text="loading.hotspotOptions ? 'Loading...' : 'Load'"></span>
               </button>
             </div>
             <div class="grid gap-4 md:grid-cols-2">

@@ -528,6 +528,7 @@ class MikrotikService {
           id: user[".id"] || user.id || user.numbers || "",
           username,
           profile: user.profile || "",
+          password: user.password || "",
           comment: user.comment || "",
           disabled: String(user.disabled || "false").toLowerCase() === "true",
           email: user.email || "",

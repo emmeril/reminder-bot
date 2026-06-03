@@ -3,6 +3,7 @@
         loading: {
           status: false,
           mikrotikBackup: false,
+          hotspotOptions: false,
         },
         toast: {
           show: false,
@@ -399,6 +400,9 @@
           if (selected?.profile) {
             form.mikrotikProfile = selected.profile;
           }
+          if (selected?.password) {
+            form.mikrotikPassword = selected.password;
+          }
         },
 
         inferPaymentType(contact, options = {}) {
@@ -738,20 +742,29 @@
           if (!options.silent) this.notify(`${this.hotspotUsers.length} user hotspot dimuat.`);
         },
 
-        async loadHotspotOptions(formKey = "") {
-          const results = await Promise.allSettled([
-            this.loadHotspotUsers({ silent: true }),
-            this.loadMikrotikProfiles({ silent: true }),
-          ]);
-          const failed = results.find((item) => item.status === "rejected");
-          if (failed) {
-            this.notify(failed.reason?.message || "Gagal load data MikroTik.");
-            return;
+        async loadHotspotOptions(formKey = "", options = {}) {
+          if (this.loading.hotspotOptions) return;
+          this.loading.hotspotOptions = true;
+          try {
+            const results = await Promise.allSettled([
+              this.loadHotspotUsers({ silent: true }),
+              this.loadMikrotikProfiles({ silent: true }),
+              this.loadApMonitors(),
+            ]);
+            const failed = results.find((item) => item.status === "rejected");
+            if (failed) {
+              this.notify(failed.reason?.message || "Gagal load data MikroTik.");
+              return;
+            }
+            if (formKey) {
+              this.syncHotspotUserToForm(formKey);
+            }
+            if (!options.silent) {
+              this.notify(`${this.hotspotUsers.length} user hotspot, ${this.mikrotikProfiles.length} profile, dan ${this.apMonitors.length} AP dimuat.`);
+            }
+          } finally {
+            this.loading.hotspotOptions = false;
           }
-          if (formKey) {
-            this.syncHotspotUserToForm(formKey);
-          }
-          this.notify(`${this.hotspotUsers.length} user hotspot dan ${this.mikrotikProfiles.length} profile dimuat.`);
         },
 
         async loadApMonitors() {
@@ -876,7 +889,7 @@
           }
         },
 
-        openContactEditModal(contact) {
+        async openContactEditModal(contact) {
           this.forms.contactEdit = {
             id: contact.id,
             name: contact.name || "",
@@ -891,6 +904,7 @@
           };
           this.contactEditModal.open = true;
           document.body.classList.add("overflow-hidden");
+          await this.loadHotspotOptions("contactEdit", { silent: true });
         },
 
         closeContactEditModal() {
