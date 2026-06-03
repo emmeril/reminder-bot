@@ -22,6 +22,18 @@
           description: "",
           action: null,
         },
+        formErrors: {
+          manual: "",
+          broadcast: "",
+          recipients: "",
+          contact: "",
+          contactEdit: "",
+          reminder: "",
+          reminderEdit: "",
+          template: "",
+          settings: "",
+          deleteConfirm: "",
+        },
         contactEditModal: {
           open: false,
           loading: false,
@@ -229,6 +241,17 @@
           this.showToast(text);
         },
 
+        setFormError(key, error) {
+          const message = error instanceof Error ? error.message : String(error || "");
+          this.formErrors[key] = message.trim() || "Operasi gagal. Silakan coba lagi.";
+        },
+
+        clearFormError(key) {
+          if (key) {
+            this.formErrors[key] = "";
+          }
+        },
+
         showToast(message) {
           this.toast.message = message;
           this.toast.show = true;
@@ -279,6 +302,7 @@
             description,
             action,
           };
+          this.clearFormError("deleteConfirm");
           document.body.classList.add("overflow-hidden");
         },
 
@@ -288,16 +312,21 @@
           this.deleteConfirm.title = "";
           this.deleteConfirm.description = "";
           this.deleteConfirm.action = null;
+          this.clearFormError("deleteConfirm");
           document.body.classList.remove("overflow-hidden");
         },
 
         async confirmDeleteAction() {
           if (!this.deleteConfirm.action || this.deleteConfirm.loading) return;
           this.deleteConfirm.loading = true;
+          this.clearFormError("deleteConfirm");
           try {
             await this.deleteConfirm.action();
-          } finally {
             this.closeDeleteConfirm();
+          } catch (error) {
+            this.setFormError("deleteConfirm", error);
+          } finally {
+            this.deleteConfirm.loading = false;
           }
         },
 
@@ -855,6 +884,7 @@
 
         openContactCreateModal() {
           this.forms.contact = this.blankContactForm();
+          this.clearFormError("contact");
           this.contactCreateModal.open = true;
           document.body.classList.add("overflow-hidden");
         },
@@ -863,12 +893,14 @@
           this.contactCreateModal.open = false;
           this.contactCreateModal.loading = false;
           this.forms.contact = this.blankContactForm();
+          this.clearFormError("contact");
           document.body.classList.remove("overflow-hidden");
         },
 
         async submitCreateContact() {
           if (this.contactCreateModal.loading) return;
           this.contactCreateModal.loading = true;
+          this.clearFormError("contact");
           try {
             const result = await this.registerMikrotikCustomer(this.getMikrotikCustomerPayload(), { reload: false, resetForm: false });
             if (result?.contact?.id && (this.forms.contact.linkedApHost || this.forms.contact.hotspotReactivationEnabled)) {
@@ -884,6 +916,8 @@
             }
             await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus(), this.loadLogs()]);
             this.closeContactCreateModal();
+          } catch (error) {
+            this.setFormError("contact", error);
           } finally {
             this.contactCreateModal.loading = false;
           }
@@ -902,6 +936,7 @@
             hotspotReactivationDate: this.formatDateInput(contact.hotspotReactivationAt),
             hotspotReactivationTime: this.formatTimeInput(contact.hotspotReactivationAt) || "00:00",
           };
+          this.clearFormError("contactEdit");
           this.contactEditModal.open = true;
           document.body.classList.add("overflow-hidden");
           await this.loadHotspotOptions("contactEdit", { silent: true });
@@ -911,12 +946,14 @@
           this.contactEditModal.open = false;
           this.contactEditModal.loading = false;
           this.forms.contactEdit = this.blankContactForm();
+          this.clearFormError("contactEdit");
           document.body.classList.remove("overflow-hidden");
         },
 
         async saveContactEdit() {
           if (!this.forms.contactEdit.id || this.contactEditModal.loading) return;
           this.contactEditModal.loading = true;
+          this.clearFormError("contactEdit");
           try {
             await this.api(`/api/contacts/${this.forms.contactEdit.id}`, {
               method: "PUT",
@@ -934,6 +971,8 @@
             this.notify("Contact diperbarui.");
             this.closeContactEditModal();
             await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
+          } catch (error) {
+            this.setFormError("contactEdit", error);
           } finally {
             this.contactEditModal.loading = false;
           }
@@ -1080,9 +1119,13 @@
         },
 
         async createReminder() {
+          this.clearFormError("reminder");
           const date = this.forms.reminder.reminderDate;
           const time = this.forms.reminder.reminderTime || '00:00';
-          if (!date) return this.notify('Pilih tanggal pengiriman');
+          if (!date) {
+            this.setFormError("reminder", "Pilih tanggal pengiriman.");
+            return false;
+          }
           const datetime = `${date} ${time}`;
 
           const payload = {
@@ -1099,10 +1142,12 @@
 
           this.forms.reminder = { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" };
           await Promise.all([this.loadReminders(), this.loadStatus()]);
+          return true;
         },
 
         openReminderCreateModal() {
           this.forms.reminder = { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" };
+          this.clearFormError("reminder");
           this.reminderCreateModal.open = true;
           document.body.classList.add("overflow-hidden");
         },
@@ -1111,16 +1156,22 @@
           this.reminderCreateModal.open = false;
           this.reminderCreateModal.loading = false;
           this.forms.reminder = { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" };
+          this.clearFormError("reminder");
           document.body.classList.remove("overflow-hidden");
         },
 
         async submitCreateReminder() {
           if (this.reminderCreateModal.loading) return;
           this.reminderCreateModal.loading = true;
+          this.clearFormError("reminder");
           try {
-            await this.createReminder();
-            this.notify("Reminder dibuat.");
-            this.closeReminderCreateModal();
+            const created = await this.createReminder();
+            if (created) {
+              this.notify("Reminder dibuat.");
+              this.closeReminderCreateModal();
+            }
+          } catch (error) {
+            this.setFormError("reminder", error);
           } finally {
             this.reminderCreateModal.loading = false;
           }
@@ -1135,6 +1186,7 @@
             templateName: reminder.templateName || "",
             message: reminder.message || "",
           };
+          this.clearFormError("reminderEdit");
           this.reminderEditModal.open = true;
           document.body.classList.add("overflow-hidden");
         },
@@ -1143,6 +1195,7 @@
           this.reminderEditModal.open = false;
           this.reminderEditModal.loading = false;
           this.forms.reminderEdit = { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" };
+          this.clearFormError("reminderEdit");
           document.body.classList.remove("overflow-hidden");
         },
 
@@ -1168,9 +1221,13 @@
           if (!this.forms.reminderEdit.id || this.reminderEditModal.loading) return;
           const date = this.forms.reminderEdit.reminderDate;
           const time = this.forms.reminderEdit.reminderTime || "00:00";
-          if (!date) return this.notify("Pilih tanggal pengiriman");
+          if (!date) {
+            this.setFormError("reminderEdit", "Pilih tanggal pengiriman.");
+            return;
+          }
 
           this.reminderEditModal.loading = true;
+          this.clearFormError("reminderEdit");
           try {
             await this.api(`/api/reminders/${this.forms.reminderEdit.id}`, {
               method: "PUT",
@@ -1184,6 +1241,8 @@
             this.notify("Reminder diperbarui.");
             this.closeReminderEditModal();
             await Promise.all([this.loadReminders(), this.loadStatus(), this.loadContacts()]);
+          } catch (error) {
+            this.setFormError("reminderEdit", error);
           } finally {
             this.reminderEditModal.loading = false;
           }
@@ -1203,13 +1262,18 @@
         },
 
         async createTemplate() {
-          await this.api("/api/templates", {
-            method: "POST",
-            body: JSON.stringify(this.forms.template),
-          });
-          this.forms.template = { name: "", content: "" };
-          this.notify("Template disimpan.");
-          await this.loadTemplates();
+          this.clearFormError("template");
+          try {
+            await this.api("/api/templates", {
+              method: "POST",
+              body: JSON.stringify(this.forms.template),
+            });
+            this.forms.template = { name: "", content: "" };
+            this.notify("Template disimpan.");
+            await this.loadTemplates();
+          } catch (error) {
+            this.setFormError("template", error);
+          }
         },
 
         removeTemplate(template) {
@@ -1225,35 +1289,50 @@
         },
 
         async saveSettings() {
-          await this.api("/api/settings", {
-            method: "PUT",
-            body: JSON.stringify(this.forms.settings),
-          });
-          this.settingsDirty = false;
-          this.notify("Settings diperbarui.");
-          await this.loadStatus();
+          this.clearFormError("settings");
+          try {
+            await this.api("/api/settings", {
+              method: "PUT",
+              body: JSON.stringify(this.forms.settings),
+            });
+            this.settingsDirty = false;
+            this.notify("Settings diperbarui.");
+            await this.loadStatus();
+          } catch (error) {
+            this.setFormError("settings", error);
+          }
         },
 
         async sendManualNotification() {
-          await this.api("/api/notifications/test", {
-            method: "POST",
-            body: JSON.stringify(this.forms.manual),
-          });
-          this.forms.manual = { contactId: "", phoneNumber: "", templateName: "", message: "" };
-          this.notify("Notifikasi manual terkirim.");
-          await this.loadLogs();
+          this.clearFormError("manual");
+          try {
+            await this.api("/api/notifications/test", {
+              method: "POST",
+              body: JSON.stringify(this.forms.manual),
+            });
+            this.forms.manual = { contactId: "", phoneNumber: "", templateName: "", message: "" };
+            this.notify("Notifikasi manual terkirim.");
+            await this.loadLogs();
+          } catch (error) {
+            this.setFormError("manual", error);
+          }
         },
 
         async sendBroadcast() {
-          const response = await this.api("/api/notifications/broadcast", {
-            method: "POST",
-            body: JSON.stringify(this.forms.broadcast),
-          });
-          const successCount = response.filter(r => r.status === "sent").length;
-          const failedCount = response.filter(r => r.status === "failed").length;
-          this.forms.broadcast = { title: "", templateName: "", message: "" };
-          this.notify(`Broadcast terkirim: ${successCount} berhasil, ${failedCount} gagal.`);
-          await this.loadLogs();
+          this.clearFormError("broadcast");
+          try {
+            const response = await this.api("/api/notifications/broadcast", {
+              method: "POST",
+              body: JSON.stringify(this.forms.broadcast),
+            });
+            const successCount = response.filter(r => r.status === "sent").length;
+            const failedCount = response.filter(r => r.status === "failed").length;
+            this.forms.broadcast = { title: "", templateName: "", message: "" };
+            this.notify(`Broadcast terkirim: ${successCount} berhasil, ${failedCount} gagal.`);
+            await this.loadLogs();
+          } catch (error) {
+            this.setFormError("broadcast", error);
+          }
         },
 
         async sendMikrotikBackupNow() {
@@ -1284,12 +1363,17 @@
         },
 
         async saveRecipients() {
-          await this.api("/api/admin-recipients", {
-            method: "PUT",
-            body: JSON.stringify({ recipients: this.forms.recipients }),
-          });
-          this.notify("Admin recipients diperbarui.");
-          await Promise.all([this.loadRecipients(), this.loadStatus()]);
+          this.clearFormError("recipients");
+          try {
+            await this.api("/api/admin-recipients", {
+              method: "PUT",
+              body: JSON.stringify({ recipients: this.forms.recipients }),
+            });
+            this.notify("Admin recipients diperbarui.");
+            await Promise.all([this.loadRecipients(), this.loadStatus()]);
+          } catch (error) {
+            this.setFormError("recipients", error);
+          }
         },
 
         async runScheduler() {

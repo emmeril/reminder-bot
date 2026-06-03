@@ -239,6 +239,7 @@
             <button class="w-full rounded-full bg-gradient-to-r from-clay to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20">
               <i class="fa-solid fa-paper-plane mr-2"></i>Kirim Sekarang
             </button>
+            <p x-cloak x-show="formErrors.manual" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.manual"></p>
           </form>
         </section>
 
@@ -266,6 +267,7 @@
             <button type="submit" class="w-full rounded-full bg-gradient-to-r from-moss to-green-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20">
               <i class="fa-solid fa-bullhorn mr-2"></i>Kirim Broadcast
             </button>
+            <p x-cloak x-show="formErrors.broadcast" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.broadcast"></p>
           </form>
         </section>
 
@@ -279,6 +281,7 @@
             <button class="w-full rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
               <i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Recipients
             </button>
+            <p x-cloak x-show="formErrors.recipients" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.recipients"></p>
           </form>
         </section>
       </aside>
@@ -656,6 +659,7 @@
               <textarea x-model="forms.template.content" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Gunakan placeholder seperti {{name}} atau {{date}}" required></textarea>
             </label>
             <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Template Baru</button>
+            <p x-cloak x-show="formErrors.template" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.template"></p>
           </form>
           <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
             <div class="overflow-x-auto">
@@ -769,6 +773,7 @@
                 <span x-text="loading.mikrotikBackup ? 'Mengirim Backup...' : 'Kirim Backup Sekarang'"></span>
               </button>
             </div>
+            <p x-cloak x-show="formErrors.settings" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.settings"></p>
           </form>
         </section>
 
@@ -984,6 +989,7 @@
               </span>
             </button>
           </div>
+          <p x-cloak x-show="formErrors.contact" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.contact"></p>
         </form>
       </div>
     </div>
@@ -1048,6 +1054,7 @@
               </span>
             </button>
           </div>
+          <p x-cloak x-show="formErrors.reminder" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.reminder"></p>
         </form>
       </div>
     </div>
@@ -1151,6 +1158,7 @@
               </span>
             </button>
           </div>
+          <p x-cloak x-show="formErrors.contactEdit" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.contactEdit"></p>
         </form>
       </div>
     </div>
@@ -1215,6 +1223,7 @@
               </span>
             </button>
           </div>
+          <p x-cloak x-show="formErrors.reminderEdit" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.reminderEdit"></p>
         </form>
       </div>
     </div>
@@ -1272,6 +1281,7 @@
             </span>
           </button>
         </div>
+        <p x-cloak x-show="formErrors.deleteConfirm" x-transition class="mt-4 rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.deleteConfirm"></p>
       </div>
     </div>
   </div>
