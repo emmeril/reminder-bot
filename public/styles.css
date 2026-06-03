@@ -576,6 +576,11 @@ main > section:hover {
     overflow: hidden;
   }
 
+  table tbody tr:hover,
+  .sent-history-table tbody tr:hover {
+    background: #ffffff;
+  }
+
   table.min-w-full tbody tr:last-child {
     margin-bottom: 0;
   }
