@@ -405,7 +405,8 @@ main > section:hover {
   html,
   body {
     max-width: 100%;
-    overflow-x: hidden;
+    overflow-x: clip;
+    overflow-y: visible;
   }
 
   body {
@@ -422,10 +423,16 @@ main > section:hover {
     width: calc(100% - 12px);
     padding-top: 0.75rem;
     padding-bottom: 0.75rem;
+    overflow: visible !important;
   }
 
   .app-container > .grid {
     gap: 0.7rem;
+    overflow: visible !important;
+  }
+
+  .app-container > .grid > div {
+    overflow: visible !important;
   }
 
   header.panel-shell {
@@ -444,9 +451,11 @@ main > section:hover {
   }
 
   .mobile-nav-panel {
+    position: -webkit-sticky;
     position: sticky;
     top: 0.35rem;
-    z-index: 30;
+    align-self: flex-start;
+    z-index: 50;
     margin-inline: -0.15rem;
     padding: 0.55rem !important;
   }
