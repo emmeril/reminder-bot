@@ -13,18 +13,24 @@ class MessageQueue {
     this.dataManager = dataManager;
     this.activityLog = activityLog;
     this.pending = [];
+    this.processing = [];
     this.failed = [];
     this.isProcessing = false;
     this.saveChain = Promise.resolve();
+    this.processTimer = null;
     this.queueLock = new AsyncLock();
   }
 
   async loadFromDB() {
     const models = this.dataManager.models;
-    const pendingItems = await models.WhatsappQueueItem.findAll({ where: { status: "pending" } });
+    const pendingItems = await models.WhatsappQueueItem.findAll({
+      where: { status: { [Op.in]: ["pending", "processing"] } },
+      order: [["createdAt", "ASC"]],
+    });
     const failedItems = await models.WhatsappQueueItem.findAll({ where: { status: "failed" } });
 
     this.pending = pendingItems.map((item) => this._mapItem(item));
+    this.processing = [];
     this.failed = failedItems.map((item) => this._mapItem(item));
 
     this.activityLog.push("info", "queue", `Loaded queue: ${this.pending.length} pending, ${this.failed.length} failed`);
@@ -44,28 +50,23 @@ class MessageQueue {
   }
 
   async save() {
+    const items = this._snapshotItems();
+
     this.saveChain = this.saveChain
       .then(async () => {
-        await this.queueLock.runExclusive("whatsapp_queue_save", async () => {
-          const items = [
-            ...this.pending.map((i) => ({ ...i, status: "pending" })),
-            ...this.failed.map((i) => ({ ...i, status: "failed" })),
-          ];
+        const models = this.dataManager.models;
+        await this.dataManager.withDatabaseWrite(() => (
+          models.sequelize.transaction(async (transaction) => {
+            await models.WhatsappQueueItem.destroy({
+              where: { status: { [Op.in]: ["pending", "processing", "failed"] } },
+              transaction,
+            });
 
-          const models = this.dataManager.models;
-          await this.dataManager.withDatabaseWrite(() => (
-            models.sequelize.transaction(async (transaction) => {
-              await models.WhatsappQueueItem.destroy({
-                where: { status: { [Op.in]: ["pending", "failed"] } },
-                transaction,
-              });
-
-              if (items.length) {
-                await models.WhatsappQueueItem.bulkCreate(items, { transaction });
-              }
-            })
-          ));
-        });
+            if (items.length) {
+              await models.WhatsappQueueItem.bulkCreate(items, { transaction });
+            }
+          })
+        ));
       })
       .catch((error) => {
         this.activityLog.push("error", "queue", `Failed to save queue: ${error.message}`);
@@ -74,9 +75,37 @@ class MessageQueue {
     return this.saveChain;
   }
 
+  _snapshotItems() {
+    return [
+      ...this.pending.map((i) => ({ ...i, status: "pending" })),
+      // Keep in-flight messages recoverable after a crash or restart.
+      ...this.processing.map((i) => ({ ...i, status: "pending" })),
+      ...this.failed.map((i) => ({ ...i, status: "failed" })),
+    ];
+  }
+
+  _allItems() {
+    return [...this.pending, ...this.processing, ...this.failed];
+  }
+
+  _removeProcessing(itemId) {
+    this.processing = this.processing.filter((item) => item.id !== itemId);
+  }
+
+  _scheduleProcess(delay = 1000) {
+    if (this.processTimer) return;
+
+    this.processTimer = setTimeout(() => {
+      this.processTimer = null;
+      this.process().catch((error) => {
+        this.activityLog.push("error", "queue", "Scheduled queue processing failed", { error: error.message });
+      });
+    }, delay);
+  }
+
   add(number, message, metadata = {}) {
     if (metadata?.orderId && metadata?.type) {
-      const existingItem = [...this.pending, ...this.failed].find(
+      const existingItem = this._allItems().find(
         (item) => item.metadata?.orderId === metadata.orderId && item.metadata?.type === metadata.type
       );
       if (existingItem) {
@@ -99,7 +128,7 @@ class MessageQueue {
     this.activityLog.push("info", "queue", `Added to queue: ${item.id} for ${number}`);
 
     if (this.canProcess()) {
-      setTimeout(() => this.process(), 5000);
+      this._scheduleProcess(5000);
     } else if (this.waManager.reconnectAttempts === 0 && !this.waManager.isReconnecting) {
       this.waManager.scheduleReconnect();
     }
@@ -135,6 +164,7 @@ class MessageQueue {
 
       try {
         const items = this.pending.splice(0, CONFIG.WA_MAX_QUEUE_PROCESS);
+        this.processing.push(...items);
         await this.save();
 
         for (const item of items) {
@@ -145,6 +175,8 @@ class MessageQueue {
 
             if (result.status === "success") {
               this.activityLog.push("info", "queue", `Sent successfully: ${item.id} via ${result.provider || "whatsapp-web"}`);
+              this._removeProcessing(item.id);
+              await this.save();
 
               // Kirim notifikasi ke admin via WhatsApp (jika bukan directRequest)
               if (process.env.ADMIN_NUMBER && item.metadata?.directRequest !== true) {
@@ -157,10 +189,12 @@ class MessageQueue {
 
               await new Promise((resolve) => setTimeout(resolve, CONFIG.WA_MESSAGE_DELAY));
             } else {
+              this._removeProcessing(item.id);
               this._handleFailure(item, result.message);
               break;
             }
           } catch (error) {
+            this._removeProcessing(item.id);
             this._handleFailure(item, error.message);
             break;
           }
@@ -171,7 +205,7 @@ class MessageQueue {
 
       // Periksa kembali setelah proses selesai
       if (this.pending.length > 0 && this.canProcess()) {
-        setTimeout(() => this.process(), 1000);
+        this._scheduleProcess(1000);
       }
     });
   }
@@ -268,8 +302,8 @@ class MessageQueue {
       this.pending.push(item);
       this.save();
 
-      if (this.waManager.state === WA_STATES.CONNECTED) {
-        setTimeout(() => this.process(), 1000);
+      if (this.canProcess()) {
+        this._scheduleProcess(1000);
       }
     }, delay);
   }
