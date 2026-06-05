@@ -14,6 +14,13 @@
           startedAt: 0,
           paused: false,
         },
+        processingModal: {
+          open: false,
+          message: "Memproses data...",
+          startedAt: 0,
+          minVisibleMs: 350,
+          activeCount: 0,
+        },
         toastQueue: [],
         deleteConfirm: {
           open: false,
@@ -252,6 +259,40 @@
           }
         },
 
+        showProcessing(message = "Memproses data...") {
+          this.processingModal.activeCount += 1;
+          this.processingModal.message = message;
+          if (!this.processingModal.open) {
+            this.processingModal.startedAt = Date.now();
+            this.processingModal.open = true;
+          }
+        },
+
+        async hideProcessing() {
+          this.processingModal.activeCount = Math.max(0, this.processingModal.activeCount - 1);
+          if (this.processingModal.activeCount > 0) return;
+
+          const elapsed = Date.now() - this.processingModal.startedAt;
+          const waitMs = Math.max(0, this.processingModal.minVisibleMs - elapsed);
+          if (waitMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, waitMs));
+          }
+
+          if (this.processingModal.activeCount === 0) {
+            this.processingModal.open = false;
+            this.processingModal.message = "Memproses data...";
+          }
+        },
+
+        async withProcessing(message, action) {
+          this.showProcessing(message);
+          try {
+            return await action();
+          } finally {
+            await this.hideProcessing();
+          }
+        },
+
         showToast(message) {
           this.toast.message = message;
           this.toast.show = true;
@@ -321,7 +362,7 @@
           this.deleteConfirm.loading = true;
           this.clearFormError("deleteConfirm");
           try {
-            await this.deleteConfirm.action();
+            await this.withProcessing("Menghapus data...", () => this.deleteConfirm.action());
             this.closeDeleteConfirm();
           } catch (error) {
             this.setFormError("deleteConfirm", error);
@@ -702,13 +743,15 @@
         },
 
         async refreshAll() {
-          await this.loadStatus();
-          await Promise.all([
-            this.loadContacts(),
-            this.loadReminders(),
-            this.loadTemplates(),
-          ]);
-          await this.loadNonCriticalData();
+          await this.withProcessing("Memuat ulang data...", async () => {
+            await this.loadStatus();
+            await Promise.all([
+              this.loadContacts(),
+              this.loadReminders(),
+              this.loadTemplates(),
+            ]);
+            await this.loadNonCriticalData();
+          });
         },
 
         async loadStatus(options = {}) {
@@ -902,20 +945,22 @@
           this.contactCreateModal.loading = true;
           this.clearFormError("contact");
           try {
-            const result = await this.registerMikrotikCustomer(this.getMikrotikCustomerPayload(), { reload: false, resetForm: false });
-            if (result?.contact?.id && (this.forms.contact.linkedApHost || this.forms.contact.hotspotReactivationEnabled)) {
-              await this.api(`/api/contacts/${result.contact.id}`, {
-                method: "PUT",
-                body: JSON.stringify({
-                  ...result.contact,
-                  linkedApHost: this.forms.contact.linkedApHost,
-                  hotspotReactivationEnabled: this.forms.contact.hotspotReactivationEnabled,
-                  hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contact),
-                }),
-              });
-            }
-            await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus(), this.loadLogs()]);
-            this.closeContactCreateModal();
+            await this.withProcessing("Mendaftarkan pelanggan...", async () => {
+              const result = await this.registerMikrotikCustomer(this.getMikrotikCustomerPayload(), { reload: false, resetForm: false });
+              if (result?.contact?.id && (this.forms.contact.linkedApHost || this.forms.contact.hotspotReactivationEnabled)) {
+                await this.api(`/api/contacts/${result.contact.id}`, {
+                  method: "PUT",
+                  body: JSON.stringify({
+                    ...result.contact,
+                    linkedApHost: this.forms.contact.linkedApHost,
+                    hotspotReactivationEnabled: this.forms.contact.hotspotReactivationEnabled,
+                    hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contact),
+                  }),
+                });
+              }
+              await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus(), this.loadLogs()]);
+              this.closeContactCreateModal();
+            });
           } catch (error) {
             this.setFormError("contact", error);
           } finally {
@@ -955,22 +1000,24 @@
           this.contactEditModal.loading = true;
           this.clearFormError("contactEdit");
           try {
-            await this.api(`/api/contacts/${this.forms.contactEdit.id}`, {
-              method: "PUT",
-              body: JSON.stringify({
-                name: this.forms.contactEdit.name,
-                phoneNumber: this.forms.contactEdit.phoneNumber,
-                linkedApHost: this.forms.contactEdit.linkedApHost,
-                mikrotikUsername: this.forms.contactEdit.mikrotikUsername,
-                mikrotikProfile: this.forms.contactEdit.mikrotikProfile,
-                mikrotikPassword: this.forms.contactEdit.mikrotikPassword,
-                hotspotReactivationEnabled: this.forms.contactEdit.hotspotReactivationEnabled,
-                hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contactEdit),
-              }),
+            await this.withProcessing("Menyimpan perubahan kontak...", async () => {
+              await this.api(`/api/contacts/${this.forms.contactEdit.id}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  name: this.forms.contactEdit.name,
+                  phoneNumber: this.forms.contactEdit.phoneNumber,
+                  linkedApHost: this.forms.contactEdit.linkedApHost,
+                  mikrotikUsername: this.forms.contactEdit.mikrotikUsername,
+                  mikrotikProfile: this.forms.contactEdit.mikrotikProfile,
+                  mikrotikPassword: this.forms.contactEdit.mikrotikPassword,
+                  hotspotReactivationEnabled: this.forms.contactEdit.hotspotReactivationEnabled,
+                  hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contactEdit),
+                }),
+              });
+              this.notify("Contact diperbarui.");
+              this.closeContactEditModal();
+              await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
             });
-            this.notify("Contact diperbarui.");
-            this.closeContactEditModal();
-            await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
           } catch (error) {
             this.setFormError("contactEdit", error);
           } finally {
@@ -1002,51 +1049,55 @@
         },
 
         async togglePayment(id, status, paymentType = "") {
-          const contact = this.contacts.find((item) => String(item.id) === String(id));
-          const payload = { status };
-          if (paymentType && contact) {
-            payload.paymentType = paymentType || contact.paymentType || this.inferPaymentType(contact);
-          }
-          const result = await this.api(`/api/contacts/${id}/payment`, {
-            method: "POST",
-            body: JSON.stringify(payload),
-          });
-          if (status === "UNPAID" && payload.paymentType === "ARREARS-ONLY") {
-            if (result.notificationSent) {
-              this.notify(`Tunggakan dicatat. Notifikasi terkirim (${result.transactionId}).`);
-            } else if (result.notificationError) {
-              this.notify(`Tunggakan dicatat, tapi notifikasi gagal: ${result.notificationError}`);
-            } else {
-              this.notify("Tunggakan dicatat.");
+          await this.withProcessing("Memperbarui status pembayaran...", async () => {
+            const contact = this.contacts.find((item) => String(item.id) === String(id));
+            const payload = { status };
+            if (paymentType && contact) {
+              payload.paymentType = paymentType || contact.paymentType || this.inferPaymentType(contact);
             }
-          } else if (status === "PAID") {
-            if (result.notificationSent) {
-              this.notify(`Status pembayaran diperbarui. Bukti pembayaran terkirim (${result.transactionId}).`);
-            } else if (result.notificationError) {
-              this.notify(`Status pembayaran diperbarui, tapi notifikasi gagal: ${result.notificationError}`);
+            const result = await this.api(`/api/contacts/${id}/payment`, {
+              method: "POST",
+              body: JSON.stringify(payload),
+            });
+            if (status === "UNPAID" && payload.paymentType === "ARREARS-ONLY") {
+              if (result.notificationSent) {
+                this.notify(`Tunggakan dicatat. Notifikasi terkirim (${result.transactionId}).`);
+              } else if (result.notificationError) {
+                this.notify(`Tunggakan dicatat, tapi notifikasi gagal: ${result.notificationError}`);
+              } else {
+                this.notify("Tunggakan dicatat.");
+              }
+            } else if (status === "PAID") {
+              if (result.notificationSent) {
+                this.notify(`Status pembayaran diperbarui. Bukti pembayaran terkirim (${result.transactionId}).`);
+              } else if (result.notificationError) {
+                this.notify(`Status pembayaran diperbarui, tapi notifikasi gagal: ${result.notificationError}`);
+              } else {
+                this.notify("Status pembayaran diperbarui.");
+              }
             } else {
               this.notify("Status pembayaran diperbarui.");
             }
-          } else {
-            this.notify("Status pembayaran diperbarui.");
-          }
-          await Promise.all([this.loadContacts(), this.loadStatus()]);
+            await Promise.all([this.loadContacts(), this.loadStatus()]);
+          });
         },
 
         async reactivateHotspotContact(contact) {
           if (!contact?.id) return;
-          const result = await this.api(`/api/contacts/${contact.id}/hotspot/reactivate`, {
-            method: "POST",
-            body: JSON.stringify({}),
+          await this.withProcessing("Mereaktivasi hotspot...", async () => {
+            const result = await this.api(`/api/contacts/${contact.id}/hotspot/reactivate`, {
+              method: "POST",
+              body: JSON.stringify({}),
+            });
+            if (result.contact.hotspotReactivationEnabled && result.contact.hotspotReactivationAt) {
+              const notificationText = result.notification?.sent ? " Akun terkirim ke WhatsApp." : (result.notification?.error ? ` WA gagal: ${result.notification.error}` : "");
+              this.notify(`Hotspot ${result.username} direaktivasi. Jadwal berikutnya ${this.formatDateTime(result.contact.hotspotReactivationAt)}.${notificationText}`);
+            } else {
+              const notificationText = result.notification?.sent ? " Akun terkirim ke WhatsApp." : (result.notification?.error ? ` WA gagal: ${result.notification.error}` : "");
+              this.notify(`Hotspot ${result.username} direaktivasi.${notificationText}`);
+            }
+            await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
           });
-          if (result.contact.hotspotReactivationEnabled && result.contact.hotspotReactivationAt) {
-            const notificationText = result.notification?.sent ? " Akun terkirim ke WhatsApp." : (result.notification?.error ? ` WA gagal: ${result.notification.error}` : "");
-            this.notify(`Hotspot ${result.username} direaktivasi. Jadwal berikutnya ${this.formatDateTime(result.contact.hotspotReactivationAt)}.${notificationText}`);
-          } else {
-            const notificationText = result.notification?.sent ? " Akun terkirim ke WhatsApp." : (result.notification?.error ? ` WA gagal: ${result.notification.error}` : "");
-            this.notify(`Hotspot ${result.username} direaktivasi.${notificationText}`);
-          }
-          await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
         },
 
         removeContact(contact) {
@@ -1165,11 +1216,13 @@
           this.reminderCreateModal.loading = true;
           this.clearFormError("reminder");
           try {
-            const created = await this.createReminder();
-            if (created) {
-              this.notify("Reminder dibuat.");
-              this.closeReminderCreateModal();
-            }
+            await this.withProcessing("Menyimpan reminder...", async () => {
+              const created = await this.createReminder();
+              if (created) {
+                this.notify("Reminder dibuat.");
+                this.closeReminderCreateModal();
+              }
+            });
           } catch (error) {
             this.setFormError("reminder", error);
           } finally {
@@ -1229,18 +1282,20 @@
           this.reminderEditModal.loading = true;
           this.clearFormError("reminderEdit");
           try {
-            await this.api(`/api/reminders/${this.forms.reminderEdit.id}`, {
-              method: "PUT",
-              body: JSON.stringify({
-                contactId: this.forms.reminderEdit.contactId,
-                reminderDateTime: `${date} ${time}`,
-                message: this.forms.reminderEdit.message,
-                templateName: this.forms.reminderEdit.templateName,
-              }),
+            await this.withProcessing("Menyimpan perubahan reminder...", async () => {
+              await this.api(`/api/reminders/${this.forms.reminderEdit.id}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  contactId: this.forms.reminderEdit.contactId,
+                  reminderDateTime: `${date} ${time}`,
+                  message: this.forms.reminderEdit.message,
+                  templateName: this.forms.reminderEdit.templateName,
+                }),
+              });
+              this.notify("Reminder diperbarui.");
+              this.closeReminderEditModal();
+              await Promise.all([this.loadReminders(), this.loadStatus(), this.loadContacts()]);
             });
-            this.notify("Reminder diperbarui.");
-            this.closeReminderEditModal();
-            await Promise.all([this.loadReminders(), this.loadStatus(), this.loadContacts()]);
           } catch (error) {
             this.setFormError("reminderEdit", error);
           } finally {
@@ -1264,13 +1319,15 @@
         async createTemplate() {
           this.clearFormError("template");
           try {
-            await this.api("/api/templates", {
-              method: "POST",
-              body: JSON.stringify(this.forms.template),
+            await this.withProcessing("Menyimpan template...", async () => {
+              await this.api("/api/templates", {
+                method: "POST",
+                body: JSON.stringify(this.forms.template),
+              });
+              this.forms.template = { name: "", content: "" };
+              this.notify("Template disimpan.");
+              await this.loadTemplates();
             });
-            this.forms.template = { name: "", content: "" };
-            this.notify("Template disimpan.");
-            await this.loadTemplates();
           } catch (error) {
             this.setFormError("template", error);
           }
@@ -1291,13 +1348,15 @@
         async saveSettings() {
           this.clearFormError("settings");
           try {
-            await this.api("/api/settings", {
-              method: "PUT",
-              body: JSON.stringify(this.forms.settings),
+            await this.withProcessing("Menyimpan settings...", async () => {
+              await this.api("/api/settings", {
+                method: "PUT",
+                body: JSON.stringify(this.forms.settings),
+              });
+              this.settingsDirty = false;
+              this.notify("Settings diperbarui.");
+              await this.loadStatus();
             });
-            this.settingsDirty = false;
-            this.notify("Settings diperbarui.");
-            await this.loadStatus();
           } catch (error) {
             this.setFormError("settings", error);
           }
@@ -1306,13 +1365,15 @@
         async sendManualNotification() {
           this.clearFormError("manual");
           try {
-            await this.api("/api/notifications/test", {
-              method: "POST",
-              body: JSON.stringify(this.forms.manual),
+            await this.withProcessing("Mengirim notifikasi...", async () => {
+              await this.api("/api/notifications/test", {
+                method: "POST",
+                body: JSON.stringify(this.forms.manual),
+              });
+              this.forms.manual = { contactId: "", phoneNumber: "", templateName: "", message: "" };
+              this.notify("Notifikasi manual terkirim.");
+              await this.loadLogs();
             });
-            this.forms.manual = { contactId: "", phoneNumber: "", templateName: "", message: "" };
-            this.notify("Notifikasi manual terkirim.");
-            await this.loadLogs();
           } catch (error) {
             this.setFormError("manual", error);
           }
@@ -1321,15 +1382,17 @@
         async sendBroadcast() {
           this.clearFormError("broadcast");
           try {
-            const response = await this.api("/api/notifications/broadcast", {
-              method: "POST",
-              body: JSON.stringify(this.forms.broadcast),
+            await this.withProcessing("Mengirim broadcast...", async () => {
+              const response = await this.api("/api/notifications/broadcast", {
+                method: "POST",
+                body: JSON.stringify(this.forms.broadcast),
+              });
+              const successCount = response.filter(r => r.status === "sent").length;
+              const failedCount = response.filter(r => r.status === "failed").length;
+              this.forms.broadcast = { title: "", templateName: "", message: "" };
+              this.notify(`Broadcast terkirim: ${successCount} berhasil, ${failedCount} gagal.`);
+              await this.loadLogs();
             });
-            const successCount = response.filter(r => r.status === "sent").length;
-            const failedCount = response.filter(r => r.status === "failed").length;
-            this.forms.broadcast = { title: "", templateName: "", message: "" };
-            this.notify(`Broadcast terkirim: ${successCount} berhasil, ${failedCount} gagal.`);
-            await this.loadLogs();
           } catch (error) {
             this.setFormError("broadcast", error);
           }
@@ -1339,24 +1402,26 @@
           if (this.loading.mikrotikBackup) return;
           this.loading.mikrotikBackup = true;
           try {
-            const response = await this.api("/api/mikrotik/backup/send", {
-              method: "POST",
-              body: JSON.stringify({}),
+            await this.withProcessing("Membuat dan mengirim backup MikroTik...", async () => {
+              const response = await this.api("/api/mikrotik/backup/send", {
+                method: "POST",
+                body: JSON.stringify({}),
+              });
+              const results = Array.isArray(response.results) ? response.results : [];
+              const successCount = results.filter((item) => item.status === "sent").length;
+              const failedCount = results.filter((item) => item.status === "failed").length;
+              const fileName = response.fileName ? ` (${response.fileName})` : "";
+
+              if (successCount > 0 && failedCount === 0) {
+                this.notify(`Backup MikroTik terkirim ke ${successCount} admin${fileName}.`);
+              } else if (successCount > 0) {
+                this.notify(`Backup MikroTik terkirim ${successCount}, gagal ${failedCount}${fileName}.`);
+              } else {
+                this.notify(`Backup MikroTik dibuat, tapi gagal dikirim ke semua admin${fileName}.`);
+              }
+
+              await Promise.allSettled([this.loadLogs(), this.loadStatus()]);
             });
-            const results = Array.isArray(response.results) ? response.results : [];
-            const successCount = results.filter((item) => item.status === "sent").length;
-            const failedCount = results.filter((item) => item.status === "failed").length;
-            const fileName = response.fileName ? ` (${response.fileName})` : "";
-
-            if (successCount > 0 && failedCount === 0) {
-              this.notify(`Backup MikroTik terkirim ke ${successCount} admin${fileName}.`);
-            } else if (successCount > 0) {
-              this.notify(`Backup MikroTik terkirim ${successCount}, gagal ${failedCount}${fileName}.`);
-            } else {
-              this.notify(`Backup MikroTik dibuat, tapi gagal dikirim ke semua admin${fileName}.`);
-            }
-
-            await Promise.allSettled([this.loadLogs(), this.loadStatus()]);
           } finally {
             this.loading.mikrotikBackup = false;
           }
@@ -1365,32 +1430,38 @@
         async saveRecipients() {
           this.clearFormError("recipients");
           try {
-            await this.api("/api/admin-recipients", {
-              method: "PUT",
-              body: JSON.stringify({ recipients: this.forms.recipients }),
+            await this.withProcessing("Menyimpan admin recipients...", async () => {
+              await this.api("/api/admin-recipients", {
+                method: "PUT",
+                body: JSON.stringify({ recipients: this.forms.recipients }),
+              });
+              this.notify("Admin recipients diperbarui.");
+              await Promise.all([this.loadRecipients(), this.loadStatus()]);
             });
-            this.notify("Admin recipients diperbarui.");
-            await Promise.all([this.loadRecipients(), this.loadStatus()]);
           } catch (error) {
             this.setFormError("recipients", error);
           }
         },
 
         async runScheduler() {
-          await this.api("/api/scheduler/run", {
-            method: "POST",
-            body: JSON.stringify({}),
+          await this.withProcessing("Menjalankan scheduler...", async () => {
+            await this.api("/api/scheduler/run", {
+              method: "POST",
+              body: JSON.stringify({}),
+            });
+            this.notify("Scheduler dipicu manual.");
+            await this.refreshAll();
           });
-          this.notify("Scheduler dipicu manual.");
-          await this.refreshAll();
         },
 
         async logout() {
-          await this.api("/api/auth/logout", {
-            method: "POST",
-            body: JSON.stringify({}),
+          await this.withProcessing("Keluar dari dashboard...", async () => {
+            await this.api("/api/auth/logout", {
+              method: "POST",
+              body: JSON.stringify({}),
+            });
+            window.location.href = "/login";
           });
-          window.location.href = "/login";
         },
       };
     }
