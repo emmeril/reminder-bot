@@ -80,6 +80,7 @@ class WhatsAppManager {
     this.keepAliveTimer = null;
     this.activeProvider = "whatsapp-web";
     this.providerChangeHandler = null;
+    this.pendingAcks = new Map();
     this.queue = new MessageQueue(this, dataManager, activityLog);
     this._reconnectLock = new AsyncLock();
     this._stateLock = new AsyncLock();
@@ -228,6 +229,39 @@ class WhatsAppManager {
         this.scheduleReconnect();
       }
     });
+
+    this.client.on("message_ack", (message, ack) => {
+      const messageId = message?.id?.id;
+      if (!messageId) return;
+
+      const pending = this.pendingAcks.get(messageId);
+      if (pending) {
+        pending.resolve(ack);
+        this.pendingAcks.delete(messageId);
+      }
+
+      if (ack >= 1) {
+        this.activityLog.push("info", "whatsapp", `Message ack ${ack} received`, { messageId });
+      }
+    });
+  }
+
+  waitForAck(messageId, timeout = 10000) {
+    if (!messageId) return Promise.resolve(null);
+
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingAcks.delete(messageId);
+        resolve(null);
+      }, timeout);
+
+      this.pendingAcks.set(messageId, {
+        resolve: (ack) => {
+          clearTimeout(timer);
+          resolve(ack);
+        },
+      });
+    });
   }
 
   async initialize() {
@@ -343,6 +377,8 @@ class WhatsAppManager {
 
   async sendMessage(number, message) {
     return this._stateLock.runExclusive("send", async () => {
+      let sendAttempted = false;
+      let formattedNumber = "";
       try {
         if (this.state !== WA_STATES.CONNECTED) {
           throw new Error(`WhatsApp not ready (State: ${this.state})`);
@@ -354,24 +390,50 @@ class WhatsAppManager {
 
         await this.client.getState(); // verify connection
 
-        const formattedNumber = normalizePhoneNumber(number);
+        formattedNumber = normalizePhoneNumber(number);
         const chatId = `${formattedNumber}@c.us`;
 
+        sendAttempted = true;
         const result = await this.client.sendMessage(chatId, message, {
           sendSeen: false,
           linkPreview: false,
         });
+        const messageId = result.id?.id;
+        const ack = await this.waitForAck(messageId, 10000);
 
-        this.activityLog.push("info", "whatsapp", `Message sent to ${formattedNumber}`);
+        if (ack === -1) {
+          return {
+            status: "error",
+            message: "WhatsApp message failed before server ack",
+            messageId,
+            ack,
+            sendAttempted: true,
+            ambiguousDelivery: false,
+            timestamp: new Date().toISOString(),
+          };
+        }
+
+        this.activityLog.push("info", "whatsapp", `Message sent to ${formattedNumber}`, {
+          messageId,
+          ack: ack ?? "pending",
+        });
 
         return {
           status: "success",
           message: "Message sent",
-          messageId: result.id?.id,
+          messageId,
+          ack,
           timestamp: new Date().toISOString(),
         };
       } catch (error) {
-        this.activityLog.push("error", "whatsapp", "Send message error", { error: error.message, state: this.state });
+        const ambiguousDelivery = sendAttempted && this.state === WA_STATES.CONNECTED;
+        this.activityLog.push("error", "whatsapp", "Send message error", {
+          error: error.message,
+          state: this.state,
+          sendAttempted,
+          ambiguousDelivery,
+          phoneNumber: formattedNumber,
+        });
         if (error.message.includes("not ready") || error.message.includes("connection")) {
           this.state = WA_STATES.TIMEOUT;
         }
@@ -379,6 +441,8 @@ class WhatsAppManager {
           status: "error",
           message: error.message,
           waState: this.state,
+          sendAttempted,
+          ambiguousDelivery,
           timestamp: new Date().toISOString(),
         };
       }
@@ -2108,6 +2172,21 @@ class NotificationBot {
         phoneNumber: normalizePhoneNumber(phoneNumber),
       });
       return { ...result, provider: "whatsapp-web" };
+    }
+
+    if (result.ambiguousDelivery) {
+      this.activityLog.push("warn", "notification", "WhatsApp Web status belum pasti; fallback Fonnte ditahan agar tidak double kirim", {
+        phoneNumber: normalizePhoneNumber(phoneNumber),
+        error: result.message,
+        waState: result.waState || this.waManager.state,
+      });
+      return {
+        status: "success",
+        provider: "whatsapp-web",
+        message: "WhatsApp Web send attempted; delivery status unconfirmed, Fonnte fallback skipped",
+        unconfirmed: true,
+        timestamp: new Date().toISOString(),
+      };
     }
 
     if (!FonnteManager.isConfigured()) {

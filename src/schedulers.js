@@ -65,9 +65,12 @@ class ReminderScheduler {
           const targetPhoneNumber = reminder.phoneNumber;
           const sendResult = await this.notificationBot.sendMessage(targetPhoneNumber, reminder.message);
           const provider = sendResult?.provider || "whatsapp-web";
+          const deliveryStatus = sendResult?.unconfirmed
+            ? "SENT_UNCONFIRMED"
+            : (provider === "fonnte" ? "SENT_FONNTE" : "SENT");
           const sentReminder = await this.dataManager.moveToSent(reminder.id, {
             sentAt: new Date().toISOString(),
-            deliveryStatus: provider === "fonnte" ? "SENT_FONNTE" : "SENT",
+            deliveryStatus,
           });
 
           this.activityLog.push("info", "delivery", `Reminder sent to ${targetPhoneNumber} via ${provider}`, {

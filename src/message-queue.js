@@ -225,6 +225,19 @@ class MessageQueue {
         return { ...result, provider: "whatsapp-web" };
       }
 
+      if (result.ambiguousDelivery) {
+        this.activityLog.push("warn", "queue", `WhatsApp Web status uncertain for ${item.id}; Fonnte backup skipped to prevent duplicate`, {
+          error: result.message,
+          waState: result.waState || this.waManager.state,
+        });
+        return {
+          status: "success",
+          provider: "whatsapp-web",
+          message: "WhatsApp Web send attempted; delivery status unconfirmed, Fonnte fallback skipped",
+          unconfirmed: true,
+        };
+      }
+
       if (!this.canUseBackup()) {
         return result;
       }
