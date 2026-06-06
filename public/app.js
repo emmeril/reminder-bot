@@ -426,7 +426,7 @@
         },
 
         buildHotspotReactivationAt(form) {
-          if (!form.hotspotReactivationEnabled || !form.hotspotReactivationDate) return "";
+          if (!form.hotspotReactivationDate) return "";
           return `${form.hotspotReactivationDate} ${form.hotspotReactivationTime || "00:00"}`;
         },
 
@@ -437,8 +437,8 @@
         },
 
         getReactivationLabel(contact) {
-          if (!contact.hotspotReactivationEnabled) return "Nonaktif";
-          if (!contact.hotspotReactivationAt) return "Belum dijadwalkan";
+          if (!contact.hotspotReactivationAt) return contact.hotspotReactivationEnabled ? "Belum dijadwalkan" : "Nonaktif";
+          if (!contact.hotspotReactivationEnabled) return `Hapus terjadwal: ${this.formatDateTime(contact.hotspotReactivationAt)}`;
           return this.formatDateTime(contact.hotspotReactivationAt);
         },
 
@@ -947,7 +947,7 @@
           try {
             await this.withProcessing("Mendaftarkan pelanggan...", async () => {
               const result = await this.registerMikrotikCustomer(this.getMikrotikCustomerPayload(), { reload: false, resetForm: false });
-              if (result?.contact?.id && (this.forms.contact.linkedApHost || this.forms.contact.hotspotReactivationEnabled)) {
+              if (result?.contact?.id && (this.forms.contact.linkedApHost || this.forms.contact.hotspotReactivationEnabled || this.buildHotspotReactivationAt(this.forms.contact))) {
                 await this.api(`/api/contacts/${result.contact.id}`, {
                   method: "PUT",
                   body: JSON.stringify({
