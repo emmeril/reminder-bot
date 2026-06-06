@@ -912,6 +912,9 @@
             phoneNumber: this.forms.contact.phoneNumber,
             profile: this.forms.contact.mikrotikProfile,
             sendCredentials: this.forms.contact.sendCredentials,
+            linkedApHost: this.forms.contact.linkedApHost,
+            hotspotReactivationEnabled: this.forms.contact.hotspotReactivationEnabled,
+            hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contact),
           };
         },
 
@@ -947,14 +950,15 @@
           try {
             await this.withProcessing("Mendaftarkan pelanggan...", async () => {
               const result = await this.registerMikrotikCustomer(this.getMikrotikCustomerPayload(), { reload: false, resetForm: false });
-              if (result?.contact?.id && (this.forms.contact.linkedApHost || this.forms.contact.hotspotReactivationEnabled || this.buildHotspotReactivationAt(this.forms.contact))) {
+              const hotspotReactivationAt = this.buildHotspotReactivationAt(this.forms.contact);
+              if (result?.contact?.id && (this.forms.contact.linkedApHost || this.forms.contact.hotspotReactivationEnabled || hotspotReactivationAt)) {
                 await this.api(`/api/contacts/${result.contact.id}`, {
                   method: "PUT",
                   body: JSON.stringify({
                     ...result.contact,
                     linkedApHost: this.forms.contact.linkedApHost,
                     hotspotReactivationEnabled: this.forms.contact.hotspotReactivationEnabled,
-                    hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contact),
+                    hotspotReactivationAt,
                   }),
                 });
               }

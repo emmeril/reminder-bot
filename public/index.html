@@ -966,7 +966,7 @@
                 <i class="fa-solid fa-cloud-arrow-down mr-1.5"></i>Load
               </button>
             </div>
-            <div class="grid gap-4">
+            <div class="grid gap-4 md:grid-cols-2">
               <label class="block text-sm text-ink/60">
                 Profile hotspot
                 <select x-model="forms.contact.mikrotikProfile" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.contact.createHotspotAccount">
@@ -979,11 +979,25 @@
                   </template>
                 </select>
               </label>
+              <label class="block text-sm text-ink/60">
+                Jadwal reaktivasi / hapus
+                <div class="mt-2 grid grid-cols-2 gap-2">
+                  <input type="date" x-model="forms.contact.hotspotReactivationDate" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.contact.hotspotReactivationEnabled">
+                  <input type="time" x-model="forms.contact.hotspotReactivationTime" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.contact.hotspotReactivationEnabled">
+                </div>
+              </label>
             </div>
-            <label class="mt-4 flex items-center gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink">
-              <input type="checkbox" x-model="forms.contact.sendCredentials" class="h-4 w-4 accent-moss">
-              Kirim akun WA
-            </label>
+            <div class="mt-4 grid gap-3 md:grid-cols-2">
+              <label class="flex items-center gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink">
+                <input type="checkbox" x-model="forms.contact.sendCredentials" class="h-4 w-4 accent-moss">
+                Kirim akun WA
+              </label>
+              <label class="flex items-center gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink">
+                <input type="checkbox" x-model="forms.contact.hotspotReactivationEnabled" class="h-4 w-4 accent-moss">
+                Aktifkan reaktivasi otomatis bulanan
+              </label>
+            </div>
+            <p class="mt-2 text-xs text-ink/55">Jika jadwal diisi tetapi reaktivasi otomatis nonaktif, sistem akan menyimpan jadwal hapus user hotspot saat jatuh tempo.</p>
           </div>
           <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" @click="closeContactCreateModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="contactCreateModal.loading">Batal</button>
@@ -1142,7 +1156,7 @@
                 <input x-model="forms.contactEdit.mikrotikPassword" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="Kosong = 5 digit akhir WA">
               </label>
               <label class="block text-sm text-ink/60">
-                Jadwal reaktivasi
+                Jadwal reaktivasi / hapus
                 <div class="mt-2 grid grid-cols-2 gap-2">
                   <input type="date" x-model="forms.contactEdit.hotspotReactivationDate" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.contactEdit.hotspotReactivationEnabled">
                   <input type="time" x-model="forms.contactEdit.hotspotReactivationTime" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.contactEdit.hotspotReactivationEnabled">
