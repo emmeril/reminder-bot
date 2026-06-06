@@ -694,7 +694,18 @@ class MikrotikService {
   }
 
   async deleteHotspotUser(username) {
-    return this.withConnection((conn) => this.removeHotspotUsersByName(conn, username));
+    const hotspotUsername = sanitizeInput(username);
+    if (!hotspotUsername) throw new Error("Username hotspot wajib diisi.");
+
+    return this.withConnection(async (conn) => {
+      const activeResult = await this.removeActiveHotspotSessionsByName(conn, hotspotUsername);
+      const removeResult = await this.removeHotspotUsersByName(conn, hotspotUsername);
+      return {
+        username: hotspotUsername,
+        activeSessionsKilled: activeResult.killed,
+        removedUsers: removeResult.removed,
+      };
+    });
   }
 
   async reactivateHotspotUser({ username, password, profile, phoneNumber }) {
@@ -1305,6 +1316,7 @@ class DataManager {
       contact.hotspotReactivationEnabled = parseBoolean(contact.hotspotReactivationEnabled, false);
       contact.hotspotReactivationAt = this.normalizeOptionalDate(contact.hotspotReactivationAt);
       contact.hotspotLastReactivatedAt = this.normalizeOptionalDate(contact.hotspotLastReactivatedAt);
+      contact.hotspotLastDeactivatedAt = this.normalizeOptionalDate(contact.hotspotLastDeactivatedAt);
       if (!contact.paymentMonths || typeof contact.paymentMonths !== "object" || Array.isArray(contact.paymentMonths)) {
         contact.paymentMonths = {};
       }
@@ -1352,6 +1364,7 @@ class DataManager {
     if (enabled && !username) throw new Error("Username hotspot wajib diisi untuk reaktivasi.");
     if (enabled && !profile) throw new Error("Profile hotspot wajib diisi untuk reaktivasi.");
     if (enabled && !reactivationAt) throw new Error("Jadwal reaktivasi wajib diisi.");
+    if (!enabled && reactivationAt && !username) throw new Error("Username hotspot wajib diisi untuk jadwal hapus hotspot.");
 
     return {
       mikrotikUsername: username,
@@ -1620,6 +1633,7 @@ class DataManager {
       linkedApHost,
       ...hotspotFields,
       hotspotLastReactivatedAt: this.normalizeOptionalDate(payload.hotspotLastReactivatedAt),
+      hotspotLastDeactivatedAt: this.normalizeOptionalDate(payload.hotspotLastDeactivatedAt),
       createdAt: payload.createdAt || new Date().toISOString(),
       updatedAt: payload.updatedAt || new Date().toISOString(),
     };
@@ -1729,11 +1743,25 @@ class DataManager {
     if (Number.isNaN(nowTime)) return [];
 
     return this.getSortedContacts().filter((contact) => {
-      if (!contact.hotspotReactivationEnabled) return false;
-      if (!contact.mikrotikUsername || !contact.mikrotikProfile || !contact.hotspotReactivationAt) return false;
+      if (!contact.hotspotReactivationAt || !contact.mikrotikUsername) return false;
+      if (contact.hotspotReactivationEnabled && !contact.mikrotikProfile) return false;
       const dueTime = new Date(contact.hotspotReactivationAt).getTime();
       return Number.isFinite(dueTime) && dueTime <= nowTime;
     });
+  }
+
+  async markHotspotDeactivated(contactId, result, options = {}) {
+    const contact = this.getContact(contactId);
+    if (!contact) throw new Error("Kontak tidak ditemukan.");
+
+    const now = new Date();
+    contact.hotspotLastDeactivatedAt = now.toISOString();
+    contact.hotspotReactivationEnabled = false;
+    contact.hotspotReactivationAt = null;
+    contact.updatedAt = now.toISOString();
+
+    await this.saveContacts(options);
+    return this.hydrateContact(contact);
   }
 
   async markHotspotReactivated(contactId, result, options = {}) {

@@ -275,6 +275,27 @@ class HotspotReactivationScheduler {
     }
   }
 
+  async deactivateContact(contact, options = {}) {
+    if (!sanitizeInput(contact.mikrotikUsername || "")) {
+      throw new Error("Username hotspot wajib diisi untuk menghapus user hotspot.");
+    }
+
+    const result = await this.mikrotikService.deleteHotspotUser(contact.mikrotikUsername);
+    const updatedContact = await this.dataManager.markHotspotDeactivated(contact.id, result, options);
+    this.activityLog.push("info", "hotspot-reactivation", `User hotspot ${result.username} dihapus sesuai jadwal non-auto reaktivasi`, {
+      contactId: contact.id,
+      username: result.username,
+      activeSessionsKilled: result.activeSessionsKilled,
+      removedUsers: result.removedUsers,
+    });
+
+    return {
+      contact: updatedContact,
+      notification: { sent: false, error: "Jadwal non-auto reaktivasi hanya menghapus user hotspot." },
+      ...result,
+    };
+  }
+
   async reactivateContact(contact, options = {}) {
     const password = this.buildPassword(contact);
     if (!password) {
@@ -322,17 +343,33 @@ class HotspotReactivationScheduler {
     const results = [];
 
     try {
-      this.activityLog.push("info", "hotspot-reactivation", `Memproses ${dueContacts.length} reaktivasi hotspot`);
+      this.activityLog.push("info", "hotspot-reactivation", `Memproses ${dueContacts.length} jadwal hotspot`);
       for (const contact of dueContacts) {
+        const autoReactivation = Boolean(contact.hotspotReactivationEnabled);
         try {
-          const result = await this.reactivateContact(contact);
-          results.push({ contactId: contact.id, username: contact.mikrotikUsername, status: "success", result });
+          const result = autoReactivation
+            ? await this.reactivateContact(contact)
+            : await this.deactivateContact(contact);
+          results.push({
+            contactId: contact.id,
+            username: contact.mikrotikUsername,
+            action: autoReactivation ? "reactivate" : "delete",
+            status: "success",
+            result,
+          });
         } catch (error) {
-          this.activityLog.push("error", "hotspot-reactivation", `Gagal reaktivasi hotspot ${contact.mikrotikUsername || contact.name}`, {
+          const actionText = autoReactivation ? "reaktivasi" : "hapus user";
+          this.activityLog.push("error", "hotspot-reactivation", `Gagal ${actionText} hotspot ${contact.mikrotikUsername || contact.name}`, {
             contactId: contact.id,
             error: error.message,
           });
-          results.push({ contactId: contact.id, username: contact.mikrotikUsername, status: "failed", error: error.message });
+          results.push({
+            contactId: contact.id,
+            username: contact.mikrotikUsername,
+            action: autoReactivation ? "reactivate" : "delete",
+            status: "failed",
+            error: error.message,
+          });
         }
       }
     } finally {
