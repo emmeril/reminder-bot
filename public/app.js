@@ -662,6 +662,7 @@
             const dueStatus = String(contact.dueStatus || "NOT_SCHEDULED").toUpperCase();
 
             if (selectedStatus !== "ALL") {
+              if (selectedStatus === "HAS-DEBT" && !this.hasDebt(contact)) return false;
               if (selectedStatus === "ARREARS-ONLY" && (savedPaymentType !== "ARREARS-ONLY" || paymentStatus === "PAID")) return false;
               if (selectedStatus === "UNPAID" && (paymentStatus === "PAID" || savedPaymentType === "ARREARS-ONLY")) return false;
               if (selectedStatus === "CURRENT-ONLY" && (savedPaymentType !== "CURRENT-ONLY" || paymentStatus !== "PAID")) return false;

@@ -324,11 +324,12 @@
           </div>
           <div class="filter-inline mt-5">
             <input x-model="filters.contacts.search" @input="resetPage('contacts')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama atau nomor WA">
-<select x-model="filters.contacts.status" @change="resetPage('contacts')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-               <option value="ALL">Semua status bayar</option>
-               <option value="ARREARS-ONLY">Hanya Tunggakan</option>
-               <option value="UNPAID">Belum Bayar</option>
-               <option value="CURRENT-ONLY">Bulan Ini Saja</option>
+            <select x-model="filters.contacts.status" @change="resetPage('contacts')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+              <option value="ALL">Semua status bayar</option>
+              <option value="HAS-DEBT">Masih ada hutang</option>
+              <option value="ARREARS-ONLY">Hanya Tunggakan</option>
+              <option value="UNPAID">Belum Bayar</option>
+              <option value="CURRENT-ONLY">Bulan Ini Saja</option>
                <option value="FULL-PAID">Lunas Semua</option>
              </select>
             <select x-model="filters.contacts.dueStatus" @change="resetPage('contacts')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
