@@ -574,6 +574,11 @@
           return contact.debtNote || `Masih ada hutang ${periods.map((period) => period.label).join(", ") || contact.debtPeriodLabel || this.getPreviousBillingPeriodLabel()}.`;
         },
 
+        getDebtCountLabel(contact) {
+          const count = Number(contact.debtCount || this.getDebtPeriods(contact).length || 0);
+          return `Hutang ${count || 1} bulan`;
+        },
+
         getDueStatusLabel(status) {
           const labels = {
             NOT_SCHEDULED: "Belum Dijadwalkan",

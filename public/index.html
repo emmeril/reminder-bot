@@ -417,9 +417,12 @@
                       <td class="px-4 py-4 align-top" data-label="Aksi">
                         <div class="flex flex-col items-start gap-2">
                           <template x-if="hasDebt(contact)">
-                            <div class="w-full rounded-xl border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold leading-5 text-clay text-center">
-                              <i class="fa-solid fa-triangle-exclamation mr-1.5"></i>
-                              <span x-text="getDebtNote(contact)"></span>
+                            <div class="w-full rounded-xl border border-clay/20 bg-clay/5 px-3 py-2 text-center text-clay">
+                              <div class="text-xs font-bold leading-5">
+                                <i class="fa-solid fa-triangle-exclamation mr-1.5"></i>
+                                <span x-text="getDebtCountLabel(contact)"></span>
+                              </div>
+                              <div class="mt-1 text-[11px] font-semibold leading-4 text-clay/80" x-text="getDebtNote(contact)"></div>
                             </div>
                           </template>
 <template x-if="contact.paymentStatus !== 'PAID'">
