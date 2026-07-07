@@ -8,7 +8,7 @@ class FonnteManager {
 
   static async sendMessage(number, message) {
     if (!this.isConfigured()) {
-      throw new Error("Fonnte backup is not configured");
+      throw new Error("Fonnte is not configured");
     }
 
     const normalized = normalizePhoneNumber(number);

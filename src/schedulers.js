@@ -1,4 +1,5 @@
 const { DEFAULT_SETTINGS } = require("./config");
+const TelegramManager = require("./telegram-manager");
 const {
   addMonthsSafely,
   formatDate,
@@ -161,15 +162,14 @@ class MikrotikBackupScheduler {
       return;
     }
 
-    const recipients = this.dataManager.getAdminRecipients();
+    const recipients = TelegramManager.getChatIds();
     if (recipients.length === 0) {
-      this.activityLog.push("warn", "mikrotik-backup", "Backup MikroTik dilewati karena admin recipients kosong");
+      this.activityLog.push("warn", "mikrotik-backup", "Backup MikroTik dilewati karena TELEGRAM_CHAT_IDS kosong");
       return;
     }
 
-    const status = this.notificationBot.getStatus();
-    if (!status.isAvailable) {
-      this.activityLog.push("warn", "mikrotik-backup", "Backup MikroTik dilewati karena transport WA belum siap");
+    if (!TelegramManager.isConfigured()) {
+      this.activityLog.push("warn", "mikrotik-backup", "Backup MikroTik dilewati karena Telegram belum dikonfigurasi");
       return;
     }
 
@@ -179,12 +179,12 @@ class MikrotikBackupScheduler {
       const caption = `Backup MikroTik harian (${scheduleCheck.nowParts.dateKey})\nWaktu: ${scheduleCheck.configuredTime} ${scheduleCheck.timeZone}`;
 
       const results = [];
-      for (const phoneNumber of recipients) {
+      for (const chatId of recipients) {
         try {
-          await this.notificationBot.sendFile(phoneNumber, filePath, caption);
-          results.push({ phoneNumber, status: "sent" });
+          await TelegramManager.sendDocument(chatId, filePath, caption);
+          results.push({ chatId, status: "sent", provider: "telegram" });
         } catch (error) {
-          results.push({ phoneNumber, status: "failed", error: error.message });
+          results.push({ chatId, status: "failed", error: error.message, provider: "telegram" });
         }
       }
 

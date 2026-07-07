@@ -27,6 +27,7 @@ const AsyncLock = require("./async-lock");
 const AuthManager = require("./auth-manager");
 const FonnteManager = require("./fonnte-manager");
 const MessageQueue = require("./message-queue");
+const TelegramManager = require("./telegram-manager");
 const {
   ApDownNotifier,
   HotspotReactivationScheduler,
@@ -2188,64 +2189,32 @@ class NotificationBot {
   }
 
   async initialize() {
-    await this.waManager.initialize();
-    this.waManager.startKeepAlive();
+    if (FonnteManager.isConfigured()) {
+      this.activityLog.push("info", "notification", "Fonnte aktif sebagai transport WhatsApp utama");
+      return;
+    }
+
+    this.activityLog.push("warn", "notification", "Fonnte belum dikonfigurasi; reminder/notifikasi WhatsApp tidak akan dikirim");
   }
 
   async sendMessage(phoneNumber, message) {
-    const result = await this.waManager.sendMessage(phoneNumber, message);
-    if (result.status === "success") {
-      await this.waManager.noteProviderUsed("whatsapp-web", {
-        source: "direct",
-        phoneNumber: normalizePhoneNumber(phoneNumber),
-      });
-      return { ...result, provider: "whatsapp-web" };
-    }
-
-    if (result.ambiguousDelivery) {
-      this.activityLog.push("warn", "notification", "WhatsApp Web status belum pasti; fallback Fonnte ditahan agar tidak double kirim", {
-        phoneNumber: normalizePhoneNumber(phoneNumber),
-        error: result.message,
-        waState: result.waState || this.waManager.state,
-      });
-      return {
-        status: "success",
-        provider: "whatsapp-web",
-        message: "WhatsApp Web send attempted; delivery status unconfirmed, Fonnte fallback skipped",
-        unconfirmed: true,
-        timestamp: new Date().toISOString(),
-      };
-    }
-
     if (!FonnteManager.isConfigured()) {
-      throw new Error(result.message);
+      throw new Error("Fonnte belum dikonfigurasi. Isi FONNTE_TOKEN dan aktifkan FONNTE_ENABLED=true.");
     }
 
-    this.activityLog.push("warn", "notification", "WhatsApp Web gagal, mencoba fallback Fonnte", {
+    const result = await FonnteManager.sendMessage(phoneNumber, message);
+    this.activityLog.push("info", "notification", `Pesan terkirim via Fonnte ke ${normalizePhoneNumber(phoneNumber)}`, {
       phoneNumber: normalizePhoneNumber(phoneNumber),
-      error: result.message,
-      waState: result.waState || this.waManager.state,
     });
-
-    try {
-      const backupResult = await FonnteManager.sendMessage(phoneNumber, message);
-      this.activityLog.push("info", "notification", `Fallback Fonnte berhasil untuk ${normalizePhoneNumber(phoneNumber)}`);
-      if (backupResult.status === "success") {
-        await this.waManager.noteProviderUsed("fonnte", {
-          source: "direct",
-          phoneNumber: normalizePhoneNumber(phoneNumber),
-          reason: result.message,
-          waState: result.waState || this.waManager.state,
-        });
-      }
-      return backupResult;
-    } catch (backupError) {
-      throw new Error(`WhatsApp Web gagal: ${result.message}; Fonnte gagal: ${backupError.message}`);
-    }
+    return result;
   }
 
   async sendFile(phoneNumber, filePath, caption = "") {
     await this.waManager.sendFile(phoneNumber, filePath, caption);
+  }
+
+  async sendTelegramFile(chatId, filePath, caption = "") {
+    return TelegramManager.sendDocument(chatId, filePath, caption);
   }
 
   async sendAdminBroadcast(title, body, options = {}) {
@@ -2394,7 +2363,14 @@ class NotificationBot {
   }
 
   getStatus() {
-    return this.waManager.getStatus();
+    const status = this.waManager.getStatus();
+    return {
+      ...status,
+      isAvailable: FonnteManager.isConfigured(),
+      fonnteEnabled: FonnteManager.isConfigured(),
+      telegramEnabled: TelegramManager.isConfigured(),
+      telegramRecipients: TelegramManager.getChatIds().length,
+    };
   }
 }
 
@@ -2556,34 +2532,17 @@ class WebServer {
     });
     this.app.get("/qr", requirePageAuth, async (req, res) => {
       const status = this.notificationBot.getStatus();
-      if (status.isAvailable) {
+      if (status.fonnteEnabled) {
         return res.send(`
           <html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#f4f5ef;font-family:Georgia,serif;">
             <div style="padding:28px 34px;border-radius:20px;background:white;box-shadow:0 20px 60px rgba(0,0,0,.12);color:#204b57;font-size:1.3rem;">
-              WhatsApp sudah terhubung dan siap mengirim notifikasi.
+              Fonnte sudah aktif dan siap mengirim notifikasi WhatsApp.
             </div>
           </body></html>
         `);
       }
 
-      if (!status.currentQR) {
-        return res.send("Menunggu QR code...");
-      }
-
-      const qrImage = await QRCode.toDataURL(this.notificationBot.waManager.currentQR);
-      return res.send(`
-        <html>
-          <head><meta http-equiv="refresh" content="15"><title>Scan QR</title></head>
-          <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(135deg,#f4efe4,#dce7e2);font-family:Georgia,serif;">
-            <div style="background:white;padding:28px;border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,.12);text-align:center;max-width:420px;">
-              <h1 style="margin-top:0;color:#204b57;">Hubungkan Transport WhatsApp</h1>
-              <img src="${qrImage}" style="max-width:320px;width:100%;border-radius:18px;">
-              <p>Scan QR ini dari WhatsApp untuk mengaktifkan channel notifikasi.</p>
-              <p>Reconnect attempts: ${status.reconnectAttempts}/${CONFIG.WA_MAX_RECONNECT_ATTEMPTS}</p>
-            </div>
-          </body>
-        </html>
-      `);
+      return res.send("Fonnte belum dikonfigurasi. Isi FONNTE_TOKEN dan FONNTE_ENABLED=true.");
     });
 
     this.app.get("/api/status", requireApiAuth, handleApi(async () => ({
@@ -2658,26 +2617,25 @@ class WebServer {
       };
     }));
     this.app.post("/api/mikrotik/backup/send", requireApiAuth, handleApi(async () => {
-      const status = this.notificationBot.getStatus();
-      if (!status.isAvailable) {
-        throw new Error("Transport backup belum siap. Hubungkan WhatsApp Web terlebih dahulu.");
+      if (!TelegramManager.isConfigured()) {
+        throw new Error("Transport backup Telegram belum siap. Isi TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_IDS.");
       }
 
-      const recipients = this.dataManager.getAdminRecipients();
+      const recipients = TelegramManager.getChatIds();
       if (recipients.length === 0) {
-        throw new Error("Admin recipients masih kosong.");
+        throw new Error("TELEGRAM_CHAT_IDS masih kosong.");
       }
 
       const backup = await this.mikrotikService.generateDailyBackupFile();
       const caption = `Backup MikroTik manual\nWaktu: ${new Date().toLocaleString("id-ID")}`;
       const results = [];
 
-      for (const phoneNumber of recipients) {
+      for (const chatId of recipients) {
         try {
-          await this.notificationBot.sendFile(phoneNumber, backup.filePath, caption);
-          results.push({ phoneNumber, status: "sent" });
+          await this.notificationBot.sendTelegramFile(chatId, backup.filePath, caption);
+          results.push({ chatId, status: "sent", provider: "telegram" });
         } catch (error) {
-          results.push({ phoneNumber, status: "failed", error: error.message });
+          results.push({ chatId, status: "failed", error: error.message, provider: "telegram" });
         }
       }
 
@@ -2904,7 +2862,7 @@ class WebServer {
   start() {
     this.app.listen(CONFIG.PORT, () => {
       this.activityLog.push("info", "web", `Dashboard running at http://localhost:${CONFIG.PORT}/dashboard`);
-      this.activityLog.push("info", "web", `QR page running at http://localhost:${CONFIG.PORT}/qr`);
+      this.activityLog.push("info", "web", `Fonnte status page running at http://localhost:${CONFIG.PORT}/qr`);
     });
   }
 }

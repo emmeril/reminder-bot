@@ -129,8 +129,6 @@ class MessageQueue {
 
     if (this.canProcess()) {
       this._scheduleProcess(5000);
-    } else if (this.waManager.reconnectAttempts === 0 && !this.waManager.isReconnecting) {
-      this.waManager.scheduleReconnect();
     }
 
     return item.id;
@@ -145,16 +143,16 @@ class MessageQueue {
   }
 
   canProcess() {
-    return this.pending.length > 0 && (this.canUseWhatsAppWeb() || this.canUseBackup());
+    return this.pending.length > 0 && this.canUseBackup();
   }
 
   async process() {
     await this.queueLock.runExclusive("whatsapp_queue_process", async () => {
       if (this.isProcessing) return;
 
-      if (!this.canProcess() || (this.waManager.isReconnecting && !this.canUseBackup())) {
-        if (this.pending.length > 0 && !this.canUseWhatsAppWeb() && !this.canUseBackup()) {
-          this.activityLog.push("info", "queue", `Queue waiting for WA/Fonnte (State: ${this.waManager.state})`);
+      if (!this.canProcess()) {
+        if (this.pending.length > 0 && !this.canUseBackup()) {
+          this.activityLog.push("info", "queue", "Queue waiting for Fonnte configuration");
         }
         return;
       }
@@ -211,61 +209,14 @@ class MessageQueue {
   }
 
   async _sendWithAvailableProvider(item) {
-    let fallbackReason = "";
-    if (this.canUseWhatsAppWeb() && this.waManager.client) {
-      const result = await this.waManager.sendMessage(item.number, item.message);
-      if (result.status === "success") {
-        if (typeof this.waManager.noteProviderUsed === "function") {
-          await this.waManager.noteProviderUsed("whatsapp-web", {
-            source: "queue",
-            itemId: item.id,
-            phoneNumber: item.number,
-          });
-        }
-        return { ...result, provider: "whatsapp-web" };
-      }
-
-      if (result.ambiguousDelivery) {
-        this.activityLog.push("warn", "queue", `WhatsApp Web status uncertain for ${item.id}; Fonnte backup skipped to prevent duplicate`, {
-          error: result.message,
-          waState: result.waState || this.waManager.state,
-        });
-        return {
-          status: "success",
-          provider: "whatsapp-web",
-          message: "WhatsApp Web send attempted; delivery status unconfirmed, Fonnte fallback skipped",
-          unconfirmed: true,
-        };
-      }
-
-      if (!this.canUseBackup()) {
-        return result;
-      }
-
-      fallbackReason = result.message;
-      this.activityLog.push("warn", "queue", `WhatsApp Web failed for ${item.id}, trying Fonnte backup`, {
-        error: result.message,
-      });
-    }
-
     if (this.canUseBackup()) {
       const backupResult = await FonnteManager.sendMessage(item.number, item.message);
-      if (backupResult.status === "success" && typeof this.waManager.noteProviderUsed === "function") {
-        await this.waManager.noteProviderUsed("fonnte", {
-          source: "queue",
-          itemId: item.id,
-          phoneNumber: item.number,
-          reason: fallbackReason || `WhatsApp state: ${this.waManager.state}`,
-          waState: this.waManager.state,
-        });
-      }
       return backupResult;
     }
 
-    if (this.waManager.state !== WA_STATES.CONNECTED) this.waManager.scheduleReconnect();
     return {
       status: "error",
-      message: `WhatsApp not ready (State: ${this.waManager.state}) and Fonnte backup is not configured`,
+      message: "Fonnte is not configured",
     };
   }
 
@@ -273,11 +224,6 @@ class MessageQueue {
     const message = `[OK] WhatsApp sent (${item.id})\nProvider: ${provider}\nTo: ${item.number}\n${item.message.substring(0, 50)}...`;
     const adminNumber = process.env.ADMIN_NUMBER;
     if (!adminNumber) return;
-
-    if (this.canUseWhatsAppWeb() && this.waManager.client) {
-      const result = await this.waManager.sendMessage(adminNumber, message);
-      if (result.status === "success") return result;
-    }
 
     if (this.canUseBackup()) {
       return await FonnteManager.sendMessage(adminNumber, message);
@@ -367,7 +313,7 @@ class MessageQueue {
 
     const isWAError = this._isWhatsAppError(errorMsg);
 
-    if (isWAError || this.waManager.state !== WA_STATES.CONNECTED) {
+    if (isWAError && this.canUseWhatsAppWeb()) {
       this._requeueForWhatsAppRecovery(item, isWAError);
       return;
     }
