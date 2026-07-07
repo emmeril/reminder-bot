@@ -16,6 +16,7 @@ const {
   PAYMENT_TYPES,
 } = require("./config");
 const ActivityLog = require("./activity-log");
+const AsyncLock = require("./async-lock");
 const AuthManager = require("./auth-manager");
 const FonnteManager = require("./fonnte-manager");
 const TelegramManager = require("./telegram-manager");
