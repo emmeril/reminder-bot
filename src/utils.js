@@ -1,5 +1,4 @@
 const crypto = require("crypto");
-const fsSync = require("fs");
 const { CONFIG, MONTH_NAMES } = require("./config");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -302,40 +301,6 @@ function addMonthsSafely(dateValue, monthsToAdd) {
   );
 }
 
-function resolveChromeExecutablePath() {
-  const envCandidates = [
-    process.env.PUPPETEER_EXECUTABLE_PATH,
-    process.env.CHROME_PATH,
-    process.env.CHROMIUM_PATH,
-  ].filter(Boolean);
-
-  for (const candidate of envCandidates) {
-    if (fsSync.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  if (process.platform !== "linux") {
-    return null;
-  }
-
-  const linuxCandidates = [
-    "/usr/bin/chromium",
-    "/usr/bin/chromium-browser",
-    "/usr/bin/google-chrome",
-    "/usr/bin/google-chrome-stable",
-    "/snap/bin/chromium",
-  ];
-
-  for (const candidate of linuxCandidates) {
-    if (fsSync.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  return null;
-}
-
 module.exports = {
   addMonthsSafely,
   buildHotspotEmailFromPhone,
@@ -357,7 +322,6 @@ module.exports = {
   parseCookies,
   parseDateTimeInput,
   parseNetwatchSinceDate,
-  resolveChromeExecutablePath,
   safeCompareString,
   sanitizeInput,
   sanitizeMultilineText,

@@ -65,7 +65,7 @@ class ReminderScheduler {
         try {
           const targetPhoneNumber = reminder.phoneNumber;
           const sendResult = await this.notificationBot.sendMessage(targetPhoneNumber, reminder.message);
-          const provider = sendResult?.provider || "whatsapp-web";
+          const provider = sendResult?.provider || "fonnte";
           const deliveryStatus = sendResult?.unconfirmed
             ? "SENT_UNCONFIRMED"
             : (provider === "fonnte" ? "SENT_FONNTE" : "SENT");
@@ -102,8 +102,7 @@ class ReminderScheduler {
             error: error.message,
             phoneNumber: reminder.phoneNumber,
           });
-          if (String(error.message).toLowerCase().includes("not ready")) {
-            // The WhatsAppManager handles reconnect automatically
+          if (String(error.message).toLowerCase().includes("fonnte belum dikonfigurasi")) {
             break;
           }
         }
