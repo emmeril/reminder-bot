@@ -526,23 +526,52 @@
           return `${monthNames[previousMonth]} ${previousYear}`;
         },
 
-        hasDebt(contact) {
-          if (contact.hasDebt !== undefined) return Boolean(contact.hasDebt);
-          const type = this.inferPaymentType(contact);
-          if (type === "FULL-PAID" || type === "ARREARS-ONLY") return false;
+        getBillingPeriodLabel(year, month) {
+          const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+          return `${monthNames[month] || month} ${year}`;
+        },
+
+        getContactBillingStartPeriod(contact) {
+          const systemStart = { year: 2026, month: 4 };
+          const createdAt = contact.createdAt ? new Date(contact.createdAt) : null;
+          if (!createdAt || Number.isNaN(createdAt.getTime())) return systemStart;
+          const createdPeriod = { year: createdAt.getFullYear(), month: createdAt.getMonth() + 1 };
+          return ((createdPeriod.year * 12) + createdPeriod.month) > ((systemStart.year * 12) + systemStart.month)
+            ? createdPeriod
+            : systemStart;
+        },
+
+        getDebtPeriods(contact) {
+          if (Array.isArray(contact.debtPeriods)) return contact.debtPeriods;
+          if (this.inferPaymentType(contact) === "FULL-PAID") return [];
 
           const paymentMonths = contact.paymentMonths || {};
+          const start = this.getContactBillingStartPeriod(contact);
           const now = new Date();
-          const year = now.getFullYear();
-          const month = now.getMonth() + 1;
-          const prevMonth = month === 1 ? 12 : month - 1;
-          const prevYear = month === 1 ? year - 1 : year;
-          const prevKey = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
-          return paymentMonths[prevKey]?.status !== "PAID";
+          const endIndex = (now.getFullYear() * 12) + now.getMonth() - 1;
+          const periods = [];
+
+          for (let index = (start.year * 12) + (start.month - 1); index <= endIndex; index += 1) {
+            const year = Math.floor(index / 12);
+            const month = (index % 12) + 1;
+            const key = `${year}-${String(month).padStart(2, "0")}`;
+            if (paymentMonths[key]?.status !== "PAID") {
+              periods.push({ key, label: this.getBillingPeriodLabel(year, month), status: paymentMonths[key]?.status || "UNPAID" });
+            }
+          }
+
+          return periods;
+        },
+
+
+        hasDebt(contact) {
+          if (contact.hasDebt !== undefined) return Boolean(contact.hasDebt);
+          return this.getDebtPeriods(contact).length > 0;
         },
 
         getDebtNote(contact) {
-          return contact.debtNote || `Masih ada hutang ${contact.debtPeriodLabel || this.getPreviousBillingPeriodLabel()}.`;
+          const periods = this.getDebtPeriods(contact);
+          return contact.debtNote || `Masih ada hutang ${periods.map((period) => period.label).join(", ") || contact.debtPeriodLabel || this.getPreviousBillingPeriodLabel()}.`;
         },
 
         getDueStatusLabel(status) {

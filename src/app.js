@@ -53,6 +53,44 @@ const {
   sleep,
 } = require("./utils");
 
+const BILLING_START_PERIOD = { year: 2026, month: 4 };
+
+function compareBillingPeriods(a, b) {
+  if (a.year !== b.year) return a.year - b.year;
+  return a.month - b.month;
+}
+
+function addBillingMonths(period, monthsToAdd) {
+  const index = (period.year * 12) + (period.month - 1) + monthsToAdd;
+  return {
+    year: Math.floor(index / 12),
+    month: (index % 12) + 1,
+  };
+}
+
+function getContactBillingStartPeriod(contact) {
+  const createdAt = contact.createdAt ? new Date(contact.createdAt) : null;
+  if (!createdAt || Number.isNaN(createdAt.getTime())) {
+    return BILLING_START_PERIOD;
+  }
+
+  const createdPeriod = {
+    year: createdAt.getFullYear(),
+    month: createdAt.getMonth() + 1,
+  };
+  return compareBillingPeriods(createdPeriod, BILLING_START_PERIOD) > 0
+    ? createdPeriod
+    : BILLING_START_PERIOD;
+}
+
+function listBillingPeriods(start, end) {
+  const periods = [];
+  for (let period = start; compareBillingPeriods(period, end) <= 0; period = addBillingMonths(period, 1)) {
+    periods.push(period);
+  }
+  return periods;
+}
+
 // ===============================
 // MIKROTIK SERVICE
 // ===============================
@@ -1078,32 +1116,37 @@ class DataManager {
     const { year, month } = options.year && options.month
       ? { year: options.year, month: options.month }
       : getBillingPeriodParts();
-    const previous = getPreviousBillingPeriod(year, month);
-    const previousKey = makeBillingPeriodKey(previous.year, previous.month);
     const currentKey = makeBillingPeriodKey(year, month);
-    const systemStartYear = 2026;
-    const systemStartMonth = 4;
-    const previousBeforeSystem = previous.year < systemStartYear
-      || (previous.year === systemStartYear && previous.month < systemStartMonth);
     const paymentMonths = contact.paymentMonths || {};
-    const previousPayment = paymentMonths[previousKey] || null;
     const currentPayment = paymentMonths[currentKey] || null;
     const currentType = String(currentPayment?.paymentType || contact.paymentType || "").toUpperCase();
-    const createdAt = contact.createdAt ? new Date(contact.createdAt) : null;
-    const previousPeriodEnd = new Date(previous.year, previous.month, 0, 23, 59, 59, 999);
-    const createdAfterPreviousPeriod = createdAt && !Number.isNaN(createdAt.getTime()) && createdAt > previousPeriodEnd;
-    const previousPaid = previousPayment?.status === PAYMENT_STATUS.PAID
-      || currentType === PAYMENT_TYPES.FULL_PAID
-      || currentType === PAYMENT_TYPES.ARREARS_ONLY;
-    const hasDebt = !previousBeforeSystem && !createdAfterPreviousPeriod && !previousPaid;
-    const periodLabel = formatBillingPeriodLabel(previous.year, previous.month);
+    const previous = getPreviousBillingPeriod(year, month);
+    const startPeriod = getContactBillingStartPeriod(contact);
+    const debtPeriods = currentType === PAYMENT_TYPES.FULL_PAID
+      ? []
+      : listBillingPeriods(startPeriod, previous)
+        .filter((period) => {
+          const key = makeBillingPeriodKey(period.year, period.month);
+          return paymentMonths[key]?.status !== PAYMENT_STATUS.PAID;
+        })
+        .map((period) => ({
+          key: makeBillingPeriodKey(period.year, period.month),
+          label: formatBillingPeriodLabel(period.year, period.month),
+          status: paymentMonths[makeBillingPeriodKey(period.year, period.month)]?.status || PAYMENT_STATUS.UNPAID,
+        }));
+    const hasDebt = debtPeriods.length > 0;
+    const firstDebt = debtPeriods[0] || null;
 
     return {
       hasDebt,
-      debtPeriod: previousKey,
-      debtPeriodLabel: periodLabel,
-      debtNote: hasDebt ? `Masih ada hutang ${periodLabel}.` : "",
-      previousPaymentStatus: previousPayment?.status || PAYMENT_STATUS.UNPAID,
+      debtPeriod: firstDebt?.key || makeBillingPeriodKey(previous.year, previous.month),
+      debtPeriodLabel: firstDebt?.label || formatBillingPeriodLabel(previous.year, previous.month),
+      debtPeriods,
+      debtCount: debtPeriods.length,
+      debtNote: hasDebt
+        ? `Masih ada hutang ${debtPeriods.map((period) => period.label).join(", ")}.`
+        : "",
+      previousPaymentStatus: paymentMonths[makeBillingPeriodKey(previous.year, previous.month)]?.status || PAYMENT_STATUS.UNPAID,
       currentPaymentStatus: currentPayment?.status || String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase(),
     };
   }
@@ -1546,8 +1589,19 @@ class DataManager {
     contact.paymentDate = status === PAYMENT_STATUS.PAID ? now.toISOString() : null;
     contact.paymentType = paymentType || null;
 
-    if (paymentType === PAYMENT_TYPES.ARREARS_ONLY || paymentType === PAYMENT_TYPES.FULL_PAID) {
-      contact.paymentMonths[previousKey] = {
+    if (paymentType === PAYMENT_TYPES.FULL_PAID) {
+      const startPeriod = getContactBillingStartPeriod(contact);
+      for (const period of listBillingPeriods(startPeriod, previous)) {
+        contact.paymentMonths[makeBillingPeriodKey(period.year, period.month)] = {
+          status: PAYMENT_STATUS.PAID,
+          paidDate: now.toISOString(),
+          paymentType,
+        };
+      }
+    } else if (paymentType === PAYMENT_TYPES.ARREARS_ONLY) {
+      const debtPeriod = this.buildDebtInfo(contact, { year, month }).debtPeriods?.[0]
+        || { key: previousKey };
+      contact.paymentMonths[debtPeriod.key] = {
         status: PAYMENT_STATUS.PAID,
         paidDate: now.toISOString(),
         paymentType,
@@ -1581,8 +1635,19 @@ class DataManager {
     const previous = getPreviousBillingPeriod(year, month);
     const previousKey = makeBillingPeriodKey(previous.year, previous.month);
 
-    if (paymentType === PAYMENT_TYPES.ARREARS_ONLY || paymentType === PAYMENT_TYPES.FULL_PAID) {
-      contact.paymentMonths[previousKey] = {
+    if (paymentType === PAYMENT_TYPES.FULL_PAID) {
+      const startPeriod = getContactBillingStartPeriod(contact);
+      for (const period of listBillingPeriods(startPeriod, previous)) {
+        contact.paymentMonths[makeBillingPeriodKey(period.year, period.month)] = {
+          status: PAYMENT_STATUS.PAID,
+          paidDate: now.toISOString(),
+          paymentType,
+        };
+      }
+    } else if (paymentType === PAYMENT_TYPES.ARREARS_ONLY) {
+      const debtPeriod = this.buildDebtInfo(contact, { year, month }).debtPeriods?.[0]
+        || { key: previousKey };
+      contact.paymentMonths[debtPeriod.key] = {
         status: PAYMENT_STATUS.PAID,
         paidDate: now.toISOString(),
         paymentType,
@@ -1635,26 +1700,9 @@ class DataManager {
   }
 
   getOverdueContacts(year, month) {
-    const prevMonth = month === 1 ? 12 : month - 1;
-    const prevYear = month === 1 ? year - 1 : year;
-    const prevKey = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
-    const currentKey = `${year}-${String(month).padStart(2, "0")}`;
-    const systemStartYear = 2026;
-    const systemStartMonth = 4;
-
-    return this.getSortedContacts().filter((contact) => {
-      const paymentMonths = contact.paymentMonths || {};
-      const prevStatus = paymentMonths[prevKey]?.status;
-      const currStatus = paymentMonths[currentKey]?.status;
-      const prevBeforeSystem = prevYear < systemStartYear
-        || (prevYear === systemStartYear && prevMonth < systemStartMonth);
-
-      if (prevBeforeSystem) {
-        return currStatus !== PAYMENT_STATUS.PAID;
-      }
-
-      return prevStatus !== PAYMENT_STATUS.PAID || currStatus !== PAYMENT_STATUS.PAID;
-    });
+    return this.getSortedContacts().filter((contact) => (
+      this.buildDebtInfo(contact, { year, month }).hasDebt
+    ));
   }
 
   async resetAllPaymentStatus() {
@@ -2382,9 +2430,7 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
-  const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
-  const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
-  const overdue = dataManager.getOverdueContacts(prevYear, prevMonth);
+  const overdue = dataManager.getOverdueContacts(currentYear, currentMonth);
 
   activityLog.push("info", "billing", `Monthly payment status reset completed for ${count} contact(s)`);
 
