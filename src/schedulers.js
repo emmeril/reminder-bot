@@ -35,6 +35,12 @@ class ReminderScheduler {
     };
   }
 
+  isPaidReminder(reminder) {
+    const contact = this.dataManager.getResolvedReminderContact(reminder);
+    return String(contact?.dueStatus || "").toUpperCase() === "PAID"
+      || String(contact?.paymentStatus || "").toUpperCase() === "PAID";
+  }
+
   async processDueReminders() {
     if (this.isProcessing) {
       this.activityLog.push("info", "scheduler", "Skipping run because previous cycle is still processing");
@@ -63,6 +69,19 @@ class ReminderScheduler {
 
       for (const reminder of dueReminders) {
         try {
+          if (this.isPaidReminder(reminder)) {
+            await this.dataManager.moveToSent(reminder.id, {
+              sentAt: new Date().toISOString(),
+              deliveryStatus: "SKIPPED_PAID",
+            });
+            this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} dilewati karena status jatuh tempo sudah lunas`, {
+              reminderId: reminder.id,
+              contactId: reminder.contactId || null,
+              phoneNumber: reminder.phoneNumber,
+            });
+            continue;
+          }
+
           const targetPhoneNumber = reminder.phoneNumber;
           const sendResult = await this.notificationBot.sendMessage(targetPhoneNumber, reminder.message);
           const provider = sendResult?.provider || "fonnte";
