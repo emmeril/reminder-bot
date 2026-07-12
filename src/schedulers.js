@@ -35,6 +35,21 @@ class ReminderScheduler {
     };
   }
 
+  async rescheduleMonthlyReminder(reminder, sourceStatus = "SENT") {
+    if (!this.dataManager.getSettings().autoRescheduleMonthly) return null;
+
+    const nextReminder = this.buildNextReminder(reminder);
+    const createdReminder = await this.dataManager.addReminder(nextReminder);
+    this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} dijadwalkan ulang bulanan`, {
+      reminderId: reminder.id,
+      nextReminderId: createdReminder.id,
+      contactId: reminder.contactId || null,
+      sourceStatus,
+      nextReminderDateTime: createdReminder.reminderDateTime,
+    });
+    return createdReminder;
+  }
+
   isPaidReminder(reminder) {
     const contact = this.dataManager.getResolvedReminderContact(reminder);
     return String(contact?.dueStatus || "").toUpperCase() === "PAID"
@@ -74,6 +89,7 @@ class ReminderScheduler {
               sentAt: new Date().toISOString(),
               deliveryStatus: "SKIPPED_PAID",
             });
+            await this.rescheduleMonthlyReminder(reminder, "SKIPPED_PAID");
             this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} dilewati karena status jatuh tempo sudah lunas`, {
               reminderId: reminder.id,
               contactId: reminder.contactId || null,
@@ -106,10 +122,7 @@ class ReminderScheduler {
             );
           }
 
-          if (this.dataManager.getSettings().autoRescheduleMonthly) {
-            const nextReminder = this.buildNextReminder(reminder);
-            await this.dataManager.addReminder(nextReminder);
-          }
+          await this.rescheduleMonthlyReminder(reminder, deliveryStatus);
 
           if (!sentReminder) {
             this.activityLog.push("error", "delivery", "Sent reminder could not be archived", {
