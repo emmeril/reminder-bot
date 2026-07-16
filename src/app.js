@@ -528,6 +528,7 @@ class DataManager {
     this.roles = new Map();
     this.settings = { ...DEFAULT_SETTINGS };
     this.fileLocks = new Map();
+    this.dataMutationLock = new AsyncLock();
     this.dbWriteLock = new AsyncLock();
     this.sequelize = null;
     this.models = {};
@@ -624,6 +625,10 @@ class DataManager {
 
   async withDatabaseWrite(operation) {
     return this.dbWriteLock.runExclusive("database_write", operation);
+  }
+
+  async withDataMutation(operation) {
+    return this.dataMutationLock.runExclusive("data_mutation", operation);
   }
 
   async acquireLock(filePath) {
@@ -853,6 +858,10 @@ class DataManager {
   }
 
   async cleanupSentHistory(options = {}) {
+    return this.withDataMutation(async () => this.cleanupSentHistoryUnlocked(options));
+  }
+
+  async cleanupSentHistoryUnlocked(options = {}) {
     const retentionMonths = Number(options.retentionMonths || CONFIG.SENT_HISTORY_RETENTION_MONTHS);
     if (!Number.isFinite(retentionMonths) || retentionMonths <= 0) {
       return { deleted: 0, cutoff: null, remaining: this.sentReminders.size };
@@ -983,16 +992,18 @@ class DataManager {
   }
 
   async saveAll() {
-    await this.withDatabaseWrite(() => (
-      this.sequelize.transaction(async (transaction) => {
-        const options = { transaction };
-        await this.saveContacts(options);
-        await this.savePelanggan(options);
-        await this.saveReminders(options);
-        await this.saveSentReminders(options);
-        await this.saveRoles(options);
-        await this.saveSettings(options);
-      })
+    await this.withDataMutation(() => (
+      this.withDatabaseWrite(() => (
+        this.sequelize.transaction(async (transaction) => {
+          const options = { transaction };
+          await this.saveContacts(options);
+          await this.savePelanggan(options);
+          await this.saveReminders(options);
+          await this.saveSentReminders(options);
+          await this.saveRoles(options);
+          await this.saveSettings(options);
+        })
+      ))
     ));
   }
 
@@ -1226,128 +1237,142 @@ class DataManager {
   }
 
   async addContact(payload) {
-    const name = sanitizeInput(payload.name);
-    const phoneNumber = normalizePhoneNumber(payload.phoneNumber);
-    const linkedApHost = sanitizeInput(String(payload.linkedApHost || ""));
-    const hotspotFields = this.normalizeContactHotspotFields(payload);
+    return this.withDataMutation(async () => {
+      const name = sanitizeInput(payload.name);
+      const phoneNumber = normalizePhoneNumber(payload.phoneNumber);
+      const linkedApHost = sanitizeInput(String(payload.linkedApHost || ""));
+      const hotspotFields = this.normalizeContactHotspotFields(payload);
 
-    if (!name) throw new Error("Nama kontak wajib diisi.");
-    if (!isValidPhoneNumber(phoneNumber)) throw new Error("Nomor kontak harus berformat 628xxx.");
-    if (this.hasContactPhone(phoneNumber)) throw new Error("Nomor kontak sudah digunakan.");
+      if (!name) throw new Error("Nama kontak wajib diisi.");
+      if (!isValidPhoneNumber(phoneNumber)) throw new Error("Nomor kontak harus berformat 628xxx.");
+      if (this.hasContactPhone(phoneNumber)) throw new Error("Nomor kontak sudah digunakan.");
 
-    const contact = {
-      id: String(payload.id || generateId()),
-      name,
-      phoneNumber,
-      paymentStatus: payload.paymentStatus || PAYMENT_STATUS.UNPAID,
-      paymentDate: payload.paymentStatus === PAYMENT_STATUS.PAID ? new Date().toISOString() : null,
-      paymentMonths: payload.paymentMonths || {},
-      linkedApHost,
-      ...hotspotFields,
-      hotspotLastReactivatedAt: this.normalizeOptionalDate(payload.hotspotLastReactivatedAt),
-      hotspotLastDeactivatedAt: this.normalizeOptionalDate(payload.hotspotLastDeactivatedAt),
-      createdAt: payload.createdAt || new Date().toISOString(),
-      updatedAt: payload.updatedAt || new Date().toISOString(),
-    };
+      const contact = {
+        id: String(payload.id || generateId()),
+        name,
+        phoneNumber,
+        paymentStatus: payload.paymentStatus || PAYMENT_STATUS.UNPAID,
+        paymentDate: payload.paymentStatus === PAYMENT_STATUS.PAID ? new Date().toISOString() : null,
+        paymentMonths: payload.paymentMonths || {},
+        linkedApHost,
+        ...hotspotFields,
+        hotspotLastReactivatedAt: this.normalizeOptionalDate(payload.hotspotLastReactivatedAt),
+        hotspotLastDeactivatedAt: this.normalizeOptionalDate(payload.hotspotLastDeactivatedAt),
+        createdAt: payload.createdAt || new Date().toISOString(),
+        updatedAt: payload.updatedAt || new Date().toISOString(),
+      };
 
-    this.contacts.set(contact.id, contact);
-    await this.saveContacts();
-    return contact;
+      this.contacts.set(contact.id, contact);
+      await this.saveContacts();
+      return contact;
+    });
   }
 
   async upsertPelangganFromRegistration(payload) {
-    const name = sanitizeInput(payload.name);
-    const phoneNumber = normalizePhoneNumber(payload.phoneNumber);
-    const username = sanitizeInput(payload.username);
-    const profile = sanitizeInput(payload.profile);
-    const password = sanitizeInput(payload.password);
+    return this.withDataMutation(async () => {
+      const name = sanitizeInput(payload.name);
+      const phoneNumber = normalizePhoneNumber(payload.phoneNumber);
+      const username = sanitizeInput(payload.username);
+      const profile = sanitizeInput(payload.profile);
+      const password = sanitizeInput(payload.password);
 
-    if (!name) throw new Error("Nama pelanggan wajib diisi.");
-    if (!username) throw new Error("Username hotspot wajib diisi.");
-    if (!isValidPhoneNumber(phoneNumber)) throw new Error("Nomor pelanggan harus berformat 628xxx.");
-    if (!profile) throw new Error("Profile hotspot wajib diisi.");
-    if (!password) throw new Error("Password hotspot wajib diisi.");
+      if (!name) throw new Error("Nama pelanggan wajib diisi.");
+      if (!username) throw new Error("Username hotspot wajib diisi.");
+      if (!isValidPhoneNumber(phoneNumber)) throw new Error("Nomor pelanggan harus berformat 628xxx.");
+      if (!profile) throw new Error("Profile hotspot wajib diisi.");
+      if (!password) throw new Error("Password hotspot wajib diisi.");
 
-    const now = new Date().toISOString();
-    let contact = this.findContactByPhone(phoneNumber);
+      const now = new Date().toISOString();
+      let contact = this.findContactByPhone(phoneNumber);
 
-    if (!contact) {
-      contact = {
-        id: String(generateId()),
-        name,
-        phoneNumber,
-        paymentStatus: PAYMENT_STATUS.UNPAID,
-        paymentDate: null,
-        paymentMonths: {},
-        mikrotikUsername: username,
-        mikrotikProfile: profile,
-        mikrotikPassword: password,
-        hotspotReactivationEnabled: false,
-        hotspotReactivationAt: null,
-        hotspotLastReactivatedAt: null,
-        createdAt: now,
-        updatedAt: now,
+      if (!contact) {
+        contact = {
+          id: String(generateId()),
+          name,
+          phoneNumber,
+          paymentStatus: PAYMENT_STATUS.UNPAID,
+          paymentDate: null,
+          paymentMonths: {},
+          mikrotikUsername: username,
+          mikrotikProfile: profile,
+          mikrotikPassword: password,
+          hotspotReactivationEnabled: false,
+          hotspotReactivationAt: null,
+          hotspotLastReactivatedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        this.contacts.set(contact.id, contact);
+      } else {
+        contact.name = name;
+        contact.mikrotikUsername = username;
+        contact.mikrotikProfile = profile;
+        contact.mikrotikPassword = password;
+        contact.updatedAt = now;
+      }
+
+      const previous = this.pelanggan.get(username) || {};
+      const pelanggan = {
+        ...previous,
+        username,
+        nama: name,
+        nomer: phoneNumber,
+        profile,
+        password,
+        contactId: contact.id,
+        status: "verified",
+        tanggalDaftar: previous.tanggalDaftar || now,
+        tanggalUpdate: now,
       };
-      this.contacts.set(contact.id, contact);
-    } else {
-      contact.name = name;
-      contact.mikrotikUsername = username;
-      contact.mikrotikProfile = profile;
-      contact.mikrotikPassword = password;
-      contact.updatedAt = now;
-    }
 
-    const previous = this.pelanggan.get(username) || {};
-    const pelanggan = {
-      ...previous,
-      username,
-      nama: name,
-      nomer: phoneNumber,
-      profile,
-      password,
-      contactId: contact.id,
-      status: "verified",
-      tanggalDaftar: previous.tanggalDaftar || now,
-      tanggalUpdate: now,
-    };
-
-    this.pelanggan.set(username, pelanggan);
-    await Promise.all([this.saveContacts(), this.savePelanggan()]);
-    return { contact, pelanggan };
+      this.pelanggan.set(username, pelanggan);
+      await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+        const options = { transaction };
+        await this.saveContacts(options);
+        await this.savePelanggan(options);
+      }));
+      return { contact, pelanggan };
+    });
   }
 
   async updateContact(id, payload) {
-    const contact = this.getContact(id);
-    if (!contact) throw new Error("Kontak tidak ditemukan.");
-    const previousPhone = contact.phoneNumber;
+    return this.withDataMutation(async () => {
+      const contact = this.getContact(id);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      const previousPhone = contact.phoneNumber;
 
-    const nextName = payload.name !== undefined ? sanitizeInput(payload.name) : contact.name;
-    const nextPhone = payload.phoneNumber !== undefined ? normalizePhoneNumber(payload.phoneNumber) : contact.phoneNumber;
-    const nextLinkedApHost = payload.linkedApHost !== undefined
-      ? sanitizeInput(String(payload.linkedApHost || ""))
-      : sanitizeInput(String(contact.linkedApHost || ""));
-    const hotspotFields = this.normalizeContactHotspotFields(payload, contact);
+      const nextName = payload.name !== undefined ? sanitizeInput(payload.name) : contact.name;
+      const nextPhone = payload.phoneNumber !== undefined ? normalizePhoneNumber(payload.phoneNumber) : contact.phoneNumber;
+      const nextLinkedApHost = payload.linkedApHost !== undefined
+        ? sanitizeInput(String(payload.linkedApHost || ""))
+        : sanitizeInput(String(contact.linkedApHost || ""));
+      const hotspotFields = this.normalizeContactHotspotFields(payload, contact);
 
-    if (!nextName) throw new Error("Nama kontak wajib diisi.");
-    if (!isValidPhoneNumber(nextPhone)) throw new Error("Nomor kontak harus berformat 628xxx.");
-    if (this.hasContactPhone(nextPhone, id)) throw new Error("Nomor kontak sudah digunakan.");
+      if (!nextName) throw new Error("Nama kontak wajib diisi.");
+      if (!isValidPhoneNumber(nextPhone)) throw new Error("Nomor kontak harus berformat 628xxx.");
+      if (this.hasContactPhone(nextPhone, id)) throw new Error("Nomor kontak sudah digunakan.");
 
-    contact.name = nextName;
-    contact.phoneNumber = nextPhone;
-    contact.linkedApHost = nextLinkedApHost;
-    Object.assign(contact, hotspotFields);
-    contact.updatedAt = new Date().toISOString();
+      contact.name = nextName;
+      contact.phoneNumber = nextPhone;
+      contact.linkedApHost = nextLinkedApHost;
+      Object.assign(contact, hotspotFields);
+      contact.updatedAt = new Date().toISOString();
 
-    for (const reminder of this.reminders.values()) {
-      if (String(reminder.contactId) === String(id) || reminder.phoneNumber === previousPhone) {
-        reminder.contactId = String(contact.id);
-        reminder.phoneNumber = contact.phoneNumber;
-        reminder.contactName = contact.name;
+      for (const reminder of this.reminders.values()) {
+        if (String(reminder.contactId) === String(id) || reminder.phoneNumber === previousPhone) {
+          reminder.contactId = String(contact.id);
+          reminder.phoneNumber = contact.phoneNumber;
+          reminder.contactName = contact.name;
+        }
       }
-    }
 
-    await Promise.all([this.saveContacts(), this.saveReminders()]);
-    return contact;
+      await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+        const options = { transaction };
+        await this.saveContacts(options);
+        await this.saveReminders(options);
+      }));
+      return contact;
+    });
   }
 
   getDueHotspotReactivationContacts(now = new Date()) {
@@ -1363,136 +1388,192 @@ class DataManager {
   }
 
   async markHotspotDeactivated(contactId, result, options = {}) {
-    const contact = this.getContact(contactId);
-    if (!contact) throw new Error("Kontak tidak ditemukan.");
+    return this.withDataMutation(async () => {
+      const contact = this.getContact(contactId);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
 
-    const now = new Date();
-    contact.hotspotLastDeactivatedAt = now.toISOString();
-    contact.hotspotReactivationEnabled = false;
-    contact.hotspotReactivationAt = null;
-    contact.updatedAt = now.toISOString();
+      const now = new Date();
+      contact.hotspotLastDeactivatedAt = now.toISOString();
+      contact.hotspotReactivationEnabled = false;
+      contact.hotspotReactivationAt = null;
+      contact.updatedAt = now.toISOString();
 
-    await this.saveContacts(options);
-    return this.hydrateContact(contact);
+      await this.saveContacts(options);
+      return this.hydrateContact(contact);
+    });
   }
 
   async markHotspotReactivated(contactId, result, options = {}) {
-    const contact = this.getContact(contactId);
-    if (!contact) throw new Error("Kontak tidak ditemukan.");
+    return this.withDataMutation(async () => {
+      const contact = this.getContact(contactId);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
 
-    const now = new Date();
-    const previousSchedule = contact.hotspotReactivationAt || now.toISOString();
-    contact.hotspotLastReactivatedAt = now.toISOString();
-    contact.hotspotReactivationAt = addMonthsSafely(previousSchedule, 1).toISOString();
-    contact.mikrotikPassword = sanitizeInput(result?.password || contact.mikrotikPassword || "");
-    contact.mikrotikProfile = sanitizeInput(result?.profile || contact.mikrotikProfile || "");
-    contact.updatedAt = now.toISOString();
+      const now = new Date();
+      const previousSchedule = contact.hotspotReactivationAt || now.toISOString();
+      contact.hotspotLastReactivatedAt = now.toISOString();
+      contact.hotspotReactivationAt = addMonthsSafely(previousSchedule, 1).toISOString();
+      contact.mikrotikPassword = sanitizeInput(result?.password || contact.mikrotikPassword || "");
+      contact.mikrotikProfile = sanitizeInput(result?.profile || contact.mikrotikProfile || "");
+      contact.updatedAt = now.toISOString();
 
-    await this.saveContacts(options);
-    return this.hydrateContact(contact);
+      await this.saveContacts(options);
+      return this.hydrateContact(contact);
+    });
   }
 
   async deleteContact(id) {
-    const contact = this.getContact(id);
-    if (!contact) throw new Error("Kontak tidak ditemukan.");
+    return this.withDataMutation(async () => {
+      const contact = this.getContact(id);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
 
-    this.contacts.delete(String(id));
+      this.contacts.delete(String(id));
 
-    const relatedReminderIds = Array.from(this.reminders.values())
-      .filter((reminder) => String(reminder.contactId) === String(contact.id) || reminder.phoneNumber === contact.phoneNumber)
-      .map((reminder) => String(reminder.id));
+      const relatedReminderIds = Array.from(this.reminders.values())
+        .filter((reminder) => String(reminder.contactId) === String(contact.id) || reminder.phoneNumber === contact.phoneNumber)
+        .map((reminder) => String(reminder.id));
 
-    for (const reminderId of relatedReminderIds) {
-      this.reminders.delete(reminderId);
-    }
+      for (const reminderId of relatedReminderIds) {
+        this.reminders.delete(reminderId);
+      }
 
-    await Promise.all([this.saveContacts(), this.saveReminders()]);
-    return { deletedContact: contact, deletedReminders: relatedReminderIds.length };
+      await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+        const options = { transaction };
+        await this.saveContacts(options);
+        await this.saveReminders(options);
+      }));
+      return { deletedContact: contact, deletedReminders: relatedReminderIds.length };
+    });
   }
 
   async addReminder(payload) {
-    const contact = this.getContact(payload.contactId);
-    const message = sanitizeMultilineText(payload.message);
-    const reminderDate = payload.reminderDateTime instanceof Date
-      ? payload.reminderDateTime
-      : new Date(payload.reminderDateTime);
-
-    if (!contact) throw new Error("Contact reminder tidak ditemukan.");
-    if (!message) throw new Error("Isi reminder wajib diisi.");
-    if (Number.isNaN(reminderDate.getTime())) throw new Error("Tanggal reminder tidak valid.");
-
-    const reminder = {
-      id: String(payload.id || generateId()),
-      contactId: String(contact.id),
-      contactName: contact.name,
-      phoneNumber: contact.phoneNumber,
-      reminderDateTime: reminderDate.toISOString(),
-      message,
-      templateName: payload.templateName ? sanitizeInput(payload.templateName) : null,
-      createdAt: payload.createdAt || new Date().toISOString(),
-    };
-
-    this.reminders.set(reminder.id, reminder);
-    await this.saveReminders();
-    return this.hydrateReminder(reminder);
-  }
-
-  async updateReminder(id, payload) {
-    const reminder = this.getReminder(id);
-    if (!reminder) throw new Error("Reminder tidak ditemukan.");
-
-    if (payload.contactId !== undefined) {
+    return this.withDataMutation(async () => {
       const contact = this.getContact(payload.contactId);
-      if (!contact) throw new Error("Contact reminder tidak ditemukan.");
-      reminder.contactId = String(contact.id);
-      reminder.contactName = contact.name;
-      reminder.phoneNumber = contact.phoneNumber;
-    }
-
-    if (payload.message !== undefined) {
       const message = sanitizeMultilineText(payload.message);
-      if (!message) throw new Error("Isi reminder wajib diisi.");
-      reminder.message = message;
-    }
-
-    if (payload.reminderDateTime !== undefined) {
       const reminderDate = payload.reminderDateTime instanceof Date
         ? payload.reminderDateTime
         : new Date(payload.reminderDateTime);
+
+      if (!contact) throw new Error("Contact reminder tidak ditemukan.");
+      if (!message) throw new Error("Isi reminder wajib diisi.");
       if (Number.isNaN(reminderDate.getTime())) throw new Error("Tanggal reminder tidak valid.");
-      reminder.reminderDateTime = reminderDate.toISOString();
-    }
 
-    if (payload.templateName !== undefined) {
-      reminder.templateName = payload.templateName ? sanitizeInput(payload.templateName) : null;
-    }
+      const reminder = {
+        id: String(payload.id || generateId()),
+        contactId: String(contact.id),
+        contactName: contact.name,
+        phoneNumber: contact.phoneNumber,
+        reminderDateTime: reminderDate.toISOString(),
+        message,
+        templateName: payload.templateName ? sanitizeInput(payload.templateName) : null,
+        createdAt: payload.createdAt || new Date().toISOString(),
+      };
 
-    await this.saveReminders();
-    return this.hydrateReminder(reminder);
+      this.reminders.set(reminder.id, reminder);
+      await this.saveReminders();
+      return this.hydrateReminder(reminder);
+    });
+  }
+
+  async updateReminder(id, payload) {
+    return this.withDataMutation(async () => {
+      const reminder = this.getReminder(id);
+      if (!reminder) throw new Error("Reminder tidak ditemukan.");
+      if (reminder.processingAt) throw new Error("Reminder sedang diproses scheduler.");
+
+      if (payload.contactId !== undefined) {
+        const contact = this.getContact(payload.contactId);
+        if (!contact) throw new Error("Contact reminder tidak ditemukan.");
+        reminder.contactId = String(contact.id);
+        reminder.contactName = contact.name;
+        reminder.phoneNumber = contact.phoneNumber;
+      }
+
+      if (payload.message !== undefined) {
+        const message = sanitizeMultilineText(payload.message);
+        if (!message) throw new Error("Isi reminder wajib diisi.");
+        reminder.message = message;
+      }
+
+      if (payload.reminderDateTime !== undefined) {
+        const reminderDate = payload.reminderDateTime instanceof Date
+          ? payload.reminderDateTime
+          : new Date(payload.reminderDateTime);
+        if (Number.isNaN(reminderDate.getTime())) throw new Error("Tanggal reminder tidak valid.");
+        reminder.reminderDateTime = reminderDate.toISOString();
+      }
+
+      if (payload.templateName !== undefined) {
+        reminder.templateName = payload.templateName ? sanitizeInput(payload.templateName) : null;
+      }
+
+      await this.saveReminders();
+      return this.hydrateReminder(reminder);
+    });
   }
 
   async deleteReminder(id) {
-    const reminder = this.getReminder(id);
-    if (!reminder) throw new Error("Reminder tidak ditemukan.");
-    this.reminders.delete(String(id));
-    await this.saveReminders();
-    return reminder;
+    return this.withDataMutation(async () => {
+      const reminder = this.getReminder(id);
+      if (!reminder) throw new Error("Reminder tidak ditemukan.");
+      if (reminder.processingAt) throw new Error("Reminder sedang diproses scheduler.");
+      this.reminders.delete(String(id));
+      await this.saveReminders();
+      return reminder;
+    });
+  }
+
+  async claimDueReminder(id, now = new Date()) {
+    return this.withDataMutation(async () => {
+      const reminder = this.getReminder(id);
+      if (!reminder) return null;
+
+      const reminderTime = new Date(reminder.reminderDateTime).getTime();
+      if (!Number.isFinite(reminderTime) || reminderTime > now.getTime()) {
+        return null;
+      }
+
+      const processingStartedAt = reminder.processingAt ? new Date(reminder.processingAt).getTime() : null;
+      if (Number.isFinite(processingStartedAt) && (Date.now() - processingStartedAt) < 15 * 60 * 1000) {
+        return null;
+      }
+
+      reminder.processingAt = new Date().toISOString();
+      await this.saveReminders();
+      return this.hydrateReminder(reminder);
+    });
+  }
+
+  async releaseReminderClaim(id) {
+    return this.withDataMutation(async () => {
+      const reminder = this.getReminder(id);
+      if (!reminder || !reminder.processingAt) return null;
+      delete reminder.processingAt;
+      await this.saveReminders();
+      return this.hydrateReminder(reminder);
+    });
   }
 
   async moveToSent(id, extras = {}) {
-    const reminder = this.getReminder(id);
-    if (!reminder) return null;
+    return this.withDataMutation(async () => {
+      const reminder = this.getReminder(id);
+      if (!reminder) return null;
 
-    const sentReminder = {
-      ...this.hydrateReminder(reminder),
-      sentAt: extras.sentAt || new Date().toISOString(),
-      deliveryStatus: extras.deliveryStatus || "SENT",
-    };
+      const sentReminder = {
+        ...this.hydrateReminder(reminder),
+        sentAt: extras.sentAt || new Date().toISOString(),
+        deliveryStatus: extras.deliveryStatus || "SENT",
+      };
+      delete sentReminder.processingAt;
 
-    this.sentReminders.set(String(id), sentReminder);
-    this.reminders.delete(String(id));
-    await Promise.all([this.saveReminders(), this.saveSentReminders()]);
-    return sentReminder;
+      this.sentReminders.set(String(id), sentReminder);
+      this.reminders.delete(String(id));
+      await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+        const options = { transaction };
+        await this.saveReminders(options);
+        await this.saveSentReminders(options);
+      }));
+      return sentReminder;
+    });
   }
 
   getAdminRecipients() {
@@ -1503,12 +1584,14 @@ class DataManager {
   }
 
   async setAdminRecipients(numbers) {
-    this.roles = new Map();
-    for (const number of numbers) {
-      this.roles.set(number, "admin");
-    }
-    await this.saveRoles();
-    return this.getAdminRecipients();
+    return this.withDataMutation(async () => {
+      this.roles = new Map();
+      for (const number of numbers) {
+        this.roles.set(number, "admin");
+      }
+      await this.saveRoles();
+      return this.getAdminRecipients();
+    });
   }
 
   getSettings() {
@@ -1516,64 +1599,68 @@ class DataManager {
   }
 
   async updateSettings(payload) {
-    const current = this.getSettings();
-    this.settings = {
-      ...current,
-      dashboardTitle: payload.dashboardTitle !== undefined ? sanitizeInput(payload.dashboardTitle) || current.dashboardTitle : current.dashboardTitle,
-      companyName: payload.companyName !== undefined ? sanitizeInput(payload.companyName) || current.companyName : current.companyName,
-      supportSignature: payload.supportSignature !== undefined ? sanitizeInput(payload.supportSignature) || current.supportSignature : current.supportSignature,
-      apDownMessageTemplate: payload.apDownMessageTemplate !== undefined
-        ? sanitizeMultilineText(payload.apDownMessageTemplate) || current.apDownMessageTemplate
-        : current.apDownMessageTemplate,
-      hotspotReactivationMessageTemplate: payload.hotspotReactivationMessageTemplate !== undefined
-        ? sanitizeMultilineText(payload.hotspotReactivationMessageTemplate) || current.hotspotReactivationMessageTemplate
-        : current.hotspotReactivationMessageTemplate,
-      paymentMessageTemplateArrearsOnly: payload.paymentMessageTemplateArrearsOnly !== undefined
-        ? sanitizeMultilineText(payload.paymentMessageTemplateArrearsOnly) || current.paymentMessageTemplateArrearsOnly
-        : current.paymentMessageTemplateArrearsOnly,
-      paymentMessageTemplateCurrentOnly: payload.paymentMessageTemplateCurrentOnly !== undefined
-        ? sanitizeMultilineText(payload.paymentMessageTemplateCurrentOnly) || current.paymentMessageTemplateCurrentOnly
-        : current.paymentMessageTemplateCurrentOnly,
-      paymentMessageTemplateFullPaid: payload.paymentMessageTemplateFullPaid !== undefined
-        ? sanitizeMultilineText(payload.paymentMessageTemplateFullPaid) || current.paymentMessageTemplateFullPaid
-        : current.paymentMessageTemplateFullPaid,
-      apDownMinimumDownMinutes: payload.apDownMinimumDownMinutes !== undefined
-        ? sanitizePositiveInteger(
-            payload.apDownMinimumDownMinutes,
-            current.apDownMinimumDownMinutes || current.apDownConfirmationChecks || DEFAULT_SETTINGS.apDownMinimumDownMinutes,
-            1,
-            120
-          )
-        : (current.apDownMinimumDownMinutes || current.apDownConfirmationChecks || DEFAULT_SETTINGS.apDownMinimumDownMinutes),
-      timezone: payload.timezone !== undefined ? sanitizeInput(payload.timezone) || current.timezone : current.timezone,
-      autoRescheduleMonthly: payload.autoRescheduleMonthly !== undefined ? parseBoolean(payload.autoRescheduleMonthly, current.autoRescheduleMonthly) : current.autoRescheduleMonthly,
-      notifyAdminsOnDelivery: payload.notifyAdminsOnDelivery !== undefined ? parseBoolean(payload.notifyAdminsOnDelivery, current.notifyAdminsOnDelivery) : current.notifyAdminsOnDelivery,
-      notifyAdminsOnConnectionChange: payload.notifyAdminsOnConnectionChange !== undefined ? parseBoolean(payload.notifyAdminsOnConnectionChange, current.notifyAdminsOnConnectionChange) : current.notifyAdminsOnConnectionChange,
-      notifyAdminsOnPaymentReset: payload.notifyAdminsOnPaymentReset !== undefined ? parseBoolean(payload.notifyAdminsOnPaymentReset, current.notifyAdminsOnPaymentReset) : current.notifyAdminsOnPaymentReset,
-      enableMikrotikBackupToWa: payload.enableMikrotikBackupToWa !== undefined
-        ? parseBoolean(payload.enableMikrotikBackupToWa, current.enableMikrotikBackupToWa)
-        : current.enableMikrotikBackupToWa,
-      mikrotikBackupTime: payload.mikrotikBackupTime !== undefined
-        ? sanitizeTimeHHMM(payload.mikrotikBackupTime, current.mikrotikBackupTime || DEFAULT_SETTINGS.mikrotikBackupTime)
-        : current.mikrotikBackupTime,
-      mikrotikBackupTimezone: payload.mikrotikBackupTimezone !== undefined
-        ? sanitizeInput(payload.mikrotikBackupTimezone) || current.mikrotikBackupTimezone || current.timezone
-        : current.mikrotikBackupTimezone,
-      mikrotikBackupLastRunDate: payload.mikrotikBackupLastRunDate !== undefined
-        ? sanitizeInput(payload.mikrotikBackupLastRunDate)
-        : current.mikrotikBackupLastRunDate,
-    };
-    await this.saveSettings();
-    return this.getSettings();
+    return this.withDataMutation(async () => {
+      const current = this.getSettings();
+      this.settings = {
+        ...current,
+        dashboardTitle: payload.dashboardTitle !== undefined ? sanitizeInput(payload.dashboardTitle) || current.dashboardTitle : current.dashboardTitle,
+        companyName: payload.companyName !== undefined ? sanitizeInput(payload.companyName) || current.companyName : current.companyName,
+        supportSignature: payload.supportSignature !== undefined ? sanitizeInput(payload.supportSignature) || current.supportSignature : current.supportSignature,
+        apDownMessageTemplate: payload.apDownMessageTemplate !== undefined
+          ? sanitizeMultilineText(payload.apDownMessageTemplate) || current.apDownMessageTemplate
+          : current.apDownMessageTemplate,
+        hotspotReactivationMessageTemplate: payload.hotspotReactivationMessageTemplate !== undefined
+          ? sanitizeMultilineText(payload.hotspotReactivationMessageTemplate) || current.hotspotReactivationMessageTemplate
+          : current.hotspotReactivationMessageTemplate,
+        paymentMessageTemplateArrearsOnly: payload.paymentMessageTemplateArrearsOnly !== undefined
+          ? sanitizeMultilineText(payload.paymentMessageTemplateArrearsOnly) || current.paymentMessageTemplateArrearsOnly
+          : current.paymentMessageTemplateArrearsOnly,
+        paymentMessageTemplateCurrentOnly: payload.paymentMessageTemplateCurrentOnly !== undefined
+          ? sanitizeMultilineText(payload.paymentMessageTemplateCurrentOnly) || current.paymentMessageTemplateCurrentOnly
+          : current.paymentMessageTemplateCurrentOnly,
+        paymentMessageTemplateFullPaid: payload.paymentMessageTemplateFullPaid !== undefined
+          ? sanitizeMultilineText(payload.paymentMessageTemplateFullPaid) || current.paymentMessageTemplateFullPaid
+          : current.paymentMessageTemplateFullPaid,
+        apDownMinimumDownMinutes: payload.apDownMinimumDownMinutes !== undefined
+          ? sanitizePositiveInteger(
+              payload.apDownMinimumDownMinutes,
+              current.apDownMinimumDownMinutes || current.apDownConfirmationChecks || DEFAULT_SETTINGS.apDownMinimumDownMinutes,
+              1,
+              120
+            )
+          : (current.apDownMinimumDownMinutes || current.apDownConfirmationChecks || DEFAULT_SETTINGS.apDownMinimumDownMinutes),
+        timezone: payload.timezone !== undefined ? sanitizeInput(payload.timezone) || current.timezone : current.timezone,
+        autoRescheduleMonthly: payload.autoRescheduleMonthly !== undefined ? parseBoolean(payload.autoRescheduleMonthly, current.autoRescheduleMonthly) : current.autoRescheduleMonthly,
+        notifyAdminsOnDelivery: payload.notifyAdminsOnDelivery !== undefined ? parseBoolean(payload.notifyAdminsOnDelivery, current.notifyAdminsOnDelivery) : current.notifyAdminsOnDelivery,
+        notifyAdminsOnConnectionChange: payload.notifyAdminsOnConnectionChange !== undefined ? parseBoolean(payload.notifyAdminsOnConnectionChange, current.notifyAdminsOnConnectionChange) : current.notifyAdminsOnConnectionChange,
+        notifyAdminsOnPaymentReset: payload.notifyAdminsOnPaymentReset !== undefined ? parseBoolean(payload.notifyAdminsOnPaymentReset, current.notifyAdminsOnPaymentReset) : current.notifyAdminsOnPaymentReset,
+        enableMikrotikBackupToWa: payload.enableMikrotikBackupToWa !== undefined
+          ? parseBoolean(payload.enableMikrotikBackupToWa, current.enableMikrotikBackupToWa)
+          : current.enableMikrotikBackupToWa,
+        mikrotikBackupTime: payload.mikrotikBackupTime !== undefined
+          ? sanitizeTimeHHMM(payload.mikrotikBackupTime, current.mikrotikBackupTime || DEFAULT_SETTINGS.mikrotikBackupTime)
+          : current.mikrotikBackupTime,
+        mikrotikBackupTimezone: payload.mikrotikBackupTimezone !== undefined
+          ? sanitizeInput(payload.mikrotikBackupTimezone) || current.mikrotikBackupTimezone || current.timezone
+          : current.mikrotikBackupTimezone,
+        mikrotikBackupLastRunDate: payload.mikrotikBackupLastRunDate !== undefined
+          ? sanitizeInput(payload.mikrotikBackupLastRunDate)
+          : current.mikrotikBackupLastRunDate,
+      };
+      await this.saveSettings();
+      return this.getSettings();
+    });
   }
 
   async markMikrotikBackupRun(dateKey) {
-    this.settings = {
-      ...this.getSettings(),
-      mikrotikBackupLastRunDate: sanitizeInput(dateKey),
-    };
-    await this.saveSettings();
-    return this.settings.mikrotikBackupLastRunDate;
+    return this.withDataMutation(async () => {
+      this.settings = {
+        ...this.getSettings(),
+        mikrotikBackupLastRunDate: sanitizeInput(dateKey),
+      };
+      await this.saveSettings();
+      return this.settings.mikrotikBackupLastRunDate;
+    });
   }
 
   getContactsByStatus(status) {
@@ -1715,107 +1802,111 @@ class DataManager {
   }
 
   async updatePaymentStatus(contactId, status, paymentType = null) {
-    const contact = this.getContact(contactId);
-    if (!contact) throw new Error("Kontak tidak ditemukan.");
-    if (![PAYMENT_STATUS.PAID, PAYMENT_STATUS.UNPAID].includes(status)) {
-      throw new Error("Status pembayaran tidak valid.");
-    }
-
-    const now = new Date();
-    const { year, month } = getBillingPeriodParts(now);
-    const currentKey = makeBillingPeriodKey(year, month);
-    const previous = getPreviousBillingPeriod(year, month);
-    const previousKey = makeBillingPeriodKey(previous.year, previous.month);
-    if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") {
-      contact.paymentMonths = {};
-    }
-
-    contact.paymentStatus = status;
-    contact.paymentDate = status === PAYMENT_STATUS.PAID ? now.toISOString() : null;
-    contact.paymentType = paymentType || null;
-
-    if (paymentType === PAYMENT_TYPES.FULL_PAID) {
-      const startPeriod = getContactBillingStartPeriod(contact);
-      for (const period of listBillingPeriods(startPeriod, previous)) {
-        contact.paymentMonths[makeBillingPeriodKey(period.year, period.month)] = {
-          status: PAYMENT_STATUS.PAID,
-          paidDate: now.toISOString(),
-          paymentType,
-        };
+    return this.withDataMutation(async () => {
+      const contact = this.getContact(contactId);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      if (![PAYMENT_STATUS.PAID, PAYMENT_STATUS.UNPAID].includes(status)) {
+        throw new Error("Status pembayaran tidak valid.");
       }
-    } else if (paymentType === PAYMENT_TYPES.ARREARS_ONLY) {
-      const debtPeriod = this.buildDebtInfo(contact, { year, month }).debtPeriods?.[0]
-        || { key: previousKey };
-      contact.paymentMonths[debtPeriod.key] = {
-        status: PAYMENT_STATUS.PAID,
-        paidDate: now.toISOString(),
-        paymentType,
-      };
-    }
 
-    contact.paymentMonths[currentKey] = {
-      status,
-      paidDate: status === PAYMENT_STATUS.PAID ? now.toISOString() : null,
-      paymentType: paymentType || null,
-    };
-    contact.updatedAt = now.toISOString();
-
-    await this.saveContacts();
-    return this.hydrateContact(contact);
-  }
-
-  async setPaymentForMonth(contactId, year, month, status, paymentType = null) {
-    const contact = this.getContact(contactId);
-    if (!contact) throw new Error("Kontak tidak ditemukan.");
-    if (![PAYMENT_STATUS.PAID, PAYMENT_STATUS.UNPAID].includes(status)) {
-      throw new Error("Status pembayaran tidak valid.");
-    }
-
-    if (!contact.paymentMonths) {
-      contact.paymentMonths = {};
-    }
-
-    const key = `${year}-${String(month).padStart(2, "0")}`;
-    const now = new Date();
-    const previous = getPreviousBillingPeriod(year, month);
-    const previousKey = makeBillingPeriodKey(previous.year, previous.month);
-
-    if (paymentType === PAYMENT_TYPES.FULL_PAID) {
-      const startPeriod = getContactBillingStartPeriod(contact);
-      for (const period of listBillingPeriods(startPeriod, previous)) {
-        contact.paymentMonths[makeBillingPeriodKey(period.year, period.month)] = {
-          status: PAYMENT_STATUS.PAID,
-          paidDate: now.toISOString(),
-          paymentType,
-        };
+      const now = new Date();
+      const { year, month } = getBillingPeriodParts(now);
+      const currentKey = makeBillingPeriodKey(year, month);
+      const previous = getPreviousBillingPeriod(year, month);
+      const previousKey = makeBillingPeriodKey(previous.year, previous.month);
+      if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") {
+        contact.paymentMonths = {};
       }
-    } else if (paymentType === PAYMENT_TYPES.ARREARS_ONLY) {
-      const debtPeriod = this.buildDebtInfo(contact, { year, month }).debtPeriods?.[0]
-        || { key: previousKey };
-      contact.paymentMonths[debtPeriod.key] = {
-        status: PAYMENT_STATUS.PAID,
-        paidDate: now.toISOString(),
-        paymentType,
-      };
-    }
 
-    contact.paymentMonths[key] = {
-      status,
-      paidDate: status === PAYMENT_STATUS.PAID ? now.toISOString() : null,
-      paymentType: paymentType || null,
-    };
-
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
-    if (year === currentYear && month === currentMonth) {
       contact.paymentStatus = status;
       contact.paymentDate = status === PAYMENT_STATUS.PAID ? now.toISOString() : null;
       contact.paymentType = paymentType || null;
-    }
-    contact.updatedAt = now.toISOString();
 
-    await this.saveContacts();
-    return this.hydrateContact(contact);
+      if (paymentType === PAYMENT_TYPES.FULL_PAID) {
+        const startPeriod = getContactBillingStartPeriod(contact);
+        for (const period of listBillingPeriods(startPeriod, previous)) {
+          contact.paymentMonths[makeBillingPeriodKey(period.year, period.month)] = {
+            status: PAYMENT_STATUS.PAID,
+            paidDate: now.toISOString(),
+            paymentType,
+          };
+        }
+      } else if (paymentType === PAYMENT_TYPES.ARREARS_ONLY) {
+        const debtPeriod = this.buildDebtInfo(contact, { year, month }).debtPeriods?.[0]
+          || { key: previousKey };
+        contact.paymentMonths[debtPeriod.key] = {
+          status: PAYMENT_STATUS.PAID,
+          paidDate: now.toISOString(),
+          paymentType,
+        };
+      }
+
+      contact.paymentMonths[currentKey] = {
+        status,
+        paidDate: status === PAYMENT_STATUS.PAID ? now.toISOString() : null,
+        paymentType: paymentType || null,
+      };
+      contact.updatedAt = now.toISOString();
+
+      await this.saveContacts();
+      return this.hydrateContact(contact);
+    });
+  }
+
+  async setPaymentForMonth(contactId, year, month, status, paymentType = null) {
+    return this.withDataMutation(async () => {
+      const contact = this.getContact(contactId);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      if (![PAYMENT_STATUS.PAID, PAYMENT_STATUS.UNPAID].includes(status)) {
+        throw new Error("Status pembayaran tidak valid.");
+      }
+
+      if (!contact.paymentMonths) {
+        contact.paymentMonths = {};
+      }
+
+      const key = `${year}-${String(month).padStart(2, "0")}`;
+      const now = new Date();
+      const previous = getPreviousBillingPeriod(year, month);
+      const previousKey = makeBillingPeriodKey(previous.year, previous.month);
+
+      if (paymentType === PAYMENT_TYPES.FULL_PAID) {
+        const startPeriod = getContactBillingStartPeriod(contact);
+        for (const period of listBillingPeriods(startPeriod, previous)) {
+          contact.paymentMonths[makeBillingPeriodKey(period.year, period.month)] = {
+            status: PAYMENT_STATUS.PAID,
+            paidDate: now.toISOString(),
+            paymentType,
+          };
+        }
+      } else if (paymentType === PAYMENT_TYPES.ARREARS_ONLY) {
+        const debtPeriod = this.buildDebtInfo(contact, { year, month }).debtPeriods?.[0]
+          || { key: previousKey };
+        contact.paymentMonths[debtPeriod.key] = {
+          status: PAYMENT_STATUS.PAID,
+          paidDate: now.toISOString(),
+          paymentType,
+        };
+      }
+
+      contact.paymentMonths[key] = {
+        status,
+        paidDate: status === PAYMENT_STATUS.PAID ? now.toISOString() : null,
+        paymentType: paymentType || null,
+      };
+
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      if (year === currentYear && month === currentMonth) {
+        contact.paymentStatus = status;
+        contact.paymentDate = status === PAYMENT_STATUS.PAID ? now.toISOString() : null;
+        contact.paymentType = paymentType || null;
+      }
+      contact.updatedAt = now.toISOString();
+
+      await this.saveContacts();
+      return this.hydrateContact(contact);
+    });
   }
 
   inferPaymentType(contact, options = {}) {
@@ -1851,6 +1942,10 @@ class DataManager {
   }
 
   async resetAllPaymentStatus() {
+    return this.withDataMutation(async () => this.resetAllPaymentStatusUnlocked());
+  }
+
+  async resetAllPaymentStatusUnlocked(options = {}) {
     let resetCount = 0;
     const currentKey = getBillingPeriodKey();
 
@@ -1869,7 +1964,7 @@ class DataManager {
       resetCount += 1;
     }
 
-    if (resetCount > 0) {
+    if (resetCount > 0 && options.save !== false) {
       await this.saveContacts();
     }
 
@@ -1877,23 +1972,29 @@ class DataManager {
   }
 
   async ensureMonthlyPaymentReset() {
-    const currentPeriod = getBillingPeriodKey();
-    const settings = this.getSettings();
+    return this.withDataMutation(async () => {
+      const currentPeriod = getBillingPeriodKey();
+      const settings = this.getSettings();
 
-    if (!settings.lastPaymentResetPeriod) {
+      if (!settings.lastPaymentResetPeriod) {
+        this.settings.lastPaymentResetPeriod = currentPeriod;
+        await this.saveSettings();
+        return { reset: false, initialized: true, period: currentPeriod, count: 0 };
+      }
+
+      if (settings.lastPaymentResetPeriod === currentPeriod) {
+        return { reset: false, period: currentPeriod, count: 0 };
+      }
+
+      const count = await this.resetAllPaymentStatusUnlocked({ save: false });
       this.settings.lastPaymentResetPeriod = currentPeriod;
-      await this.saveSettings();
-      return { reset: false, initialized: true, period: currentPeriod, count: 0 };
-    }
-
-    if (settings.lastPaymentResetPeriod === currentPeriod) {
-      return { reset: false, period: currentPeriod, count: 0 };
-    }
-
-    const count = await this.resetAllPaymentStatus();
-    this.settings.lastPaymentResetPeriod = currentPeriod;
-    await this.saveSettings();
-    return { reset: true, period: currentPeriod, count };
+      await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+        const options = { transaction };
+        await this.saveContacts(options);
+        await this.saveSettings(options);
+      }));
+      return { reset: true, period: currentPeriod, count };
+    });
   }
 }
 

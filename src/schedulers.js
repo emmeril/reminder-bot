@@ -82,13 +82,24 @@ class ReminderScheduler {
 
       this.activityLog.push("info", "scheduler", `Processing ${dueReminders.length} due reminder(s)`);
 
-      for (const reminder of dueReminders) {
+      for (const dueReminder of dueReminders) {
+        let claimedReminderId = null;
+        let activeReminder = dueReminder;
         try {
+          const reminder = await this.dataManager.claimDueReminder(dueReminder.id, new Date());
+          if (!reminder) {
+            this.activityLog.push("info", "scheduler", `Reminder ${dueReminder.id} dilewati karena sudah berubah atau sedang diproses`);
+            continue;
+          }
+          claimedReminderId = reminder.id;
+          activeReminder = reminder;
+
           if (this.isPaidReminder(reminder)) {
             await this.dataManager.moveToSent(reminder.id, {
               sentAt: new Date().toISOString(),
               deliveryStatus: "SKIPPED_PAID",
             });
+            claimedReminderId = null;
             await this.rescheduleMonthlyReminder(reminder, "SKIPPED_PAID");
             this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} dilewati karena status jatuh tempo sudah lunas`, {
               reminderId: reminder.id,
@@ -108,6 +119,7 @@ class ReminderScheduler {
             sentAt: new Date().toISOString(),
             deliveryStatus,
           });
+          claimedReminderId = null;
 
           this.activityLog.push("info", "delivery", `Reminder sent to ${targetPhoneNumber} via ${provider}`, {
             reminderId: reminder.id,
@@ -130,12 +142,20 @@ class ReminderScheduler {
             });
           }
         } catch (error) {
-          this.activityLog.push("error", "delivery", `Failed to send reminder ${reminder.id}`, {
+          this.activityLog.push("error", "delivery", `Failed to send reminder ${activeReminder.id}`, {
             error: error.message,
-            phoneNumber: reminder.phoneNumber,
+            phoneNumber: activeReminder.phoneNumber,
           });
           if (String(error.message).toLowerCase().includes("fonnte belum dikonfigurasi")) {
             break;
+          }
+        } finally {
+          if (claimedReminderId) {
+            await this.dataManager.releaseReminderClaim(claimedReminderId).catch((releaseError) => {
+              this.activityLog.push("error", "scheduler", `Failed to release reminder claim ${claimedReminderId}`, {
+                error: releaseError.message,
+              });
+            });
           }
         }
       }
