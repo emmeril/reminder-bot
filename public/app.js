@@ -839,6 +839,16 @@
           this.clampPage("contacts", this.filteredContacts.length);
         },
 
+        exportPaymentRecap() {
+          const link = document.createElement("a");
+          link.href = "/api/payments/export.xlsx";
+          link.download = "rekap-pembayaran.xlsx";
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          this.notify("Rekap pembayaran sedang diunduh dalam format Excel.");
+        },
+
         async loadMikrotikProfiles(options = {}) {
           this.mikrotikProfiles = await this.api("/api/mikrotik/profiles", { silent: Boolean(options.silent) });
           if (!options.silent) this.notify(`${this.mikrotikProfiles.length} profile MikroTik dimuat.`);

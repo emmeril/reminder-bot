@@ -6,6 +6,7 @@ const express = require("express");
 const cron = require("node-cron");
 const crypto = require("crypto");
 const ftp = require("basic-ftp");
+const ExcelJS = require("exceljs");
 const { RouterOSClient } = require("routeros-client");
 const { Sequelize, DataTypes, Op } = require("sequelize");
 const {
@@ -89,6 +90,43 @@ function listBillingPeriods(start, end) {
     periods.push(period);
   }
   return periods;
+}
+
+const PAYMENT_TYPE_LABELS = {
+  [PAYMENT_TYPES.ARREARS_ONLY]: "Hanya Tunggakan",
+  [PAYMENT_TYPES.CURRENT_ONLY]: "Bulan Ini Saja",
+  [PAYMENT_TYPES.FULL_PAID]: "Lunas Semua",
+};
+
+function formatReportDate(value, includeTime = false) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    ...(includeTime ? { hour: "2-digit", minute: "2-digit" } : {}),
+  }).format(date);
+}
+
+function styleReportSheet(sheet) {
+  sheet.views = [{ state: "frozen", ySplit: 1 }];
+  sheet.autoFilter = { from: "A1", to: sheet.getRow(1).getCell(sheet.columnCount).address };
+  sheet.getRow(1).eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF315C45" } };
+    cell.alignment = { vertical: "middle", horizontal: "center" };
+  });
+  sheet.getRow(1).height = 24;
+  sheet.columns.forEach((column) => {
+    let maxLength = String(column.header || "").length;
+    column.eachCell({ includeEmpty: true }, (cell) => {
+      maxLength = Math.max(maxLength, String(cell.value ?? "").length);
+    });
+    column.width = Math.min(Math.max(maxLength + 2, 12), 42);
+  });
 }
 
 // ===============================
@@ -1564,6 +1602,113 @@ class DataManager {
     return history;
   }
 
+  async createPaymentRecapWorkbook() {
+    const workbook = new ExcelJS.Workbook();
+    const contacts = this.getSortedContacts();
+    const paidContacts = contacts.filter((contact) => contact.paymentStatus === PAYMENT_STATUS.PAID);
+    const unpaidContacts = contacts.filter((contact) => contact.paymentStatus !== PAYMENT_STATUS.PAID);
+    const debtContacts = contacts.filter((contact) => contact.hasDebt);
+    const now = new Date();
+    const { year, month } = getBillingPeriodParts(now);
+
+    workbook.creator = "Reminder Bot";
+    workbook.created = now;
+    workbook.modified = now;
+
+    const summary = workbook.addWorksheet("Ringkasan");
+    summary.columns = [
+      { header: "Keterangan", key: "label" },
+      { header: "Jumlah / Nilai", key: "value" },
+    ];
+    summary.addRows([
+      { label: "Periode Rekap", value: formatBillingPeriodLabel(year, month) },
+      { label: "Dibuat Pada", value: formatReportDate(now, true) },
+      { label: "Total Pelanggan", value: contacts.length },
+      { label: "Sudah Lunas Bulan Ini", value: paidContacts.length },
+      { label: "Belum Lunas Bulan Ini", value: unpaidContacts.length },
+      { label: "Pelanggan Memiliki Tunggakan", value: debtContacts.length },
+    ]);
+    styleReportSheet(summary);
+
+    const contactColumns = [
+      { header: "No", key: "number" },
+      { header: "Nama", key: "name" },
+      { header: "Nomor WhatsApp", key: "phoneNumber" },
+      { header: "Status Bulan Ini", key: "status" },
+      { header: "Jenis Pembayaran", key: "paymentType" },
+      { header: "Tanggal Pembayaran", key: "paymentDate" },
+      { header: "Jumlah Tunggakan (Bulan)", key: "debtCount" },
+      { header: "Periode Tunggakan", key: "debtPeriods" },
+      { header: "Jatuh Tempo", key: "dueDate" },
+      { header: "Status Jatuh Tempo", key: "dueStatus" },
+      { header: "Username Hotspot", key: "mikrotikUsername" },
+      { header: "Profile Hotspot", key: "mikrotikProfile" },
+      { header: "AP", key: "linkedApHost" },
+    ];
+    const toContactRow = (contact, index) => ({
+      number: index + 1,
+      name: contact.name || "-",
+      phoneNumber: contact.phoneNumber || "-",
+      status: contact.paymentStatus === PAYMENT_STATUS.PAID ? "Lunas" : "Belum Lunas",
+      paymentType: PAYMENT_TYPE_LABELS[contact.paymentType] || "-",
+      paymentDate: formatReportDate(contact.paymentDate, true),
+      debtCount: contact.debtCount || 0,
+      debtPeriods: (contact.debtPeriods || []).map((period) => period.label).join(", ") || "-",
+      dueDate: formatReportDate(contact.dueDate),
+      dueStatus: {
+        PAID: "Lunas",
+        OVERDUE: "Jatuh Tempo",
+        UPCOMING: "Belum Jatuh Tempo",
+        NOT_SCHEDULED: "Belum Dijadwalkan",
+      }[contact.dueStatus] || contact.dueStatus || "-",
+      mikrotikUsername: contact.mikrotikUsername || "-",
+      mikrotikProfile: contact.mikrotikProfile || "-",
+      linkedApHost: contact.linkedApHost || "-",
+    });
+
+    for (const [sheetName, rows] of [
+      ["Semua Pelanggan", contacts],
+      ["Belum Lunas", unpaidContacts],
+      ["Sudah Lunas", paidContacts],
+      ["Memiliki Tunggakan", debtContacts],
+    ]) {
+      const sheet = workbook.addWorksheet(sheetName);
+      sheet.columns = contactColumns;
+      sheet.addRows(rows.map(toContactRow));
+      styleReportSheet(sheet);
+    }
+
+    const history = workbook.addWorksheet("Riwayat Pembayaran");
+    history.columns = [
+      { header: "No", key: "number" },
+      { header: "Periode Tagihan", key: "period" },
+      { header: "Nama", key: "name" },
+      { header: "Nomor WhatsApp", key: "phoneNumber" },
+      { header: "Status", key: "status" },
+      { header: "Jenis Pembayaran", key: "paymentType" },
+      { header: "Tanggal Dibayar", key: "paidDate" },
+    ];
+    const historyRows = [];
+    for (const contact of contacts) {
+      for (const [period, payment] of Object.entries(contact.paymentMonths || {})) {
+        if (!payment) continue;
+        historyRows.push({
+          period,
+          name: contact.name || "-",
+          phoneNumber: contact.phoneNumber || "-",
+          status: payment.status === PAYMENT_STATUS.PAID ? "Lunas" : "Belum Lunas",
+          paymentType: PAYMENT_TYPE_LABELS[payment.paymentType] || "-",
+          paidDate: formatReportDate(payment.paidDate, true),
+        });
+      }
+    }
+    historyRows.sort((a, b) => b.period.localeCompare(a.period) || a.name.localeCompare(b.name, "id-ID"));
+    history.addRows(historyRows.map((row, index) => ({ number: index + 1, ...row })));
+    styleReportSheet(history);
+
+    return workbook;
+  }
+
   getPaymentMonthStatus(contactId) {
     const contact = this.getContact(contactId);
     return contact?.paymentMonths || {};
@@ -2357,6 +2502,15 @@ class WebServer {
     }));
 
     this.app.get("/api/payments/history", requireApiAuth, handleApi(async () => this.dataManager.getAllPaymentsHistory()));
+    this.app.get("/api/payments/export.xlsx", requireApiAuth, handleApi(async (req, res) => {
+      const workbook = await this.dataManager.createPaymentRecapWorkbook();
+      const period = getBillingPeriodKey();
+      const buffer = await workbook.xlsx.writeBuffer();
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="rekap-pembayaran-${period}.xlsx"`);
+      res.setHeader("Content-Length", buffer.length);
+      res.send(Buffer.from(buffer));
+    }));
     this.app.get("/api/payments/current", requireApiAuth, handleApi(async () => {
       const now = new Date();
       const currentYear = now.getFullYear();
