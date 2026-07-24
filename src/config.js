@@ -123,6 +123,7 @@ const DEFAULT_SETTINGS = {
   timezone: "Asia/Jakarta",
   lastPaymentResetPeriod: "",
   autoRescheduleMonthly: true,
+  notifyContactsOnApDown: true,
   notifyAdminsOnDelivery: true,
   notifyAdminsOnConnectionChange: true,
   notifyAdminsOnPaymentReset: true,

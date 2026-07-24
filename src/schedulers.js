@@ -517,6 +517,7 @@ class ApDownNotifier {
   async processNetwatchChanges() {
     const monitors = await this.mikrotikService.getNetwatchStatus();
     const currentStatuses = new Map();
+    const settings = this.dataManager.getSettings();
 
     if (!this.isInitialized) {
       for (const monitor of monitors) {
@@ -550,6 +551,7 @@ class ApDownNotifier {
       const state = this.syncMonitorState(host, monitor);
       if (currentStatus !== "DOWN") continue;
       if (state.alertSent) continue;
+      if (settings.notifyContactsOnApDown === false) continue;
 
       const sinceAgeMinutes = this.getSinceAgeMinutes(monitor, state);
       if (sinceAgeMinutes === null) {
@@ -584,7 +586,6 @@ class ApDownNotifier {
 
       for (const contact of linkedContacts) {
         try {
-          const settings = this.dataManager.getSettings();
           const message = this.renderApDownMessage(settings.apDownMessageTemplate, {
             name: contact.name,
             host,
