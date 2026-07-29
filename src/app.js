@@ -19,7 +19,7 @@ const {
 const ActivityLog = require("./activity-log");
 const AsyncLock = require("./async-lock");
 const AuthManager = require("./auth-manager");
-const FonnteManager = require("./fonnte-manager");
+const WhatsAppApiManager = require("./whatsapp-api-manager");
 const TelegramManager = require("./telegram-manager");
 const {
   ApDownNotifier,
@@ -796,6 +796,7 @@ class DataManager {
 
     this.normalizeLoadedContacts();
     await this.normalizeReminderRelations();
+    await this.requeueFailedSentReminders();
     await this.cleanupSentHistory();
     this.activityLog.push("info", "boot", "Data load complete", {
       contacts: this.contacts.size,
@@ -1527,7 +1528,7 @@ class DataManager {
       const reminder = this.getReminder(id);
       if (!reminder) return null;
 
-      const reminderTime = new Date(reminder.reminderDateTime).getTime();
+      const reminderTime = new Date(reminder.nextDeliveryAttemptAt || reminder.reminderDateTime).getTime();
       if (!Number.isFinite(reminderTime) || reminderTime > now.getTime()) {
         return null;
       }
@@ -1553,6 +1554,52 @@ class DataManager {
     });
   }
 
+  async scheduleReminderRetry(id, errorMessage, nextAttemptAt) {
+    return this.withDataMutation(async () => {
+      const reminder = this.getReminder(id);
+      if (!reminder) return null;
+
+      delete reminder.processingAt;
+      reminder.deliveryAttempts = Math.max(0, Number(reminder.deliveryAttempts) || 0) + 1;
+      reminder.lastDeliveryError = sanitizeInput(errorMessage);
+      reminder.lastDeliveryAttemptAt = new Date().toISOString();
+      reminder.nextDeliveryAttemptAt = new Date(nextAttemptAt).toISOString();
+      await this.saveReminders();
+      return this.hydrateReminder(reminder);
+    });
+  }
+
+  async requeueFailedSentReminders() {
+    return this.withDataMutation(async () => {
+      const failedReminders = Array.from(this.sentReminders.values()).filter(
+        (reminder) => String(reminder.deliveryStatus || "").toUpperCase() === "FAILED"
+      );
+      if (failedReminders.length === 0) return 0;
+
+      for (const failedReminder of failedReminders) {
+        const reminder = { ...failedReminder };
+        reminder.deliveryAttempts = Math.max(1, Number(reminder.deliveryAttempts) || 1);
+        reminder.lastDeliveryError = reminder.deliveryError || reminder.lastDeliveryError || "Pengiriman sebelumnya gagal";
+        reminder.lastDeliveryAttemptAt = reminder.sentAt || reminder.lastDeliveryAttemptAt || new Date().toISOString();
+        reminder.nextDeliveryAttemptAt = new Date().toISOString();
+        delete reminder.sentAt;
+        delete reminder.deliveryStatus;
+        delete reminder.deliveryError;
+        delete reminder.processingAt;
+        this.reminders.set(String(reminder.id), reminder);
+        this.sentReminders.delete(String(reminder.id));
+      }
+
+      await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+        const options = { transaction };
+        await this.saveReminders(options);
+        await this.saveSentReminders(options);
+      }));
+      this.activityLog.push("info", "scheduler", `${failedReminders.length} reminder gagal dimasukkan kembali ke antrean retry otomatis`);
+      return failedReminders.length;
+    });
+  }
+
   async moveToSent(id, extras = {}) {
     return this.withDataMutation(async () => {
       const reminder = this.getReminder(id);
@@ -1563,7 +1610,11 @@ class DataManager {
         sentAt: extras.sentAt || new Date().toISOString(),
         deliveryStatus: extras.deliveryStatus || "SENT",
       };
+      if (extras.deliveryError) {
+        sentReminder.deliveryError = sanitizeInput(extras.deliveryError);
+      }
       delete sentReminder.processingAt;
+      delete sentReminder.nextDeliveryAttemptAt;
 
       this.sentReminders.set(String(id), sentReminder);
       this.reminders.delete(String(id));
@@ -2010,21 +2061,30 @@ class NotificationBot {
   }
 
   async initialize() {
-    if (FonnteManager.isConfigured()) {
-      this.activityLog.push("info", "notification", "Fonnte aktif sebagai transport WhatsApp utama");
+    if (WhatsAppApiManager.isConfigured()) {
+      try {
+        const device = await WhatsAppApiManager.getDeviceStatus();
+        const level = device.ready ? "info" : "warn";
+        const message = device.ready
+          ? "API WhatsApp terhubung dan siap sebagai transport notifikasi utama"
+          : `API WhatsApp aktif tetapi perangkat belum siap (${device.state || "UNKNOWN"})`;
+        this.activityLog.push(level, "notification", message);
+      } catch (error) {
+        this.activityLog.push("warn", "notification", error.message);
+      }
       return;
     }
 
-    this.activityLog.push("warn", "notification", "Fonnte belum dikonfigurasi; reminder/notifikasi WhatsApp tidak akan dikirim");
+    this.activityLog.push("warn", "notification", "API WhatsApp belum dikonfigurasi; reminder/notifikasi WhatsApp tidak akan dikirim");
   }
 
   async sendMessage(phoneNumber, message) {
-    if (!FonnteManager.isConfigured()) {
-      throw new Error("Fonnte belum dikonfigurasi. Isi FONNTE_TOKEN dan aktifkan FONNTE_ENABLED=true.");
+    if (!WhatsAppApiManager.isConfigured()) {
+      throw new Error("API WhatsApp belum dikonfigurasi. Isi WHATSAPP_API_TOKEN dan aktifkan WHATSAPP_API_ENABLED=true.");
     }
 
-    const result = await FonnteManager.sendMessage(phoneNumber, message);
-    this.activityLog.push("info", "notification", `Pesan terkirim via Fonnte ke ${normalizePhoneNumber(phoneNumber)}`, {
+    const result = await WhatsAppApiManager.sendMessage(phoneNumber, message);
+    this.activityLog.push("info", "notification", `Pesan terkirim via API WhatsApp ke ${normalizePhoneNumber(phoneNumber)}`, {
       phoneNumber: normalizePhoneNumber(phoneNumber),
     });
     return result;
@@ -2151,10 +2211,10 @@ class NotificationBot {
   }
 
   getStatus() {
-    const fonnteEnabled = FonnteManager.isConfigured();
+    const whatsappApiEnabled = WhatsAppApiManager.isConfigured();
     return {
-      state: fonnteEnabled ? "READY" : "UNCONFIGURED",
-      isAvailable: fonnteEnabled,
+      state: whatsappApiEnabled ? "CONFIGURED" : "UNCONFIGURED",
+      isAvailable: whatsappApiEnabled,
       hasClient: false,
       hasPage: false,
       reconnecting: false,
@@ -2162,10 +2222,35 @@ class NotificationBot {
       pendingQueue: 0,
       failedQueue: 0,
       currentQR: false,
-      fonnteEnabled,
+      whatsappApiEnabled,
       telegramEnabled: TelegramManager.isConfigured(),
       telegramRecipients: TelegramManager.getChatIds().length,
     };
+  }
+
+  async getTransportStatus() {
+    const status = this.getStatus();
+    if (!status.whatsappApiEnabled) return status;
+
+    try {
+      const device = await WhatsAppApiManager.getDeviceStatus();
+      return {
+        ...status,
+        state: device.state || (device.ready ? "READY" : "NOT_READY"),
+        isAvailable: Boolean(device.ready),
+        deviceReady: Boolean(device.ready),
+        account: device.account || null,
+        transportError: device.lastError || null,
+      };
+    } catch (error) {
+      return {
+        ...status,
+        state: "UNREACHABLE",
+        isAvailable: false,
+        deviceReady: false,
+        transportError: error.message,
+      };
+    }
   }
 }
 
@@ -2326,30 +2411,37 @@ class WebServer {
       }
     });
     this.app.get("/transport", requirePageAuth, async (req, res) => {
-      const status = this.notificationBot.getStatus();
-      if (status.fonnteEnabled) {
+      const status = await this.notificationBot.getTransportStatus();
+      if (status.deviceReady) {
         return res.send(`
           <html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#f4f5ef;font-family:Georgia,serif;">
             <div style="padding:28px 34px;border-radius:20px;background:white;box-shadow:0 20px 60px rgba(0,0,0,.12);color:#204b57;font-size:1.3rem;">
-              Fonnte sudah aktif dan siap mengirim notifikasi WhatsApp.
+              API WhatsApp terhubung dan siap mengirim notifikasi.
             </div>
           </body></html>
         `);
       }
 
-      return res.send("Fonnte belum dikonfigurasi. Isi FONNTE_TOKEN dan FONNTE_ENABLED=true.");
+      if (status.whatsappApiEnabled) {
+        return res.status(503).send(`API WhatsApp belum siap (${escapeHtml(status.state)}). ${escapeHtml(status.transportError || "Pindai QR pada service API WhatsApp.")}`);
+      }
+
+      return res.send("API WhatsApp belum dikonfigurasi. Isi WHATSAPP_API_TOKEN dan WHATSAPP_API_ENABLED=true.");
     });
 
-    this.app.get("/api/status", requireApiAuth, handleApi(async () => ({
-      bot: this.notificationBot.getStatus(),
-      summary: this.dataManager.getDashboardSummary(),
-      settings: this.dataManager.getSettings(),
-      billingPeriod: getBillingPeriodKey(),
-      scheduler: {
-        isProcessing: this.reminderScheduler.isProcessing,
-        hotspotReactivationProcessing: this.hotspotReactivationScheduler?.isProcessing || false,
-      },
-    })));
+    this.app.get("/api/status", requireApiAuth, handleApi(async () => {
+      const bot = await this.notificationBot.getTransportStatus();
+      return {
+        bot,
+        summary: this.dataManager.getDashboardSummary(),
+        settings: this.dataManager.getSettings(),
+        billingPeriod: getBillingPeriodKey(),
+        scheduler: {
+          isProcessing: this.reminderScheduler.isProcessing,
+          hotspotReactivationProcessing: this.hotspotReactivationScheduler?.isProcessing || false,
+        },
+      };
+    }));
 
     this.app.get("/api/logs", requireApiAuth, handleApi(async () => this.activityLog.list()));
 
@@ -2666,7 +2758,7 @@ class WebServer {
   start() {
     this.app.listen(CONFIG.PORT, () => {
       this.activityLog.push("info", "web", `Dashboard running at http://localhost:${CONFIG.PORT}/dashboard`);
-      this.activityLog.push("info", "web", `Fonnte status page running at http://localhost:${CONFIG.PORT}/transport`);
+      this.activityLog.push("info", "web", `WhatsApp API status page running at http://localhost:${CONFIG.PORT}/transport`);
     });
   }
 }

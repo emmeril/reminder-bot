@@ -1,4 +1,4 @@
-const { DEFAULT_SETTINGS } = require("./config");
+const { CONFIG, DEFAULT_SETTINGS } = require("./config");
 const TelegramManager = require("./telegram-manager");
 const {
   addMonthsSafely,
@@ -56,6 +56,18 @@ class ReminderScheduler {
       || String(contact?.paymentStatus || "").toUpperCase() === "PAID";
   }
 
+  getDueTime(reminder) {
+    return new Date(reminder.nextDeliveryAttemptAt || reminder.reminderDateTime).getTime();
+  }
+
+  getNextRetryAt(reminder) {
+    const attempt = Math.max(1, (Number(reminder.deliveryAttempts) || 0) + 1);
+    const baseDelay = Math.max(60_000, CONFIG.REMINDER_RETRY_BASE_DELAY);
+    const maximumDelay = Math.max(baseDelay, CONFIG.REMINDER_RETRY_MAX_DELAY);
+    const retryDelay = Math.min(maximumDelay, baseDelay * (2 ** (attempt - 1)));
+    return new Date(Date.now() + retryDelay);
+  }
+
   async processDueReminders() {
     if (this.isProcessing) {
       this.activityLog.push("info", "scheduler", "Skipping run because previous cycle is still processing");
@@ -63,7 +75,7 @@ class ReminderScheduler {
     }
 
     const status = this.notificationBot.getStatus();
-    if (!status.isAvailable && !status.fonnteEnabled) {
+    if (!status.isAvailable) {
       this.activityLog.push("info", "scheduler", "Skipping run because notification transport is not ready");
       return;
     }
@@ -73,7 +85,7 @@ class ReminderScheduler {
     try {
       const now = Date.now();
       const dueReminders = this.dataManager.getSortedReminders().filter(
-        (reminder) => new Date(reminder.reminderDateTime).getTime() <= now
+        (reminder) => this.getDueTime(reminder) <= now
       );
 
       if (dueReminders.length === 0) {
@@ -111,10 +123,10 @@ class ReminderScheduler {
 
           const targetPhoneNumber = reminder.phoneNumber;
           const sendResult = await this.notificationBot.sendMessage(targetPhoneNumber, reminder.message);
-          const provider = sendResult?.provider || "fonnte";
+          const provider = sendResult?.provider || "whatsapp-api";
           const deliveryStatus = sendResult?.unconfirmed
             ? "SENT_UNCONFIRMED"
-            : (provider === "fonnte" ? "SENT_FONNTE" : "SENT");
+            : (provider === "whatsapp-api" ? "SENT_WHATSAPP_API" : "SENT");
           const sentReminder = await this.dataManager.moveToSent(reminder.id, {
             sentAt: new Date().toISOString(),
             deliveryStatus,
@@ -142,11 +154,24 @@ class ReminderScheduler {
             });
           }
         } catch (error) {
-          this.activityLog.push("error", "delivery", `Failed to send reminder ${activeReminder.id}`, {
-            error: error.message,
+          const errorMessage = error?.message || String(error);
+          this.activityLog.push("error", "delivery", `Failed to send reminder ${activeReminder.id}: ${errorMessage}`, {
+            error: errorMessage,
             phoneNumber: activeReminder.phoneNumber,
           });
-          if (String(error.message).toLowerCase().includes("fonnte belum dikonfigurasi")) {
+
+          if (claimedReminderId) {
+            const retryAt = this.getNextRetryAt(activeReminder);
+            const retryReminder = await this.dataManager.scheduleReminderRetry(claimedReminderId, errorMessage, retryAt);
+            claimedReminderId = null;
+            this.activityLog.push("warn", "delivery", `Reminder ${activeReminder.id} akan dicoba otomatis pada ${formatDateTime(retryAt)}`, {
+              reminderId: activeReminder.id,
+              deliveryAttempts: retryReminder?.deliveryAttempts,
+              nextDeliveryAttemptAt: retryAt.toISOString(),
+            });
+          }
+
+          if (errorMessage.toLowerCase().includes("api whatsapp belum dikonfigurasi")) {
             break;
           }
         } finally {

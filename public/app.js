@@ -796,7 +796,7 @@
             const data = await this.api("/api/status", { silent: Boolean(options.silent) });
             this.billingPeriod = data.billingPeriod || this.billingPeriod;
             this.statusCards = [
-              { label: "Fonnte", value: data.bot.fonnteEnabled ? "Online" : "Offline", icon: data.bot.fonnteEnabled ? "fa-solid fa-plug-circle-check" : "fa-solid fa-plug-circle-xmark" },
+              { label: "WhatsApp API", value: data.bot.deviceReady ? "Online" : (data.bot.whatsappApiEnabled ? "Not ready" : "Offline"), icon: data.bot.deviceReady ? "fa-solid fa-plug-circle-check" : "fa-solid fa-plug-circle-xmark" },
               { label: "Telegram", value: data.bot.telegramEnabled ? `${data.bot.telegramRecipients || 0} chat` : "Offline", icon: "fa-brands fa-telegram" },
               { label: "Transport", value: data.bot.isAvailable ? "Ready" : "Not ready", icon: "fa-solid fa-paper-plane" },
             ];

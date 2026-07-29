@@ -6,3 +6,5 @@ node_modules
 pnpm-lock.yaml
 pnpm-workspace.yaml
 database/*
+core
+.claude/settings.local.json.tmp.*
