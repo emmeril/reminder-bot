@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "node test/whatsapp-api-manager.test.js"
+    "test": "node --test test/*.test.js"
   },
   "keywords": [],
   "author": "",

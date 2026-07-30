@@ -19,7 +19,7 @@ const {
 const ActivityLog = require("./activity-log");
 const AsyncLock = require("./async-lock");
 const AuthManager = require("./auth-manager");
-const WhatsAppApiManager = require("./whatsapp-api-manager");
+const WhatsAppLoadBalancer = require("./whatsapp-load-balancer");
 const TelegramManager = require("./telegram-manager");
 const {
   ApDownNotifier,
@@ -2061,31 +2061,37 @@ class NotificationBot {
   }
 
   async initialize() {
-    if (WhatsAppApiManager.isConfigured()) {
-      try {
-        const device = await WhatsAppApiManager.getDeviceStatus();
-        const level = device.ready ? "info" : "warn";
-        const message = device.ready
-          ? "API WhatsApp terhubung dan siap sebagai transport notifikasi utama"
-          : `API WhatsApp aktif tetapi perangkat belum siap (${device.state || "UNKNOWN"})`;
-        this.activityLog.push(level, "notification", message);
-      } catch (error) {
-        this.activityLog.push("warn", "notification", error.message);
-      }
+    if (WhatsAppLoadBalancer.isConfigured()) {
+      await WhatsAppLoadBalancer.checkConnections(true);
+      const status = WhatsAppLoadBalancer.getStatus();
+      const connectedProviders = status.loadBalancer.connectedProviders;
+      const level = status.isAvailable ? "info" : "warn";
+      const message = status.isAvailable
+        ? `Pool WhatsApp siap melalui ${connectedProviders.join(", ")}`
+        : `Provider WhatsApp dikonfigurasi tetapi belum siap: ${status.transportError || "status tidak diketahui"}`;
+      this.activityLog.push(level, "notification", message);
       return;
     }
 
-    this.activityLog.push("warn", "notification", "API WhatsApp belum dikonfigurasi; reminder/notifikasi WhatsApp tidak akan dikirim");
+    this.activityLog.push("warn", "notification", "Provider WhatsApp belum dikonfigurasi; reminder/notifikasi WhatsApp tidak akan dikirim");
   }
 
   async sendMessage(phoneNumber, message) {
-    if (!WhatsAppApiManager.isConfigured()) {
-      throw new Error("API WhatsApp belum dikonfigurasi. Isi WHATSAPP_API_TOKEN dan aktifkan WHATSAPP_API_ENABLED=true.");
+    if (!WhatsAppLoadBalancer.isConfigured()) {
+      throw new Error("Provider WhatsApp belum dikonfigurasi. Aktifkan WhatsApp API atau isi token Fonnte.");
     }
 
-    const result = await WhatsAppApiManager.sendMessage(phoneNumber, message);
-    this.activityLog.push("info", "notification", `Pesan terkirim via API WhatsApp ke ${normalizePhoneNumber(phoneNumber)}`, {
+    const result = await WhatsAppLoadBalancer.sendMessage(phoneNumber, message);
+    if (result.failover) {
+      this.activityLog.push("warn", "notification", `Failover WhatsApp aktif; pesan dialihkan ke ${result.provider}`, {
+        provider: result.provider,
+        providersTried: result.providersTried,
+        providerErrors: result.providerErrors,
+      });
+    }
+    this.activityLog.push("info", "notification", `Pesan terkirim via ${result.provider} ke ${normalizePhoneNumber(phoneNumber)}`, {
       phoneNumber: normalizePhoneNumber(phoneNumber),
+      provider: result.provider,
     });
     return result;
   }
@@ -2211,40 +2217,22 @@ class NotificationBot {
   }
 
   getStatus() {
-    const whatsappApiEnabled = WhatsAppApiManager.isConfigured();
     return {
-      state: whatsappApiEnabled ? "CONFIGURED" : "UNCONFIGURED",
-      isAvailable: whatsappApiEnabled,
-      hasClient: false,
-      hasPage: false,
-      reconnecting: false,
-      reconnectAttempts: 0,
-      pendingQueue: 0,
-      failedQueue: 0,
-      currentQR: false,
-      whatsappApiEnabled,
+      ...WhatsAppLoadBalancer.getStatus(),
       telegramEnabled: TelegramManager.isConfigured(),
       telegramRecipients: TelegramManager.getChatIds().length,
     };
   }
 
   async getTransportStatus() {
-    const status = this.getStatus();
-    if (!status.whatsappApiEnabled) return status;
+    if (!WhatsAppLoadBalancer.isConfigured()) return this.getStatus();
 
     try {
-      const device = await WhatsAppApiManager.getDeviceStatus();
-      return {
-        ...status,
-        state: device.state || (device.ready ? "READY" : "NOT_READY"),
-        isAvailable: Boolean(device.ready),
-        deviceReady: Boolean(device.ready),
-        account: device.account || null,
-        transportError: device.lastError || null,
-      };
+      await WhatsAppLoadBalancer.checkConnections();
+      return this.getStatus();
     } catch (error) {
       return {
-        ...status,
+        ...this.getStatus(),
         state: "UNREACHABLE",
         isAvailable: false,
         deviceReady: false,
@@ -2413,20 +2401,21 @@ class WebServer {
     this.app.get("/transport", requirePageAuth, async (req, res) => {
       const status = await this.notificationBot.getTransportStatus();
       if (status.deviceReady) {
+        const connectedProviders = status.loadBalancer?.connectedProviders?.join(", ") || "provider aktif";
         return res.send(`
           <html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#f4f5ef;font-family:Georgia,serif;">
             <div style="padding:28px 34px;border-radius:20px;background:white;box-shadow:0 20px 60px rgba(0,0,0,.12);color:#204b57;font-size:1.3rem;">
-              API WhatsApp terhubung dan siap mengirim notifikasi.
+              Pool WhatsApp siap melalui ${escapeHtml(connectedProviders)}.
             </div>
           </body></html>
         `);
       }
 
-      if (status.whatsappApiEnabled) {
-        return res.status(503).send(`API WhatsApp belum siap (${escapeHtml(status.state)}). ${escapeHtml(status.transportError || "Pindai QR pada service API WhatsApp.")}`);
+      if (status.whatsappProviderEnabled) {
+        return res.status(503).send(`Provider WhatsApp belum siap (${escapeHtml(status.state)}). ${escapeHtml(status.transportError || "Periksa koneksi provider WhatsApp.")}`);
       }
 
-      return res.send("API WhatsApp belum dikonfigurasi. Isi WHATSAPP_API_TOKEN dan WHATSAPP_API_ENABLED=true.");
+      return res.send("Provider WhatsApp belum dikonfigurasi. Aktifkan WhatsApp API atau isi token Fonnte.");
     });
 
     this.app.get("/api/status", requireApiAuth, handleApi(async () => {
@@ -2478,7 +2467,7 @@ class WebServer {
       }
 
       let notification = { sent: false };
-      if (parseBoolean(req.body.sendCredentials) && this.notificationBot.getStatus().isAvailable) {
+      if (parseBoolean(req.body.sendCredentials) && this.notificationBot.getStatus().whatsappProviderEnabled) {
         const message = `Yth. Bapak/Ibu *${registered.name}*,\n\nAkun hotspot Anda sudah berhasil dibuat.\n\nDetail Akun Hotspot:\n*Username:* ${registered.username}\n*Password:* ${registered.password}\n*Profile:* ${registered.profile}\n\nSilakan simpan data ini. Terimakasih.`;
         try {
           await this.notificationBot.sendMessage(registered.phoneNumber, message);
@@ -2758,7 +2747,7 @@ class WebServer {
   start() {
     this.app.listen(CONFIG.PORT, () => {
       this.activityLog.push("info", "web", `Dashboard running at http://localhost:${CONFIG.PORT}/dashboard`);
-      this.activityLog.push("info", "web", `WhatsApp API status page running at http://localhost:${CONFIG.PORT}/transport`);
+      this.activityLog.push("info", "web", `WhatsApp provider status page running at http://localhost:${CONFIG.PORT}/transport`);
     });
   }
 }
@@ -2782,7 +2771,7 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
 
   activityLog.push("info", "billing", `Monthly payment status reset completed for ${count} contact(s)`);
 
-  if (!settings.notifyAdminsOnPaymentReset || !notificationBot.getStatus().isAvailable) {
+  if (!settings.notifyAdminsOnPaymentReset || !notificationBot.getStatus().whatsappProviderEnabled) {
     return;
   }
 

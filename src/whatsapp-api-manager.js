@@ -8,6 +8,12 @@ class WhatsAppApiManager {
 
   static lastSentAt = 0;
 
+  static connectionCache = {
+    checkedAt: 0,
+    connected: false,
+    detail: "Status WhatsApp API belum diperiksa",
+  };
+
   static isConfigured() {
     return Boolean(
       CONFIG.WHATSAPP_API_ENABLED
@@ -42,6 +48,11 @@ class WhatsAppApiManager {
         signal: AbortSignal.timeout(Math.max(1_000, Math.min(5_000, CONFIG.WHATSAPP_API_TIMEOUT))),
       });
     } catch (cause) {
+      this.connectionCache = {
+        checkedAt: Date.now(),
+        connected: false,
+        detail: cause.message,
+      };
       throw new Error(`API WhatsApp gagal dihubungi: ${cause.message}`);
     }
 
@@ -54,10 +65,56 @@ class WhatsAppApiManager {
 
     if (!response.ok || payload?.status === false) {
       const errorMessage = payload?.message || payload?.error || `HTTP ${response.status}`;
+      this.connectionCache = {
+        checkedAt: Date.now(),
+        connected: false,
+        detail: errorMessage,
+      };
       throw new Error(`Gagal membaca status API WhatsApp: ${errorMessage}`);
     }
 
-    return payload?.device || {};
+    const device = payload?.device || {};
+    this.connectionCache = {
+      checkedAt: Date.now(),
+      connected: Boolean(device.ready),
+      detail: device.ready
+        ? "WhatsApp API terhubung"
+        : device.lastError || `WhatsApp belum siap (state: ${device.state || "UNKNOWN"})`,
+      device,
+    };
+    return device;
+  }
+
+  static async checkConnection(force = false) {
+    if (!this.isConfigured()) {
+      this.connectionCache = {
+        checkedAt: Date.now(),
+        connected: false,
+        detail: "WhatsApp API belum dikonfigurasi",
+      };
+      return this.connectionCache;
+    }
+
+    if (!force && Date.now() - this.connectionCache.checkedAt < 15_000) {
+      return this.connectionCache;
+    }
+
+    try {
+      await this.getDeviceStatus();
+    } catch {
+      // getDeviceStatus updates the shared connection cache with the failure detail.
+    }
+    return this.connectionCache;
+  }
+
+  static getStatus() {
+    return {
+      name: "whatsapp-api",
+      enabled: CONFIG.WHATSAPP_API_ENABLED,
+      configured: this.isConfigured(),
+      apiUrl: CONFIG.WHATSAPP_API_URL,
+      connection: this.connectionCache,
+    };
   }
 
   static async waitForSendSlot() {
@@ -124,6 +181,11 @@ class WhatsAppApiManager {
         signal: AbortSignal.timeout(Math.max(1_000, CONFIG.WHATSAPP_API_TIMEOUT)),
       });
     } catch (cause) {
+      this.connectionCache = {
+        checkedAt: Date.now(),
+        connected: false,
+        detail: cause.message,
+      };
       const error = new Error(`API WhatsApp gagal dihubungi: ${cause.message}`);
       error.retryable = true;
       throw error;
@@ -138,12 +200,23 @@ class WhatsAppApiManager {
 
     if (!response.ok || payload?.status === false) {
       const errorMessage = payload?.message || payload?.error || `HTTP ${response.status}`;
+      this.connectionCache = {
+        checkedAt: Date.now(),
+        connected: false,
+        detail: errorMessage,
+      };
       const error = new Error(`API WhatsApp gagal mengirim pesan: ${errorMessage}`);
       error.retryable = response.status === 408 || response.status === 429 || response.status >= 500;
       throw error;
     }
 
     const responseData = payload?.data || {};
+    this.connectionCache = {
+      ...this.connectionCache,
+      checkedAt: Date.now(),
+      connected: true,
+      detail: "WhatsApp API terhubung",
+    };
     return {
       status: "success",
       provider: "whatsapp-api",

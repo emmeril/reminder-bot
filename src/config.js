@@ -76,6 +76,13 @@ const CONFIG = {
   WHATSAPP_API_TOKEN: envString("WHATSAPP_API_TOKEN"),
   WHATSAPP_API_URL: envString("WHATSAPP_API_URL", "http://127.0.0.1:3564"),
   WHATSAPP_API_TIMEOUT: envNumber("WHATSAPP_API_TIMEOUT", 30_000),
+  FONNTE_ENABLED: envString("FONNTE_ENABLED")
+    ? envBoolean("FONNTE_ENABLED")
+    : Boolean(envString("FONNTE_TOKEN") || envString("FONNTE_API_KEY")),
+  FONNTE_TOKEN: envString("FONNTE_TOKEN", envString("FONNTE_API_KEY")),
+  FONNTE_API_URL: envString("FONNTE_API_URL", "https://api.fonnte.com"),
+  FONNTE_API_TIMEOUT: envNumber("FONNTE_API_TIMEOUT", 15_000),
+  WA_PROVIDER_COOLDOWN: envNumber("WA_PROVIDER_COOLDOWN", 60_000),
   TELEGRAM_BOT_TOKEN: envString("TELEGRAM_BOT_TOKEN"),
   TELEGRAM_API_URL: envString("TELEGRAM_API_URL", "https://api.telegram.org"),
   TELEGRAM_CHAT_IDS: envString("TELEGRAM_CHAT_IDS"),

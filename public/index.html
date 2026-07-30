@@ -88,7 +88,7 @@
           <div class="quick-actions-list mt-4">
             <a href="/transport" target="_blank" rel="noreferrer" class="quick-action action-chip w-full rounded-[1rem] bg-clay px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
               <span class="quick-action-icon bg-white/15 text-white"><i class="fa-brands fa-whatsapp"></i></span>
-              <span>Status WhatsApp API</span>
+              <span>Status Provider WhatsApp</span>
             </a>
             <button @click="refreshAll()" class="quick-action action-chip w-full rounded-[1rem] border border-ink/10 bg-white px-3 py-2.5 text-sm font-semibold text-ink transition hover:bg-haze">
               <span class="quick-action-icon bg-ink/5 text-ink"><i class="fa-solid fa-rotate"></i></span>
@@ -128,7 +128,7 @@
                 <span x-text="sidebarHidden ? 'Tampilkan Sidebar' : 'Hide Sidebar'"></span>
               </button>
               <a href="/transport" target="_blank" rel="noreferrer" class="action-chip shrink-0 whitespace-nowrap rounded-2xl bg-clay px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
-                <i class="fa-brands fa-whatsapp mr-2"></i>Status WhatsApp API
+                <i class="fa-brands fa-whatsapp mr-2"></i>Status Provider WhatsApp
               </a>
               <button @click="refreshAll()" class="action-chip shrink-0 whitespace-nowrap rounded-2xl border border-ink/10 bg-white px-3 py-2.5 text-sm font-semibold text-ink transition hover:bg-haze">
                 <i class="fa-solid fa-rotate mr-2"></i>Refresh
@@ -161,7 +161,7 @@
         <section class="mobile-actions-panel panel-shell rounded-[1.25rem] p-3 shadow-soft backdrop-blur-xl lg:hidden">
           <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4">
             <a href="/transport" target="_blank" rel="noreferrer" class="action-chip rounded-2xl bg-clay px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
-              <i class="fa-brands fa-whatsapp mr-2"></i>Status WhatsApp API
+              <i class="fa-brands fa-whatsapp mr-2"></i>Status Provider WhatsApp
             </a>
             <button @click="refreshAll()" class="action-chip rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze">
               <i class="fa-solid fa-rotate mr-2"></i>Refresh
@@ -771,7 +771,7 @@
               </label>
               <label class="flex items-start gap-3 text-sm text-ink/75">
                 <input x-model="forms.settings.notifyAdminsOnConnectionChange" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
-                <span>Kirim alert status transport WhatsApp API ke admin recipients</span>
+                <span>Kirim alert status provider WhatsApp ke admin recipients</span>
               </label>
               <label class="flex items-start gap-3 text-sm text-ink/75">
                 <input x-model="forms.settings.notifyAdminsOnPaymentReset" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">

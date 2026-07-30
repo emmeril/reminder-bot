@@ -75,8 +75,8 @@ class ReminderScheduler {
     }
 
     const status = this.notificationBot.getStatus();
-    if (!status.isAvailable) {
-      this.activityLog.push("info", "scheduler", "Skipping run because notification transport is not ready");
+    if (!status.whatsappProviderEnabled) {
+      this.activityLog.push("info", "scheduler", "Skipping run because no WhatsApp provider is configured");
       return;
     }
 
@@ -124,9 +124,14 @@ class ReminderScheduler {
           const targetPhoneNumber = reminder.phoneNumber;
           const sendResult = await this.notificationBot.sendMessage(targetPhoneNumber, reminder.message);
           const provider = sendResult?.provider || "whatsapp-api";
+          const providerDeliveryStatus = {
+            "whatsapp-api": "SENT_WHATSAPP_API",
+            "api-whatsapp": "SENT_WHATSAPP_API",
+            fonnte: "SENT_FONNTE",
+          }[provider] || "SENT";
           const deliveryStatus = sendResult?.unconfirmed
             ? "SENT_UNCONFIRMED"
-            : (provider === "whatsapp-api" ? "SENT_WHATSAPP_API" : "SENT");
+            : providerDeliveryStatus;
           const sentReminder = await this.dataManager.moveToSent(reminder.id, {
             sentAt: new Date().toISOString(),
             deliveryStatus,
@@ -171,7 +176,7 @@ class ReminderScheduler {
             });
           }
 
-          if (errorMessage.toLowerCase().includes("api whatsapp belum dikonfigurasi")) {
+          if (errorMessage.toLowerCase().includes("whatsapp belum dikonfigurasi")) {
             break;
           }
         } finally {
