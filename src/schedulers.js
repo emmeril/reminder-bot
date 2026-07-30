@@ -654,9 +654,118 @@ class ApDownNotifier {
   }
 }
 
+class WhatsAppProviderStatusNotifier {
+  constructor(notificationBot, dataManager, activityLog) {
+    this.notificationBot = notificationBot;
+    this.dataManager = dataManager;
+    this.activityLog = activityLog;
+    this.previousStatuses = new Map();
+    this.pendingChanges = [];
+    this.isInitialized = false;
+    this.isProcessing = false;
+  }
+
+  getProviderStatuses(status) {
+    return new Map(
+      Object.values(status.providers || {})
+        .filter((provider) => provider?.configured)
+        .map((provider) => [provider.name, {
+          connected: Boolean(provider.connection?.connected),
+          detail: sanitizeInput(provider.connection?.detail || "Status tidak diketahui"),
+        }])
+    );
+  }
+
+  getChanges(currentStatuses) {
+    const changes = [];
+    for (const [name, current] of currentStatuses) {
+      const previous = this.previousStatuses.get(name);
+      if (previous && previous.connected !== current.connected) {
+        changes.push({ name, previous, current });
+      }
+    }
+    return changes;
+  }
+
+  buildAlert(status) {
+    const providerLines = Object.values(status.providers || {})
+      .filter((provider) => provider?.configured)
+      .map((provider) => {
+        const connection = provider.connection || {};
+        return `- ${provider.name}: ${connection.connected ? "ONLINE" : "DOWN"} (${sanitizeInput(connection.detail || "status tidak diketahui")})`;
+      });
+    const changeLines = this.pendingChanges.map(({ name, previous, current }) => (
+      `- ${name}: ${previous.connected ? "ONLINE" : "DOWN"} -> ${current.connected ? "ONLINE" : "DOWN"}`
+    ));
+    const hasDownProvider = Object.values(status.providers || {})
+      .some((provider) => provider?.configured && !provider.connection?.connected);
+
+    return {
+      title: hasDownProvider ? "Alert provider WhatsApp" : "Provider WhatsApp pulih",
+      body: `Perubahan status:\n${changeLines.join("\n")}\n\nStatus provider saat ini:\n${providerLines.join("\n")}`,
+    };
+  }
+
+  async processStatusChanges() {
+    if (this.isProcessing) return;
+    this.isProcessing = true;
+
+    try {
+      const status = await this.notificationBot.getTransportStatus();
+      const currentStatuses = this.getProviderStatuses(status);
+
+      if (!this.isInitialized) {
+        this.previousStatuses = currentStatuses;
+        this.isInitialized = true;
+        return;
+      }
+
+      const changes = this.getChanges(currentStatuses);
+      this.previousStatuses = currentStatuses;
+
+      const settings = this.dataManager.getSettings();
+      if (!settings.notifyAdminsOnConnectionChange) {
+        this.pendingChanges = [];
+        return;
+      }
+
+      if (changes.length > 0) {
+        this.pendingChanges = [...this.pendingChanges, ...changes].slice(-10);
+      }
+      if (this.pendingChanges.length === 0) return;
+
+      const connectedProviders = status.loadBalancer?.connectedProviders || [];
+      if (connectedProviders.length === 0) {
+        this.activityLog.push("warn", "notification", "Alert status provider WhatsApp ditunda karena semua provider sedang DOWN");
+        return;
+      }
+
+      const { title, body } = this.buildAlert(status);
+      const results = await this.notificationBot.sendAdminBroadcast(title, body, { silentLog: true });
+      const sentCount = results.filter((result) => result.status === "sent").length;
+      const failedCount = results.length - sentCount;
+
+      if (results.length > 0 && failedCount === 0) {
+        this.pendingChanges = [];
+        this.activityLog.push("info", "notification", `${title} terkirim ke ${sentCount} admin recipient(s)`);
+      } else {
+        this.activityLog.push("warn", "notification", `${title} belum terkirim ke semua admin recipient`, {
+          sentCount,
+          failedCount,
+        });
+      }
+    } catch (error) {
+      this.activityLog.push("error", "notification", `Gagal memeriksa perubahan status provider WhatsApp: ${error.message}`);
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+}
+
 module.exports = {
   ApDownNotifier,
   HotspotReactivationScheduler,
   MikrotikBackupScheduler,
   ReminderScheduler,
+  WhatsAppProviderStatusNotifier,
 };

@@ -15,6 +15,8 @@ const originalConfig = {
   FONNTE_API_TIMEOUT: CONFIG.FONNTE_API_TIMEOUT,
   WA_PROVIDER_COOLDOWN: CONFIG.WA_PROVIDER_COOLDOWN,
   WA_MESSAGE_DELAY: CONFIG.WA_MESSAGE_DELAY,
+  WA_MESSAGE_DELAY_MIN: CONFIG.WA_MESSAGE_DELAY_MIN,
+  WA_MESSAGE_DELAY_MAX: CONFIG.WA_MESSAGE_DELAY_MAX,
 };
 const originalApiSend = WhatsAppApiManager.sendMessage;
 const originalFonnteSend = FonnteApiManager.sendMessage;
@@ -30,6 +32,8 @@ beforeEach(() => {
     FONNTE_API_TIMEOUT: 5_000,
     WA_PROVIDER_COOLDOWN: 60_000,
     WA_MESSAGE_DELAY: 0,
+    WA_MESSAGE_DELAY_MIN: 0,
+    WA_MESSAGE_DELAY_MAX: 0,
   });
   WhatsAppLoadBalancer.providerCursor = 0;
   WhatsAppLoadBalancer.providerCooldowns = new Map();
@@ -62,6 +66,25 @@ test("membagi pesan round-robin ke provider yang dikonfigurasi", async () => {
   assert.equal(first.provider, "whatsapp-api");
   assert.equal(second.provider, "fonnte");
   assert.deepEqual(calls, ["whatsapp-api", "fonnte"]);
+});
+
+test("memilih jeda acak dalam rentang termasuk saat min dan max tertukar", () => {
+  const originalRandom = Math.random;
+  try {
+    Math.random = () => 0;
+    assert.equal(
+      WhatsAppLoadBalancer.getRandomDelayMs({ minDelayMs: 5000, maxDelayMs: 2000 }),
+      2000
+    );
+
+    Math.random = () => 0.999999;
+    assert.equal(
+      WhatsAppLoadBalancer.getRandomDelayMs({ minDelayMs: 2000, maxDelayMs: 5000 }),
+      5000
+    );
+  } finally {
+    Math.random = originalRandom;
+  }
 });
 
 test("failover dan sementara menghindari provider yang gagal", async () => {

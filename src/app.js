@@ -26,6 +26,7 @@ const {
   HotspotReactivationScheduler,
   MikrotikBackupScheduler,
   ReminderScheduler,
+  WhatsAppProviderStatusNotifier,
 } = require("./schedulers");
 const TemplateManager = require("./template-manager");
 const {
@@ -1652,6 +1653,12 @@ class DataManager {
   async updateSettings(payload) {
     return this.withDataMutation(async () => {
       const current = this.getSettings();
+      const requestedDelayMin = payload.waRandomDelayMinSeconds !== undefined
+        ? sanitizePositiveInteger(payload.waRandomDelayMinSeconds, current.waRandomDelayMinSeconds, 0, 300)
+        : current.waRandomDelayMinSeconds;
+      const requestedDelayMax = payload.waRandomDelayMaxSeconds !== undefined
+        ? sanitizePositiveInteger(payload.waRandomDelayMaxSeconds, current.waRandomDelayMaxSeconds, 0, 300)
+        : current.waRandomDelayMaxSeconds;
       this.settings = {
         ...current,
         dashboardTitle: payload.dashboardTitle !== undefined ? sanitizeInput(payload.dashboardTitle) || current.dashboardTitle : current.dashboardTitle,
@@ -1686,6 +1693,8 @@ class DataManager {
         notifyAdminsOnDelivery: payload.notifyAdminsOnDelivery !== undefined ? parseBoolean(payload.notifyAdminsOnDelivery, current.notifyAdminsOnDelivery) : current.notifyAdminsOnDelivery,
         notifyAdminsOnConnectionChange: payload.notifyAdminsOnConnectionChange !== undefined ? parseBoolean(payload.notifyAdminsOnConnectionChange, current.notifyAdminsOnConnectionChange) : current.notifyAdminsOnConnectionChange,
         notifyAdminsOnPaymentReset: payload.notifyAdminsOnPaymentReset !== undefined ? parseBoolean(payload.notifyAdminsOnPaymentReset, current.notifyAdminsOnPaymentReset) : current.notifyAdminsOnPaymentReset,
+        waRandomDelayMinSeconds: Math.min(requestedDelayMin, requestedDelayMax),
+        waRandomDelayMaxSeconds: Math.max(requestedDelayMin, requestedDelayMax),
         enableMikrotikBackupToWa: payload.enableMikrotikBackupToWa !== undefined
           ? parseBoolean(payload.enableMikrotikBackupToWa, current.enableMikrotikBackupToWa)
           : current.enableMikrotikBackupToWa,
@@ -2081,7 +2090,11 @@ class NotificationBot {
       throw new Error("Provider WhatsApp belum dikonfigurasi. Aktifkan WhatsApp API atau isi token Fonnte.");
     }
 
-    const result = await WhatsAppLoadBalancer.sendMessage(phoneNumber, message);
+    const settings = this.dataManager.getSettings();
+    const result = await WhatsAppLoadBalancer.sendMessage(phoneNumber, message, {
+      minDelayMs: Math.max(0, Number(settings.waRandomDelayMinSeconds) || 0) * 1000,
+      maxDelayMs: Math.max(0, Number(settings.waRandomDelayMaxSeconds) || 0) * 1000,
+    });
     if (result.failover) {
       this.activityLog.push("warn", "notification", `Failover WhatsApp aktif; pesan dialihkan ke ${result.provider}`, {
         provider: result.provider,
@@ -2217,8 +2230,15 @@ class NotificationBot {
   }
 
   getStatus() {
+    const status = WhatsAppLoadBalancer.getStatus();
+    const settings = this.dataManager.getSettings();
     return {
-      ...WhatsAppLoadBalancer.getStatus(),
+      ...status,
+      loadBalancer: {
+        ...status.loadBalancer,
+        randomDelayMinMs: Math.max(0, Number(settings.waRandomDelayMinSeconds) || 0) * 1000,
+        randomDelayMaxMs: Math.max(0, Number(settings.waRandomDelayMaxSeconds) || 0) * 1000,
+      },
       telegramEnabled: TelegramManager.isConfigured(),
       telegramRecipients: TelegramManager.getChatIds().length,
     };
@@ -2804,6 +2824,11 @@ async function bootstrap() {
   const notificationBot = new NotificationBot(dataManager, activityLog);
   const mikrotikService = new MikrotikService(activityLog);
   const apDownNotifier = new ApDownNotifier(mikrotikService, notificationBot, dataManager, activityLog);
+  const whatsappProviderStatusNotifier = new WhatsAppProviderStatusNotifier(
+    notificationBot,
+    dataManager,
+    activityLog
+  );
   const mikrotikBackupScheduler = new MikrotikBackupScheduler(
     mikrotikService,
     notificationBot,
@@ -2831,12 +2856,13 @@ async function bootstrap() {
     hotspotReactivationScheduler
   );
 
-  await dataManager.ensureMonthlyPaymentReset();
+  await sendMonthlyResetNotification(notificationBot, dataManager, activityLog);
 
   cron.schedule(CONFIG.CRON_SCHEDULE, () => {
     Promise.all([
       reminderScheduler.processDueReminders(),
       apDownNotifier.processNetwatchChanges(),
+      whatsappProviderStatusNotifier.processStatusChanges(),
       mikrotikBackupScheduler.processDailyBackup(),
       hotspotReactivationScheduler.processDueReactivations(),
     ]).catch((error) => {

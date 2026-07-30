@@ -28,8 +28,8 @@ class WhatsAppApiManager {
     return baseUrl.toString();
   }
 
-  static async sendMessage(number, message) {
-    const queuedSend = this.sendQueue.then(() => this.sendWithRetry(number, message));
+  static async sendMessage(number, message, options = {}) {
+    const queuedSend = this.sendQueue.then(() => this.sendWithRetry(number, message, options));
     this.sendQueue = queuedSend.catch(() => {});
     return queuedSend;
   }
@@ -136,11 +136,13 @@ class WhatsAppApiManager {
     return exponentialDelay + jitter;
   }
 
-  static async sendWithRetry(number, message) {
+  static async sendWithRetry(number, message, options = {}) {
     const maximumAttempts = Math.max(1, Math.floor(CONFIG.WA_RETRY_MAX_ATTEMPTS));
 
     for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
-      await this.waitForSendSlot();
+      if (!options.skipMessageDelay) {
+        await this.waitForSendSlot();
+      }
 
       try {
         const result = await this.sendRequest(number, message);

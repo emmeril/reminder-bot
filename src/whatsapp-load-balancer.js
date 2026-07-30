@@ -46,13 +46,31 @@ class WhatsAppLoadBalancer {
     ];
   }
 
-  static async sendMessage(number, message) {
-    const queuedSend = this.sendQueue.then(() => this.sendWithFailover(number, message));
+  static normalizeDelayRange(options = {}) {
+    const configuredMin = Number(options.minDelayMs ?? CONFIG.WA_MESSAGE_DELAY_MIN);
+    const configuredMax = Number(options.maxDelayMs ?? CONFIG.WA_MESSAGE_DELAY_MAX);
+    const first = Number.isFinite(configuredMin) ? Math.max(0, Math.floor(configuredMin)) : 0;
+    const second = Number.isFinite(configuredMax) ? Math.max(0, Math.floor(configuredMax)) : first;
+
+    return {
+      minDelayMs: Math.min(first, second),
+      maxDelayMs: Math.max(first, second),
+    };
+  }
+
+  static getRandomDelayMs(options = {}) {
+    const { minDelayMs, maxDelayMs } = this.normalizeDelayRange(options);
+    if (maxDelayMs <= minDelayMs) return minDelayMs;
+    return minDelayMs + Math.floor(Math.random() * (maxDelayMs - minDelayMs + 1));
+  }
+
+  static async sendMessage(number, message, options = {}) {
+    const queuedSend = this.sendQueue.then(() => this.sendWithFailover(number, message, options));
     this.sendQueue = queuedSend.catch(() => {});
     return queuedSend;
   }
 
-  static async sendWithFailover(number, message) {
+  static async sendWithFailover(number, message, options = {}) {
     const rawNumber = normalizePhoneNumber(number);
     const normalized = rawNumber.startsWith("0")
       ? `62${rawNumber.slice(1)}`
@@ -68,17 +86,16 @@ class WhatsAppLoadBalancer {
       );
     }
 
-    const minimumDelay = Math.max(0, CONFIG.WA_MESSAGE_DELAY);
-    const remainingDelay = Math.max(0, minimumDelay - (Date.now() - this.lastSentAt));
+    const selectedDelay = this.getRandomDelayMs(options);
+    const remainingDelay = Math.max(0, selectedDelay - (Date.now() - this.lastSentAt));
     if (remainingDelay > 0) {
-      const jitter = Math.floor(Math.random() * Math.max(1, minimumDelay * 0.25));
-      await sleep(remainingDelay + jitter);
+      await sleep(remainingDelay);
     }
 
     const errors = [];
     for (const { name, manager } of providers) {
       try {
-        const result = await manager.sendMessage(normalized, message);
+        const result = await manager.sendMessage(normalized, message, { skipMessageDelay: true });
         this.providerCooldowns.delete(name);
         this.lastActivity = Date.now();
         this.lastSentAt = Date.now();
@@ -155,6 +172,8 @@ class WhatsAppLoadBalancer {
         configuredProviders,
         connectedProviders,
         cooldownMs: Math.max(0, CONFIG.WA_PROVIDER_COOLDOWN),
+        randomDelayMinMs: this.normalizeDelayRange().minDelayMs,
+        randomDelayMaxMs: this.normalizeDelayRange().maxDelayMs,
       },
     };
   }
