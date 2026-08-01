@@ -118,6 +118,8 @@ class BaileysManager {
       auth: this.authState,
       browser,
       logger: silentLogger,
+      // Pairing codes are displayed by the dashboard, not printed by Baileys.
+      printQRInTerminal: false,
       markOnlineOnConnect: false,
       syncFullHistory: false,
       shouldSyncHistoryMessage: () => false,
@@ -273,14 +275,27 @@ class BaileysManager {
       throw new Error("Sesi WhatsApp sudah terdaftar. Hapus sesi terlebih dahulu untuk pairing ulang.");
     }
 
-    for (let attempt = 0; attempt < 30 && !this.pairingReady; attempt += 1) {
-      await sleep(500);
+    const socket = this.socket;
+    if (typeof socket.waitForSocketOpen === "function") {
+      try {
+        await socket.waitForSocketOpen();
+      } catch (error) {
+        throw new Error(`Baileys belum siap membuat pairing code: ${error.message}`);
+      }
+    } else {
+      // Keep compatibility with older Baileys builds and lightweight test doubles.
+      for (let attempt = 0; attempt < 30 && !this.pairingReady; attempt += 1) {
+        await sleep(500);
+      }
+      if (!this.pairingReady) {
+        throw new Error("Baileys belum mencapai tahap pairing. Coba lagi beberapa saat.");
+      }
     }
-    if (!this.pairingReady) {
-      throw new Error("Baileys belum mencapai tahap pairing. Coba lagi beberapa saat.");
+    if (this.socket !== socket) {
+      throw new Error("Socket Baileys berubah saat menyiapkan pairing code. Coba lagi.");
     }
 
-    const code = await this.socket.requestPairingCode(normalized);
+    const code = await socket.requestPairingCode(normalized);
     this.updateConnection({
       connected: false,
       detail: "Masukkan pairing code di menu Perangkat tertaut WhatsApp",

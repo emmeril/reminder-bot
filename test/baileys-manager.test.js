@@ -81,9 +81,14 @@ test("menolak nomor yang tidak terdaftar di WhatsApp tanpa retry", async () => {
 
 test("membuat pairing code dengan nomor E.164", async () => {
   let pairedNumber;
+  const calls = [];
   BaileysManager.authState = { creds: { registered: false } };
   BaileysManager.socket = {
+    waitForSocketOpen: async () => {
+      calls.push("open");
+    },
     requestPairingCode: async (number) => {
+      calls.push("pair");
       pairedNumber = number;
       return "ABCD-EFGH";
     },
@@ -94,6 +99,22 @@ test("membuat pairing code dengan nomor E.164", async () => {
   assert.equal(pairedNumber, "6281234567890");
   assert.equal(code, "ABCD-EFGH");
   assert.equal(BaileysManager.connectionCache.pairingCode, "ABCD-EFGH");
+  assert.deepEqual(calls, ["open", "pair"]);
+});
+
+test("gagal membuat pairing code jika socket belum terbuka", async () => {
+  BaileysManager.authState = { creds: { registered: false } };
+  BaileysManager.socket = {
+    waitForSocketOpen: async () => {
+      throw new Error("Connection Closed");
+    },
+    requestPairingCode: async () => "ABCD-EFGH",
+  };
+
+  await assert.rejects(
+    () => BaileysManager.requestPairingCode("6281234567890"),
+    /belum siap membuat pairing code: Connection Closed/
+  );
 });
 
 test("menormalkan rentang jeda yang tertukar", () => {
