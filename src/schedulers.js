@@ -123,11 +123,9 @@ class ReminderScheduler {
 
           const targetPhoneNumber = reminder.phoneNumber;
           const sendResult = await this.notificationBot.sendMessage(targetPhoneNumber, reminder.message);
-          const provider = sendResult?.provider || "whatsapp-api";
+          const provider = sendResult?.provider || "baileys";
           const providerDeliveryStatus = {
-            "whatsapp-api": "SENT_WHATSAPP_API",
-            "api-whatsapp": "SENT_WHATSAPP_API",
-            fonnte: "SENT_FONNTE",
+            baileys: "SENT_BAILEYS",
           }[provider] || "SENT";
           const deliveryStatus = sendResult?.unconfirmed
             ? "SENT_UNCONFIRMED"
@@ -734,7 +732,7 @@ class WhatsAppProviderStatusNotifier {
       }
       if (this.pendingChanges.length === 0) return;
 
-      const connectedProviders = status.loadBalancer?.connectedProviders || [];
+      const connectedProviders = status.transport?.connectedProviders || [];
       if (connectedProviders.length === 0) {
         this.activityLog.push("warn", "notification", "Alert status provider WhatsApp ditunda karena semua provider sedang DOWN");
         return;

@@ -797,13 +797,13 @@
           try {
             const data = await this.api("/api/status", { silent: Boolean(options.silent) });
             this.billingPeriod = data.billingPeriod || this.billingPeriod;
-            const configuredWhatsAppProviders = data.bot.loadBalancer?.configuredProviders?.length || 0;
-            const connectedWhatsAppProviders = data.bot.loadBalancer?.connectedProviders?.length || 0;
+            const configuredWhatsAppProviders = data.bot.transport?.configuredProviders?.length || 0;
+            const connectedWhatsAppProviders = data.bot.transport?.connectedProviders?.length || 0;
             const whatsappStatus = connectedWhatsAppProviders > 0
               ? `${connectedWhatsAppProviders}/${configuredWhatsAppProviders} Online`
               : (configuredWhatsAppProviders > 0 ? "Not ready" : "Offline");
             this.statusCards = [
-              { label: "WhatsApp Pool", value: whatsappStatus, icon: data.bot.deviceReady ? "fa-solid fa-plug-circle-check" : "fa-solid fa-plug-circle-xmark" },
+              { label: "WhatsApp Baileys", value: whatsappStatus, icon: data.bot.deviceReady ? "fa-solid fa-plug-circle-check" : "fa-solid fa-plug-circle-xmark" },
               { label: "Telegram", value: data.bot.telegramEnabled ? `${data.bot.telegramRecipients || 0} chat` : "Offline", icon: "fa-brands fa-telegram" },
               { label: "Transport", value: data.bot.isAvailable ? "Ready" : "Not ready", icon: "fa-solid fa-paper-plane" },
             ];

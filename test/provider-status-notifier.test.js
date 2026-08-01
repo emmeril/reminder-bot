@@ -3,32 +3,21 @@ const test = require("node:test");
 
 const { WhatsAppProviderStatusNotifier } = require("../src/schedulers");
 
-function buildStatus(whatsappConnected, fonnteConnected) {
-  const connectedProviders = [
-    ...(whatsappConnected ? ["whatsapp-api"] : []),
-    ...(fonnteConnected ? ["fonnte"] : []),
-  ];
+function buildStatus(connected) {
+  const connectedProviders = connected ? ["baileys"] : [];
 
   return {
     providers: {
-      whatsappApi: {
-        name: "whatsapp-api",
+      baileys: {
+        name: "baileys",
         configured: true,
         connection: {
-          connected: whatsappConnected,
-          detail: whatsappConnected ? "WhatsApp API terhubung" : "WhatsApp API tidak siap",
-        },
-      },
-      fonnte: {
-        name: "fonnte",
-        configured: true,
-        connection: {
-          connected: fonnteConnected,
-          detail: fonnteConnected ? "Fonnte terhubung" : "Fonnte tidak siap",
+          connected,
+          detail: connected ? "Baileys terhubung" : "Baileys tidak siap",
         },
       },
     },
-    loadBalancer: { connectedProviders },
+    transport: { connectedProviders },
   };
 }
 
@@ -63,33 +52,33 @@ function createNotifier(initialStatus) {
 }
 
 test("tidak mengirim status awal lalu mengirim alert ketika provider berubah DOWN", async () => {
-  const fixture = createNotifier(buildStatus(true, true));
+  const fixture = createNotifier(buildStatus(true));
 
   await fixture.notifier.processStatusChanges();
   assert.equal(fixture.broadcasts.length, 0);
 
-  fixture.setStatus(buildStatus(false, true));
+  fixture.setStatus(buildStatus(false));
   await fixture.notifier.processStatusChanges();
 
-  assert.equal(fixture.broadcasts.length, 1);
-  assert.equal(fixture.broadcasts[0].title, "Alert provider WhatsApp");
-  assert.match(fixture.broadcasts[0].body, /whatsapp-api: ONLINE -> DOWN/);
-  assert.match(fixture.broadcasts[0].body, /fonnte: ONLINE/);
+  assert.equal(fixture.broadcasts.length, 0);
+  assert.equal(fixture.notifier.pendingChanges.length, 1);
+  assert.match(fixture.logs.at(-1)[2], /ditunda/);
 });
 
-test("menunda alert saat semua provider DOWN dan mengirimnya setelah provider pulih", async () => {
-  const fixture = createNotifier(buildStatus(true, true));
+test("menunda alert saat Baileys DOWN dan mengirim rangkuman setelah pulih", async () => {
+  const fixture = createNotifier(buildStatus(true));
 
   await fixture.notifier.processStatusChanges();
-  fixture.setStatus(buildStatus(false, false));
+  fixture.setStatus(buildStatus(false));
   await fixture.notifier.processStatusChanges();
   assert.equal(fixture.broadcasts.length, 0);
 
-  fixture.setStatus(buildStatus(false, true));
+  fixture.setStatus(buildStatus(true));
   await fixture.notifier.processStatusChanges();
 
   assert.equal(fixture.broadcasts.length, 1);
-  assert.equal(fixture.broadcasts[0].title, "Alert provider WhatsApp");
-  assert.match(fixture.broadcasts[0].body, /fonnte: DOWN -> ONLINE/);
+  assert.equal(fixture.broadcasts[0].title, "Provider WhatsApp pulih");
+  assert.match(fixture.broadcasts[0].body, /baileys: ONLINE -> DOWN/);
+  assert.match(fixture.broadcasts[0].body, /baileys: DOWN -> ONLINE/);
   assert.equal(fixture.notifier.pendingChanges.length, 0);
 });

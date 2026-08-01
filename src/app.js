@@ -7,6 +7,7 @@ const cron = require("node-cron");
 const crypto = require("crypto");
 const ftp = require("basic-ftp");
 const ExcelJS = require("exceljs");
+const QRCode = require("qrcode");
 const { RouterOSClient } = require("routeros-client");
 const { Sequelize, DataTypes, Op } = require("sequelize");
 const {
@@ -19,7 +20,7 @@ const {
 const ActivityLog = require("./activity-log");
 const AsyncLock = require("./async-lock");
 const AuthManager = require("./auth-manager");
-const WhatsAppLoadBalancer = require("./whatsapp-load-balancer");
+const BaileysManager = require("./baileys-manager");
 const TelegramManager = require("./telegram-manager");
 const {
   ApDownNotifier,
@@ -2070,38 +2071,31 @@ class NotificationBot {
   }
 
   async initialize() {
-    if (WhatsAppLoadBalancer.isConfigured()) {
-      await WhatsAppLoadBalancer.checkConnections(true);
-      const status = WhatsAppLoadBalancer.getStatus();
-      const connectedProviders = status.loadBalancer.connectedProviders;
+    if (BaileysManager.isConfigured()) {
+      await BaileysManager.initialize();
+      await BaileysManager.checkConnection(true);
+      const status = BaileysManager.getStatus();
       const level = status.isAvailable ? "info" : "warn";
       const message = status.isAvailable
-        ? `Pool WhatsApp siap melalui ${connectedProviders.join(", ")}`
-        : `Provider WhatsApp dikonfigurasi tetapi belum siap: ${status.transportError || "status tidak diketahui"}`;
+        ? "WhatsApp siap melalui Baileys"
+        : `Baileys menunggu pairing/koneksi: ${status.transportError || "status tidak diketahui"}`;
       this.activityLog.push(level, "notification", message);
       return;
     }
 
-    this.activityLog.push("warn", "notification", "Provider WhatsApp belum dikonfigurasi; reminder/notifikasi WhatsApp tidak akan dikirim");
+    this.activityLog.push("warn", "notification", "Baileys dinonaktifkan; reminder/notifikasi WhatsApp tidak akan dikirim");
   }
 
   async sendMessage(phoneNumber, message) {
-    if (!WhatsAppLoadBalancer.isConfigured()) {
-      throw new Error("Provider WhatsApp belum dikonfigurasi. Aktifkan WhatsApp API atau isi token Fonnte.");
+    if (!BaileysManager.isConfigured()) {
+      throw new Error("Baileys dinonaktifkan. Aktifkan BAILEYS_ENABLED untuk mengirim WhatsApp.");
     }
 
     const settings = this.dataManager.getSettings();
-    const result = await WhatsAppLoadBalancer.sendMessage(phoneNumber, message, {
+    const result = await BaileysManager.sendMessage(phoneNumber, message, {
       minDelayMs: Math.max(0, Number(settings.waRandomDelayMinSeconds) || 0) * 1000,
       maxDelayMs: Math.max(0, Number(settings.waRandomDelayMaxSeconds) || 0) * 1000,
     });
-    if (result.failover) {
-      this.activityLog.push("warn", "notification", `Failover WhatsApp aktif; pesan dialihkan ke ${result.provider}`, {
-        provider: result.provider,
-        providersTried: result.providersTried,
-        providerErrors: result.providerErrors,
-      });
-    }
     this.activityLog.push("info", "notification", `Pesan terkirim via ${result.provider} ke ${normalizePhoneNumber(phoneNumber)}`, {
       phoneNumber: normalizePhoneNumber(phoneNumber),
       provider: result.provider,
@@ -2230,12 +2224,12 @@ class NotificationBot {
   }
 
   getStatus() {
-    const status = WhatsAppLoadBalancer.getStatus();
+    const status = BaileysManager.getStatus();
     const settings = this.dataManager.getSettings();
     return {
       ...status,
-      loadBalancer: {
-        ...status.loadBalancer,
+      transport: {
+        ...status.transport,
         randomDelayMinMs: Math.max(0, Number(settings.waRandomDelayMinSeconds) || 0) * 1000,
         randomDelayMaxMs: Math.max(0, Number(settings.waRandomDelayMaxSeconds) || 0) * 1000,
       },
@@ -2245,10 +2239,10 @@ class NotificationBot {
   }
 
   async getTransportStatus() {
-    if (!WhatsAppLoadBalancer.isConfigured()) return this.getStatus();
+    if (!BaileysManager.isConfigured()) return this.getStatus();
 
     try {
-      await WhatsAppLoadBalancer.checkConnections();
+      await BaileysManager.checkConnection();
       return this.getStatus();
     } catch (error) {
       return {
@@ -2418,24 +2412,59 @@ class WebServer {
         next(error);
       }
     });
+    this.app.post("/transport/pairing-code", requirePageAuth, async (req, res) => {
+      try {
+        await BaileysManager.requestPairingCode(req.body.phoneNumber);
+        this.activityLog.push("info", "notification", "Pairing code Baileys berhasil dibuat");
+        return res.redirect("/transport");
+      } catch (error) {
+        this.activityLog.push("error", "notification", `Gagal membuat pairing code Baileys: ${error.message}`);
+        return res.redirect(`/transport?error=${encodeURIComponent(error.message)}`);
+      }
+    });
+
     this.app.get("/transport", requirePageAuth, async (req, res) => {
       const status = await this.notificationBot.getTransportStatus();
       if (status.deviceReady) {
-        const connectedProviders = status.loadBalancer?.connectedProviders?.join(", ") || "provider aktif";
         return res.send(`
           <html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#f4f5ef;font-family:Georgia,serif;">
             <div style="padding:28px 34px;border-radius:20px;background:white;box-shadow:0 20px 60px rgba(0,0,0,.12);color:#204b57;font-size:1.3rem;">
-              Pool WhatsApp siap melalui ${escapeHtml(connectedProviders)}.
+              WhatsApp siap melalui Baileys${status.account ? ` (${escapeHtml(status.account)})` : ""}.
             </div>
           </body></html>
         `);
       }
 
       if (status.whatsappProviderEnabled) {
-        return res.status(503).send(`Provider WhatsApp belum siap (${escapeHtml(status.state)}). ${escapeHtml(status.transportError || "Periksa koneksi provider WhatsApp.")}`);
+        const qrDataUrl = status.currentQR
+          ? await QRCode.toDataURL(status.currentQR, { width: 320, margin: 2, errorCorrectionLevel: "M" })
+          : null;
+        const pairingCode = status.currentPairingCode;
+        const error = req.query.error;
+        return res.status(503).send(`
+          <!doctype html>
+          <html lang="id">
+            <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hubungkan WhatsApp</title></head>
+            <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#dcecdf,#f4f5ef 55%);font-family:Georgia,serif;color:#183f45;">
+              <main style="width:min(92vw,520px);padding:28px;border-radius:24px;background:#fff;box-shadow:0 24px 70px rgba(24,63,69,.18);text-align:center;">
+                <h1 style="margin:0 0 8px;font-size:1.8rem;">Hubungkan Baileys</h1>
+                <p style="margin:0 0 20px;line-height:1.5;">${escapeHtml(status.transportError || "Buka Perangkat tertaut pada WhatsApp.")}</p>
+                ${error ? `<p style="padding:10px;border-radius:10px;background:#fee2e2;color:#991b1b;">${escapeHtml(error)}</p>` : ""}
+                ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR pairing WhatsApp" width="320" height="320" style="max-width:100%;height:auto;border-radius:16px;">` : ""}
+                ${pairingCode ? `<p style="font:700 2rem ui-monospace,monospace;letter-spacing:.18em;margin:20px 0;">${escapeHtml(pairingCode)}</p>` : ""}
+                <form method="post" action="/transport/pairing-code" style="display:grid;gap:10px;margin-top:20px;">
+                  <label for="phoneNumber" style="text-align:left;font-weight:700;">Atau buat pairing code</label>
+                  <input id="phoneNumber" name="phoneNumber" inputmode="numeric" autocomplete="tel" placeholder="6281234567890" required style="padding:13px 14px;border:1px solid #b8cbc7;border-radius:12px;font-size:1rem;">
+                  <button type="submit" style="padding:13px;border:0;border-radius:12px;background:#176b5b;color:#fff;font-weight:700;cursor:pointer;">Buat pairing code</button>
+                </form>
+                <p style="margin:18px 0 0;font:14px/1.5 sans-serif;color:#627773;">Nomor wajib format E.164 tanpa tanda +. Halaman akan berubah otomatis setelah refresh ketika perangkat terhubung.</p>
+              </main>
+            </body>
+          </html>
+        `);
       }
 
-      return res.send("Provider WhatsApp belum dikonfigurasi. Aktifkan WhatsApp API atau isi token Fonnte.");
+      return res.send("Baileys dinonaktifkan. Aktifkan BAILEYS_ENABLED pada environment.");
     });
 
     this.app.get("/api/status", requireApiAuth, handleApi(async () => {
@@ -2900,12 +2929,21 @@ async function bootstrap() {
 
   process.on("SIGINT", async () => {
     activityLog.push("info", "shutdown", "Saving data before shutdown");
+    await BaileysManager.shutdown();
+    await dataManager.saveAll();
+    process.exit(0);
+  });
+
+  process.on("SIGTERM", async () => {
+    activityLog.push("info", "shutdown", "Saving data before shutdown");
+    await BaileysManager.shutdown();
     await dataManager.saveAll();
     process.exit(0);
   });
 
   process.on("uncaughtException", async (error) => {
     activityLog.push("error", "runtime", `Uncaught exception: ${error.message}`);
+    await BaileysManager.shutdown();
     await dataManager.saveAll();
     process.exit(1);
   });
@@ -2913,6 +2951,7 @@ async function bootstrap() {
   process.on("unhandledRejection", async (reason) => {
     const message = reason instanceof Error ? reason.message : String(reason);
     activityLog.push("error", "runtime", `Unhandled rejection: ${message}`);
+    await BaileysManager.shutdown();
     await dataManager.saveAll();
     process.exit(1);
   });

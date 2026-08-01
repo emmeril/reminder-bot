@@ -9,6 +9,9 @@
   "author": "",
   "license": "ISC",
   "description": "",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "overrides": {
     "sqlite3": "5.1.7"
   },
@@ -19,10 +22,12 @@
   },
   "dependencies": {
     "basic-ftp": "^6.0.1",
+    "baileys": "7.0.0-rc14",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "node-cron": "^4.1.1",
+    "qrcode": "^1.5.4",
     "routeros-client": "^1.1.1",
     "sequelize": "^6.37.8",
     "sqlite3": "5.1.7"

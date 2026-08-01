@@ -72,17 +72,14 @@ const CONFIG = {
     timeout: 30_000,
     keepalive: true,
   },
-  WHATSAPP_API_ENABLED: envBoolean("WHATSAPP_API_ENABLED"),
-  WHATSAPP_API_TOKEN: envString("WHATSAPP_API_TOKEN"),
-  WHATSAPP_API_URL: envString("WHATSAPP_API_URL", "http://127.0.0.1:3564"),
-  WHATSAPP_API_TIMEOUT: envNumber("WHATSAPP_API_TIMEOUT", 30_000),
-  FONNTE_ENABLED: envString("FONNTE_ENABLED")
-    ? envBoolean("FONNTE_ENABLED")
-    : Boolean(envString("FONNTE_TOKEN") || envString("FONNTE_API_KEY")),
-  FONNTE_TOKEN: envString("FONNTE_TOKEN", envString("FONNTE_API_KEY")),
-  FONNTE_API_URL: envString("FONNTE_API_URL", "https://api.fonnte.com"),
-  FONNTE_API_TIMEOUT: envNumber("FONNTE_API_TIMEOUT", 15_000),
-  WA_PROVIDER_COOLDOWN: envNumber("WA_PROVIDER_COOLDOWN", 60_000),
+  BAILEYS_ENABLED: envString("BAILEYS_ENABLED") ? envBoolean("BAILEYS_ENABLED") : true,
+  BAILEYS_AUTH_STORAGE: resolveFromRoot(
+    process.env.BAILEYS_AUTH_STORAGE,
+    path.join(ROOT_DIR, "database", "baileys_auth.sqlite")
+  ),
+  BAILEYS_BROWSER_NAME: envString("BAILEYS_BROWSER_NAME", "Reminder Bot"),
+  BAILEYS_CONNECT_TIMEOUT: envNumber("BAILEYS_CONNECT_TIMEOUT", 30_000),
+  BAILEYS_QUERY_TIMEOUT: envNumber("BAILEYS_QUERY_TIMEOUT", 30_000),
   TELEGRAM_BOT_TOKEN: envString("TELEGRAM_BOT_TOKEN"),
   TELEGRAM_API_URL: envString("TELEGRAM_API_URL", "https://api.telegram.org"),
   TELEGRAM_CHAT_IDS: envString("TELEGRAM_CHAT_IDS"),
