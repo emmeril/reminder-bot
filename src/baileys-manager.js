@@ -33,8 +33,6 @@ class BaileysManager {
 
   static connectionGeneration = 0;
 
-  static pairingReady = false;
-
   static shuttingDown = false;
 
   static sendQueue = Promise.resolve();
@@ -53,7 +51,6 @@ class BaileysManager {
     detail: "Baileys belum diinisialisasi",
     state: "UNINITIALIZED",
     qr: null,
-    pairingCode: null,
     device: null,
   };
 
@@ -106,8 +103,6 @@ class BaileysManager {
       ? baileys.Browsers.ubuntu(CONFIG.BAILEYS_BROWSER_NAME)
       : [CONFIG.BAILEYS_BROWSER_NAME, "Chrome", "1.0.0"];
     const generation = ++this.connectionGeneration;
-    this.pairingReady = false;
-
     this.updateConnection({
       connected: false,
       detail: "Menghubungkan Baileys ke WhatsApp",
@@ -118,7 +113,6 @@ class BaileysManager {
       auth: this.authState,
       browser,
       logger: silentLogger,
-      // Pairing codes are displayed by the dashboard, not printed by Baileys.
       printQRInTerminal: false,
       markOnlineOnConnect: false,
       syncFullHistory: false,
@@ -157,7 +151,6 @@ class BaileysManager {
     if (generation !== this.connectionGeneration) return;
 
     if (update.qr) {
-      this.pairingReady = true;
       this.updateConnection({
         connected: false,
         detail: "Pindai QR WhatsApp pada halaman status transport",
@@ -167,7 +160,6 @@ class BaileysManager {
     }
 
     if (update.connection === "connecting") {
-      this.pairingReady = true;
       this.updateConnection({
         connected: false,
         detail: update.qr ? this.connectionCache.detail : "Menghubungkan Baileys ke WhatsApp",
@@ -178,14 +170,12 @@ class BaileysManager {
 
     if (update.connection === "open") {
       this.reconnectAttempts = 0;
-      this.pairingReady = false;
       this.lastActivity = Date.now();
       this.updateConnection({
         connected: true,
         detail: "Baileys terhubung ke WhatsApp",
         state: "READY",
         qr: null,
-        pairingCode: null,
         device: socket.user ? {
           account: socket.user.name || socket.user.id || null,
           id: socket.user.id || null,
@@ -211,7 +201,6 @@ class BaileysManager {
         detail: "Sesi Baileys tidak valid; menyiapkan pairing WhatsApp baru",
         state: "RECONNECTING",
         qr: null,
-        pairingCode: null,
         device: null,
       });
       this.scheduleReconnect();
@@ -261,48 +250,8 @@ class BaileysManager {
     this.reconnectTimer.unref?.();
   }
 
-  static async requestPairingCode(number) {
-    const normalized = normalizePhoneNumber(number).replace(/^\+/, "");
-    if (!isValidPhoneNumber(normalized)) {
-      throw new Error("Nomor pairing harus dalam format E.164 tanpa tanda plus");
-    }
-
-    await this.initialize();
-    if (!this.socket?.requestPairingCode) {
-      throw new Error("Socket Baileys belum siap untuk membuat pairing code");
-    }
-    if (this.authState?.creds?.registered) {
-      throw new Error("Sesi WhatsApp sudah terdaftar. Hapus sesi terlebih dahulu untuk pairing ulang.");
-    }
-
-    const socket = this.socket;
-    if (typeof socket.waitForSocketOpen === "function") {
-      try {
-        await socket.waitForSocketOpen();
-      } catch (error) {
-        throw new Error(`Baileys belum siap membuat pairing code: ${error.message}`);
-      }
-    } else {
-      // Keep compatibility with older Baileys builds and lightweight test doubles.
-      for (let attempt = 0; attempt < 30 && !this.pairingReady; attempt += 1) {
-        await sleep(500);
-      }
-      if (!this.pairingReady) {
-        throw new Error("Baileys belum mencapai tahap pairing. Coba lagi beberapa saat.");
-      }
-    }
-    if (this.socket !== socket) {
-      throw new Error("Socket Baileys berubah saat menyiapkan pairing code. Coba lagi.");
-    }
-
-    const code = await socket.requestPairingCode(normalized);
-    this.updateConnection({
-      connected: false,
-      detail: "Masukkan pairing code di menu Perangkat tertaut WhatsApp",
-      state: "PAIRING",
-      pairingCode: code,
-    });
-    return code;
+  static async requestPairingCode() {
+    throw new Error("Pairing code dinonaktifkan. Hubungkan WhatsApp dengan memindai QR.");
   }
 
   static async checkConnection(force = false) {
@@ -448,7 +397,6 @@ class BaileysManager {
       pendingQueue: this.pendingQueue,
       failedQueue: this.failedQueue,
       currentQR: this.connectionCache.qr || false,
-      currentPairingCode: this.connectionCache.pairingCode || null,
       lastActivity: this.lastActivity ? new Date(this.lastActivity).toISOString() : null,
       whatsappProviderEnabled: this.isConfigured(),
       baileysEnabled: this.isConfigured(),
@@ -470,7 +418,6 @@ class BaileysManager {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     this.connectionGeneration += 1;
-    this.pairingReady = false;
     const socket = this.socket;
     this.socket = null;
     if (socket?.end) socket.end(new Error("Application shutdown"));

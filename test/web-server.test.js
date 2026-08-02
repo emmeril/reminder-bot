@@ -66,6 +66,16 @@ test("API key dapat membaca identitas auth tanpa sesi dashboard", async () => {
   assert.equal(payload.data.usingApiKey, true);
 });
 
+test("endpoint pairing code nomor WhatsApp tidak tersedia", async () => {
+  const baseUrl = await startServer();
+  const response = await fetch(`${baseUrl}/transport/pairing-code`, {
+    method: "POST",
+    redirect: "manual",
+  });
+
+  assert.equal(response.status, 404);
+});
+
 test("riwayat pembayaran bulanan memakai metadata periode yang diminta", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   const baseUrl = await startServer({

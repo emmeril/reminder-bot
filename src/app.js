@@ -2733,17 +2733,6 @@ class WebServer {
         next(error);
       }
     });
-    this.app.post("/transport/pairing-code", requirePageAuth, async (req, res) => {
-      try {
-        await BaileysManager.requestPairingCode(req.body.phoneNumber);
-        this.activityLog.push("info", "notification", "Pairing code Baileys berhasil dibuat");
-        return res.redirect("/transport");
-      } catch (error) {
-        this.activityLog.push("error", "notification", `Gagal membuat pairing code Baileys: ${error.message}`);
-        return res.redirect(`/transport?error=${encodeURIComponent(error.message)}`);
-      }
-    });
-
     this.app.get("/transport", requirePageAuth, async (req, res) => {
       const status = await this.notificationBot.getTransportStatus();
       if (status.deviceReady) {
@@ -2760,25 +2749,17 @@ class WebServer {
         const qrDataUrl = status.currentQR
           ? await QRCode.toDataURL(status.currentQR, { width: 320, margin: 2, errorCorrectionLevel: "M" })
           : null;
-        const pairingCode = status.currentPairingCode;
-        const error = req.query.error;
         return res.status(503).send(`
           <!doctype html>
           <html lang="id">
-            <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hubungkan WhatsApp</title></head>
+            <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="5"><title>Hubungkan WhatsApp</title></head>
             <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#dcecdf,#f4f5ef 55%);font-family:Georgia,serif;color:#183f45;">
               <main style="width:min(92vw,520px);padding:28px;border-radius:24px;background:#fff;box-shadow:0 24px 70px rgba(24,63,69,.18);text-align:center;">
-                <h1 style="margin:0 0 8px;font-size:1.8rem;">Hubungkan Baileys</h1>
+                <h1 style="margin:0 0 8px;font-size:1.8rem;">Pindai QR WhatsApp</h1>
                 <p style="margin:0 0 20px;line-height:1.5;">${escapeHtml(status.transportError || "Buka Perangkat tertaut pada WhatsApp.")}</p>
-                ${error ? `<p style="padding:10px;border-radius:10px;background:#fee2e2;color:#991b1b;">${escapeHtml(error)}</p>` : ""}
                 ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR pairing WhatsApp" width="320" height="320" style="max-width:100%;height:auto;border-radius:16px;">` : ""}
-                ${pairingCode ? `<p style="font:700 2rem ui-monospace,monospace;letter-spacing:.18em;margin:20px 0;">${escapeHtml(pairingCode)}</p>` : ""}
-                <form method="post" action="/transport/pairing-code" style="display:grid;gap:10px;margin-top:20px;">
-                  <label for="phoneNumber" style="text-align:left;font-weight:700;">Atau buat pairing code</label>
-                  <input id="phoneNumber" name="phoneNumber" inputmode="numeric" autocomplete="tel" placeholder="6281234567890" required style="padding:13px 14px;border:1px solid #b8cbc7;border-radius:12px;font-size:1rem;">
-                  <button type="submit" style="padding:13px;border:0;border-radius:12px;background:#176b5b;color:#fff;font-weight:700;cursor:pointer;">Buat pairing code</button>
-                </form>
-                <p style="margin:18px 0 0;font:14px/1.5 sans-serif;color:#627773;">Nomor wajib format E.164 tanpa tanda +. Halaman akan berubah otomatis setelah refresh ketika perangkat terhubung.</p>
+                <p style="margin:18px 0 0;font:14px/1.6 sans-serif;color:#627773;">Di WhatsApp buka <strong>Perangkat tertaut</strong>, pilih <strong>Tautkan perangkat</strong>, lalu pindai QR. Koneksi melalui nomor atau pairing code dinonaktifkan.</p>
+                <p style="margin:10px 0 0;font:13px/1.5 sans-serif;color:#879895;">Halaman diperbarui otomatis setiap 5 detik.</p>
               </main>
             </body>
           </html>

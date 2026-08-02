@@ -25,14 +25,12 @@ beforeEach(() => {
   BaileysManager.pendingQueue = 0;
   BaileysManager.failedQueue = 0;
   BaileysManager.lastSentAt = 0;
-  BaileysManager.pairingReady = true;
   BaileysManager.connectionCache = {
     checkedAt: Date.now(),
     connected: true,
     detail: "Baileys terhubung",
     state: "READY",
     qr: null,
-    pairingCode: null,
     device: null,
   };
 });
@@ -41,7 +39,6 @@ afterEach(() => {
   Object.assign(CONFIG, originalConfig);
   BaileysManager.socket = null;
   BaileysManager.authState = null;
-  BaileysManager.pairingReady = false;
 });
 
 test("mengirim pesan ke LID ketika mapping PN tersedia", async () => {
@@ -79,41 +76,10 @@ test("menolak nomor yang tidak terdaftar di WhatsApp tanpa retry", async () => {
   assert.equal(BaileysManager.failedQueue, 1);
 });
 
-test("membuat pairing code dengan nomor E.164", async () => {
-  let pairedNumber;
-  const calls = [];
-  BaileysManager.authState = { creds: { registered: false } };
-  BaileysManager.socket = {
-    waitForSocketOpen: async () => {
-      calls.push("open");
-    },
-    requestPairingCode: async (number) => {
-      calls.push("pair");
-      pairedNumber = number;
-      return "ABCD-EFGH";
-    },
-  };
-
-  const code = await BaileysManager.requestPairingCode("6281234567890");
-
-  assert.equal(pairedNumber, "6281234567890");
-  assert.equal(code, "ABCD-EFGH");
-  assert.equal(BaileysManager.connectionCache.pairingCode, "ABCD-EFGH");
-  assert.deepEqual(calls, ["open", "pair"]);
-});
-
-test("gagal membuat pairing code jika socket belum terbuka", async () => {
-  BaileysManager.authState = { creds: { registered: false } };
-  BaileysManager.socket = {
-    waitForSocketOpen: async () => {
-      throw new Error("Connection Closed");
-    },
-    requestPairingCode: async () => "ABCD-EFGH",
-  };
-
+test("menonaktifkan pairing code agar koneksi hanya melalui QR", async () => {
   await assert.rejects(
     () => BaileysManager.requestPairingCode("6281234567890"),
-    /belum siap membuat pairing code: Connection Closed/
+    /Pairing code dinonaktifkan.*QR/
   );
 });
 
