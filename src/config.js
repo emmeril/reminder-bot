@@ -35,7 +35,7 @@ const CONFIG = {
   TEMPLATE_PATH: path.join(ROOT_DIR, "templates"),
   PUBLIC_PATH: path.join(ROOT_DIR, "public"),
   AUTO_SAVE_INTERVAL: 24 * 60 * 60 * 1000,
-  BACKUP_INTERVAL: 24 * 60 * 60 * 1000,
+  DB_BACKUP_RETENTION_DAYS: envNumber("DB_BACKUP_RETENTION_DAYS", 3),
   SENT_HISTORY_RETENTION_MONTHS: envNumber("SENT_HISTORY_RETENTION_MONTHS", 3),
   SENT_HISTORY_CLEANUP_SCHEDULE: process.env.SENT_HISTORY_CLEANUP_SCHEDULE || "15 0 * * *",
   KEEP_ALIVE_INTERVAL: 5 * 60 * 1000,
@@ -147,6 +147,7 @@ const DEFAULT_SETTINGS = {
   mikrotikBackupTime: "02:00",
   mikrotikBackupTimezone: "Asia/Jakarta",
   mikrotikBackupLastRunDate: "",
+  databaseBackupLastRunDate: "",
 };
 
 module.exports = {

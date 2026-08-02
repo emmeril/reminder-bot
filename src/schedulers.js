@@ -285,6 +285,56 @@ class MikrotikBackupScheduler {
   }
 }
 
+class DatabaseBackupScheduler {
+  constructor(dataManager, activityLog) {
+    this.dataManager = dataManager;
+    this.activityLog = activityLog;
+    this.isProcessing = false;
+  }
+
+  isDueNow(settings) {
+    const requestedTimeZone = settings.mikrotikBackupTimezone || settings.timezone || "Asia/Jakarta";
+    const timeZone = [...new Set([requestedTimeZone, settings.timezone, "Asia/Jakarta"].filter(Boolean))]
+      .find(isValidTimeZone)
+      || "Asia/Jakarta";
+    const configuredTime = sanitizeTimeHHMM(settings.mikrotikBackupTime, DEFAULT_SETTINGS.mikrotikBackupTime);
+    const nowParts = getDateTimePartsInTimezone(new Date(), timeZone);
+
+    return {
+      due: nowParts.timeKey >= configuredTime,
+      nowParts,
+      configuredTime,
+      timeZone,
+    };
+  }
+
+  async processDailyBackup() {
+    if (this.isProcessing) return;
+
+    const settings = this.dataManager.getSettings();
+    const scheduleCheck = this.isDueNow(settings);
+    if (!scheduleCheck.due || settings.databaseBackupLastRunDate === scheduleCheck.nowParts.dateKey) {
+      return;
+    }
+
+    this.isProcessing = true;
+    try {
+      const backup = await this.dataManager.createBackup();
+      await this.dataManager.markDatabaseBackupRun(scheduleCheck.nowParts.dateKey);
+      this.activityLog.push("info", "database-backup", "Backup database harian selesai", {
+        backupDir: backup.backupDir,
+        deletedCount: backup.deletedCount,
+        retentionDays: CONFIG.DB_BACKUP_RETENTION_DAYS,
+        schedule: `${scheduleCheck.configuredTime} ${scheduleCheck.timeZone}`,
+      });
+    } catch (error) {
+      this.activityLog.push("error", "database-backup", `Backup database harian gagal: ${error.message}`);
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+}
+
 class HotspotReactivationScheduler {
   constructor(mikrotikService, dataManager, activityLog, notificationBot = null) {
     this.mikrotikService = mikrotikService;
@@ -772,6 +822,7 @@ class WhatsAppProviderStatusNotifier {
 
 module.exports = {
   ApDownNotifier,
+  DatabaseBackupScheduler,
   HotspotReactivationScheduler,
   MikrotikBackupScheduler,
   ReminderScheduler,

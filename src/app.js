@@ -24,6 +24,7 @@ const BaileysManager = require("./baileys-manager");
 const TelegramManager = require("./telegram-manager");
 const {
   ApDownNotifier,
+  DatabaseBackupScheduler,
   HotspotReactivationScheduler,
   MikrotikBackupScheduler,
   ReminderScheduler,
@@ -1029,21 +1030,55 @@ class DataManager {
     ));
   }
 
-  async createBackup() {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  async createBackup(now = new Date()) {
+    if (process.env.DATABASE_URL) {
+      throw new Error("Backup database otomatis hanya tersedia untuk database SQLite lokal.");
+    }
+
+    const timestamp = now.toISOString().replace(/[:.]/g, "-");
     const backupDir = path.join(CONFIG.DB_PATH, "backups", timestamp);
     await fs.mkdir(backupDir, { recursive: true });
 
-    if (!process.env.DATABASE_URL) {
+    try {
       await this.withDatabaseWrite(async () => {
         const backupFile = path.join(backupDir, path.basename(CONFIG.DB_STORAGE));
         const escapedBackupFile = backupFile.replace(/'/g, "''");
         await this.sequelize.query(`VACUUM INTO '${escapedBackupFile}'`);
         await fs.chmod(backupFile, 0o600);
       });
+    } catch (error) {
+      await fs.rm(backupDir, { recursive: true, force: true });
+      throw error;
     }
 
-    this.activityLog.push("info", "storage", "Backup created", { backupDir });
+    const deletedCount = await this.cleanupDatabaseBackups(now);
+
+    this.activityLog.push("info", "storage", "Backup database dibuat", { backupDir, deletedCount });
+    return { backupDir, deletedCount };
+  }
+
+  async cleanupDatabaseBackups(now = new Date()) {
+    const backupRoot = path.join(CONFIG.DB_PATH, "backups");
+    const retentionDays = Math.max(1, CONFIG.DB_BACKUP_RETENTION_DAYS);
+    const cutoffTime = now.getTime() - (retentionDays * 24 * 60 * 60 * 1000);
+    const entries = await fs.readdir(backupRoot, { withFileTypes: true }).catch((error) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    });
+    let deletedCount = 0;
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !/^\d{4}-\d{2}-\d{2}T/.test(entry.name)) continue;
+
+      const backupDir = path.join(backupRoot, entry.name);
+      const stats = await fs.stat(backupDir);
+      if (stats.mtimeMs > cutoffTime) continue;
+
+      await fs.rm(backupDir, { recursive: true, force: true });
+      deletedCount += 1;
+    }
+
+    return deletedCount;
   }
 
   getSortedContacts() {
@@ -1749,6 +1784,7 @@ class DataManager {
         mikrotikBackupLastRunDate: payload.mikrotikBackupLastRunDate !== undefined
           ? sanitizeInput(payload.mikrotikBackupLastRunDate)
           : current.mikrotikBackupLastRunDate,
+        databaseBackupLastRunDate: current.databaseBackupLastRunDate,
       };
       await this.saveSettings();
       return this.getSettings();
@@ -1763,6 +1799,17 @@ class DataManager {
       };
       await this.saveSettings();
       return this.settings.mikrotikBackupLastRunDate;
+    });
+  }
+
+  async markDatabaseBackupRun(dateKey) {
+    return this.withDataMutation(async () => {
+      this.settings = {
+        ...this.getSettings(),
+        databaseBackupLastRunDate: sanitizeInput(dateKey),
+      };
+      await this.saveSettings();
+      return this.settings.databaseBackupLastRunDate;
     });
   }
 
@@ -2986,6 +3033,7 @@ async function bootstrap() {
     dataManager,
     activityLog
   );
+  const databaseBackupScheduler = new DatabaseBackupScheduler(dataManager, activityLog);
   const hotspotReactivationScheduler = new HotspotReactivationScheduler(
     mikrotikService,
     dataManager,
@@ -3015,6 +3063,7 @@ async function bootstrap() {
       apDownNotifier.processNetwatchChanges(),
       whatsappProviderStatusNotifier.processStatusChanges(),
       mikrotikBackupScheduler.processDailyBackup(),
+      databaseBackupScheduler.processDailyBackup(),
       hotspotReactivationScheduler.processDueReactivations(),
     ]).catch((error) => {
       activityLog.push("error", "scheduler", `Cron execution failed: ${error.message}`);
@@ -3038,12 +3087,6 @@ async function bootstrap() {
       activityLog.push("error", "storage", `Auto-save failed: ${error.message}`);
     });
   }, CONFIG.AUTO_SAVE_INTERVAL);
-
-  setInterval(() => {
-    dataManager.createBackup().catch((error) => {
-      activityLog.push("error", "storage", `Backup failed: ${error.message}`);
-    });
-  }, CONFIG.BACKUP_INTERVAL);
 
   setInterval(() => {
     authManager.cleanupExpiredSessions();
