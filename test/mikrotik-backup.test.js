@@ -84,3 +84,59 @@ test("membaca isi export melalui perintah file get API", async () => {
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
+
+test("menggunakan fallback FTP ketika contents tidak tersedia melalui API", async () => {
+  const directory = await fs.mkdtemp(path.join("/tmp", "reminder-ftp-backup-"));
+  const destination = path.join(directory, "backup.rsc");
+  const logs = [];
+  let ftpCall = null;
+  const service = new MikrotikService({
+    push(level, source, message, metadata) {
+      logs.push({ level, source, message, metadata });
+    },
+  });
+  const connection = {
+    menu: () => ({
+      print: async () => [{ ".id": "*1", name: "backup.rsc" }],
+      exec: async () => [],
+    }),
+  };
+  service.resolveFtpPort = async () => 1234;
+  service.downloadRouterFileViaFtp = async (config, ftpPort, remoteFileName, destinationPath) => {
+    ftpCall = { config, ftpPort, remoteFileName };
+    await fs.writeFile(destinationPath, "/system identity set name=router-via-ftp");
+  };
+
+  const config = { host: "192.0.2.1", user: "api", password: "secret", ftpPort: 1234 };
+  try {
+    await service.downloadRouterFile(connection, "backup.rsc", destination, config);
+    assert.deepEqual(ftpCall, { config, ftpPort: 1234, remoteFileName: "backup.rsc" });
+    assert.match(await fs.readFile(destination, "utf8"), /router-via-ftp/);
+    assert.equal(logs.some((entry) => entry.level === "warn" && /fallback FTP/.test(entry.message)), true);
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("melaporkan kegagalan jika API dan fallback FTP sama-sama gagal", async () => {
+  const service = new MikrotikService({ push() {} });
+  const connection = {
+    menu: () => ({
+      print: async () => [{ ".id": "*1", name: "backup.rsc" }],
+      exec: async () => [],
+    }),
+  };
+  service.resolveFtpPort = async () => 21;
+  service.downloadRouterFileViaFtp = async () => {
+    throw new Error("connection refused");
+  };
+
+  await assert.rejects(
+    () => service.downloadRouterFile(connection, "backup.rsc", "/tmp/backup-never-created.rsc", {
+      host: "192.0.2.1",
+      user: "api",
+      password: "secret",
+    }),
+    /API dan FTP: connection refused/
+  );
+});

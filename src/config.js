@@ -63,6 +63,7 @@ const CONFIG = {
     user: envString("USER_MIKROTIK"),
     password: envString("PASSWORD_MIKROTIK"),
     port: envNumber("PORT_MIKROTIK", 8728),
+    ftpPort: envNumber("PORT_MIKROTIK_FTP", 21),
     timeout: 30_000,
     keepalive: true,
     tls: envBoolean("MIKROTIK_TLS", false)
@@ -74,6 +75,7 @@ const CONFIG = {
     user: envString("USER_MIKROTIK"),
     password: envString("PASSWORD_MIKROTIK"),
     port: envNumber("PORT_MIKROTIK_BACKUP", envNumber("PORT_MIKROTIK", 8728)),
+    ftpPort: envNumber("PORT_MIKROTIK_BACKUP_FTP", envNumber("PORT_MIKROTIK_FTP", 21)),
     timeout: 30_000,
     keepalive: true,
     tls: envBoolean("MIKROTIK_BACKUP_TLS", envBoolean("MIKROTIK_TLS", false))
@@ -85,6 +87,7 @@ const CONFIG = {
         }
       : null,
   },
+  MIKROTIK_FTP_TIMEOUT: envNumber("MIKROTIK_FTP_TIMEOUT", 30_000),
   BAILEYS_ENABLED: envString("BAILEYS_ENABLED") ? envBoolean("BAILEYS_ENABLED") : true,
   BAILEYS_AUTH_STORAGE: resolveFromRoot(
     process.env.BAILEYS_AUTH_STORAGE,
