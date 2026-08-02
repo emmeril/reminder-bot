@@ -21,9 +21,10 @@ class ReminderScheduler {
   }
 
   buildNextReminder(reminder) {
-    const nextDate = addMonthsSafely(reminder.reminderDateTime, 1);
-    const nextDateText = formatDate(nextDate);
-    const nextMonthName = nextDate.toLocaleString("id-ID", { month: "long" });
+    const timeZone = this.dataManager.getTimezone();
+    const nextDate = addMonthsSafely(reminder.reminderDateTime, 1, timeZone);
+    const nextDateText = formatDate(nextDate, timeZone);
+    const nextMonthName = nextDate.toLocaleString("id-ID", { month: "long", timeZone });
     const nextMessage = reminder.message
       .replace(/\d{4}-\d{2}-\d{2}/, nextDateText)
       .replace(/bulan\s+\w+/gi, `bulan ${nextMonthName}`);
@@ -145,7 +146,7 @@ class ReminderScheduler {
           if (this.dataManager.getSettings().notifyAdminsOnDelivery) {
             await this.notificationBot.sendAdminBroadcast(
               "Reminder terkirim",
-              `Tujuan: ${reminder.contactName || targetPhoneNumber} (${targetPhoneNumber})\nJadwal: ${formatDateTime(reminder.reminderDateTime)}\n\n${reminder.message}`,
+              `Tujuan: ${reminder.contactName || targetPhoneNumber} (${targetPhoneNumber})\nJadwal: ${formatDateTime(reminder.reminderDateTime, this.dataManager.getTimezone())}\n\n${reminder.message}`,
               { silentLog: true }
             );
           }
@@ -168,7 +169,7 @@ class ReminderScheduler {
             const retryAt = this.getNextRetryAt(activeReminder);
             const retryReminder = await this.dataManager.scheduleReminderRetry(claimedReminderId, errorMessage, retryAt);
             claimedReminderId = null;
-            this.activityLog.push("warn", "delivery", `Reminder ${activeReminder.id} akan dicoba otomatis pada ${formatDateTime(retryAt)}`, {
+            this.activityLog.push("warn", "delivery", `Reminder ${activeReminder.id} akan dicoba otomatis pada ${formatDateTime(retryAt, this.dataManager.getTimezone())}`, {
               reminderId: activeReminder.id,
               deliveryAttempts: retryReminder?.deliveryAttempts,
               nextDeliveryAttemptAt: retryAt.toISOString(),
@@ -250,8 +251,10 @@ class MikrotikBackupScheduler {
     }
 
     this.isProcessing = true;
+    let backup = null;
     try {
-      const { filePath, fileName } = await this.mikrotikService.generateDailyBackupFile();
+      backup = await this.mikrotikService.generateDailyBackupFile();
+      const { filePath, fileName } = backup;
       const caption = `Backup MikroTik harian (${scheduleCheck.nowParts.dateKey})\nWaktu: ${scheduleCheck.configuredTime} ${scheduleCheck.timeZone}`;
 
       const results = [];
@@ -280,6 +283,9 @@ class MikrotikBackupScheduler {
     } catch (error) {
       this.activityLog.push("error", "mikrotik-backup", `Backup MikroTik harian gagal: ${error.message}`);
     } finally {
+      await backup?.cleanup?.().catch((error) => {
+        this.activityLog.push("warn", "mikrotik-backup", `Gagal membersihkan file backup sementara: ${error.message}`);
+      });
       this.isProcessing = false;
     }
   }
@@ -363,41 +369,63 @@ class HotspotReactivationScheduler {
       .replace(/{{\s*companyName\s*}}/gi, context.companyName || "");
   }
 
-  async sendReactivationNotification(contact, reactivationResult, updatedContact) {
-    if (!this.notificationBot) {
-      return { sent: false, error: "Transport notifikasi belum tersedia." };
-    }
-
+  buildReactivationNotification(contact, reactivationResult, updatedContact) {
     const settings = this.dataManager.getSettings();
     const template = sanitizeInput(settings.hotspotReactivationMessageTemplate)
       ? settings.hotspotReactivationMessageTemplate
       : DEFAULT_SETTINGS.hotspotReactivationMessageTemplate;
-    const message = this.renderReactivationMessage(template, {
-      name: updatedContact.name || contact.name,
+    return {
       phoneNumber: updatedContact.phoneNumber || contact.phoneNumber,
-      username: reactivationResult.username,
-      password: reactivationResult.password,
-      profile: reactivationResult.profile,
-      reactivatedAt: formatDateTime(updatedContact.hotspotLastReactivatedAt || new Date()),
-      nextReactivationAt: updatedContact.hotspotReactivationAt ? formatDateTime(updatedContact.hotspotReactivationAt) : "",
-      supportSignature: settings.supportSignature || "CS Emmeril Hotspot",
-      companyName: settings.companyName || "",
-    });
+      message: this.renderReactivationMessage(template, {
+        name: updatedContact.name || contact.name,
+        phoneNumber: updatedContact.phoneNumber || contact.phoneNumber,
+        username: reactivationResult.username,
+        password: reactivationResult.password,
+        profile: reactivationResult.profile,
+        reactivatedAt: formatDateTime(updatedContact.hotspotLastReactivatedAt || new Date(), this.dataManager.getTimezone()),
+        nextReactivationAt: updatedContact.hotspotReactivationAt
+          ? formatDateTime(updatedContact.hotspotReactivationAt, this.dataManager.getTimezone())
+          : "",
+        supportSignature: settings.supportSignature || "CS Emmeril Hotspot",
+        companyName: settings.companyName || "",
+      }),
+    };
+  }
+
+  async sendReactivationNotification(contact) {
+    if (!this.notificationBot) {
+      return { sent: false, error: "Transport notifikasi belum tersedia." };
+    }
+
+    const pending = contact.hotspotNotificationPending;
+    if (!pending?.message || !pending?.phoneNumber) {
+      return { sent: true, skipped: true, contact };
+    }
 
     try {
-      await this.notificationBot.sendMessage(updatedContact.phoneNumber || contact.phoneNumber, message);
-      this.activityLog.push("info", "hotspot-reactivation", `Notifikasi akun hotspot terkirim ke ${updatedContact.phoneNumber || contact.phoneNumber}`, {
-        contactId: updatedContact.id || contact.id,
-        username: reactivationResult.username,
+      await this.notificationBot.sendMessage(pending.phoneNumber, pending.message);
+      const updatedContact = await this.dataManager.markHotspotNotificationAttempt(contact.id, { sent: true });
+      this.activityLog.push("info", "hotspot-reactivation", `Notifikasi akun hotspot terkirim ke ${pending.phoneNumber}`, {
+        contactId: contact.id,
+        notificationId: pending.id,
       });
-      return { sent: true };
+      return { sent: true, contact: updatedContact };
     } catch (error) {
-      this.activityLog.push("error", "hotspot-reactivation", `Gagal kirim notifikasi akun hotspot ke ${updatedContact.phoneNumber || contact.phoneNumber}`, {
-        contactId: updatedContact.id || contact.id,
-        username: reactivationResult.username,
+      const updatedContact = await this.dataManager.markHotspotNotificationAttempt(contact.id, {
+        sent: false,
         error: error.message,
       });
-      return { sent: false, error: error.message };
+      this.activityLog.push("error", "hotspot-reactivation", `Gagal kirim notifikasi akun hotspot ke ${pending.phoneNumber}`, {
+        contactId: contact.id,
+        notificationId: pending.id,
+        error: error.message,
+      });
+      return {
+        sent: false,
+        error: error.message,
+        nextAttemptAt: updatedContact.hotspotNotificationPending?.nextAttemptAt || null,
+        contact: updatedContact,
+      };
     }
   }
 
@@ -435,7 +463,10 @@ class HotspotReactivationScheduler {
       phoneNumber: contact.phoneNumber,
     });
 
-    const updatedContact = await this.dataManager.markHotspotReactivated(contact.id, result, options);
+    const updatedContact = await this.dataManager.markHotspotReactivated(contact.id, result, {
+      ...options,
+      pendingNotificationBuilder: (updated) => this.buildReactivationNotification(contact, result, updated),
+    });
     this.activityLog.push("info", "hotspot-reactivation", `User hotspot ${result.username} direaktivasi`, {
       contactId: contact.id,
       username: result.username,
@@ -445,10 +476,10 @@ class HotspotReactivationScheduler {
       nextSchedule: updatedContact.hotspotReactivationAt,
     });
 
-    const notification = await this.sendReactivationNotification(contact, result, updatedContact);
+    const notification = await this.sendReactivationNotification(updatedContact);
 
     return {
-      contact: updatedContact,
+      contact: notification.contact || updatedContact,
       notification,
       ...result,
     };
@@ -461,7 +492,8 @@ class HotspotReactivationScheduler {
     }
 
     const dueContacts = this.dataManager.getDueHotspotReactivationContacts();
-    if (dueContacts.length === 0) {
+    const pendingNotificationContacts = this.dataManager.getPendingHotspotNotificationContacts();
+    if (dueContacts.length === 0 && pendingNotificationContacts.length === 0) {
       return [];
     }
 
@@ -469,6 +501,31 @@ class HotspotReactivationScheduler {
     const results = [];
 
     try {
+      for (const contact of pendingNotificationContacts) {
+        try {
+          const notification = await this.sendReactivationNotification(contact);
+          results.push({
+            contactId: contact.id,
+            username: contact.mikrotikUsername,
+            action: "notify",
+            status: notification.sent ? "success" : "failed",
+            notification,
+          });
+        } catch (error) {
+          this.activityLog.push("error", "hotspot-reactivation", `Retry notifikasi hotspot gagal untuk ${contact.phoneNumber}`, {
+            contactId: contact.id,
+            error: error.message,
+          });
+          results.push({
+            contactId: contact.id,
+            username: contact.mikrotikUsername,
+            action: "notify",
+            status: "failed",
+            error: error.message,
+          });
+        }
+      }
+
       this.activityLog.push("info", "hotspot-reactivation", `Memproses ${dueContacts.length} jadwal hotspot`);
       for (const contact of dueContacts) {
         const autoReactivation = Boolean(contact.hotspotReactivationEnabled);
@@ -719,6 +776,7 @@ class WhatsAppProviderStatusNotifier {
     this.activityLog = activityLog;
     this.previousStatuses = new Map();
     this.pendingChanges = [];
+    this.pendingRecipients = new Set();
     this.isInitialized = false;
     this.isProcessing = false;
   }
@@ -784,13 +842,19 @@ class WhatsAppProviderStatusNotifier {
       const settings = this.dataManager.getSettings();
       if (!settings.notifyAdminsOnConnectionChange) {
         this.pendingChanges = [];
+        this.pendingRecipients.clear();
         return;
       }
 
       if (changes.length > 0) {
         this.pendingChanges = [...this.pendingChanges, ...changes].slice(-10);
+        this.pendingRecipients = new Set(this.dataManager.getAdminRecipients());
       }
       if (this.pendingChanges.length === 0) return;
+
+      if (this.pendingRecipients.size === 0) {
+        this.pendingRecipients = new Set(this.dataManager.getAdminRecipients());
+      }
 
       const connectedProviders = status.transport?.connectedProviders || [];
       if (connectedProviders.length === 0) {
@@ -799,11 +863,20 @@ class WhatsAppProviderStatusNotifier {
       }
 
       const { title, body } = this.buildAlert(status);
-      const results = await this.notificationBot.sendAdminBroadcast(title, body, { silentLog: true });
+      const results = await this.notificationBot.sendAdminBroadcast(title, body, {
+        silentLog: true,
+        recipients: Array.from(this.pendingRecipients),
+      });
       const sentCount = results.filter((result) => result.status === "sent").length;
       const failedCount = results.length - sentCount;
 
-      if (results.length > 0 && failedCount === 0) {
+      for (const result of results) {
+        if (result.status === "sent") {
+          this.pendingRecipients.delete(result.phoneNumber);
+        }
+      }
+
+      if (results.length > 0 && this.pendingRecipients.size === 0) {
         this.pendingChanges = [];
         this.activityLog.push("info", "notification", `${title} terkirim ke ${sentCount} admin recipient(s)`);
       } else {

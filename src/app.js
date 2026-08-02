@@ -1,11 +1,11 @@
 require("dotenv").config({ quiet: true });
 
 const fs = require("fs/promises");
+const os = require("os");
 const path = require("path");
 const express = require("express");
 const cron = require("node-cron");
 const crypto = require("crypto");
-const ftp = require("basic-ftp");
 const ExcelJS = require("exceljs");
 const QRCode = require("qrcode");
 const { RouterOSClient } = require("routeros-client");
@@ -33,6 +33,7 @@ const {
 const TemplateManager = require("./template-manager");
 const {
   addMonthsSafely,
+  assertSecureConfiguration,
   buildHotspotEmailFromPhone,
   collectSecurityWarnings,
   escapeHtml,
@@ -73,16 +74,13 @@ function addBillingMonths(period, monthsToAdd) {
   };
 }
 
-function getContactBillingStartPeriod(contact) {
+function getContactBillingStartPeriod(contact, timeZone = "Asia/Jakarta") {
   const createdAt = contact.createdAt ? new Date(contact.createdAt) : null;
   if (!createdAt || Number.isNaN(createdAt.getTime())) {
     return BILLING_START_PERIOD;
   }
 
-  const createdPeriod = {
-    year: createdAt.getFullYear(),
-    month: createdAt.getMonth() + 1,
-  };
+  const createdPeriod = getBillingPeriodParts(createdAt, timeZone);
   return compareBillingPeriods(createdPeriod, BILLING_START_PERIOD) > 0
     ? createdPeriod
     : BILLING_START_PERIOD;
@@ -102,12 +100,12 @@ const PAYMENT_TYPE_LABELS = {
   [PAYMENT_TYPES.FULL_PAID]: "Lunas Semua",
 };
 
-function formatReportDate(value, includeTime = false) {
+function formatReportDate(value, includeTime = false, timeZone = "Asia/Jakarta") {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
   return new Intl.DateTimeFormat("id-ID", {
-    timeZone: "Asia/Jakarta",
+    timeZone,
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -214,7 +212,6 @@ class MikrotikService {
           id: user[".id"] || user.id || user.numbers || "",
           username,
           profile: user.profile || "",
-          password: user.password || "",
           comment: user.comment || "",
           disabled: String(user.disabled || "false").toLowerCase() === "true",
           email: user.email || "",
@@ -422,8 +419,8 @@ class MikrotikService {
 
   async generateDailyBackupFile() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const backupDir = path.join(CONFIG.DB_PATH, "backups", "mikrotik");
-    await fs.mkdir(backupDir, { recursive: true });
+    const backupDir = await fs.mkdtemp(path.join(os.tmpdir(), "reminder-mikrotik-"));
+    await fs.chmod(backupDir, 0o700);
 
     const fileName = `mikrotik-export-${timestamp}.rsc`;
     const filePath = path.join(backupDir, fileName);
@@ -432,11 +429,13 @@ class MikrotikService {
 
     try {
       await this.withConnection(async (conn, connectionObj) => {
+        if (!connectionObj.config.tls) {
+          throw new Error("Backup sensitif MikroTik memerlukan koneksi API-SSL. Aktifkan MIKROTIK_TLS dan gunakan port API-SSL.");
+        }
         try {
           await this.createRouterExportFile(conn, remoteBaseName);
           await this.waitForRouterFile(conn, remoteFileName);
-          const ftpPort = await this.resolveFtpPort(conn, connectionObj.config);
-          await this.downloadRouterFile({ ...connectionObj.config, ftpPort }, remoteFileName, filePath);
+          await this.downloadRouterFile(conn, remoteFileName, filePath);
         } finally {
           try {
             await conn.menu("/file").where("name", remoteFileName).remove();
@@ -449,7 +448,7 @@ class MikrotikService {
       });
       await fs.chmod(filePath, 0o600);
     } catch (error) {
-      await fs.unlink(filePath).catch(() => {});
+      await fs.rm(backupDir, { recursive: true, force: true });
       throw error;
     }
 
@@ -457,7 +456,11 @@ class MikrotikService {
       filePath,
     });
 
-    return { fileName, filePath };
+    return {
+      fileName,
+      filePath,
+      cleanup: () => fs.rm(backupDir, { recursive: true, force: true }),
+    };
   }
 
   async createRouterExportFile(conn, remoteBaseName) {
@@ -493,38 +496,22 @@ class MikrotikService {
     throw new Error(`File export ${remoteFileName} belum siap di MikroTik.`);
   }
 
-  async resolveFtpPort(conn, config) {
-    if (!config) {
-      throw new Error("Konfigurasi koneksi MikroTik tidak tersedia untuk download backup.");
+  async downloadRouterFile(conn, remoteFileName, destinationPath) {
+    const files = await conn.menu("/file").print();
+    const row = (files || []).find((item) => String(item.name || "") === remoteFileName);
+    const rowId = row?.[".id"] || row?.id || row?.numbers || remoteFileName;
+    const response = await conn.menu("/file").exec("get", {
+      number: rowId,
+      "value-name": "contents",
+    });
+    const contents = response?.ret
+      ?? response?.contents
+      ?? response?.[0]?.ret
+      ?? response?.[0]?.contents;
+    if (contents === undefined || contents === null || String(contents).length === 0) {
+      throw new Error("Isi file backup MikroTik tidak dapat dibaca melalui API-SSL.");
     }
-
-    if (config.ftpPort && config.ftpPort !== 21) return config.ftpPort;
-
-    const services = await conn.menu("/ip/service").print().catch(() => []);
-    const ftpService = (services || []).find((item) => String(item.name || "").toLowerCase() === "ftp");
-    const port = Number(ftpService?.port || config.ftpPort || 21);
-    if (String(ftpService?.disabled).toLowerCase() === "true") {
-      throw new Error("Service FTP MikroTik sedang disabled. Aktifkan FTP atau isi port FTP yang benar.");
-    }
-    return port || 21;
-  }
-
-  async downloadRouterFile(config, remoteFileName, destinationPath) {
-    const ftpClient = new ftp.Client(CONFIG.MIKROTIK_FTP_TIMEOUT || 30_000);
-    ftpClient.ftp.verbose = false;
-
-    try {
-      await ftpClient.access({
-        host: config.host,
-        user: config.user,
-        password: config.password,
-        port: config.ftpPort || 21,
-        secure: false,
-      });
-      await ftpClient.downloadTo(destinationPath, remoteFileName);
-    } finally {
-      ftpClient.close();
-    }
+    await fs.writeFile(destinationPath, String(contents), { mode: 0o600 });
 
     const stats = await fs.stat(destinationPath);
     if (!stats.size) {
@@ -557,6 +544,11 @@ class DataManager {
     await fs.mkdir(CONFIG.DB_PATH, { recursive: true });
     await fs.mkdir(CONFIG.TEMPLATE_PATH, { recursive: true });
     await fs.mkdir(CONFIG.PUBLIC_PATH, { recursive: true });
+  }
+
+  getTimezone() {
+    const requested = this.settings?.timezone || DEFAULT_SETTINGS.timezone;
+    return isValidTimeZone(requested) ? requested : DEFAULT_SETTINGS.timezone;
   }
 
   getPath(filename) {
@@ -650,7 +642,28 @@ class DataManager {
   }
 
   async withDataMutation(operation) {
-    return this.dataMutationLock.runExclusive("data_mutation", operation);
+    return this.dataMutationLock.runExclusive("data_mutation", async () => {
+      const snapshot = {
+        contacts: structuredClone(this.contacts),
+        pelanggan: structuredClone(this.pelanggan),
+        reminders: structuredClone(this.reminders),
+        sentReminders: structuredClone(this.sentReminders),
+        roles: structuredClone(this.roles),
+        settings: structuredClone(this.settings),
+      };
+
+      try {
+        return await operation();
+      } catch (error) {
+        this.contacts = snapshot.contacts;
+        this.pelanggan = snapshot.pelanggan;
+        this.reminders = snapshot.reminders;
+        this.sentReminders = snapshot.sentReminders;
+        this.roles = snapshot.roles;
+        this.settings = snapshot.settings;
+        throw error;
+      }
+    });
   }
 
   async acquireLock(filePath) {
@@ -890,7 +903,7 @@ class DataManager {
       return { deleted: 0, cutoff: null, remaining: this.sentReminders.size };
     }
 
-    const cutoffDate = options.cutoffDate || addMonthsSafely(new Date(), -retentionMonths);
+    const cutoffDate = options.cutoffDate || addMonthsSafely(new Date(), -retentionMonths, this.getTimezone());
     const cutoffTime = cutoffDate.getTime();
     if (Number.isNaN(cutoffTime)) {
       return { deleted: 0, cutoff: null, remaining: this.sentReminders.size };
@@ -956,6 +969,11 @@ class DataManager {
       contact.hotspotReactivationAt = this.normalizeOptionalDate(contact.hotspotReactivationAt);
       contact.hotspotLastReactivatedAt = this.normalizeOptionalDate(contact.hotspotLastReactivatedAt);
       contact.hotspotLastDeactivatedAt = this.normalizeOptionalDate(contact.hotspotLastDeactivatedAt);
+      if (!contact.hotspotNotificationPending
+        || typeof contact.hotspotNotificationPending !== "object"
+        || !sanitizeInput(contact.hotspotNotificationPending.message || "")) {
+        contact.hotspotNotificationPending = null;
+      }
       if (!contact.paymentMonths || typeof contact.paymentMonths !== "object" || Array.isArray(contact.paymentMonths)) {
         contact.paymentMonths = {};
       }
@@ -963,7 +981,7 @@ class DataManager {
       if (contact.paymentStatus === PAYMENT_STATUS.PAID && contact.paymentDate) {
         const paidDate = new Date(contact.paymentDate);
         if (!Number.isNaN(paidDate.getTime())) {
-          const key = getBillingPeriodKey(paidDate);
+          const key = getBillingPeriodKey(paidDate, this.getTimezone());
           if (!contact.paymentMonths[key]) {
             contact.paymentMonths[key] = {
               status: PAYMENT_STATUS.PAID,
@@ -979,7 +997,7 @@ class DataManager {
   normalizeOptionalDate(value) {
     const raw = sanitizeInput(String(value || ""));
     if (!raw) return null;
-    const date = parseDateTimeInput(raw) || new Date(raw);
+    const date = parseDateTimeInput(raw, this.getTimezone()) || new Date(raw);
     return Number.isNaN(date.getTime()) ? null : date.toISOString();
   }
 
@@ -1165,7 +1183,8 @@ class DataManager {
   }
 
   buildDueDateInfo(contact) {
-    const { year, month } = getBillingPeriodParts();
+    const timeZone = this.getTimezone();
+    const { year, month } = getBillingPeriodParts(new Date(), timeZone);
     const activePeriodKey = makeBillingPeriodKey(year, month);
     const isContactReminder = (reminder) => {
       if (String(reminder.contactId || "") === String(contact.id)) return true;
@@ -1186,10 +1205,7 @@ class DataManager {
       .map((reminder) => ({
         ...reminder,
         timestamp: reminder.reminderDate.getTime(),
-        periodKey: makeBillingPeriodKey(
-          reminder.reminderDate.getFullYear(),
-          reminder.reminderDate.getMonth() + 1
-        ),
+        periodKey: getBillingPeriodKey(reminder.reminderDate, timeZone),
       }))
       .sort((a, b) => a.timestamp - b.timestamp);
 
@@ -1220,15 +1236,16 @@ class DataManager {
   }
 
   buildDebtInfo(contact, options = {}) {
+    const timeZone = this.getTimezone();
     const { year, month } = options.year && options.month
       ? { year: options.year, month: options.month }
-      : getBillingPeriodParts();
+      : getBillingPeriodParts(new Date(), timeZone);
     const currentKey = makeBillingPeriodKey(year, month);
     const paymentMonths = contact.paymentMonths || {};
     const currentPayment = paymentMonths[currentKey] || null;
     const currentType = String(currentPayment?.paymentType || contact.paymentType || "").toUpperCase();
     const previous = getPreviousBillingPeriod(year, month);
-    const startPeriod = getContactBillingStartPeriod(contact);
+    const startPeriod = getContactBillingStartPeriod(contact, timeZone);
     const debtPeriods = currentType === PAYMENT_TYPES.FULL_PAID
       ? []
       : listBillingPeriods(startPeriod, previous)
@@ -1266,6 +1283,19 @@ class DataManager {
       ...debtInfo,
       ...dueDateInfo,
     };
+  }
+
+  toPublicContact(contact) {
+    const result = this.hydrateContact(contact);
+    delete result.mikrotikPassword;
+    if (result.hotspotNotificationPending) {
+      result.hotspotNotificationPending = {
+        attempts: result.hotspotNotificationPending.attempts || 0,
+        nextAttemptAt: result.hotspotNotificationPending.nextAttemptAt || null,
+        lastError: result.hotspotNotificationPending.lastError || null,
+      };
+    }
+    return result;
   }
 
   async normalizeReminderRelations() {
@@ -1452,6 +1482,16 @@ class DataManager {
     });
   }
 
+  getPendingHotspotNotificationContacts(now = new Date()) {
+    const nowTime = now.getTime();
+    return this.getSortedContacts().filter((contact) => {
+      const pending = contact.hotspotNotificationPending;
+      if (!pending?.message || !pending?.phoneNumber) return false;
+      const nextAttemptTime = pending.nextAttemptAt ? new Date(pending.nextAttemptAt).getTime() : 0;
+      return !Number.isFinite(nextAttemptTime) || nextAttemptTime <= nowTime;
+    });
+  }
+
   async markHotspotDeactivated(contactId, result, options = {}) {
     return this.withDataMutation(async () => {
       const contact = this.getContact(contactId);
@@ -1475,17 +1515,55 @@ class DataManager {
 
       const now = new Date();
       const previousSchedule = contact.hotspotReactivationAt || now.toISOString();
-      let nextSchedule = addMonthsSafely(previousSchedule, 1);
+      let nextSchedule = addMonthsSafely(previousSchedule, 1, this.getTimezone());
       while (nextSchedule.getTime() <= now.getTime()) {
-        nextSchedule = addMonthsSafely(nextSchedule, 1);
+        nextSchedule = addMonthsSafely(nextSchedule, 1, this.getTimezone());
       }
       contact.hotspotLastReactivatedAt = now.toISOString();
       contact.hotspotReactivationAt = nextSchedule.toISOString();
       contact.mikrotikPassword = sanitizeInput(result?.password || contact.mikrotikPassword || "");
       contact.mikrotikProfile = sanitizeInput(result?.profile || contact.mikrotikProfile || "");
       contact.updatedAt = now.toISOString();
+      if (typeof options.pendingNotificationBuilder === "function") {
+        const pending = options.pendingNotificationBuilder(this.hydrateContact(contact));
+        contact.hotspotNotificationPending = {
+          id: generateId(),
+          phoneNumber: normalizePhoneNumber(pending?.phoneNumber || contact.phoneNumber),
+          message: sanitizeMultilineText(pending?.message),
+          attempts: 0,
+          createdAt: now.toISOString(),
+          nextAttemptAt: now.toISOString(),
+          lastError: null,
+        };
+      }
 
       await this.saveContacts(options);
+      return this.hydrateContact(contact);
+    });
+  }
+
+  async markHotspotNotificationAttempt(contactId, result = {}) {
+    return this.withDataMutation(async () => {
+      const contact = this.getContact(contactId);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      const pending = contact.hotspotNotificationPending;
+      if (!pending) return this.hydrateContact(contact);
+
+      if (result.sent) {
+        contact.hotspotNotificationPending = null;
+      } else {
+        const attempts = Math.max(0, Number(pending.attempts) || 0) + 1;
+        const retryDelay = Math.min(60 * 60 * 1000, 5 * 60 * 1000 * (2 ** (attempts - 1)));
+        contact.hotspotNotificationPending = {
+          ...pending,
+          attempts,
+          lastError: sanitizeInput(result.error || "Pengiriman notifikasi gagal"),
+          lastAttemptAt: new Date().toISOString(),
+          nextAttemptAt: new Date(Date.now() + retryDelay).toISOString(),
+        };
+      }
+      contact.updatedAt = new Date().toISOString();
+      await this.saveContacts();
       return this.hydrateContact(contact);
     });
   }
@@ -1846,7 +1924,8 @@ class DataManager {
     const unpaidContacts = contacts.filter((contact) => contact.paymentStatus !== PAYMENT_STATUS.PAID);
     const debtContacts = contacts.filter((contact) => contact.hasDebt);
     const now = new Date();
-    const { year, month } = getBillingPeriodParts(now);
+    const timeZone = this.getTimezone();
+    const { year, month } = getBillingPeriodParts(now, timeZone);
 
     workbook.creator = "Reminder Bot";
     workbook.created = now;
@@ -1859,7 +1938,7 @@ class DataManager {
     ];
     summary.addRows([
       { label: "Periode Rekap", value: formatBillingPeriodLabel(year, month) },
-      { label: "Dibuat Pada", value: formatReportDate(now, true) },
+      { label: "Dibuat Pada", value: formatReportDate(now, true, timeZone) },
       { label: "Total Pelanggan", value: contacts.length },
       { label: "Sudah Lunas Bulan Ini", value: paidContacts.length },
       { label: "Belum Lunas Bulan Ini", value: unpaidContacts.length },
@@ -1888,10 +1967,10 @@ class DataManager {
       phoneNumber: contact.phoneNumber || "-",
       status: contact.paymentStatus === PAYMENT_STATUS.PAID ? "Lunas" : "Belum Lunas",
       paymentType: PAYMENT_TYPE_LABELS[contact.paymentType] || "-",
-      paymentDate: formatReportDate(contact.paymentDate, true),
+      paymentDate: formatReportDate(contact.paymentDate, true, timeZone),
       debtCount: contact.debtCount || 0,
       debtPeriods: (contact.debtPeriods || []).map((period) => period.label).join(", ") || "-",
-      dueDate: formatReportDate(contact.dueDate),
+      dueDate: formatReportDate(contact.dueDate, false, timeZone),
       dueStatus: {
         PAID: "Lunas",
         OVERDUE: "Jatuh Tempo",
@@ -1935,7 +2014,7 @@ class DataManager {
           phoneNumber: contact.phoneNumber || "-",
           status: payment.status === PAYMENT_STATUS.PAID ? "Lunas" : "Belum Lunas",
           paymentType: PAYMENT_TYPE_LABELS[payment.paymentType] || "-",
-          paidDate: formatReportDate(payment.paidDate, true),
+          paidDate: formatReportDate(payment.paidDate, true, timeZone),
         });
       }
     }
@@ -1986,7 +2065,8 @@ class DataManager {
       ({ status, paymentType } = this.normalizePaymentSelection(status, paymentType));
 
       const now = new Date();
-      const { year, month } = getBillingPeriodParts(now);
+      const timeZone = this.getTimezone();
+      const { year, month } = getBillingPeriodParts(now, timeZone);
       const currentKey = makeBillingPeriodKey(year, month);
       const previous = getPreviousBillingPeriod(year, month);
       if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") {
@@ -2004,7 +2084,7 @@ class DataManager {
       contact.paymentType = paymentType || null;
 
       if (paymentType === PAYMENT_TYPES.FULL_PAID) {
-        const startPeriod = getContactBillingStartPeriod(contact);
+        const startPeriod = getContactBillingStartPeriod(contact, timeZone);
         for (const period of listBillingPeriods(startPeriod, previous)) {
           contact.paymentMonths[makeBillingPeriodKey(period.year, period.month)] = {
             status: PAYMENT_STATUS.PAID,
@@ -2047,6 +2127,7 @@ class DataManager {
 
       const key = `${year}-${String(month).padStart(2, "0")}`;
       const now = new Date();
+      const timeZone = this.getTimezone();
       const previous = getPreviousBillingPeriod(year, month);
       const arrearsDebtPeriod = paymentType === PAYMENT_TYPES.ARREARS_ONLY
         ? this.buildDebtInfo(contact, { year, month }).debtPeriods?.[0]
@@ -2056,7 +2137,7 @@ class DataManager {
       }
 
       if (paymentType === PAYMENT_TYPES.FULL_PAID) {
-        const startPeriod = getContactBillingStartPeriod(contact);
+        const startPeriod = getContactBillingStartPeriod(contact, timeZone);
         for (const period of listBillingPeriods(startPeriod, previous)) {
           contact.paymentMonths[makeBillingPeriodKey(period.year, period.month)] = {
             status: PAYMENT_STATUS.PAID,
@@ -2078,8 +2159,7 @@ class DataManager {
         paymentType: paymentType || null,
       };
 
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth() + 1;
+      const { year: currentYear, month: currentMonth } = getBillingPeriodParts(now, timeZone);
       if (year === currentYear && month === currentMonth) {
         contact.paymentStatus = status;
         contact.paymentDate = status === PAYMENT_STATUS.PAID ? now.toISOString() : null;
@@ -2094,8 +2174,9 @@ class DataManager {
 
   inferPaymentType(contact, options = {}) {
     const paymentMonths = contact.paymentMonths || {};
-    const year = options.year ?? new Date().getFullYear();
-    const month = options.month ?? new Date().getMonth() + 1;
+    const currentPeriod = getBillingPeriodParts(new Date(), this.getTimezone());
+    const year = options.year ?? currentPeriod.year;
+    const month = options.month ?? currentPeriod.month;
     const currentKey = `${year}-${String(month).padStart(2, "0")}`;
     const prevMonth = month === 1 ? 12 : month - 1;
     const prevYear = month === 1 ? year - 1 : year;
@@ -2130,7 +2211,7 @@ class DataManager {
 
   async resetAllPaymentStatusUnlocked(options = {}) {
     let resetCount = 0;
-    const currentKey = getBillingPeriodKey();
+    const currentKey = getBillingPeriodKey(new Date(), this.getTimezone());
 
     for (const contact of this.contacts.values()) {
       contact.paymentStatus = PAYMENT_STATUS.UNPAID;
@@ -2155,7 +2236,7 @@ class DataManager {
   }
 
   synchronizeCurrentPaymentStatus() {
-    const currentKey = getBillingPeriodKey();
+    const currentKey = getBillingPeriodKey(new Date(), this.getTimezone());
     let changed = 0;
 
     for (const contact of this.contacts.values()) {
@@ -2181,7 +2262,7 @@ class DataManager {
 
   async ensureMonthlyPaymentReset() {
     return this.withDataMutation(async () => {
-      const currentPeriod = getBillingPeriodKey();
+      const currentPeriod = getBillingPeriodKey(new Date(), this.getTimezone());
       const settings = this.getSettings();
 
       if (!settings.lastPaymentResetPeriod) {
@@ -2263,7 +2344,9 @@ class NotificationBot {
   }
 
   async sendAdminBroadcast(title, body, options = {}) {
-    const recipients = this.dataManager.getAdminRecipients();
+    const recipients = Array.isArray(options.recipients)
+      ? [...new Set(options.recipients)]
+      : this.dataManager.getAdminRecipients();
     if (recipients.length === 0) return [];
 
     const message = `*${title}*\n\n${body}`;
@@ -2321,6 +2404,7 @@ class NotificationBot {
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: this.dataManager.getTimezone(),
     });
 
     let statusText = "LUNAS";
@@ -2414,6 +2498,7 @@ class NotificationBot {
 class WebServer {
   constructor(notificationBot, dataManager, templateManager, activityLog, reminderScheduler, authManager, mikrotikService, hotspotReactivationScheduler) {
     this.app = express();
+    this.app.set("trust proxy", CONFIG.TRUST_PROXY);
     this.notificationBot = notificationBot;
     this.dataManager = dataManager;
     this.templateManager = templateManager;
@@ -2430,6 +2515,10 @@ class WebServer {
     this.app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
     this.app.use((req, res, next) => {
+      res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+      );
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader("X-Frame-Options", "DENY");
       res.setHeader("Referrer-Policy", "no-referrer");
@@ -2438,10 +2527,16 @@ class WebServer {
     });
 
     this.app.use("/public", express.static(CONFIG.PUBLIC_PATH));
+    this.app.get("/vendor/alpine.min.js", (_req, res) => {
+      res.sendFile(require.resolve("alpinejs/dist/cdn.min.js"));
+    });
+    const fontAwesomePath = path.dirname(require.resolve("@fortawesome/fontawesome-free/package.json"));
+    this.app.use("/vendor/fontawesome/css", express.static(path.join(fontAwesomePath, "css")));
+    this.app.use("/vendor/fontawesome/webfonts", express.static(path.join(fontAwesomePath, "webfonts")));
 
     const hasApiKeyAccess = (req) => {
-      const apiKey = req.headers["x-api-key"] || req.query.api_key;
-      const apiKeyIsConfigured = Boolean(CONFIG.WEB_API_KEY && CONFIG.WEB_API_KEY !== "dev-key-change-in-production");
+      const apiKey = req.headers["x-api-key"];
+      const apiKeyIsConfigured = Boolean(CONFIG.WEB_API_KEY);
       return Boolean(apiKeyIsConfigured && apiKey && safeCompareString(apiKey, CONFIG.WEB_API_KEY));
     };
 
@@ -2526,7 +2621,7 @@ class WebServer {
 
       this.authManager.clearLoginFailures(attemptKey);
       const { token, session } = this.authManager.createSession(username);
-      const secureCookie = req.secure || req.headers["x-forwarded-proto"] === "https";
+      const secureCookie = req.secure;
       res.setHeader("Set-Cookie", serializeCookie(CONFIG.SESSION_COOKIE_NAME, token, {
         path: "/",
         httpOnly: true,
@@ -2545,7 +2640,7 @@ class WebServer {
     this.app.post("/api/auth/logout", handleApi(async (req, res) => {
       const { token, session } = readSession(req);
       this.authManager.destroySession(token);
-      const secureCookie = req.secure || req.headers["x-forwarded-proto"] === "https";
+      const secureCookie = req.secure;
       res.setHeader("Set-Cookie", serializeCookie(CONFIG.SESSION_COOKIE_NAME, "", {
         path: "/",
         httpOnly: true,
@@ -2635,7 +2730,7 @@ class WebServer {
         bot,
         summary: this.dataManager.getDashboardSummary(),
         settings: this.dataManager.getSettings(),
-        billingPeriod: getBillingPeriodKey(),
+        billingPeriod: getBillingPeriodKey(new Date(), this.dataManager.getTimezone()),
         scheduler: {
           isProcessing: this.reminderScheduler.isProcessing,
           hotspotReactivationProcessing: this.hotspotReactivationScheduler?.isProcessing || false,
@@ -2645,9 +2740,9 @@ class WebServer {
 
     this.app.get("/api/logs", requireApiAuth, handleApi(async () => this.activityLog.list()));
 
-    this.app.get("/api/contacts", requireApiAuth, handleApi(async () => this.dataManager.getSortedContacts()));
-    this.app.post("/api/contacts", requireApiAuth, handleApi(async (req) => this.dataManager.addContact(req.body)));
-    this.app.put("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.dataManager.updateContact(req.params.id, req.body)));
+    this.app.get("/api/contacts", requireApiAuth, handleApi(async () => this.dataManager.getSortedContacts().map((contact) => this.dataManager.toPublicContact(contact))));
+    this.app.post("/api/contacts", requireApiAuth, handleApi(async (req) => this.dataManager.toPublicContact(await this.dataManager.addContact(req.body))));
+    this.app.put("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.dataManager.toPublicContact(await this.dataManager.updateContact(req.params.id, req.body))));
     this.app.delete("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.dataManager.deleteContact(req.params.id)));
 
     this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotProfiles()));
@@ -2657,7 +2752,11 @@ class WebServer {
       const contact = this.dataManager.getContact(req.params.id);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
       const result = await this.hotspotReactivationScheduler.reactivateContact(this.dataManager.hydrateContact(contact));
-      return result;
+      return {
+        ...result,
+        contact: this.dataManager.toPublicContact(result.contact),
+        password: undefined,
+      };
     }));
     this.app.post("/api/hotspot/reactivations/run", requireApiAuth, handleApi(async () => this.hotspotReactivationScheduler.processDueReactivations()));
     this.app.post("/api/mikrotik/customers", requireApiAuth, handleApi(async (req) => {
@@ -2719,27 +2818,33 @@ class WebServer {
       }
 
       const backup = await this.mikrotikService.generateDailyBackupFile();
-      const caption = `Backup MikroTik manual\nWaktu: ${new Date().toLocaleString("id-ID")}`;
-      const results = [];
+      try {
+        const caption = `Backup MikroTik manual\nWaktu: ${new Date().toLocaleString("id-ID", { timeZone: this.dataManager.getTimezone() })}`;
+        const results = [];
 
-      for (const chatId of recipients) {
-        try {
-          await this.notificationBot.sendTelegramFile(chatId, backup.filePath, caption);
-          results.push({ chatId, status: "sent", provider: "telegram" });
-        } catch (error) {
-          results.push({ chatId, status: "failed", error: error.message, provider: "telegram" });
+        for (const chatId of recipients) {
+          try {
+            await this.notificationBot.sendTelegramFile(chatId, backup.filePath, caption);
+            results.push({ chatId, status: "sent", provider: "telegram" });
+          } catch (error) {
+            results.push({ chatId, status: "failed", error: error.message, provider: "telegram" });
+          }
         }
+
+        this.activityLog.push("info", "mikrotik-backup", "Pengiriman backup MikroTik manual dieksekusi", {
+          fileName: backup.fileName,
+          results,
+        });
+
+        return {
+          fileName: backup.fileName,
+          results,
+        };
+      } finally {
+        await backup.cleanup().catch((error) => {
+          this.activityLog.push("warn", "mikrotik-backup", `Gagal membersihkan file backup sementara: ${error.message}`);
+        });
       }
-
-      this.activityLog.push("info", "mikrotik-backup", "Pengiriman backup MikroTik manual dieksekusi", {
-        fileName: backup.fileName,
-        results,
-      });
-
-      return {
-        fileName: backup.fileName,
-        results,
-      };
     }));
 
     this.app.post("/api/contacts/:id/payment", requireApiAuth, handleApi(async (req) => {
@@ -2752,7 +2857,7 @@ class WebServer {
 
       if (!shouldSendPaymentNotification) {
         return {
-          contact: updatedContact,
+          contact: this.dataManager.toPublicContact(updatedContact),
           notificationSent: false,
         };
       }
@@ -2761,7 +2866,7 @@ class WebServer {
       try {
         await this.notificationBot.sendPaymentNotification(updatedContact, transactionId, effectivePaymentType);
         return {
-          contact: updatedContact,
+          contact: this.dataManager.toPublicContact(updatedContact),
           transactionId,
           paymentType: effectivePaymentType,
           notificationSent: true,
@@ -2774,7 +2879,7 @@ class WebServer {
         });
 
         return {
-          contact: updatedContact,
+          contact: this.dataManager.toPublicContact(updatedContact),
           transactionId,
           notificationSent: false,
           notificationError: error.message,
@@ -2787,18 +2892,19 @@ class WebServer {
       const month = Number(req.body.month);
       const status = sanitizeInput(req.body.status).toUpperCase();
       const paymentType = sanitizeInput(req.body.paymentType).toUpperCase();
-      return this.dataManager.setPaymentForMonth(
+      const updated = await this.dataManager.setPaymentForMonth(
         req.params.id,
         year,
         month,
         status,
         paymentType || null
       );
+      return this.dataManager.toPublicContact(updated);
     }));
 
     this.app.get("/api/reminders", requireApiAuth, handleApi(async () => this.dataManager.getSortedReminders()));
     this.app.post("/api/reminders", requireApiAuth, handleApi(async (req) => {
-      const when = parseDateTimeInput(req.body.reminderDateTime);
+      const when = parseDateTimeInput(req.body.reminderDateTime, this.dataManager.getTimezone());
       if (!when) throw new Error("Format reminderDateTime harus YYYY-MM-DD HH:mm.");
       if (when.getTime() <= Date.now()) throw new Error("Reminder harus dijadwalkan di masa depan.");
       return this.dataManager.addReminder({
@@ -2811,7 +2917,7 @@ class WebServer {
     this.app.put("/api/reminders/:id", requireApiAuth, handleApi(async (req) => {
       const payload = { ...req.body };
       if (payload.reminderDateTime !== undefined) {
-        const when = parseDateTimeInput(payload.reminderDateTime);
+        const when = parseDateTimeInput(payload.reminderDateTime, this.dataManager.getTimezone());
         if (!when) throw new Error("Format reminderDateTime harus YYYY-MM-DD HH:mm.");
         payload.reminderDateTime = when;
       }
@@ -2887,7 +2993,7 @@ class WebServer {
           this.templateManager.applyTemplate(content, {
             name: contact?.name || "",
             phoneNumber: contact?.phoneNumber || "",
-            date: new Date().toLocaleDateString("id-ID"),
+            date: new Date().toLocaleDateString("id-ID", { timeZone: this.dataManager.getTimezone() }),
           }),
       });
     }));
@@ -2897,10 +3003,16 @@ class WebServer {
       return { queued: true };
     }));
 
-    this.app.get("/api/payments/history", requireApiAuth, handleApi(async () => this.dataManager.getAllPaymentsHistory()));
+    this.app.get("/api/payments/history", requireApiAuth, handleApi(async () => {
+      const history = this.dataManager.getAllPaymentsHistory();
+      return Object.fromEntries(Object.entries(history).map(([period, item]) => [period, {
+        ...item,
+        contacts: item.contacts.map((contact) => this.dataManager.toPublicContact(contact)),
+      }]));
+    }));
     this.app.get("/api/payments/export.xlsx", requireApiAuth, handleApi(async (req, res) => {
       const workbook = await this.dataManager.createPaymentRecapWorkbook();
-      const period = getBillingPeriodKey();
+      const period = getBillingPeriodKey(new Date(), this.dataManager.getTimezone());
       const buffer = await workbook.xlsx.writeBuffer();
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="rekap-pembayaran-${period}.xlsx"`);
@@ -2909,8 +3021,10 @@ class WebServer {
     }));
     this.app.get("/api/payments/current", requireApiAuth, handleApi(async () => {
       const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth() + 1;
+      const { year: currentYear, month: currentMonth } = getBillingPeriodParts(
+        now,
+        this.dataManager.getTimezone()
+      );
       const payments = this.dataManager.getPaymentsByMonth(currentYear, currentMonth);
       const allHistory = this.dataManager.getAllPaymentsHistory();
       const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
@@ -2919,7 +3033,12 @@ class WebServer {
       const growth = prevPayments > 0 ? Number((((payments.length - prevPayments) / prevPayments) * 100).toFixed(1)) : 0;
 
       return {
-        current: { year: currentYear, month: currentMonth, total: payments.length, contacts: payments },
+        current: {
+          year: currentYear,
+          month: currentMonth,
+          total: payments.length,
+          contacts: payments.map((contact) => this.dataManager.toPublicContact(contact)),
+        },
         previous: { year: prevYear, month: prevMonth, total: prevPayments },
         growth,
       };
@@ -2963,9 +3082,9 @@ class WebServer {
   }
 
   start() {
-    this.app.listen(CONFIG.PORT, () => {
-      this.activityLog.push("info", "web", `Dashboard running at http://localhost:${CONFIG.PORT}/dashboard`);
-      this.activityLog.push("info", "web", `WhatsApp provider status page running at http://localhost:${CONFIG.PORT}/transport`);
+    this.app.listen(CONFIG.PORT, CONFIG.HOST, () => {
+      this.activityLog.push("info", "web", `Dashboard running at http://${CONFIG.HOST}:${CONFIG.PORT}/dashboard`);
+      this.activityLog.push("info", "web", `WhatsApp provider status page running at http://${CONFIG.HOST}:${CONFIG.PORT}/transport`);
     });
   }
 }
@@ -2983,8 +3102,10 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
   const count = resetResult.count;
   const settings = dataManager.getSettings();
   const now = new Date();
-  const currentMonth = now.getMonth() + 1;
-  const currentYear = now.getFullYear();
+  const { year: currentYear, month: currentMonth } = getBillingPeriodParts(
+    now,
+    dataManager.getTimezone()
+  );
   const overdue = dataManager.getOverdueContacts(currentYear, currentMonth);
 
   activityLog.push("info", "billing", `Monthly payment status reset completed for ${count} contact(s)`);
@@ -3011,6 +3132,7 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
 // ===============================
 
 async function bootstrap() {
+  assertSecureConfiguration();
   const activityLog = new ActivityLog();
   for (const warning of collectSecurityWarnings()) {
     activityLog.push("warn", "config", warning);
@@ -3065,14 +3187,9 @@ async function bootstrap() {
       mikrotikBackupScheduler.processDailyBackup(),
       databaseBackupScheduler.processDailyBackup(),
       hotspotReactivationScheduler.processDueReactivations(),
+      sendMonthlyResetNotification(notificationBot, dataManager, activityLog),
     ]).catch((error) => {
       activityLog.push("error", "scheduler", `Cron execution failed: ${error.message}`);
-    });
-  });
-
-  cron.schedule(CONFIG.RESET_PAYMENT_SCHEDULE, () => {
-    sendMonthlyResetNotification(notificationBot, dataManager, activityLog).catch((error) => {
-      activityLog.push("error", "billing", `Monthly reset failed: ${error.message}`);
     });
   });
 

@@ -26,6 +26,8 @@ function resolveFromRoot(value, fallback) {
 }
 
 const CONFIG = {
+  HOST: envString("HOST", "127.0.0.1"),
+  TRUST_PROXY: envBoolean("TRUST_PROXY", false),
   PORT: envNumber("PORT", 3025),
   DB_PATH: path.join(ROOT_DIR, "database"),
   DB_STORAGE: resolveFromRoot(
@@ -44,36 +46,44 @@ const CONFIG = {
   RECONNECT_DELAY: 5_000,
   SQLITE_BUSY_TIMEOUT: envNumber("SQLITE_BUSY_TIMEOUT", 10_000),
   CRON_SCHEDULE: "*/1 * * * *",
-  RESET_PAYMENT_SCHEDULE: "0 0 1 * *",
   MAX_LOCK_WAIT: 10_000,
   LOCK_POLL_INTERVAL: 50,
-  WEB_API_KEY: envString("WEB_API_KEY", "dev-key-change-in-production"),
-  AUTH_USERNAME: envString("AUTH_USERNAME", "admin"),
-  AUTH_PASSWORD: envString("AUTH_PASSWORD", "admin123"),
+  WEB_API_KEY: envString("WEB_API_KEY"),
+  AUTH_USERNAME: envString("AUTH_USERNAME"),
+  AUTH_PASSWORD: envString("AUTH_PASSWORD"),
   AUTH_MAX_LOGIN_ATTEMPTS: envNumber("AUTH_MAX_LOGIN_ATTEMPTS", 5),
   AUTH_LOGIN_WINDOW: envNumber("AUTH_LOGIN_WINDOW", 15 * 60 * 1000),
   AUTH_LOGIN_LOCKOUT: envNumber("AUTH_LOGIN_LOCKOUT", 15 * 60 * 1000),
   SESSION_COOKIE_NAME: "reminder_bot_session",
   SESSION_TTL: 24 * 60 * 60 * 1000,
-  SESSION_SECRET: envString("SESSION_SECRET", "change-this-session-secret"),
+  SESSION_SECRET: envString("SESSION_SECRET"),
   LOG_LIMIT: 250,
   MIKROTIK_PRIMARY: {
     host: envString("IP_MIKROTIK"),
     user: envString("USER_MIKROTIK"),
     password: envString("PASSWORD_MIKROTIK"),
     port: envNumber("PORT_MIKROTIK", 8728),
-    ftpPort: envNumber("PORT_MIKROTIK_FTP", 21),
     timeout: 30_000,
     keepalive: true,
+    tls: envBoolean("MIKROTIK_TLS", false)
+      ? { rejectUnauthorized: envBoolean("MIKROTIK_TLS_REJECT_UNAUTHORIZED", true) }
+      : null,
   },
   MIKROTIK_BACKUP: {
     host: envString("IP_MIKROTIK_BACKUP"),
     user: envString("USER_MIKROTIK"),
     password: envString("PASSWORD_MIKROTIK"),
     port: envNumber("PORT_MIKROTIK_BACKUP", envNumber("PORT_MIKROTIK", 8728)),
-    ftpPort: envNumber("PORT_MIKROTIK_BACKUP_FTP", envNumber("PORT_MIKROTIK_FTP", 21)),
     timeout: 30_000,
     keepalive: true,
+    tls: envBoolean("MIKROTIK_BACKUP_TLS", envBoolean("MIKROTIK_TLS", false))
+      ? {
+          rejectUnauthorized: envBoolean(
+            "MIKROTIK_BACKUP_TLS_REJECT_UNAUTHORIZED",
+            envBoolean("MIKROTIK_TLS_REJECT_UNAUTHORIZED", true)
+          ),
+        }
+      : null,
   },
   BAILEYS_ENABLED: envString("BAILEYS_ENABLED") ? envBoolean("BAILEYS_ENABLED") : true,
   BAILEYS_AUTH_STORAGE: resolveFromRoot(

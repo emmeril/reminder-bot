@@ -125,6 +125,7 @@ function getDateTimePartsInTimezone(date = new Date(), timeZone = "Asia/Jakarta"
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
     hourCycle: "h23",
   });
 
@@ -139,9 +140,55 @@ function getDateTimePartsInTimezone(date = new Date(), timeZone = "Asia/Jakarta"
     day: parts.day || "",
     hour: parts.hour || "00",
     minute: parts.minute || "00",
+    second: parts.second || "00",
     dateKey: `${parts.year || "0000"}-${parts.month || "00"}-${parts.day || "00"}`,
     timeKey: `${parts.hour || "00"}:${parts.minute || "00"}`,
   };
+}
+
+function getTimeZoneOffsetMs(date, timeZone) {
+  const parts = getDateTimePartsInTimezone(date, timeZone);
+  const representedAsUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second)
+  );
+  return representedAsUtc - Math.floor(date.getTime() / 1000) * 1000;
+}
+
+function zonedDateTimeToDate(parts, timeZone = "Asia/Jakarta") {
+  if (!isValidTimeZone(timeZone)) return null;
+
+  const desiredUtc = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour || 0,
+    parts.minute || 0,
+    parts.second || 0,
+    parts.millisecond || 0
+  );
+  let timestamp = desiredUtc;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const nextTimestamp = desiredUtc - getTimeZoneOffsetMs(new Date(timestamp), timeZone);
+    if (nextTimestamp === timestamp) break;
+    timestamp = nextTimestamp;
+  }
+
+  const result = new Date(timestamp);
+  const actual = getDateTimePartsInTimezone(result, timeZone);
+  if (Number(actual.year) !== parts.year
+    || Number(actual.month) !== parts.month
+    || Number(actual.day) !== parts.day
+    || Number(actual.hour) !== (parts.hour || 0)
+    || Number(actual.minute) !== (parts.minute || 0)) {
+    return null;
+  }
+  return result;
 }
 
 function isValidTimeZone(value) {
@@ -159,19 +206,36 @@ function isValidTimeZone(value) {
 function collectSecurityWarnings() {
   const warnings = [];
 
-  if (CONFIG.WEB_API_KEY === "dev-key-change-in-production") {
-    warnings.push("WEB_API_KEY masih memakai nilai default.");
-  }
-
-  if (CONFIG.AUTH_USERNAME === "admin" && CONFIG.AUTH_PASSWORD === "admin123") {
+  if (CONFIG.AUTH_USERNAME === "admin" || CONFIG.AUTH_PASSWORD === "admin123") {
     warnings.push("Kredensial login dashboard masih memakai nilai default.");
   }
 
-  if (CONFIG.SESSION_SECRET === "change-this-session-secret") {
-    warnings.push("SESSION_SECRET masih memakai nilai default.");
+  if (CONFIG.AUTH_PASSWORD && CONFIG.AUTH_PASSWORD.length < 12) {
+    warnings.push("AUTH_PASSWORD sebaiknya memiliki minimal 12 karakter.");
+  }
+
+  if (CONFIG.SESSION_SECRET && CONFIG.SESSION_SECRET.length < 32) {
+    warnings.push("SESSION_SECRET sebaiknya memiliki minimal 32 karakter.");
   }
 
   return warnings;
+}
+
+function assertSecureConfiguration() {
+  const errors = [];
+  if (!CONFIG.AUTH_USERNAME) errors.push("AUTH_USERNAME wajib dikonfigurasi.");
+  if (!CONFIG.AUTH_PASSWORD || CONFIG.AUTH_PASSWORD.length < 12) {
+    errors.push("AUTH_PASSWORD wajib dikonfigurasi dengan minimal 12 karakter.");
+  }
+  if (!CONFIG.SESSION_SECRET || CONFIG.SESSION_SECRET.length < 32) {
+    errors.push("SESSION_SECRET wajib dikonfigurasi dengan minimal 32 karakter.");
+  }
+  if (CONFIG.AUTH_USERNAME === "admin" || CONFIG.AUTH_PASSWORD === "admin123") {
+    errors.push("Kredensial dashboard default tidak boleh digunakan.");
+  }
+  if (errors.length > 0) {
+    throw new Error(`Konfigurasi keamanan tidak valid: ${errors.join(" ")}`);
+  }
 }
 
 function parseCookies(cookieHeader) {
@@ -228,7 +292,7 @@ function buildHotspotEmailFromPhone(phoneNumber) {
   return normalized ? `${normalized}@localhost.local` : "";
 }
 
-function parseDateTimeInput(input) {
+function parseDateTimeInput(input, timeZone = "Asia/Jakarta") {
   const match = sanitizeInput(input).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/);
   if (!match) return null;
 
@@ -247,36 +311,38 @@ function parseDateTimeInput(input) {
   const maxDays = new Date(yearNum, monthNum, 0).getDate();
   if (dayNum > maxDays) return null;
 
-  const date = new Date(yearNum, monthNum - 1, dayNum, hourNum, minuteNum);
-  if (Number.isNaN(date.getTime())) return null;
-  return date;
+  return zonedDateTimeToDate({
+    year: yearNum,
+    month: monthNum,
+    day: dayNum,
+    hour: hourNum,
+    minute: minuteNum,
+  }, timeZone);
 }
 
-function formatDate(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+function formatDate(date, timeZone = "Asia/Jakarta") {
+  const parts = getDateTimePartsInTimezone(new Date(date), timeZone);
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
-function formatDateTime(date) {
+function formatDateTime(date, timeZone = "Asia/Jakarta") {
   return new Date(date).toLocaleString("id-ID", {
     dateStyle: "long",
     timeStyle: "short",
-    timeZone: "Asia/Jakarta",
+    timeZone,
   });
 }
 
-function getBillingPeriodKey(date = new Date()) {
-  const source = new Date(date);
-  return `${source.getFullYear()}-${String(source.getMonth() + 1).padStart(2, "0")}`;
+function getBillingPeriodKey(date = new Date(), timeZone = "Asia/Jakarta") {
+  const parts = getDateTimePartsInTimezone(new Date(date), timeZone);
+  return `${parts.year}-${parts.month}`;
 }
 
-function getBillingPeriodParts(date = new Date()) {
-  const source = new Date(date);
+function getBillingPeriodParts(date = new Date(), timeZone = "Asia/Jakarta") {
+  const parts = getDateTimePartsInTimezone(new Date(date), timeZone);
   return {
-    year: source.getFullYear(),
-    month: source.getMonth() + 1,
+    year: Number(parts.year),
+    month: Number(parts.month),
   };
 }
 
@@ -294,27 +360,30 @@ function formatBillingPeriodLabel(year, month) {
   return `${MONTH_NAMES[month] || month} ${year}`;
 }
 
-function addMonthsSafely(dateValue, monthsToAdd) {
+function addMonthsSafely(dateValue, monthsToAdd, timeZone = "Asia/Jakarta") {
   const source = new Date(dateValue);
-  const targetMonthIndex = source.getMonth() + monthsToAdd;
-  const year = source.getFullYear() + Math.floor(targetMonthIndex / 12);
+  const sourceParts = getDateTimePartsInTimezone(source, timeZone);
+  const sourceMonth = Number(sourceParts.month) - 1;
+  const targetMonthIndex = sourceMonth + monthsToAdd;
+  const year = Number(sourceParts.year) + Math.floor(targetMonthIndex / 12);
   const month = ((targetMonthIndex % 12) + 12) % 12;
-  const lastDayOfTargetMonth = new Date(year, month + 1, 0).getDate();
-  const day = Math.min(source.getDate(), lastDayOfTargetMonth);
+  const lastDayOfTargetMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const day = Math.min(Number(sourceParts.day), lastDayOfTargetMonth);
 
-  return new Date(
+  return zonedDateTimeToDate({
     year,
-    month,
+    month: month + 1,
     day,
-    source.getHours(),
-    source.getMinutes(),
-    source.getSeconds(),
-    source.getMilliseconds()
-  );
+    hour: Number(sourceParts.hour),
+    minute: Number(sourceParts.minute),
+    second: Number(sourceParts.second),
+    millisecond: source.getMilliseconds(),
+  }, timeZone);
 }
 
 module.exports = {
   addMonthsSafely,
+  assertSecureConfiguration,
   buildHotspotEmailFromPhone,
   collectSecurityWarnings,
   escapeHtml,
@@ -342,4 +411,5 @@ module.exports = {
   sanitizeTimeHHMM,
   serializeCookie,
   sleep,
+  zonedDateTimeToDate,
 };

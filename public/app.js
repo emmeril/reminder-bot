@@ -374,8 +374,30 @@
           }
         },
 
+        getAppTimezone() {
+          return this.forms.settings.timezone || "Asia/Jakarta";
+        },
+
+        getZonedParts(value) {
+          const date = new Date(value);
+          if (Number.isNaN(date.getTime())) return null;
+          const parts = new Intl.DateTimeFormat("en-CA", {
+            timeZone: this.getAppTimezone(),
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hourCycle: "h23",
+          }).formatToParts(date).reduce((result, part) => {
+            if (part.type !== "literal") result[part.type] = part.value;
+            return result;
+          }, {});
+          return parts;
+        },
+
         formatDateTime(value) {
-          return new Date(value).toLocaleString("id-ID");
+          return new Date(value).toLocaleString("id-ID", { timeZone: this.getAppTimezone() });
         },
 
         messageKey(scope, id) {
@@ -395,20 +417,13 @@
         },
 
         formatDateInput(value) {
-          const date = new Date(value);
-          if (Number.isNaN(date.getTime())) return "";
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, "0");
-          const day = String(date.getDate()).padStart(2, "0");
-          return `${year}-${month}-${day}`;
+          const parts = this.getZonedParts(value);
+          return parts ? `${parts.year}-${parts.month}-${parts.day}` : "";
         },
 
         formatTimeInput(value) {
-          const date = new Date(value);
-          if (Number.isNaN(date.getTime())) return "";
-          const hours = String(date.getHours()).padStart(2, "0");
-          const minutes = String(date.getMinutes()).padStart(2, "0");
-          return `${hours}:${minutes}`;
+          const parts = this.getZonedParts(value);
+          return parts ? `${parts.hour}:${parts.minute}` : "";
         },
 
         blankContactForm() {
@@ -486,9 +501,10 @@
            }
 
            const paymentMonths = contact.paymentMonths || {};
-           const now = new Date();
-           const year = now.getFullYear();
-           const month = now.getMonth() + 1;
+           const [periodYear, periodMonth] = String(this.billingPeriod || "").split("-").map(Number);
+           const nowParts = this.getZonedParts(new Date());
+           const year = periodYear || Number(nowParts?.year);
+           const month = periodMonth || Number(nowParts?.month);
            const currentKey = `${year}-${String(month).padStart(2, "0")}`;
            const prevMonth = month === 1 ? 12 : month - 1;
            const prevYear = month === 1 ? year - 1 : year;
@@ -522,10 +538,12 @@
 
         getPreviousBillingPeriodLabel() {
           const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-          const now = new Date();
-          const currentMonth = now.getMonth() + 1;
+          const [periodYear, periodMonth] = String(this.billingPeriod || "").split("-").map(Number);
+          const nowParts = this.getZonedParts(new Date());
+          const currentMonth = periodMonth || Number(nowParts?.month);
+          const currentYear = periodYear || Number(nowParts?.year);
           const previousMonth = currentMonth === 1 ? 12 : currentMonth - 1;
-          const previousYear = currentMonth === 1 ? now.getFullYear() - 1 : now.getFullYear();
+          const previousYear = currentMonth === 1 ? currentYear - 1 : currentYear;
           return `${monthNames[previousMonth]} ${previousYear}`;
         },
 
@@ -536,9 +554,9 @@
 
         getContactBillingStartPeriod(contact) {
           const systemStart = { year: 2026, month: 4 };
-          const createdAt = contact.createdAt ? new Date(contact.createdAt) : null;
-          if (!createdAt || Number.isNaN(createdAt.getTime())) return systemStart;
-          const createdPeriod = { year: createdAt.getFullYear(), month: createdAt.getMonth() + 1 };
+          const createdParts = contact.createdAt ? this.getZonedParts(contact.createdAt) : null;
+          if (!createdParts) return systemStart;
+          const createdPeriod = { year: Number(createdParts.year), month: Number(createdParts.month) };
           return ((createdPeriod.year * 12) + createdPeriod.month) > ((systemStart.year * 12) + systemStart.month)
             ? createdPeriod
             : systemStart;
@@ -550,8 +568,11 @@
 
           const paymentMonths = contact.paymentMonths || {};
           const start = this.getContactBillingStartPeriod(contact);
-          const now = new Date();
-          const endIndex = (now.getFullYear() * 12) + now.getMonth() - 1;
+          const [periodYear, periodMonth] = String(this.billingPeriod || "").split("-").map(Number);
+          const nowParts = this.getZonedParts(new Date());
+          const currentYear = periodYear || Number(nowParts?.year);
+          const currentMonth = periodMonth || Number(nowParts?.month);
+          const endIndex = (currentYear * 12) + currentMonth - 2;
           const periods = [];
 
           for (let index = (start.year * 12) + (start.month - 1); index <= endIndex; index += 1) {
@@ -648,12 +669,12 @@
         },
 
         isToday(value) {
-          const date = new Date(value);
-          if (Number.isNaN(date.getTime())) return false;
-          const today = new Date();
-          return date.getFullYear() === today.getFullYear()
-            && date.getMonth() === today.getMonth()
-            && date.getDate() === today.getDate();
+          const dateParts = this.getZonedParts(value);
+          const todayParts = this.getZonedParts(new Date());
+          return Boolean(dateParts && todayParts
+            && dateParts.year === todayParts.year
+            && dateParts.month === todayParts.month
+            && dateParts.day === todayParts.day);
         },
 
         get filteredContacts() {
@@ -1069,7 +1090,9 @@
                   linkedApHost: this.forms.contactEdit.linkedApHost,
                   mikrotikUsername: this.forms.contactEdit.mikrotikUsername,
                   mikrotikProfile: this.forms.contactEdit.mikrotikProfile,
-                  mikrotikPassword: this.forms.contactEdit.mikrotikPassword,
+                  ...(this.forms.contactEdit.mikrotikPassword
+                    ? { mikrotikPassword: this.forms.contactEdit.mikrotikPassword }
+                    : {}),
                   hotspotReactivationEnabled: this.forms.contactEdit.hotspotReactivationEnabled,
                   hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contactEdit),
                 }),
@@ -1182,7 +1205,7 @@
           }
           if (dateIso) {
             try {
-              msg = msg.replace(/{{\s*date\s*}}/gi, new Date(dateIso).toLocaleString('id-ID'));
+              msg = msg.replace(/{{\s*date\s*}}/gi, new Date(dateIso).toLocaleString("id-ID", { timeZone: this.getAppTimezone() }));
             } catch {}
           }
           return msg;

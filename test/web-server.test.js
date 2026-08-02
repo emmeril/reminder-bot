@@ -23,6 +23,7 @@ async function startServer(dataManager = {}) {
     { getTransportStatus: async () => ({}), getStatus: () => ({}) },
     {
       getSettings: () => ({ dashboardTitle: "Test" }),
+      getTimezone: () => "Asia/Jakarta",
       ...dataManager,
     },
     {},
@@ -37,6 +38,17 @@ async function startServer(dataManager = {}) {
   const address = server.address();
   return `http://127.0.0.1:${address.port}`;
 }
+
+test("halaman login memakai aset lokal dan mengirim CSP", async () => {
+  const baseUrl = await startServer();
+  const response = await fetch(`${baseUrl}/login`);
+  const html = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-security-policy"), /default-src 'self'/);
+  assert.doesNotMatch(html, /https:\/\//);
+  assert.match(html, /\/vendor\/alpine\.min\.js/);
+});
 
 test("API key dapat membaca identitas auth tanpa sesi dashboard", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";

@@ -160,3 +160,38 @@ test("registrasi pelanggan MikroTik menyimpan AP dan jadwal reaktivasi dari form
   assert.equal(result.contact.hotspotReactivationEnabled, true);
   assert.equal(result.contact.hotspotReactivationAt, reactivationAt);
 });
+
+test("mengembalikan state in-memory ketika penyimpanan database gagal", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.saveContacts = async () => {
+    throw new Error("database gagal");
+  };
+
+  await assert.rejects(
+    () => manager.addContact({ name: "Audit", phoneNumber: "6281234567801" }),
+    /database gagal/
+  );
+  assert.equal(manager.contacts.size, 0);
+});
+
+test("response publik tidak membocorkan password hotspot atau isi antrean kredensial", () => {
+  const manager = new DataManager({ push() {} });
+  const contact = {
+    id: "public-contact",
+    name: "Pelanggan",
+    phoneNumber: "6281234567802",
+    mikrotikPassword: "router-secret",
+    hotspotNotificationPending: {
+      message: "Password router-secret",
+      attempts: 1,
+      nextAttemptAt: new Date().toISOString(),
+    },
+    paymentMonths: {},
+  };
+  manager.contacts.set(contact.id, contact);
+
+  const result = manager.toPublicContact(contact);
+  assert.equal("mikrotikPassword" in result, false);
+  assert.equal(result.hotspotNotificationPending.message, undefined);
+  assert.equal(result.hotspotNotificationPending.attempts, 1);
+});
