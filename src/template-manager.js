@@ -22,10 +22,11 @@ class TemplateManager {
   }
 
   async listTemplates() {
-    const files = await fs.readdir(CONFIG.TEMPLATE_PATH).catch(() => []);
+    const files = await fs.readdir(CONFIG.TEMPLATE_PATH, { withFileTypes: true }).catch(() => []);
     const templates = [];
 
-    for (const file of files.sort()) {
+    for (const entry of files.filter((item) => item.isFile()).sort((a, b) => a.name.localeCompare(b.name))) {
+      const file = entry.name;
       const fullPath = path.join(CONFIG.TEMPLATE_PATH, file);
       try {
         const content = await fs.readFile(fullPath, "utf-8");
@@ -46,12 +47,15 @@ class TemplateManager {
     const fileName = this.sanitizeFileName(name);
     const templatePath = path.join(CONFIG.TEMPLATE_PATH, fileName);
 
-    if (fsSync.existsSync(templatePath)) {
-      throw new Error("Template dengan nama tersebut sudah ada.");
-    }
-
     const safeContent = sanitizeMultilineText(content);
-    await fs.writeFile(templatePath, safeContent);
+    try {
+      await fs.writeFile(templatePath, safeContent, { flag: "wx" });
+    } catch (error) {
+      if (error.code === "EEXIST") {
+        throw new Error("Template dengan nama tersebut sudah ada.");
+      }
+      throw error;
+    }
     return { name: fileName, content: safeContent };
   }
 

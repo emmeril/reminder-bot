@@ -5,6 +5,7 @@ const {
   formatDate,
   formatDateTime,
   getDateTimePartsInTimezone,
+  isValidTimeZone,
   parseNetwatchSinceDate,
   sanitizeInput,
   sanitizePositiveInteger,
@@ -203,19 +204,15 @@ class MikrotikBackupScheduler {
   }
 
   isDueNow(settings) {
-    let timeZone = settings.mikrotikBackupTimezone || settings.timezone || "Asia/Jakarta";
+    const requestedTimeZone = settings.mikrotikBackupTimezone || settings.timezone || "Asia/Jakarta";
+    const timeZone = [...new Set([requestedTimeZone, settings.timezone, "Asia/Jakarta"].filter(Boolean))]
+      .find(isValidTimeZone)
+      || "Asia/Jakarta";
     const configuredTime = sanitizeTimeHHMM(settings.mikrotikBackupTime, DEFAULT_SETTINGS.mikrotikBackupTime);
-    let nowParts;
-
-    try {
-      nowParts = getDateTimePartsInTimezone(new Date(), timeZone);
-    } catch (error) {
-      const fallbackTimeZones = [settings.timezone, "Asia/Jakarta"].filter(Boolean);
-      const fallbackTimeZone = fallbackTimeZones.find((candidate) => candidate !== timeZone) || "Asia/Jakarta";
-      this.activityLog.push("warn", "mikrotik-backup", `Timezone backup MikroTik tidak valid (${timeZone}), fallback ke ${fallbackTimeZone}`);
-      timeZone = fallbackTimeZone;
-      nowParts = getDateTimePartsInTimezone(new Date(), timeZone);
+    if (timeZone !== requestedTimeZone) {
+      this.activityLog.push("warn", "mikrotik-backup", `Timezone backup MikroTik tidak valid (${requestedTimeZone}), fallback ke ${timeZone}`);
     }
+    const nowParts = getDateTimePartsInTimezone(new Date(), timeZone);
 
     return {
       due: nowParts.timeKey >= configuredTime,
@@ -467,6 +464,7 @@ class ApDownNotifier {
     this.activityLog = activityLog;
     this.monitorStates = new Map();
     this.isInitialized = false;
+    this.isProcessing = false;
   }
 
   normalizeStatus(value) {
@@ -504,6 +502,7 @@ class ApDownNotifier {
       lastStatus: "UNKNOWN",
       lastSince: "",
       firstObservedAt: null,
+      notifiedContactIds: new Set(),
     };
 
     if (currentStatus !== "DOWN") {
@@ -516,17 +515,23 @@ class ApDownNotifier {
         lastStatus: currentStatus,
         lastSince: currentSince,
         firstObservedAt: null,
+        notifiedContactIds: new Set(),
       };
       this.monitorStates.set(host, nextState);
       return nextState;
     }
 
     const sinceChanged = previousState.lastSince !== currentSince;
+    const isNewIncident = previousState.lastStatus !== "DOWN" || sinceChanged;
     const nextState = {
       ...previousState,
+      alertSent: isNewIncident ? false : previousState.alertSent,
       lastStatus: currentStatus,
       lastSince: currentSince,
-      firstObservedAt: sinceChanged || !previousState.firstObservedAt ? Date.now() : previousState.firstObservedAt,
+      firstObservedAt: isNewIncident || !previousState.firstObservedAt ? Date.now() : previousState.firstObservedAt,
+      notifiedContactIds: isNewIncident
+        ? new Set()
+        : new Set(previousState.notifiedContactIds || []),
     };
 
     this.monitorStates.set(host, nextState);
@@ -543,111 +548,116 @@ class ApDownNotifier {
   }
 
   async processNetwatchChanges() {
-    const monitors = await this.mikrotikService.getNetwatchStatus();
-    const currentStatuses = new Map();
-    const settings = this.dataManager.getSettings();
+    if (this.isProcessing) {
+      this.activityLog.push("info", "ap-monitor", "Pemeriksaan AP dilewati karena proses sebelumnya masih berjalan");
+      return;
+    }
 
-    if (!this.isInitialized) {
+    this.isProcessing = true;
+    try {
+      const monitors = await this.mikrotikService.getNetwatchStatus();
+      const currentStatuses = new Map();
+      const settings = this.dataManager.getSettings();
+
+      if (!this.isInitialized) {
+        for (const monitor of monitors) {
+          const host = String(monitor.host || "");
+          if (!host) continue;
+
+          const status = this.normalizeStatus(monitor.status);
+          const currentSince = sanitizeInput(monitor.since || "");
+          currentStatuses.set(host, status);
+          this.monitorStates.set(host, {
+            alertSent: false,
+            lastStatus: status,
+            lastSince: currentSince,
+            firstObservedAt: status === "DOWN" ? Date.now() : null,
+            notifiedContactIds: new Set(),
+          });
+        }
+
+        this.isInitialized = true;
+        return;
+      }
+
+      const minimumDownMinutes = this.getMinimumDownMinutes();
+
       for (const monitor of monitors) {
         const host = String(monitor.host || "");
         if (!host) continue;
 
-        const status = this.normalizeStatus(monitor.status);
-        const currentSince = sanitizeInput(monitor.since || "");
-        currentStatuses.set(host, status);
-        this.monitorStates.set(host, {
-          alertSent: false,
-          lastStatus: status,
-          lastSince: currentSince,
-          firstObservedAt: status === "DOWN" ? Date.now() : null,
-        });
-      }
+        const currentStatus = this.normalizeStatus(monitor.status);
+        currentStatuses.set(host, currentStatus);
 
-      this.isInitialized = true;
-      return;
-    }
+        const state = this.syncMonitorState(host, monitor);
+        if (currentStatus !== "DOWN") continue;
+        if (settings.notifyContactsOnApDown === false) continue;
 
-    const minimumDownMinutes = this.getMinimumDownMinutes();
+        const sinceAgeMinutes = this.getSinceAgeMinutes(monitor, state);
+        if (sinceAgeMinutes === null) {
+          this.activityLog.push(
+            "warn",
+            "ap-monitor",
+            `AP ${host} status DOWN tapi nilai since belum bisa dibaca, menunggu pembacaan berikutnya`
+          );
+          continue;
+        }
 
-    for (const monitor of monitors) {
-      const host = String(monitor.host || "");
-      if (!host) continue;
+        if (sinceAgeMinutes < minimumDownMinutes) {
+          this.activityLog.push(
+            "info",
+            "ap-monitor",
+            `AP ${host} DOWN sejak ${sanitizeInput(monitor.since || "-")} (${sinceAgeMinutes.toFixed(1)} menit), menunggu hingga ${minimumDownMinutes} menit`
+          );
+          continue;
+        }
 
-      const currentStatus = this.normalizeStatus(monitor.status);
-      currentStatuses.set(host, currentStatus);
+        const linkedContacts = this.dataManager
+          .getContacts()
+          .filter((contact) => String(contact.linkedApHost || "") === host);
+        const notifiedContactIds = new Set(state.notifiedContactIds || []);
 
-      const state = this.syncMonitorState(host, monitor);
-      if (currentStatus !== "DOWN") continue;
-      if (state.alertSent) continue;
-      if (settings.notifyContactsOnApDown === false) continue;
+        for (const contact of linkedContacts) {
+          if (notifiedContactIds.has(String(contact.id))) continue;
 
-      const sinceAgeMinutes = this.getSinceAgeMinutes(monitor, state);
-      if (sinceAgeMinutes === null) {
-        this.activityLog.push(
-          "warn",
-          "ap-monitor",
-          `AP ${host} status DOWN tapi nilai since belum bisa dibaca, menunggu pembacaan berikutnya`
-        );
-        continue;
-      }
+          try {
+            const message = this.renderApDownMessage(settings.apDownMessageTemplate, {
+              name: contact.name,
+              host,
+              status: currentStatus,
+              supportSignature: settings.supportSignature || "CS Emmeril Hotspot",
+              companyName: settings.companyName || "",
+            });
+            await this.notificationBot.sendMessage(contact.phoneNumber, message);
+            notifiedContactIds.add(String(contact.id));
+            this.activityLog.push("info", "ap-monitor", `Notifikasi AP DOWN terkirim ke ${contact.phoneNumber}`, {
+              host,
+              contactId: contact.id,
+            });
+          } catch (error) {
+            this.activityLog.push("error", "ap-monitor", `Gagal kirim notifikasi AP DOWN ke ${contact.phoneNumber}`, {
+              host,
+              error: error.message,
+              contactId: contact.id,
+            });
+          }
+        }
 
-      if (sinceAgeMinutes < minimumDownMinutes) {
-        this.activityLog.push(
-          "info",
-          "ap-monitor",
-          `AP ${host} DOWN sejak ${sanitizeInput(monitor.since || "-")} (${sinceAgeMinutes.toFixed(1)} menit), menunggu hingga ${minimumDownMinutes} menit`
-        );
-        continue;
-      }
-
-      const linkedContacts = this.dataManager
-        .getContacts()
-        .filter((contact) => String(contact.linkedApHost || "") === host);
-
-      if (linkedContacts.length === 0) {
         this.monitorStates.set(host, {
           ...state,
-          alertSent: true,
+          alertSent: linkedContacts.length > 0
+            && linkedContacts.every((contact) => notifiedContactIds.has(String(contact.id))),
+          notifiedContactIds,
         });
-        continue;
       }
 
-      for (const contact of linkedContacts) {
-        try {
-          const message = this.renderApDownMessage(settings.apDownMessageTemplate, {
-            name: contact.name,
-            host,
-            status: currentStatus,
-            supportSignature: settings.supportSignature || "CS Emmeril Hotspot",
-            companyName: settings.companyName || "",
-          });
-          await this.notificationBot.sendMessage(
-            contact.phoneNumber,
-            message
-          );
-          this.activityLog.push("info", "ap-monitor", `Notifikasi AP DOWN terkirim ke ${contact.phoneNumber}`, {
-            host,
-            contactId: contact.id,
-          });
-        } catch (error) {
-          this.activityLog.push("error", "ap-monitor", `Gagal kirim notifikasi AP DOWN ke ${contact.phoneNumber}`, {
-            host,
-            error: error.message,
-            contactId: contact.id,
-          });
+      for (const host of Array.from(this.monitorStates.keys())) {
+        if (!currentStatuses.has(host)) {
+          this.monitorStates.delete(host);
         }
       }
-
-      this.monitorStates.set(host, {
-        ...state,
-        alertSent: true,
-      });
-    }
-
-    for (const host of Array.from(this.monitorStates.keys())) {
-      if (!currentStatuses.has(host)) {
-        this.monitorStates.delete(host);
-      }
+    } finally {
+      this.isProcessing = false;
     }
   }
 }

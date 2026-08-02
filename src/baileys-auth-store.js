@@ -21,6 +21,7 @@ class BaileysAuthStore {
         else resolve(database);
       });
     });
+    await fs.chmod(this.storagePath, 0o600);
     await this.run("PRAGMA journal_mode = WAL");
     await this.run("PRAGMA busy_timeout = 10000");
     await this.run(`
@@ -33,6 +34,11 @@ class BaileysAuthStore {
         PRIMARY KEY (category, key_type, key_id)
       )
     `);
+    await Promise.all([
+      fs.chmod(this.storagePath, 0o600),
+      fs.chmod(`${this.storagePath}-wal`, 0o600).catch(() => {}),
+      fs.chmod(`${this.storagePath}-shm`, 0o600).catch(() => {}),
+    ]);
   }
 
   run(sql, parameters = []) {

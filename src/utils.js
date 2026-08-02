@@ -125,7 +125,7 @@ function getDateTimePartsInTimezone(date = new Date(), timeZone = "Asia/Jakarta"
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
   });
 
   const parts = formatter.formatToParts(date).reduce((acc, item) => {
@@ -142,6 +142,18 @@ function getDateTimePartsInTimezone(date = new Date(), timeZone = "Asia/Jakarta"
     dateKey: `${parts.year || "0000"}-${parts.month || "00"}-${parts.day || "00"}`,
     timeKey: `${parts.hour || "00"}:${parts.minute || "00"}`,
   };
+}
+
+function isValidTimeZone(value) {
+  const timeZone = sanitizeInput(value);
+  if (!timeZone) return false;
+
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function collectSecurityWarnings() {
@@ -316,6 +328,7 @@ module.exports = {
   getDateTimePartsInTimezone,
   getPreviousBillingPeriod,
   isValidPhoneNumber,
+  isValidTimeZone,
   makeBillingPeriodKey,
   normalizePhoneNumber,
   parseBoolean,

@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 
 const fs = require("fs/promises");
 const path = require("path");
@@ -9,7 +9,7 @@ const ftp = require("basic-ftp");
 const ExcelJS = require("exceljs");
 const QRCode = require("qrcode");
 const { RouterOSClient } = require("routeros-client");
-const { Sequelize, DataTypes, Op } = require("sequelize");
+const { Sequelize, DataTypes } = require("sequelize");
 const {
   CONFIG,
   DEFAULT_SETTINGS,
@@ -42,6 +42,7 @@ const {
   getBillingPeriodParts,
   getPreviousBillingPeriod,
   isValidPhoneNumber,
+  isValidTimeZone,
   makeBillingPeriodKey,
   normalizePhoneNumber,
   parseBoolean,
@@ -428,13 +429,28 @@ class MikrotikService {
     const remoteBaseName = `reminder-bot-${timestamp}`;
     const remoteFileName = `${remoteBaseName}.rsc`;
 
-    await this.withConnection(async (conn, connectionObj) => {
-      await this.createRouterExportFile(conn, remoteBaseName);
-      await this.waitForRouterFile(conn, remoteFileName);
-      const ftpPort = await this.resolveFtpPort(conn, connectionObj.config);
-      await this.downloadRouterFile({ ...connectionObj.config, ftpPort }, remoteFileName, filePath);
-      await conn.menu("/file").where("name", remoteFileName).remove().catch(() => {});
-    });
+    try {
+      await this.withConnection(async (conn, connectionObj) => {
+        try {
+          await this.createRouterExportFile(conn, remoteBaseName);
+          await this.waitForRouterFile(conn, remoteFileName);
+          const ftpPort = await this.resolveFtpPort(conn, connectionObj.config);
+          await this.downloadRouterFile({ ...connectionObj.config, ftpPort }, remoteFileName, filePath);
+        } finally {
+          try {
+            await conn.menu("/file").where("name", remoteFileName).remove();
+          } catch (error) {
+            this.activityLog.push("warn", "mikrotik", `Gagal membersihkan file export ${remoteFileName} dari router`, {
+              error: error.message,
+            });
+          }
+        }
+      });
+      await fs.chmod(filePath, 0o600);
+    } catch (error) {
+      await fs.unlink(filePath).catch(() => {});
+      throw error;
+    }
 
     this.activityLog.push("info", "mikrotik", "Backup konfigurasi MikroTik berhasil dibuat", {
       filePath,
@@ -611,6 +627,9 @@ class DataManager {
     await this.sequelize.authenticate();
     await this.configureDatabaseConnection();
     await this.sequelize.sync();
+    if (!process.env.DATABASE_URL) {
+      await fs.chmod(CONFIG.DB_STORAGE, 0o600);
+    }
   }
 
 
@@ -1020,6 +1039,7 @@ class DataManager {
         const backupFile = path.join(backupDir, path.basename(CONFIG.DB_STORAGE));
         const escapedBackupFile = backupFile.replace(/'/g, "''");
         await this.sequelize.query(`VACUUM INTO '${escapedBackupFile}'`);
+        await fs.chmod(backupFile, 0o600);
       });
     }
 
@@ -1250,19 +1270,20 @@ class DataManager {
       if (!isValidPhoneNumber(phoneNumber)) throw new Error("Nomor kontak harus berformat 628xxx.");
       if (this.hasContactPhone(phoneNumber)) throw new Error("Nomor kontak sudah digunakan.");
 
+      const now = new Date().toISOString();
       const contact = {
-        id: String(payload.id || generateId()),
+        id: generateId(),
         name,
         phoneNumber,
-        paymentStatus: payload.paymentStatus || PAYMENT_STATUS.UNPAID,
-        paymentDate: payload.paymentStatus === PAYMENT_STATUS.PAID ? new Date().toISOString() : null,
-        paymentMonths: payload.paymentMonths || {},
+        paymentStatus: PAYMENT_STATUS.UNPAID,
+        paymentDate: null,
+        paymentMonths: {},
         linkedApHost,
         ...hotspotFields,
         hotspotLastReactivatedAt: this.normalizeOptionalDate(payload.hotspotLastReactivatedAt),
         hotspotLastDeactivatedAt: this.normalizeOptionalDate(payload.hotspotLastDeactivatedAt),
-        createdAt: payload.createdAt || new Date().toISOString(),
-        updatedAt: payload.updatedAt || new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
       };
 
       this.contacts.set(contact.id, contact);
@@ -1287,6 +1308,15 @@ class DataManager {
 
       const now = new Date().toISOString();
       let contact = this.findContactByPhone(phoneNumber);
+      const linkedApHost = payload.linkedApHost !== undefined
+        ? sanitizeInput(String(payload.linkedApHost || ""))
+        : sanitizeInput(String(contact?.linkedApHost || ""));
+      const hotspotFields = this.normalizeContactHotspotFields({
+        ...payload,
+        mikrotikUsername: username,
+        mikrotikProfile: profile,
+        mikrotikPassword: password,
+      }, contact || {});
 
       if (!contact) {
         contact = {
@@ -1296,21 +1326,18 @@ class DataManager {
           paymentStatus: PAYMENT_STATUS.UNPAID,
           paymentDate: null,
           paymentMonths: {},
-          mikrotikUsername: username,
-          mikrotikProfile: profile,
-          mikrotikPassword: password,
-          hotspotReactivationEnabled: false,
-          hotspotReactivationAt: null,
+          linkedApHost,
+          ...hotspotFields,
           hotspotLastReactivatedAt: null,
+          hotspotLastDeactivatedAt: null,
           createdAt: now,
           updatedAt: now,
         };
         this.contacts.set(contact.id, contact);
       } else {
         contact.name = name;
-        contact.mikrotikUsername = username;
-        contact.mikrotikProfile = profile;
-        contact.mikrotikPassword = password;
+        contact.linkedApHost = linkedApHost;
+        Object.assign(contact, hotspotFields);
         contact.updatedAt = now;
       }
 
@@ -1413,8 +1440,12 @@ class DataManager {
 
       const now = new Date();
       const previousSchedule = contact.hotspotReactivationAt || now.toISOString();
+      let nextSchedule = addMonthsSafely(previousSchedule, 1);
+      while (nextSchedule.getTime() <= now.getTime()) {
+        nextSchedule = addMonthsSafely(nextSchedule, 1);
+      }
       contact.hotspotLastReactivatedAt = now.toISOString();
-      contact.hotspotReactivationAt = addMonthsSafely(previousSchedule, 1).toISOString();
+      contact.hotspotReactivationAt = nextSchedule.toISOString();
       contact.mikrotikPassword = sanitizeInput(result?.password || contact.mikrotikPassword || "");
       contact.mikrotikProfile = sanitizeInput(result?.profile || contact.mikrotikProfile || "");
       contact.updatedAt = now.toISOString();
@@ -1461,14 +1492,14 @@ class DataManager {
       if (Number.isNaN(reminderDate.getTime())) throw new Error("Tanggal reminder tidak valid.");
 
       const reminder = {
-        id: String(payload.id || generateId()),
+        id: generateId(),
         contactId: String(contact.id),
         contactName: contact.name,
         phoneNumber: contact.phoneNumber,
         reminderDateTime: reminderDate.toISOString(),
         message,
         templateName: payload.templateName ? sanitizeInput(payload.templateName) : null,
-        createdAt: payload.createdAt || new Date().toISOString(),
+        createdAt: new Date().toISOString(),
       };
 
       this.reminders.set(reminder.id, reminder);
@@ -1654,6 +1685,18 @@ class DataManager {
   async updateSettings(payload) {
     return this.withDataMutation(async () => {
       const current = this.getSettings();
+      const requestedTimezone = payload.timezone !== undefined
+        ? sanitizeInput(payload.timezone)
+        : current.timezone;
+      const requestedBackupTimezone = payload.mikrotikBackupTimezone !== undefined
+        ? sanitizeInput(payload.mikrotikBackupTimezone)
+        : current.mikrotikBackupTimezone;
+      if (!isValidTimeZone(requestedTimezone)) {
+        throw new Error("Timezone aplikasi tidak valid.");
+      }
+      if (!isValidTimeZone(requestedBackupTimezone || requestedTimezone)) {
+        throw new Error("Timezone backup MikroTik tidak valid.");
+      }
       const requestedDelayMin = payload.waRandomDelayMinSeconds !== undefined
         ? sanitizePositiveInteger(payload.waRandomDelayMinSeconds, current.waRandomDelayMinSeconds, 0, 300)
         : current.waRandomDelayMinSeconds;
@@ -1688,7 +1731,7 @@ class DataManager {
               120
             )
           : (current.apDownMinimumDownMinutes || current.apDownConfirmationChecks || DEFAULT_SETTINGS.apDownMinimumDownMinutes),
-        timezone: payload.timezone !== undefined ? sanitizeInput(payload.timezone) || current.timezone : current.timezone,
+        timezone: requestedTimezone,
         autoRescheduleMonthly: payload.autoRescheduleMonthly !== undefined ? parseBoolean(payload.autoRescheduleMonthly, current.autoRescheduleMonthly) : current.autoRescheduleMonthly,
         notifyContactsOnApDown: payload.notifyContactsOnApDown !== undefined ? parseBoolean(payload.notifyContactsOnApDown, current.notifyContactsOnApDown) : current.notifyContactsOnApDown,
         notifyAdminsOnDelivery: payload.notifyAdminsOnDelivery !== undefined ? parseBoolean(payload.notifyAdminsOnDelivery, current.notifyAdminsOnDelivery) : current.notifyAdminsOnDelivery,
@@ -1702,9 +1745,7 @@ class DataManager {
         mikrotikBackupTime: payload.mikrotikBackupTime !== undefined
           ? sanitizeTimeHHMM(payload.mikrotikBackupTime, current.mikrotikBackupTime || DEFAULT_SETTINGS.mikrotikBackupTime)
           : current.mikrotikBackupTime,
-        mikrotikBackupTimezone: payload.mikrotikBackupTimezone !== undefined
-          ? sanitizeInput(payload.mikrotikBackupTimezone) || current.mikrotikBackupTimezone || current.timezone
-          : current.mikrotikBackupTimezone,
+        mikrotikBackupTimezone: requestedBackupTimezone || requestedTimezone,
         mikrotikBackupLastRunDate: payload.mikrotikBackupLastRunDate !== undefined
           ? sanitizeInput(payload.mikrotikBackupLastRunDate)
           : current.mikrotikBackupLastRunDate,
@@ -1863,21 +1904,52 @@ class DataManager {
     return contact?.paymentMonths || {};
   }
 
+  normalizePaymentSelection(status, paymentType = null) {
+    const normalizedStatus = sanitizeInput(status).toUpperCase();
+    const normalizedType = sanitizeInput(paymentType).toUpperCase() || null;
+
+    if (![PAYMENT_STATUS.PAID, PAYMENT_STATUS.UNPAID].includes(normalizedStatus)) {
+      throw new Error("Status pembayaran tidak valid.");
+    }
+    if (normalizedType && !this.getAllowedPaymentTypes().includes(normalizedType)) {
+      throw new Error("Jenis pembayaran tidak valid.");
+    }
+
+    if (normalizedStatus === PAYMENT_STATUS.PAID) {
+      if (normalizedType === PAYMENT_TYPES.ARREARS_ONLY) {
+        throw new Error("Pembayaran tunggakan saja harus membiarkan bulan berjalan berstatus belum lunas.");
+      }
+      return {
+        status: normalizedStatus,
+        paymentType: normalizedType || PAYMENT_TYPES.CURRENT_ONLY,
+      };
+    }
+
+    if (normalizedType && normalizedType !== PAYMENT_TYPES.ARREARS_ONLY) {
+      throw new Error("Status belum lunas hanya dapat digunakan tanpa jenis pembayaran atau untuk tunggakan saja.");
+    }
+
+    return { status: normalizedStatus, paymentType: normalizedType };
+  }
+
   async updatePaymentStatus(contactId, status, paymentType = null) {
     return this.withDataMutation(async () => {
       const contact = this.getContact(contactId);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
-      if (![PAYMENT_STATUS.PAID, PAYMENT_STATUS.UNPAID].includes(status)) {
-        throw new Error("Status pembayaran tidak valid.");
-      }
+      ({ status, paymentType } = this.normalizePaymentSelection(status, paymentType));
 
       const now = new Date();
       const { year, month } = getBillingPeriodParts(now);
       const currentKey = makeBillingPeriodKey(year, month);
       const previous = getPreviousBillingPeriod(year, month);
-      const previousKey = makeBillingPeriodKey(previous.year, previous.month);
       if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") {
         contact.paymentMonths = {};
+      }
+      const arrearsDebtPeriod = paymentType === PAYMENT_TYPES.ARREARS_ONLY
+        ? this.buildDebtInfo(contact, { year, month }).debtPeriods?.[0]
+        : null;
+      if (paymentType === PAYMENT_TYPES.ARREARS_ONLY && !arrearsDebtPeriod) {
+        throw new Error("Kontak tidak memiliki tunggakan yang belum dibayar.");
       }
 
       contact.paymentStatus = status;
@@ -1894,9 +1966,7 @@ class DataManager {
           };
         }
       } else if (paymentType === PAYMENT_TYPES.ARREARS_ONLY) {
-        const debtPeriod = this.buildDebtInfo(contact, { year, month }).debtPeriods?.[0]
-          || { key: previousKey };
-        contact.paymentMonths[debtPeriod.key] = {
+        contact.paymentMonths[arrearsDebtPeriod.key] = {
           status: PAYMENT_STATUS.PAID,
           paidDate: now.toISOString(),
           paymentType,
@@ -1919,9 +1989,10 @@ class DataManager {
     return this.withDataMutation(async () => {
       const contact = this.getContact(contactId);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
-      if (![PAYMENT_STATUS.PAID, PAYMENT_STATUS.UNPAID].includes(status)) {
-        throw new Error("Status pembayaran tidak valid.");
+      if (!Number.isInteger(year) || year < 2000 || year > 2100 || !Number.isInteger(month) || month < 1 || month > 12) {
+        throw new Error("Periode pembayaran tidak valid.");
       }
+      ({ status, paymentType } = this.normalizePaymentSelection(status, paymentType));
 
       if (!contact.paymentMonths) {
         contact.paymentMonths = {};
@@ -1930,7 +2001,12 @@ class DataManager {
       const key = `${year}-${String(month).padStart(2, "0")}`;
       const now = new Date();
       const previous = getPreviousBillingPeriod(year, month);
-      const previousKey = makeBillingPeriodKey(previous.year, previous.month);
+      const arrearsDebtPeriod = paymentType === PAYMENT_TYPES.ARREARS_ONLY
+        ? this.buildDebtInfo(contact, { year, month }).debtPeriods?.[0]
+        : null;
+      if (paymentType === PAYMENT_TYPES.ARREARS_ONLY && !arrearsDebtPeriod) {
+        throw new Error("Kontak tidak memiliki tunggakan yang belum dibayar.");
+      }
 
       if (paymentType === PAYMENT_TYPES.FULL_PAID) {
         const startPeriod = getContactBillingStartPeriod(contact);
@@ -1942,9 +2018,7 @@ class DataManager {
           };
         }
       } else if (paymentType === PAYMENT_TYPES.ARREARS_ONLY) {
-        const debtPeriod = this.buildDebtInfo(contact, { year, month }).debtPeriods?.[0]
-          || { key: previousKey };
-        contact.paymentMonths[debtPeriod.key] = {
+        contact.paymentMonths[arrearsDebtPeriod.key] = {
           status: PAYMENT_STATUS.PAID,
           paidDate: now.toISOString(),
           paymentType,
@@ -2033,15 +2107,45 @@ class DataManager {
     return resetCount;
   }
 
+  synchronizeCurrentPaymentStatus() {
+    const currentKey = getBillingPeriodKey();
+    let changed = 0;
+
+    for (const contact of this.contacts.values()) {
+      const currentPayment = contact.paymentMonths?.[currentKey];
+      const isPaid = currentPayment?.status === PAYMENT_STATUS.PAID;
+      const nextStatus = isPaid ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.UNPAID;
+      const nextPaymentDate = isPaid ? currentPayment.paidDate || null : null;
+      const nextPaymentType = isPaid ? currentPayment.paymentType || null : null;
+
+      if (contact.paymentStatus !== nextStatus
+        || contact.paymentDate !== nextPaymentDate
+        || contact.paymentType !== nextPaymentType) {
+        contact.paymentStatus = nextStatus;
+        contact.paymentDate = nextPaymentDate;
+        contact.paymentType = nextPaymentType;
+        contact.updatedAt = new Date().toISOString();
+        changed += 1;
+      }
+    }
+
+    return changed;
+  }
+
   async ensureMonthlyPaymentReset() {
     return this.withDataMutation(async () => {
       const currentPeriod = getBillingPeriodKey();
       const settings = this.getSettings();
 
       if (!settings.lastPaymentResetPeriod) {
+        const synchronized = this.synchronizeCurrentPaymentStatus();
         this.settings.lastPaymentResetPeriod = currentPeriod;
-        await this.saveSettings();
-        return { reset: false, initialized: true, period: currentPeriod, count: 0 };
+        await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+          const options = { transaction };
+          if (synchronized > 0) await this.saveContacts(options);
+          await this.saveSettings(options);
+        }));
+        return { reset: false, initialized: true, period: currentPeriod, count: synchronized };
       }
 
       if (settings.lastPaymentResetPeriod === currentPeriod) {
@@ -2277,7 +2381,6 @@ class WebServer {
   setupRoutes() {
     this.app.use(express.json({ limit: "1mb" }));
     this.app.use(express.urlencoded({ extended: true, limit: "1mb" }));
-    this.app.use("/public", express.static(CONFIG.PUBLIC_PATH));
 
     this.app.use((req, res, next) => {
       res.setHeader("X-Content-Type-Options", "nosniff");
@@ -2286,6 +2389,8 @@ class WebServer {
       res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
       next();
     });
+
+    this.app.use("/public", express.static(CONFIG.PUBLIC_PATH));
 
     const hasApiKeyAccess = (req) => {
       const apiKey = req.headers["x-api-key"] || req.query.api_key;
@@ -2301,7 +2406,10 @@ class WebServer {
     };
 
     const requireApiAuth = (req, res, next) => {
-      if (hasApiKeyAccess(req)) return next();
+      if (hasApiKeyAccess(req)) {
+        req.authUsingApiKey = true;
+        return next();
+      }
 
       const { session } = readSession(req);
       if (!session) {
@@ -2313,8 +2421,6 @@ class WebServer {
     };
 
     const requirePageAuth = (req, res, next) => {
-      if (hasApiKeyAccess(req)) return next();
-
       const { session } = readSession(req);
       if (!session) {
         return res.redirect("/login");
@@ -2355,14 +2461,23 @@ class WebServer {
     this.app.post("/api/auth/login", handleApi(async (req, res) => {
       const username = sanitizeInput(req.body.username);
       const password = String(req.body.password || "");
+      const attemptKey = req.ip || req.socket?.remoteAddress || "unknown";
+
+      if (this.authManager.isLoginBlocked(attemptKey)) {
+        const error = new Error("Terlalu banyak percobaan login. Coba lagi beberapa saat.");
+        error.statusCode = 429;
+        throw error;
+      }
 
       if (!this.authManager.validateCredentials(username, password)) {
+        this.authManager.recordLoginFailure(attemptKey);
         this.activityLog.push("error", "auth", `Login gagal untuk user ${username || "(kosong)"}`);
         const error = new Error("Username atau password salah.");
         error.statusCode = 401;
         throw error;
       }
 
+      this.authManager.clearLoginFailures(attemptKey);
       const { token, session } = this.authManager.createSession(username);
       const secureCookie = req.secure || req.headers["x-forwarded-proto"] === "https";
       res.setHeader("Set-Cookie", serializeCookie(CONFIG.SESSION_COOKIE_NAME, token, {
@@ -2400,9 +2515,9 @@ class WebServer {
     }));
 
     this.app.get("/api/auth/me", requireApiAuth, handleApi(async (req) => ({
-      username: req.authSession.username,
-      expiresAt: new Date(req.authSession.expiresAt).toISOString(),
-      usingApiKey: hasApiKeyAccess(req),
+      username: req.authSession?.username || null,
+      expiresAt: req.authSession ? new Date(req.authSession.expiresAt).toISOString() : null,
+      usingApiKey: Boolean(req.authUsingApiKey),
     })));
 
     this.app.get("/dashboard", requirePageAuth, async (req, res, next) => {
@@ -2507,7 +2622,12 @@ class WebServer {
 
       let persisted;
       try {
-        persisted = await this.dataManager.upsertPelangganFromRegistration(registered);
+        persisted = await this.dataManager.upsertPelangganFromRegistration({
+          ...registered,
+          linkedApHost: req.body.linkedApHost,
+          hotspotReactivationEnabled: req.body.hotspotReactivationEnabled,
+          hotspotReactivationAt: req.body.hotspotReactivationAt,
+        });
       } catch (error) {
         await this.mikrotikService.deleteHotspotUser(registered.username).catch((rollbackError) => {
           this.activityLog.push("error", "mikrotik", `Rollback user ${registered.username} gagal: ${rollbackError.message}`);
@@ -2578,12 +2698,10 @@ class WebServer {
     this.app.post("/api/contacts/:id/payment", requireApiAuth, handleApi(async (req) => {
       const status = sanitizeInput(req.body.status).toUpperCase();
       const requestedPaymentType = sanitizeInput(req.body.paymentType).toUpperCase();
-      const allowedPaymentTypes = this.dataManager.getAllowedPaymentTypes();
-      const paymentType = allowedPaymentTypes.includes(requestedPaymentType)
-        ? requestedPaymentType
-        : (status === PAYMENT_STATUS.PAID ? allowedPaymentTypes[0] : null);
+      const paymentType = requestedPaymentType || null;
       const updatedContact = await this.dataManager.updatePaymentStatus(req.params.id, status, paymentType);
-      const shouldSendPaymentNotification = status === PAYMENT_STATUS.PAID || paymentType === PAYMENT_TYPES.ARREARS_ONLY;
+      const effectivePaymentType = updatedContact.paymentType;
+      const shouldSendPaymentNotification = status === PAYMENT_STATUS.PAID || effectivePaymentType === PAYMENT_TYPES.ARREARS_ONLY;
 
       if (!shouldSendPaymentNotification) {
         return {
@@ -2594,11 +2712,11 @@ class WebServer {
 
       const transactionId = `TRX-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
       try {
-        await this.notificationBot.sendPaymentNotification(updatedContact, transactionId, paymentType);
+        await this.notificationBot.sendPaymentNotification(updatedContact, transactionId, effectivePaymentType);
         return {
           contact: updatedContact,
           transactionId,
-          paymentType,
+          paymentType: effectivePaymentType,
           notificationSent: true,
         };
       } catch (error) {
@@ -2622,13 +2740,12 @@ class WebServer {
       const month = Number(req.body.month);
       const status = sanitizeInput(req.body.status).toUpperCase();
       const paymentType = sanitizeInput(req.body.paymentType).toUpperCase();
-      if (!year || !month) throw new Error("Year dan month wajib diisi.");
       return this.dataManager.setPaymentForMonth(
         req.params.id,
         year,
         month,
         status,
-        this.dataManager.getAllowedPaymentTypes().includes(paymentType) ? paymentType : null
+        paymentType || null
       );
     }));
 
@@ -2768,13 +2885,18 @@ class WebServer {
         throw new Error("Invalid year or month");
       }
 
-      return this.dataManager.getPaymentsByMonth(year, month).map((contact) => ({
-        id: contact.id,
-        name: contact.name,
-        phoneNumber: contact.phoneNumber,
-        paymentDate: contact.paymentDate,
-        paymentStatus: contact.paymentStatus,
-      }));
+      const periodKey = makeBillingPeriodKey(year, month);
+      return this.dataManager.getPaymentsByMonth(year, month).map((contact) => {
+        const payment = contact.paymentMonths?.[periodKey] || {};
+        return {
+          id: contact.id,
+          name: contact.name,
+          phoneNumber: contact.phoneNumber,
+          paymentDate: payment.paidDate || null,
+          paymentStatus: payment.status || PAYMENT_STATUS.UNPAID,
+          paymentType: payment.paymentType || null,
+        };
+      });
     }));
   }
 
@@ -2965,5 +3087,9 @@ async function bootstrap() {
 }
 
 module.exports = {
+  DataManager,
+  MikrotikService,
+  NotificationBot,
+  WebServer,
   bootstrap,
 };
