@@ -430,7 +430,11 @@ class MikrotikService {
     try {
       await this.withConnection(async (conn, connectionObj) => {
         if (!connectionObj.config.tls) {
-          throw new Error("Backup sensitif MikroTik memerlukan koneksi API-SSL. Aktifkan MIKROTIK_TLS dan gunakan port API-SSL.");
+          this.activityLog.push(
+            "warn",
+            "mikrotik",
+            "Backup sensitif MikroTik berjalan melalui API tanpa TLS; data tidak terenkripsi di jaringan."
+          );
         }
         try {
           await this.createRouterExportFile(conn, remoteBaseName);
@@ -509,7 +513,7 @@ class MikrotikService {
       ?? response?.[0]?.ret
       ?? response?.[0]?.contents;
     if (contents === undefined || contents === null || String(contents).length === 0) {
-      throw new Error("Isi file backup MikroTik tidak dapat dibaca melalui API-SSL.");
+      throw new Error("Isi file backup MikroTik tidak dapat dibaca melalui API.");
     }
     await fs.writeFile(destinationPath, String(contents), { mode: 0o600 });
 

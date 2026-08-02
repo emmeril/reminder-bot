@@ -32,10 +32,32 @@ test("membersihkan file export di router dan file lokal saat download gagal", as
   await assert.rejects(() => fs.stat(localDirectory), { code: "ENOENT" });
 });
 
-test("menolak export sensitif melalui koneksi MikroTik tanpa TLS", async () => {
-  const service = new MikrotikService({ push() {} });
-  service.withConnection = async (operation) => operation({}, { config: { tls: null } });
-  await assert.rejects(() => service.generateDailyBackupFile(), /API-SSL/);
+test("mengizinkan export melalui API tanpa TLS dengan peringatan keamanan", async () => {
+  const logs = [];
+  const connection = {
+    menu: () => ({
+      where: () => ({ remove: async () => {} }),
+    }),
+  };
+  const service = new MikrotikService({
+    push(level, source, message) {
+      logs.push({ level, source, message });
+    },
+  });
+  service.withConnection = async (operation) => operation(connection, { config: { tls: null } });
+  service.createRouterExportFile = async () => {};
+  service.waitForRouterFile = async () => {};
+  service.downloadRouterFile = async (_connection, _remoteFile, destinationPath) => {
+    await fs.writeFile(destinationPath, "/system identity set name=router");
+  };
+
+  const backup = await service.generateDailyBackupFile();
+  try {
+    assert.match(await fs.readFile(backup.filePath, "utf8"), /system identity/);
+    assert.equal(logs.some((entry) => entry.level === "warn" && /tanpa TLS/.test(entry.message)), true);
+  } finally {
+    await backup.cleanup();
+  }
 });
 
 test("membaca isi export melalui perintah file get API", async () => {
