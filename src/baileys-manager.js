@@ -147,6 +147,13 @@ class BaileysManager {
     return error?.output?.statusCode || error?.data?.statusCode || error?.statusCode || null;
   }
 
+  static isInvalidAuthDisconnect(disconnectCode) {
+    const reasons = this.baileys?.DisconnectReason || {};
+    return [reasons.loggedOut, reasons.badSession, reasons.multideviceMismatch]
+      .filter((reason) => reason != null)
+      .includes(disconnectCode);
+  }
+
   static async handleConnectionUpdate(update, socket, generation) {
     if (generation !== this.connectionGeneration) return;
 
@@ -190,15 +197,15 @@ class BaileysManager {
     if (this.socket === socket) this.socket = null;
     const disconnectCode = this.getDisconnectCode(update.lastDisconnect);
     const disconnectMessage = update.lastDisconnect?.error?.message || null;
-    const loggedOut = disconnectCode === this.baileys.DisconnectReason?.loggedOut;
+    const invalidAuth = this.isInvalidAuthDisconnect(disconnectCode);
     const canReconnect = !this.shuttingDown
       && this.reconnectAttempts < Math.max(0, CONFIG.MAX_RECONNECT_ATTEMPTS);
 
-    if (loggedOut && canReconnect) {
+    if (invalidAuth && canReconnect) {
       await this.resetAuthState();
       this.updateConnection({
         connected: false,
-        detail: "Sesi Baileys tidak valid; menyiapkan pairing WhatsApp baru",
+        detail: "Sesi Baileys tidak valid; menyiapkan QR pairing WhatsApp baru",
         state: "RECONNECTING",
         qr: null,
         device: null,
@@ -209,10 +216,10 @@ class BaileysManager {
 
     this.updateConnection({
       connected: false,
-      detail: loggedOut
-        ? "Sesi Baileys keluar. Hubungkan ulang WhatsApp."
+      detail: invalidAuth
+        ? "Sesi Baileys tidak valid. Hapus sesi lalu hubungkan ulang WhatsApp."
         : `${canReconnect ? "Koneksi Baileys terputus; menjadwalkan reconnect" : "Koneksi Baileys terputus"}${disconnectMessage ? `: ${disconnectMessage}` : ""}`,
-      state: loggedOut ? "LOGGED_OUT" : (canReconnect ? "RECONNECTING" : "DISCONNECTED"),
+      state: invalidAuth ? "AUTH_INVALID" : (canReconnect ? "RECONNECTING" : "DISCONNECTED"),
       qr: null,
     });
 

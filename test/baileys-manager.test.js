@@ -83,6 +83,21 @@ test("menonaktifkan pairing code agar koneksi hanya melalui QR", async () => {
   );
 });
 
+test("menganggap sesi rusak sebagai auth invalid agar QR baru dapat dibuat", () => {
+  BaileysManager.baileys = {
+    DisconnectReason: {
+      loggedOut: 401,
+      badSession: 500,
+      multideviceMismatch: 411,
+    },
+  };
+
+  assert.equal(BaileysManager.isInvalidAuthDisconnect(401), true);
+  assert.equal(BaileysManager.isInvalidAuthDisconnect(500), true);
+  assert.equal(BaileysManager.isInvalidAuthDisconnect(411), true);
+  assert.equal(BaileysManager.isInvalidAuthDisconnect(408), false);
+});
+
 test("menormalkan rentang jeda yang tertukar", () => {
   const originalRandom = Math.random;
   try {
