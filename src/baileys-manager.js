@@ -71,6 +71,10 @@ class BaileysManager {
     };
   }
 
+  static hasIncompletePairing(creds) {
+    return Boolean(creds?.me && creds.registered === false && !creds.account);
+  }
+
   static async initialize() {
     if (!this.isConfigured()) {
       this.updateConnection({
@@ -93,7 +97,11 @@ class BaileysManager {
     const baileys = await this.loadBaileys();
     if (!this.authStore) {
       this.authStore = new BaileysAuthStore(CONFIG.BAILEYS_AUTH_STORAGE);
-      const auth = await this.authStore.initialize(baileys);
+      let auth = await this.authStore.initialize(baileys);
+      if (this.hasIncompletePairing(auth.state.creds)) {
+        await this.authStore.clear();
+        auth = await this.authStore.initialize(baileys);
+      }
       this.authState = auth.state;
       this.saveCreds = auth.saveCreds;
     }

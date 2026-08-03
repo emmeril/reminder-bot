@@ -83,6 +83,17 @@ test("menonaktifkan pairing code agar koneksi hanya melalui QR", async () => {
   );
 });
 
+test("mendeteksi state setengah pairing yang mencegah QR baru", () => {
+  assert.equal(BaileysManager.hasIncompletePairing({ registered: false }), false);
+  assert.equal(BaileysManager.hasIncompletePairing({ registered: true, me: { id: "6281@s.whatsapp.net" } }), false);
+  assert.equal(BaileysManager.hasIncompletePairing({ registered: false, me: { id: "6281@s.whatsapp.net" } }), true);
+  assert.equal(BaileysManager.hasIncompletePairing({
+    registered: false,
+    me: { id: "6281@s.whatsapp.net" },
+    account: { details: "paired" },
+  }), false);
+});
+
 test("menganggap sesi rusak sebagai auth invalid agar QR baru dapat dibuat", () => {
   BaileysManager.baileys = {
     DisconnectReason: {
