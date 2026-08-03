@@ -312,6 +312,19 @@ main > section {
   padding-bottom: 0.15rem;
 }
 
+.overflow-x-auto,
+.filter-inline {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.overflow-x-auto::-webkit-scrollbar,
+.filter-inline::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 .filter-inline > * {
   flex: 0 0 auto;
 }
@@ -351,14 +364,7 @@ main > section:hover {
     position: sticky;
     top: 1.25rem;
     align-self: start;
-    max-height: calc(100dvh - 2.5rem);
-    overflow-y: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-
-  aside.hidden.xl\:flex::-webkit-scrollbar {
-    display: none;
+    background: transparent;
   }
 
   .dashboard-table th,
@@ -450,15 +456,15 @@ main > section:hover {
   }
 
   .mobile-nav-panel > div,
-  .filter-inline,
   .mobile-actions-panel > div {
     scrollbar-width: none;
     -ms-overflow-style: none;
   }
 
   .mobile-nav-panel > div::-webkit-scrollbar,
-  .filter-inline::-webkit-scrollbar,
   .mobile-actions-panel > div::-webkit-scrollbar {
+    width: 0;
+    height: 0;
     display: none;
   }
 
@@ -688,6 +694,19 @@ main > section:hover {
     overflow-y: auto;
     border-radius: 1.15rem !important;
     padding: 1rem !important;
+  }
+
+  [class*="fixed inset-0 z-[60]"],
+  [class*="fixed inset-0 z-[60]"] > div[class*="max-w-"] {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  [class*="fixed inset-0 z-[60]"]::-webkit-scrollbar,
+  [class*="fixed inset-0 z-[60]"] > div[class*="max-w-"]::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
   }
 
   .backdrop-blur-xl {
