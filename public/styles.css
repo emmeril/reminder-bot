@@ -353,7 +353,12 @@ main > section:hover {
     align-self: start;
     max-height: calc(100dvh - 2.5rem);
     overflow-y: auto;
-    scrollbar-gutter: stable;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  aside.hidden.xl\:flex::-webkit-scrollbar {
+    display: none;
   }
 
   .dashboard-table th,
@@ -442,6 +447,13 @@ main > section:hover {
     padding-bottom: 0.1rem;
     scroll-snap-type: x proximity;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-nav-panel > div,
+  .filter-inline,
+  .mobile-actions-panel > div {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
 
   .mobile-nav-panel > div::-webkit-scrollbar,
@@ -639,10 +651,6 @@ main > section:hover {
   button[aria-label="Toggle actions"] {
     font-size: 1rem;
     line-height: 1;
-  }
-
-  .quick-action {
-    min-height: 2.8rem;
   }
 
   .filter-inline {
