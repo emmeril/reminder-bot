@@ -37,6 +37,9 @@ beforeEach(() => {
 
 afterEach(() => {
   Object.assign(CONFIG, originalConfig);
+  if (BaileysManager.reconnectTimer) clearTimeout(BaileysManager.reconnectTimer);
+  BaileysManager.reconnectTimer = null;
+  BaileysManager.pairingReset = null;
   BaileysManager.socket = null;
   BaileysManager.authState = null;
 });
@@ -81,6 +84,49 @@ test("menonaktifkan pairing code agar koneksi hanya melalui QR", async () => {
     () => BaileysManager.requestPairingCode("6281234567890"),
     /Pairing code dinonaktifkan.*QR/
   );
+});
+
+test("mereset pairing dan membuka socket baru tanpa restart aplikasi", async () => {
+  const originalInitialize = BaileysManager.initialize;
+  const originalAuthStore = BaileysManager.authStore;
+  const originalBaileys = BaileysManager.baileys;
+  let socketEnded = false;
+  let authCleared = false;
+  let initialized = false;
+  const freshState = { creds: { registered: false } };
+
+  BaileysManager.baileys = {};
+  BaileysManager.socket = {
+    end() {
+      socketEnded = true;
+    },
+  };
+  BaileysManager.authStore = {
+    async clear() {
+      authCleared = true;
+    },
+    async initialize() {
+      return { state: freshState, saveCreds: async () => {} };
+    },
+  };
+  BaileysManager.initialize = async () => {
+    initialized = true;
+    return BaileysManager.connectionCache;
+  };
+
+  try {
+    await BaileysManager.resetPairing();
+  } finally {
+    BaileysManager.initialize = originalInitialize;
+    BaileysManager.authStore = originalAuthStore;
+    BaileysManager.baileys = originalBaileys;
+  }
+
+  assert.equal(socketEnded, true);
+  assert.equal(authCleared, true);
+  assert.equal(initialized, true);
+  assert.equal(BaileysManager.authState, freshState);
+  assert.equal(BaileysManager.connectionCache.state, "RECONNECTING");
 });
 
 test("mendeteksi state setengah pairing yang mencegah QR baru", () => {

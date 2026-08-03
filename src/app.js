@@ -2733,6 +2733,16 @@ class WebServer {
         next(error);
       }
     });
+    this.app.post("/transport/reset-pairing", requirePageAuth, async (req, res) => {
+      try {
+        await BaileysManager.resetPairing();
+        this.activityLog.push("info", "notification", "Pairing Baileys direset tanpa restart aplikasi");
+        return res.redirect("/transport?pairingReset=1");
+      } catch (error) {
+        this.activityLog.push("error", "notification", `Gagal mereset pairing Baileys: ${error.message}`);
+        return res.redirect(`/transport?error=${encodeURIComponent(error.message)}`);
+      }
+    });
     this.app.get("/transport", requirePageAuth, async (req, res) => {
       const status = await this.notificationBot.getTransportStatus();
       if (status.deviceReady) {
@@ -2749,6 +2759,8 @@ class WebServer {
         const qrDataUrl = status.currentQR
           ? await QRCode.toDataURL(status.currentQR, { width: 320, margin: 2, errorCorrectionLevel: "M" })
           : null;
+        const pairingReset = req.query.pairingReset === "1";
+        const error = sanitizeInput(req.query.error);
         return res.status(503).send(`
           <!doctype html>
           <html lang="id">
@@ -2757,7 +2769,17 @@ class WebServer {
               <main style="width:min(92vw,520px);padding:28px;border-radius:24px;background:#fff;box-shadow:0 24px 70px rgba(24,63,69,.18);text-align:center;">
                 <h1 style="margin:0 0 8px;font-size:1.8rem;">Pindai QR WhatsApp</h1>
                 <p style="margin:0 0 20px;line-height:1.5;">${escapeHtml(status.transportError || "Buka Perangkat tertaut pada WhatsApp.")}</p>
+                ${pairingReset ? '<p style="padding:10px;border-radius:12px;background:#e6f4ea;color:#17603a;font:600 14px/1.5 sans-serif;">Pairing direset. QR baru sedang disiapkan.</p>' : ""}
+                ${error ? `<p style="padding:10px;border-radius:12px;background:#fee2e2;color:#991b1b;font:600 14px/1.5 sans-serif;">${escapeHtml(error)}</p>` : ""}
                 ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR pairing WhatsApp" width="320" height="320" style="max-width:100%;height:auto;border-radius:16px;">` : ""}
+                ${qrDataUrl ? "" : `
+                  <div style="margin:18px 0;padding:16px;border-radius:16px;background:#f4f5ef;font:14px/1.6 sans-serif;color:#627773;">
+                    QR belum tersedia atau socket sedang macet. Buat QR baru tanpa me-restart aplikasi.
+                  </div>
+                  <form method="post" action="/transport/reset-pairing" style="margin:0;">
+                    <button type="submit" style="padding:13px 20px;border:0;border-radius:999px;background:#176b5b;color:#fff;font:700 14px/1 sans-serif;cursor:pointer;">Buat QR Baru</button>
+                  </form>
+                `}
                 <p style="margin:18px 0 0;font:14px/1.6 sans-serif;color:#627773;">Di WhatsApp buka <strong>Perangkat tertaut</strong>, pilih <strong>Tautkan perangkat</strong>, lalu pindai QR. Koneksi melalui nomor atau pairing code dinonaktifkan.</p>
                 <p style="margin:10px 0 0;font:13px/1.5 sans-serif;color:#879895;">Halaman diperbarui otomatis setiap 5 detik.</p>
               </main>

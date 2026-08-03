@@ -29,6 +29,8 @@ class BaileysManager {
 
   static reconnectTimer = null;
 
+  static pairingReset = null;
+
   static reconnectAttempts = 0;
 
   static connectionGeneration = 0;
@@ -269,6 +271,51 @@ class BaileysManager {
     throw new Error("Pairing code dinonaktifkan. Hubungkan WhatsApp dengan memindai QR.");
   }
 
+  static async resetPairing() {
+    if (!this.isConfigured()) throw new Error("Baileys dinonaktifkan");
+    if (this.pairingReset) return this.pairingReset;
+
+    this.pairingReset = (async () => {
+      if (this.initialization) await this.initialization.catch(() => {});
+      if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+      this.shuttingDown = false;
+      this.reconnectAttempts = 0;
+      this.connectionGeneration += 1;
+
+      const socket = this.socket;
+      this.socket = null;
+      if (socket?.end) {
+        try {
+          socket.end(new Error("Pairing WhatsApp direset dari halaman transport"))?.catch?.(() => {});
+        } catch {}
+      }
+
+      const baileys = await this.loadBaileys();
+      if (!this.authStore) {
+        this.authStore = new BaileysAuthStore(CONFIG.BAILEYS_AUTH_STORAGE);
+      }
+      await this.authStore.clear();
+      const auth = await this.authStore.initialize(baileys);
+      this.authState = auth.state;
+      this.saveCreds = auth.saveCreds;
+      this.updateConnection({
+        connected: false,
+        detail: "Menyiapkan QR pairing WhatsApp baru",
+        state: "RECONNECTING",
+        qr: null,
+        device: null,
+      });
+
+      await this.initialize();
+      return this.connectionCache;
+    })().finally(() => {
+      this.pairingReset = null;
+    });
+
+    return this.pairingReset;
+  }
+
   static async checkConnection(force = false) {
     if (!this.isConfigured()) return this.connectionCache;
     if (!this.socket && !this.initialization) await this.initialize();
@@ -440,6 +487,7 @@ class BaileysManager {
     this.authStore = null;
     this.authState = null;
     this.saveCreds = null;
+    this.pairingReset = null;
   }
 }
 
