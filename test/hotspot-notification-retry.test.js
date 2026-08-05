@@ -51,3 +51,49 @@ test("menyimpan dan mencoba ulang notifikasi kredensial tanpa reaktivasi router 
   assert.equal(sendCalls, 2);
   assert.equal(manager.getContact(contact.id).hotspotNotificationPending, null);
 });
+
+test("menyelesaikan semua pekerjaan router sebelum memproses notifikasi WA", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.saveContacts = async () => {};
+  const contacts = ["satu", "dua"].map((name, index) => ({
+    id: `contact-${name}`,
+    name,
+    phoneNumber: `628123456789${index}`,
+    mikrotikUsername: name,
+    mikrotikPassword: "secret",
+    mikrotikProfile: "100M",
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: new Date(Date.now() - 60_000).toISOString(),
+    paymentMonths: {},
+    createdAt: new Date().toISOString(),
+  }));
+  for (const contact of contacts) manager.contacts.set(contact.id, contact);
+
+  let routerCalls = 0;
+  const routerCallsObservedByWa = [];
+  const scheduler = new HotspotReactivationScheduler(
+    {
+      async reactivateHotspotUser(payload) {
+        routerCalls += 1;
+        return { ...payload, activeSessionsKilled: 0, removedUsers: 1 };
+      },
+    },
+    manager,
+    { push() {} },
+    {
+      async sendMessage() {
+        routerCallsObservedByWa.push(routerCalls);
+        throw new Error("WhatsApp sedang gagal");
+      },
+    }
+  );
+
+  const results = await scheduler.processDueReactivations();
+
+  assert.equal(routerCalls, 2);
+  assert.deepEqual(routerCallsObservedByWa, [2, 2]);
+  assert.equal(
+    results.filter((item) => item.action === "reactivate" && item.status === "success").length,
+    2
+  );
+});

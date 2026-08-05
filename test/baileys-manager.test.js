@@ -79,6 +79,24 @@ test("menolak nomor yang tidak terdaftar di WhatsApp tanpa retry", async () => {
   assert.equal(BaileysManager.failedQueue, 1);
 });
 
+test("batas percobaan per pesan dapat menonaktifkan retry bawaan", async () => {
+  let attempts = 0;
+  CONFIG.WA_RETRY_MAX_ATTEMPTS = 3;
+  BaileysManager.socket = {
+    onWhatsApp: async () => [{ exists: true, jid: "6281234567890@s.whatsapp.net" }],
+    sendMessage: async () => {
+      attempts += 1;
+      throw new Error("koneksi sementara gagal");
+    },
+  };
+
+  await assert.rejects(
+    () => BaileysManager.sendMessage("6281234567890", "Halo", { maxAttempts: 1 }),
+    /koneksi sementara gagal/
+  );
+  assert.equal(attempts, 1);
+});
+
 test("menonaktifkan pairing code agar koneksi hanya melalui QR", async () => {
   await assert.rejects(
     () => BaileysManager.requestPairingCode("6281234567890"),

@@ -363,7 +363,10 @@ class BaileysManager {
   }
 
   static async sendWithRetry(number, message, options = {}) {
-    const maximumAttempts = Math.max(1, Math.floor(CONFIG.WA_RETRY_MAX_ATTEMPTS));
+    const requestedMaximumAttempts = Number(options.maxAttempts);
+    const maximumAttempts = Number.isFinite(requestedMaximumAttempts)
+      ? Math.max(1, Math.floor(requestedMaximumAttempts))
+      : Math.max(1, Math.floor(CONFIG.WA_RETRY_MAX_ATTEMPTS));
     const selectedDelay = this.getRandomDelayMs(options);
     const remainingDelay = Math.max(0, selectedDelay - (Date.now() - this.lastSentAt));
     if (remainingDelay > 0) await sleep(remainingDelay);

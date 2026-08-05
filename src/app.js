@@ -895,7 +895,6 @@ class DataManager {
 
     this.normalizeLoadedContacts();
     await this.normalizeReminderRelations();
-    await this.requeueFailedSentReminders();
     await this.cleanupSentHistory();
     this.activityLog.push("info", "boot", "Data load complete", {
       contacts: this.contacts.size,
@@ -1565,6 +1564,7 @@ class DataManager {
       contact.hotspotLastDeactivatedAt = now.toISOString();
       contact.hotspotReactivationEnabled = false;
       contact.hotspotReactivationAt = null;
+      contact.hotspotNotificationPending = null;
       contact.updatedAt = now.toISOString();
 
       await this.saveContacts(options);
@@ -1776,37 +1776,6 @@ class DataManager {
       reminder.nextDeliveryAttemptAt = new Date(nextAttemptAt).toISOString();
       await this.saveReminders();
       return this.hydrateReminder(reminder);
-    });
-  }
-
-  async requeueFailedSentReminders() {
-    return this.withDataMutation(async () => {
-      const failedReminders = Array.from(this.sentReminders.values()).filter(
-        (reminder) => String(reminder.deliveryStatus || "").toUpperCase() === "FAILED"
-      );
-      if (failedReminders.length === 0) return 0;
-
-      for (const failedReminder of failedReminders) {
-        const reminder = { ...failedReminder };
-        reminder.deliveryAttempts = Math.max(1, Number(reminder.deliveryAttempts) || 1);
-        reminder.lastDeliveryError = reminder.deliveryError || reminder.lastDeliveryError || "Pengiriman sebelumnya gagal";
-        reminder.lastDeliveryAttemptAt = reminder.sentAt || reminder.lastDeliveryAttemptAt || new Date().toISOString();
-        reminder.nextDeliveryAttemptAt = new Date().toISOString();
-        delete reminder.sentAt;
-        delete reminder.deliveryStatus;
-        delete reminder.deliveryError;
-        delete reminder.processingAt;
-        this.reminders.set(String(reminder.id), reminder);
-        this.sentReminders.delete(String(reminder.id));
-      }
-
-      await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
-        const options = { transaction };
-        await this.saveReminders(options);
-        await this.saveSentReminders(options);
-      }));
-      this.activityLog.push("info", "scheduler", `${failedReminders.length} reminder gagal dimasukkan kembali ke antrean retry otomatis`);
-      return failedReminders.length;
     });
   }
 
@@ -2382,7 +2351,7 @@ class NotificationBot {
     this.activityLog.push("warn", "notification", "Baileys dinonaktifkan; reminder/notifikasi WhatsApp tidak akan dikirim");
   }
 
-  async sendMessage(phoneNumber, message) {
+  async sendMessage(phoneNumber, message, options = {}) {
     if (!BaileysManager.isConfigured()) {
       throw new Error("Baileys dinonaktifkan. Aktifkan BAILEYS_ENABLED untuk mengirim WhatsApp.");
     }
@@ -2391,6 +2360,7 @@ class NotificationBot {
     const result = await BaileysManager.sendMessage(phoneNumber, message, {
       minDelayMs: Math.max(0, Number(settings.waRandomDelayMinSeconds) || 0) * 1000,
       maxDelayMs: Math.max(0, Number(settings.waRandomDelayMaxSeconds) || 0) * 1000,
+      ...options,
     });
     this.activityLog.push("info", "notification", `Pesan terkirim via ${result.provider} ke ${normalizePhoneNumber(phoneNumber)}`, {
       phoneNumber: normalizePhoneNumber(phoneNumber),
@@ -2418,7 +2388,7 @@ class NotificationBot {
 
     for (const phoneNumber of recipients) {
       try {
-        await this.sendMessage(phoneNumber, message);
+        await this.sendMessage(phoneNumber, message, options.messageOptions || {});
         results.push({ phoneNumber, status: "sent" });
       } catch (error) {
         results.push({ phoneNumber, status: "failed", error: error.message });
@@ -2460,7 +2430,7 @@ class NotificationBot {
     return results;
   }
 
-  async sendPaymentNotification(contact, transactionId, paymentType = "DEFAULT") {
+  async sendPaymentNotification(contact, transactionId, paymentType = "DEFAULT", options = {}) {
     const paymentDate = contact.paymentDate ? new Date(contact.paymentDate) : new Date();
     const formattedDate = paymentDate.toLocaleString("id-ID", {
       day: "2-digit",
@@ -2508,7 +2478,7 @@ class NotificationBot {
       .replace(/{{\s*companyNameUpper\s*}}/gi, companyName.toUpperCase())
       .replace(/{{\s*supportSignature\s*}}/gi, supportSignature);
 
-    await this.sendMessage(contact.phoneNumber, message);
+    await this.sendMessage(contact.phoneNumber, message, options);
     this.activityLog.push("info", "payment", `Notifikasi pembayaran terkirim ke ${contact.phoneNumber}`, {
       transactionId,
       contactId: contact.id,
@@ -2852,7 +2822,7 @@ class WebServer {
       if (parseBoolean(req.body.sendCredentials) && this.notificationBot.getStatus().whatsappProviderEnabled) {
         const message = `Yth. Bapak/Ibu *${registered.name}*,\n\nAkun hotspot Anda sudah berhasil dibuat.\n\nDetail Akun Hotspot:\n*Username:* ${registered.username}\n*Password:* ${registered.password}\n*Profile:* ${registered.profile}\n\nSilakan simpan data ini. Terimakasih.`;
         try {
-          await this.notificationBot.sendMessage(registered.phoneNumber, message);
+          await this.notificationBot.sendMessage(registered.phoneNumber, message, { maxAttempts: 1 });
           notification = { sent: true };
         } catch (error) {
           notification = { sent: false, error: error.message };
@@ -2931,7 +2901,9 @@ class WebServer {
 
       const transactionId = `TRX-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
       try {
-        await this.notificationBot.sendPaymentNotification(updatedContact, transactionId, effectivePaymentType);
+        await this.notificationBot.sendPaymentNotification(updatedContact, transactionId, effectivePaymentType, {
+          maxAttempts: 1,
+        });
         return {
           contact: this.dataManager.toPublicContact(updatedContact),
           transactionId,
@@ -3191,7 +3163,26 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
     body += "\n\nTidak ada tunggakan dari periode sebelumnya.";
   }
 
-  await notificationBot.sendAdminBroadcast("Reset pembayaran bulanan", body);
+  await notificationBot.sendAdminBroadcast("Reset pembayaran bulanan", body, {
+    messageOptions: { maxAttempts: 1 },
+  });
+}
+
+async function runScheduledTasks(tasks, activityLog) {
+  const results = await Promise.allSettled(
+    tasks.map((task) => Promise.resolve().then(() => task.run()))
+  );
+
+  results.forEach((result, index) => {
+    if (result.status !== "rejected") return;
+    const errorMessage = result.reason?.message || String(result.reason);
+    activityLog.push("error", "scheduler", `Scheduled task ${tasks[index].name} failed: ${errorMessage}`, {
+      task: tasks[index].name,
+      error: errorMessage,
+    });
+  });
+
+  return results;
 }
 
 // ===============================
@@ -3247,17 +3238,15 @@ async function bootstrap() {
   await sendMonthlyResetNotification(notificationBot, dataManager, activityLog);
 
   cron.schedule(CONFIG.CRON_SCHEDULE, () => {
-    Promise.all([
-      reminderScheduler.processDueReminders(),
-      apDownNotifier.processNetwatchChanges(),
-      whatsappProviderStatusNotifier.processStatusChanges(),
-      mikrotikBackupScheduler.processDailyBackup(),
-      databaseBackupScheduler.processDailyBackup(),
-      hotspotReactivationScheduler.processDueReactivations(),
-      sendMonthlyResetNotification(notificationBot, dataManager, activityLog),
-    ]).catch((error) => {
-      activityLog.push("error", "scheduler", `Cron execution failed: ${error.message}`);
-    });
+    void runScheduledTasks([
+      { name: "reminders", run: () => reminderScheduler.processDueReminders() },
+      { name: "ap-monitor", run: () => apDownNotifier.processNetwatchChanges() },
+      { name: "whatsapp-provider-status", run: () => whatsappProviderStatusNotifier.processStatusChanges() },
+      { name: "mikrotik-backup", run: () => mikrotikBackupScheduler.processDailyBackup() },
+      { name: "database-backup", run: () => databaseBackupScheduler.processDailyBackup() },
+      { name: "hotspot-reactivation", run: () => hotspotReactivationScheduler.processDueReactivations() },
+      { name: "monthly-payment-reset", run: () => sendMonthlyResetNotification(notificationBot, dataManager, activityLog) },
+    ], activityLog);
   });
 
   cron.schedule(CONFIG.SENT_HISTORY_CLEANUP_SCHEDULE, () => {
@@ -3319,4 +3308,5 @@ module.exports = {
   NotificationBot,
   WebServer,
   bootstrap,
+  runScheduledTasks,
 };
