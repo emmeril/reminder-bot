@@ -73,6 +73,10 @@ class ReminderScheduler {
       this.activityLog.push("info", "scheduler", "Skipping run because no WhatsApp provider is configured");
       return;
     }
+    if (!status.isAvailable || status.outboundEnabled !== true) {
+      this.activityLog.push("info", "scheduler", "Skipping run because WhatsApp is not ready or outbound delivery is paused");
+      return;
+    }
 
     this.isProcessing = true;
 
@@ -129,7 +133,6 @@ class ReminderScheduler {
               deliveryError: errorMessage,
             });
             claimedReminderId = null;
-            await this.rescheduleMonthlyReminder(reminder, "FAILED");
             this.activityLog.push("error", "delivery", `Failed to send reminder ${reminder.id}: ${errorMessage}`, {
               reminderId: reminder.id,
               error: errorMessage,

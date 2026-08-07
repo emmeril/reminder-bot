@@ -2338,7 +2338,7 @@ class NotificationBot {
   async initialize() {
     if (BaileysManager.isConfigured()) {
       await BaileysManager.initialize();
-      await BaileysManager.checkConnection(true);
+      await BaileysManager.checkConnection();
       const status = BaileysManager.getStatus();
       const level = status.isAvailable ? "info" : "warn";
       const message = status.isAvailable
@@ -2713,14 +2713,47 @@ class WebServer {
         return res.redirect(`/transport?error=${encodeURIComponent(error.message)}`);
       }
     });
+    this.app.post("/transport/enable-sending", requirePageAuth, async (req, res) => {
+      try {
+        BaileysManager.enableOutbound();
+        this.activityLog.push("info", "notification", "Pengiriman WhatsApp diaktifkan manual dari halaman transport");
+        return res.redirect("/transport?sendingEnabled=1");
+      } catch (error) {
+        this.activityLog.push("error", "notification", `Gagal mengaktifkan pengiriman WhatsApp: ${error.message}`);
+        return res.redirect(`/transport?error=${encodeURIComponent(error.message)}`);
+      }
+    });
+    this.app.post("/transport/disable-sending", requirePageAuth, (req, res) => {
+      BaileysManager.disableOutbound();
+      this.activityLog.push("info", "notification", "Pengiriman WhatsApp dijeda manual dari halaman transport");
+      return res.redirect("/transport?sendingDisabled=1");
+    });
     this.app.get("/transport", requirePageAuth, async (req, res) => {
       const status = await this.notificationBot.getTransportStatus();
       if (status.deviceReady) {
+        const sendingEnabled = req.query.sendingEnabled === "1";
+        const sendingDisabled = req.query.sendingDisabled === "1";
+        const error = sanitizeInput(req.query.error);
         return res.send(`
-          <html><body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#f4f5ef;font-family:Georgia,serif;">
-            <div style="padding:28px 34px;border-radius:20px;background:white;box-shadow:0 20px 60px rgba(0,0,0,.12);color:#204b57;font-size:1.3rem;">
-              WhatsApp siap melalui Baileys${status.account ? ` (${escapeHtml(status.account)})` : ""}.
-            </div>
+          <!doctype html>
+          <html><body style="display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f4f5ef;font-family:Georgia,serif;">
+            <main style="width:min(92vw,520px);padding:28px 34px;border-radius:20px;background:white;box-shadow:0 20px 60px rgba(0,0,0,.12);color:#204b57;text-align:center;">
+              <h1 style="margin:0 0 12px;font-size:1.5rem;">WhatsApp terhubung${status.account ? ` (${escapeHtml(status.account)})` : ""}</h1>
+              ${sendingEnabled ? '<p style="padding:10px;border-radius:12px;background:#e6f4ea;color:#17603a;">Pengiriman WhatsApp sudah diaktifkan.</p>' : ""}
+              ${sendingDisabled ? '<p style="padding:10px;border-radius:12px;background:#fff4ce;color:#775b00;">Pengiriman WhatsApp sudah dijeda.</p>' : ""}
+              ${error ? `<p style="padding:10px;border-radius:12px;background:#fee2e2;color:#991b1b;">${escapeHtml(error)}</p>` : ""}
+              <p style="margin:0 0 18px;line-height:1.6;">Status pengiriman: <strong>${status.outboundEnabled ? "AKTIF" : "DIJEDA"}</strong>.</p>
+              ${status.outboundEnabled ? `
+                <form method="post" action="/transport/disable-sending">
+                  <button type="submit" style="padding:13px 20px;border:0;border-radius:999px;background:#9a3412;color:#fff;font-weight:700;cursor:pointer;">Jeda Pengiriman</button>
+                </form>
+              ` : `
+                <p style="font:14px/1.6 sans-serif;color:#627773;">Pairing saja tidak akan mengirim pesan. Periksa antrean reminder sebelum mengaktifkan pengiriman.</p>
+                <form method="post" action="/transport/enable-sending">
+                  <button type="submit" style="padding:13px 20px;border:0;border-radius:999px;background:#176b5b;color:#fff;font-weight:700;cursor:pointer;">Aktifkan Pengiriman</button>
+                </form>
+              `}
+            </main>
           </body></html>
         `);
       }

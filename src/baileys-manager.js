@@ -47,6 +47,10 @@ class BaileysManager {
 
   static lastActivity = null;
 
+  // Pengiriman selalu terkunci ketika proses baru dimulai atau pairing baru
+  // dibuat. Operator harus mengaktifkannya secara eksplisit dari /transport.
+  static outboundEnabled = false;
+
   static connectionCache = {
     checkedAt: 0,
     connected: false,
@@ -168,6 +172,7 @@ class BaileysManager {
     if (generation !== this.connectionGeneration) return;
 
     if (update.qr) {
+      this.outboundEnabled = false;
       this.updateConnection({
         connected: false,
         detail: "Pindai QR WhatsApp pada halaman status transport",
@@ -238,11 +243,11 @@ class BaileysManager {
 
   static async resetAuthState() {
     this.connectionGeneration += 1;
+    this.outboundEnabled = false;
     await this.authStore.clear();
     const auth = await this.authStore.initialize(this.baileys);
     this.authState = auth.state;
     this.saveCreds = auth.saveCreds;
-    this.reconnectAttempts = 0;
   }
 
   static scheduleReconnect() {
@@ -280,6 +285,7 @@ class BaileysManager {
       if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
       this.shuttingDown = false;
+      this.outboundEnabled = false;
       this.reconnectAttempts = 0;
       this.connectionGeneration += 1;
 
@@ -316,14 +322,24 @@ class BaileysManager {
     return this.pairingReset;
   }
 
-  static async checkConnection(force = false) {
+  static async checkConnection() {
     if (!this.isConfigured()) return this.connectionCache;
     if (!this.socket && !this.initialization) await this.initialize();
-    if (force && this.connectionCache.connected && this.socket?.sendPresenceUpdate) {
-      await this.socket.sendPresenceUpdate("available").catch(() => {});
-      await this.socket.sendPresenceUpdate("unavailable").catch(() => {});
-    }
     return this.connectionCache;
+  }
+
+  static enableOutbound() {
+    if (!this.isConfigured()) throw new Error("Baileys dinonaktifkan");
+    if (!this.connectionCache.connected || !this.socket) {
+      throw new Error("WhatsApp belum terhubung; pengiriman belum dapat diaktifkan");
+    }
+    this.outboundEnabled = true;
+    return this.getStatus();
+  }
+
+  static disableOutbound() {
+    this.outboundEnabled = false;
+    return this.getStatus();
   }
 
   static normalizeDelayRange(options = {}) {
@@ -404,6 +420,9 @@ class BaileysManager {
 
   static async sendRequest(number, message) {
     if (!this.isConfigured()) throw new Error("Baileys dinonaktifkan");
+    if (!this.outboundEnabled) {
+      throw new Error("Pengiriman WhatsApp belum diaktifkan dari halaman transport");
+    }
 
     const normalized = normalizePhoneNumber(number);
     if (!isValidPhoneNumber(normalized)) throw new Error("Invalid target phone number");
@@ -455,6 +474,8 @@ class BaileysManager {
       state: this.connectionCache.state,
       isAvailable: this.connectionCache.connected,
       deviceReady: this.connectionCache.connected,
+      outboundEnabled: this.outboundEnabled,
+      canSend: this.connectionCache.connected && this.outboundEnabled,
       hasClient: Boolean(this.socket),
       hasPage: true,
       reconnecting: this.connectionCache.state === "RECONNECTING",
@@ -480,6 +501,7 @@ class BaileysManager {
 
   static async shutdown() {
     this.shuttingDown = true;
+    this.outboundEnabled = false;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     this.connectionGeneration += 1;

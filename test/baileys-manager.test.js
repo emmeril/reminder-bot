@@ -25,6 +25,7 @@ beforeEach(() => {
   BaileysManager.pendingQueue = 0;
   BaileysManager.failedQueue = 0;
   BaileysManager.lastSentAt = 0;
+  BaileysManager.outboundEnabled = true;
   BaileysManager.connectionCache = {
     checkedAt: Date.now(),
     connected: true,
@@ -42,6 +43,26 @@ afterEach(() => {
   BaileysManager.pairingReset = null;
   BaileysManager.socket = null;
   BaileysManager.authState = null;
+  BaileysManager.outboundEnabled = false;
+});
+
+test("memblokir pengiriman sampai operator mengaktifkannya manual", async () => {
+  BaileysManager.outboundEnabled = false;
+  BaileysManager.socket = {
+    onWhatsApp: async () => [{ exists: true, jid: "6281234567890@s.whatsapp.net" }],
+    sendMessage: async () => {
+      throw new Error("tidak boleh terpanggil");
+    },
+  };
+
+  await assert.rejects(
+    () => BaileysManager.sendMessage("6281234567890", "Halo"),
+    /belum diaktifkan/
+  );
+
+  const status = BaileysManager.enableOutbound();
+  assert.equal(status.outboundEnabled, true);
+  assert.equal(status.canSend, true);
 });
 
 test("mengirim pesan ke LID ketika mapping PN tersedia", async () => {

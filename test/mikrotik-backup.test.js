@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
+const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 
@@ -61,7 +62,7 @@ test("mengizinkan export melalui API tanpa TLS dengan peringatan keamanan", asyn
 });
 
 test("membaca isi export melalui perintah file get API", async () => {
-  const directory = await fs.mkdtemp(path.join("/tmp", "reminder-api-backup-"));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "reminder-api-backup-"));
   const destination = path.join(directory, "backup.rsc");
   let getPayload = null;
   const service = new MikrotikService({ push() {} });
@@ -86,7 +87,7 @@ test("membaca isi export melalui perintah file get API", async () => {
 });
 
 test("menggunakan fallback FTP ketika contents tidak tersedia melalui API", async () => {
-  const directory = await fs.mkdtemp(path.join("/tmp", "reminder-ftp-backup-"));
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "reminder-ftp-backup-"));
   const destination = path.join(directory, "backup.rsc");
   const logs = [];
   let ftpCall = null;
