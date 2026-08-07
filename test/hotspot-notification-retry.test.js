@@ -4,7 +4,7 @@ const test = require("node:test");
 const { DataManager } = require("../src/app");
 const { HotspotReactivationScheduler } = require("../src/schedulers");
 
-test("menyimpan dan mencoba ulang notifikasi kredensial tanpa reaktivasi router ulang", async () => {
+test("notifikasi kredensial yang gagal ditutup tanpa percobaan ulang", async () => {
   const manager = new DataManager({ push() {} });
   manager.saveContacts = async () => {};
   const contact = {
@@ -42,13 +42,13 @@ test("menyimpan dan mencoba ulang notifikasi kredensial tanpa reaktivasi router 
 
   const first = await scheduler.reactivateContact(manager.hydrateContact(contact));
   assert.equal(first.notification.sent, false);
-  assert.equal(Boolean(manager.getContact(contact.id).hotspotNotificationPending), true);
+  assert.equal(manager.getContact(contact.id).hotspotNotificationPending, null);
+  assert.equal(manager.getContact(contact.id).hotspotNotificationLastStatus, "FAILED");
 
-  manager.getContact(contact.id).hotspotNotificationPending.nextAttemptAt = new Date(Date.now() - 1).toISOString();
   await scheduler.processDueReactivations();
 
   assert.equal(routerCalls, 1);
-  assert.equal(sendCalls, 2);
+  assert.equal(sendCalls, 1);
   assert.equal(manager.getContact(contact.id).hotspotNotificationPending, null);
 });
 

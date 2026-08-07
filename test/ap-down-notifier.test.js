@@ -43,7 +43,7 @@ function createFixture() {
   };
 }
 
-test("mencoba ulang hanya kontak AP DOWN yang gagal dikirimi", async () => {
+test("tidak mencoba ulang kontak AP DOWN yang gagal dikirimi", async () => {
   const fixture = createFixture();
   await fixture.notifier.processNetwatchChanges();
 
@@ -55,9 +55,12 @@ test("mencoba ulang hanya kontak AP DOWN yang gagal dikirimi", async () => {
   assert.deepEqual(fixture.sendCalls, [
     "628111111111",
     "628222222222",
-    "628222222222",
   ]);
-  assert.equal(fixture.notifier.monitorStates.get("10.0.0.1").alertSent, true);
+  assert.equal(fixture.notifier.monitorStates.get("10.0.0.1").alertAttempted, true);
+  assert.deepEqual(
+    Array.from(fixture.notifier.monitorStates.get("10.0.0.1").attemptedContactIds),
+    ["one", "two"]
+  );
 });
 
 test("mencegah pemeriksaan netwatch yang tumpang tindih", async () => {

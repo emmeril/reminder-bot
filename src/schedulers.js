@@ -104,6 +104,25 @@ class ReminderScheduler {
           claimedReminderId = reminder.id;
           activeReminder = reminder;
 
+          if (Math.max(0, Number(reminder.deliveryAttempts) || 0) > 0
+            || reminder.nextDeliveryAttemptAt
+            || reminder.deliveryAttemptedAt) {
+            const errorMessage = reminder.lastDeliveryError || "Pengiriman sebelumnya gagal";
+            await this.dataManager.moveToSent(reminder.id, {
+              sentAt: reminder.lastDeliveryAttemptAt || new Date().toISOString(),
+              deliveryStatus: "FAILED",
+              deliveryError: errorMessage,
+            });
+            claimedReminderId = null;
+            this.activityLog.push("warn", "delivery", `Reminder ${reminder.id} tidak dikirim ulang setelah kegagalan sebelumnya`, {
+              reminderId: reminder.id,
+              error: errorMessage,
+              phoneNumber: reminder.phoneNumber,
+              retryScheduled: false,
+            });
+            continue;
+          }
+
           if (this.isPaidReminder(reminder)) {
             await this.dataManager.moveToSent(reminder.id, {
               sentAt: new Date().toISOString(),
@@ -120,11 +139,17 @@ class ReminderScheduler {
           }
 
           const targetPhoneNumber = reminder.phoneNumber;
+          const attemptedReminder = await this.dataManager.markReminderDeliveryAttempt(reminder.id);
+          if (!attemptedReminder) {
+            this.activityLog.push("warn", "delivery", `Reminder ${reminder.id} dilewati karena sudah pernah dicoba`, {
+              reminderId: reminder.id,
+              phoneNumber: reminder.phoneNumber,
+            });
+            continue;
+          }
           let sendResult;
           try {
-            sendResult = await this.notificationBot.sendMessage(targetPhoneNumber, reminder.message, {
-              maxAttempts: 1,
-            });
+            sendResult = await this.notificationBot.sendMessage(targetPhoneNumber, reminder.message);
           } catch (error) {
             const errorMessage = error?.message || String(error);
             await this.dataManager.moveToSent(reminder.id, {
@@ -163,7 +188,7 @@ class ReminderScheduler {
             await this.notificationBot.sendAdminBroadcast(
               "Reminder terkirim",
               `Tujuan: ${reminder.contactName || targetPhoneNumber} (${targetPhoneNumber})\nJadwal: ${formatDateTime(reminder.reminderDateTime, this.dataManager.getTimezone())}\n\n${reminder.message}`,
-              { silentLog: true, messageOptions: { maxAttempts: 1 } }
+              { silentLog: true }
             );
           }
 
@@ -398,37 +423,47 @@ class HotspotReactivationScheduler {
   }
 
   async sendReactivationNotification(contact) {
-    if (!this.notificationBot) {
-      return { sent: false, error: "Transport notifikasi belum tersedia." };
-    }
-
     const pending = contact.hotspotNotificationPending;
     if (!pending?.message || !pending?.phoneNumber) {
       return { sent: true, skipped: true, contact };
     }
 
+    const claim = await this.dataManager.claimHotspotNotificationAttempt(contact.id, pending.id);
+    if (!claim) {
+      return { sent: true, skipped: true, contact: this.dataManager.getContact(contact.id) || contact };
+    }
+    const notification = claim.notification;
+
+    if (!this.notificationBot) {
+      const error = "Transport notifikasi belum tersedia.";
+      const updatedContact = await this.dataManager.completeHotspotNotificationAttempt(contact.id, {
+        sent: false,
+        error,
+      });
+      return { sent: false, error, contact: updatedContact };
+    }
+
     try {
-      await this.notificationBot.sendMessage(pending.phoneNumber, pending.message, { maxAttempts: 1 });
-      const updatedContact = await this.dataManager.markHotspotNotificationAttempt(contact.id, { sent: true });
-      this.activityLog.push("info", "hotspot-reactivation", `Notifikasi akun hotspot terkirim ke ${pending.phoneNumber}`, {
+      await this.notificationBot.sendMessage(notification.phoneNumber, notification.message);
+      const updatedContact = await this.dataManager.completeHotspotNotificationAttempt(contact.id, { sent: true });
+      this.activityLog.push("info", "hotspot-reactivation", `Notifikasi akun hotspot terkirim ke ${notification.phoneNumber}`, {
         contactId: contact.id,
-        notificationId: pending.id,
+        notificationId: notification.id,
       });
       return { sent: true, contact: updatedContact };
     } catch (error) {
-      const updatedContact = await this.dataManager.markHotspotNotificationAttempt(contact.id, {
+      const updatedContact = await this.dataManager.completeHotspotNotificationAttempt(contact.id, {
         sent: false,
         error: error.message,
       });
-      this.activityLog.push("error", "hotspot-reactivation", `Gagal kirim notifikasi akun hotspot ke ${pending.phoneNumber}`, {
+      this.activityLog.push("error", "hotspot-reactivation", `Gagal kirim notifikasi akun hotspot ke ${notification.phoneNumber}`, {
         contactId: contact.id,
-        notificationId: pending.id,
+        notificationId: notification.id,
         error: error.message,
       });
       return {
         sent: false,
         error: error.message,
-        nextAttemptAt: updatedContact.hotspotNotificationPending?.nextAttemptAt || null,
         contact: updatedContact,
       };
     }
@@ -553,7 +588,7 @@ class HotspotReactivationScheduler {
             notification,
           });
         } catch (error) {
-          this.activityLog.push("error", "hotspot-reactivation", `Retry notifikasi hotspot gagal untuk ${contact.phoneNumber}`, {
+          this.activityLog.push("error", "hotspot-reactivation", `Pengiriman notifikasi hotspot gagal untuk ${contact.phoneNumber}`, {
             contactId: contact.id,
             error: error.message,
           });
@@ -616,24 +651,24 @@ class ApDownNotifier {
     const currentStatus = this.normalizeStatus(monitor.status);
     const currentSince = sanitizeInput(monitor.since || "");
     const previousState = this.monitorStates.get(host) || {
-      alertSent: false,
+      alertAttempted: false,
       lastStatus: "UNKNOWN",
       lastSince: "",
       firstObservedAt: null,
-      notifiedContactIds: new Set(),
+      attemptedContactIds: new Set(),
     };
 
     if (currentStatus !== "DOWN") {
-      if (previousState.alertSent || previousState.lastStatus === "DOWN") {
+      if (previousState.alertAttempted || previousState.lastStatus === "DOWN") {
         this.activityLog.push("info", "ap-monitor", `AP ${host} kembali ${currentStatus}; status alert direset`);
       }
 
       const nextState = {
-        alertSent: false,
+        alertAttempted: false,
         lastStatus: currentStatus,
         lastSince: currentSince,
         firstObservedAt: null,
-        notifiedContactIds: new Set(),
+        attemptedContactIds: new Set(),
       };
       this.monitorStates.set(host, nextState);
       return nextState;
@@ -643,13 +678,13 @@ class ApDownNotifier {
     const isNewIncident = previousState.lastStatus !== "DOWN" || sinceChanged;
     const nextState = {
       ...previousState,
-      alertSent: isNewIncident ? false : previousState.alertSent,
+      alertAttempted: isNewIncident ? false : previousState.alertAttempted,
       lastStatus: currentStatus,
       lastSince: currentSince,
       firstObservedAt: isNewIncident || !previousState.firstObservedAt ? Date.now() : previousState.firstObservedAt,
-      notifiedContactIds: isNewIncident
+      attemptedContactIds: isNewIncident
         ? new Set()
-        : new Set(previousState.notifiedContactIds || []),
+        : new Set(previousState.attemptedContactIds || []),
     };
 
     this.monitorStates.set(host, nextState);
@@ -686,11 +721,11 @@ class ApDownNotifier {
           const currentSince = sanitizeInput(monitor.since || "");
           currentStatuses.set(host, status);
           this.monitorStates.set(host, {
-            alertSent: false,
+            alertAttempted: false,
             lastStatus: status,
             lastSince: currentSince,
             firstObservedAt: status === "DOWN" ? Date.now() : null,
-            notifiedContactIds: new Set(),
+            attemptedContactIds: new Set(),
           });
         }
 
@@ -733,10 +768,11 @@ class ApDownNotifier {
         const linkedContacts = this.dataManager
           .getContacts()
           .filter((contact) => String(contact.linkedApHost || "") === host);
-        const notifiedContactIds = new Set(state.notifiedContactIds || []);
+        const attemptedContactIds = new Set(state.attemptedContactIds || []);
 
         for (const contact of linkedContacts) {
-          if (notifiedContactIds.has(String(contact.id))) continue;
+          if (attemptedContactIds.has(String(contact.id))) continue;
+          attemptedContactIds.add(String(contact.id));
 
           try {
             const message = this.renderApDownMessage(settings.apDownMessageTemplate, {
@@ -746,8 +782,7 @@ class ApDownNotifier {
               supportSignature: settings.supportSignature || "CS Emmeril Hotspot",
               companyName: settings.companyName || "",
             });
-            await this.notificationBot.sendMessage(contact.phoneNumber, message, { maxAttempts: 1 });
-            notifiedContactIds.add(String(contact.id));
+            await this.notificationBot.sendMessage(contact.phoneNumber, message);
             this.activityLog.push("info", "ap-monitor", `Notifikasi AP DOWN terkirim ke ${contact.phoneNumber}`, {
               host,
               contactId: contact.id,
@@ -763,9 +798,9 @@ class ApDownNotifier {
 
         this.monitorStates.set(host, {
           ...state,
-          alertSent: linkedContacts.length > 0
-            && linkedContacts.every((contact) => notifiedContactIds.has(String(contact.id))),
-          notifiedContactIds,
+          alertAttempted: linkedContacts.length > 0
+            && linkedContacts.every((contact) => attemptedContactIds.has(String(contact.id))),
+          attemptedContactIds,
         });
       }
 
@@ -787,7 +822,6 @@ class WhatsAppProviderStatusNotifier {
     this.activityLog = activityLog;
     this.previousStatuses = new Map();
     this.pendingChanges = [];
-    this.pendingRecipients = new Set();
     this.isInitialized = false;
     this.isProcessing = false;
   }
@@ -853,19 +887,13 @@ class WhatsAppProviderStatusNotifier {
       const settings = this.dataManager.getSettings();
       if (!settings.notifyAdminsOnConnectionChange) {
         this.pendingChanges = [];
-        this.pendingRecipients.clear();
         return;
       }
 
       if (changes.length > 0) {
         this.pendingChanges = [...this.pendingChanges, ...changes].slice(-10);
-        this.pendingRecipients = new Set(this.dataManager.getAdminRecipients());
       }
       if (this.pendingChanges.length === 0) return;
-
-      if (this.pendingRecipients.size === 0) {
-        this.pendingRecipients = new Set(this.dataManager.getAdminRecipients());
-      }
 
       const connectedProviders = status.transport?.connectedProviders || [];
       if (connectedProviders.length === 0) {
@@ -874,25 +902,19 @@ class WhatsAppProviderStatusNotifier {
       }
 
       const { title, body } = this.buildAlert(status);
+      const recipients = this.dataManager.getAdminRecipients();
+      this.pendingChanges = [];
       const results = await this.notificationBot.sendAdminBroadcast(title, body, {
         silentLog: true,
-        recipients: Array.from(this.pendingRecipients),
-        messageOptions: { maxAttempts: 1 },
+        recipients,
       });
       const sentCount = results.filter((result) => result.status === "sent").length;
       const failedCount = results.length - sentCount;
 
-      for (const result of results) {
-        if (result.status === "sent") {
-          this.pendingRecipients.delete(result.phoneNumber);
-        }
-      }
-
-      if (results.length > 0 && this.pendingRecipients.size === 0) {
-        this.pendingChanges = [];
+      if (results.length > 0 && failedCount === 0) {
         this.activityLog.push("info", "notification", `${title} terkirim ke ${sentCount} admin recipient(s)`);
       } else {
-        this.activityLog.push("warn", "notification", `${title} belum terkirim ke semua admin recipient`, {
+        this.activityLog.push("warn", "notification", `${title} selesai tanpa retry otomatis`, {
           sentCount,
           failedCount,
         });

@@ -256,7 +256,7 @@ class BaileysManager {
     this.reconnectAttempts += 1;
     const delay = Math.min(
       Math.max(1_000, CONFIG.MIN_RECONNECT_INTERVAL) * (2 ** (this.reconnectAttempts - 1)),
-      Math.max(CONFIG.MIN_RECONNECT_INTERVAL, CONFIG.WA_RETRY_MAX_DELAY)
+      Math.max(CONFIG.MIN_RECONNECT_INTERVAL, CONFIG.BAILEYS_RECONNECT_MAX_DELAY)
     );
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -361,7 +361,7 @@ class BaileysManager {
 
   static async sendMessage(number, message, options = {}) {
     this.pendingQueue += 1;
-    const queuedSend = this.sendQueue.then(() => this.sendWithRetry(number, message, options));
+    const queuedSend = this.sendQueue.then(() => this.sendOnce(number, message, options));
     this.sendQueue = queuedSend.catch(() => {});
     try {
       return await queuedSend;
@@ -370,39 +370,20 @@ class BaileysManager {
     }
   }
 
-  static getRetryDelay(attempt) {
-    const baseDelay = Math.max(0, CONFIG.WA_RETRY_BASE_DELAY);
-    const maximumDelay = Math.max(baseDelay, CONFIG.WA_RETRY_MAX_DELAY);
-    const exponentialDelay = Math.min(maximumDelay, baseDelay * (2 ** (attempt - 1)));
-    const jitter = Math.floor(Math.random() * Math.max(1, exponentialDelay * 0.25));
-    return exponentialDelay + jitter;
-  }
-
-  static async sendWithRetry(number, message, options = {}) {
-    const requestedMaximumAttempts = Number(options.maxAttempts);
-    const maximumAttempts = Number.isFinite(requestedMaximumAttempts)
-      ? Math.max(1, Math.floor(requestedMaximumAttempts))
-      : Math.max(1, Math.floor(CONFIG.WA_RETRY_MAX_ATTEMPTS));
+  static async sendOnce(number, message, options = {}) {
     const selectedDelay = this.getRandomDelayMs(options);
     const remainingDelay = Math.max(0, selectedDelay - (Date.now() - this.lastSentAt));
     if (remainingDelay > 0) await sleep(remainingDelay);
 
-    for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
-      try {
-        const result = await this.sendRequest(number, message);
-        this.lastSentAt = Date.now();
-        return { ...result, attempts: attempt };
-      } catch (error) {
-        this.lastSentAt = Date.now();
-        if (!error.retryable || attempt >= maximumAttempts) {
-          this.failedQueue += 1;
-          throw error;
-        }
-        await sleep(this.getRetryDelay(attempt));
-      }
+    try {
+      const result = await this.sendRequest(number, message);
+      this.lastSentAt = Date.now();
+      return { ...result, attempts: 1 };
+    } catch (error) {
+      this.lastSentAt = Date.now();
+      this.failedQueue += 1;
+      throw error;
     }
-
-    throw new Error("Baileys gagal mengirim pesan setelah retry");
   }
 
   static async resolveRecipientJid(normalized) {
@@ -429,9 +410,7 @@ class BaileysManager {
 
     await this.initialize();
     if (!this.connectionCache.connected || !this.socket) {
-      const error = new Error(`Baileys belum terhubung (${this.connectionCache.state})`);
-      error.retryable = ["CONNECTING", "RECONNECTING"].includes(this.connectionCache.state);
-      throw error;
+      throw new Error(`Baileys belum terhubung (${this.connectionCache.state})`);
     }
 
     try {
@@ -454,9 +433,7 @@ class BaileysManager {
         type: "chat",
       };
     } catch (cause) {
-      const error = new Error(`Baileys gagal mengirim pesan: ${cause.message}`);
-      error.retryable = !/tidak terdaftar|invalid/i.test(cause.message);
-      throw error;
+      throw new Error(`Baileys gagal mengirim pesan: ${cause.message}`);
     }
   }
 

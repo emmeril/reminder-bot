@@ -8,7 +8,6 @@ const originalConfig = {
   BAILEYS_ENABLED: CONFIG.BAILEYS_ENABLED,
   WA_MESSAGE_DELAY_MIN: CONFIG.WA_MESSAGE_DELAY_MIN,
   WA_MESSAGE_DELAY_MAX: CONFIG.WA_MESSAGE_DELAY_MAX,
-  WA_RETRY_MAX_ATTEMPTS: CONFIG.WA_RETRY_MAX_ATTEMPTS,
 };
 
 beforeEach(() => {
@@ -16,7 +15,6 @@ beforeEach(() => {
     BAILEYS_ENABLED: true,
     WA_MESSAGE_DELAY_MIN: 0,
     WA_MESSAGE_DELAY_MAX: 0,
-    WA_RETRY_MAX_ATTEMPTS: 1,
   });
   BaileysManager.socket = null;
   BaileysManager.initialization = null;
@@ -100,9 +98,8 @@ test("menolak nomor yang tidak terdaftar di WhatsApp tanpa retry", async () => {
   assert.equal(BaileysManager.failedQueue, 1);
 });
 
-test("batas percobaan per pesan dapat menonaktifkan retry bawaan", async () => {
+test("setiap pesan hanya dicoba sekali walaupun opsi lama meminta lebih banyak percobaan", async () => {
   let attempts = 0;
-  CONFIG.WA_RETRY_MAX_ATTEMPTS = 3;
   BaileysManager.socket = {
     onWhatsApp: async () => [{ exists: true, jid: "6281234567890@s.whatsapp.net" }],
     sendMessage: async () => {
@@ -112,7 +109,7 @@ test("batas percobaan per pesan dapat menonaktifkan retry bawaan", async () => {
   };
 
   await assert.rejects(
-    () => BaileysManager.sendMessage("6281234567890", "Halo", { maxAttempts: 1 }),
+    () => BaileysManager.sendMessage("6281234567890", "Halo", { maxAttempts: 3 }),
     /koneksi sementara gagal/
   );
   assert.equal(attempts, 1);

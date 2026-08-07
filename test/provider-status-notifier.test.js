@@ -67,7 +67,7 @@ test("tidak mengirim status awal lalu mengirim alert ketika provider berubah DOW
   assert.match(fixture.logs.at(-1)[2], /ditunda/);
 });
 
-test("retry alert provider hanya menargetkan admin yang gagal", async () => {
+test("alert provider yang gagal tidak dicoba ulang", async () => {
   let attempt = 0;
   const fixture = createNotifier(buildStatus(false), async (recipients) => {
     attempt += 1;
@@ -84,7 +84,7 @@ test("retry alert provider hanya menargetkan admin yang gagal", async () => {
   await fixture.notifier.processStatusChanges();
 
   assert.deepEqual(fixture.broadcasts[0].recipients, ["628111111111", "628222222222"]);
-  assert.deepEqual(fixture.broadcasts[1].recipients, ["628222222222"]);
+  assert.equal(fixture.broadcasts.length, 1);
   assert.equal(fixture.notifier.pendingChanges.length, 0);
 });
 

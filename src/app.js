@@ -1032,9 +1032,19 @@ class DataManager {
       contact.hotspotReactivationAt = this.normalizeOptionalDate(contact.hotspotReactivationAt);
       contact.hotspotLastReactivatedAt = this.normalizeOptionalDate(contact.hotspotLastReactivatedAt);
       contact.hotspotLastDeactivatedAt = this.normalizeOptionalDate(contact.hotspotLastDeactivatedAt);
-      if (!contact.hotspotNotificationPending
-        || typeof contact.hotspotNotificationPending !== "object"
-        || !sanitizeInput(contact.hotspotNotificationPending.message || "")) {
+      const pendingNotification = contact.hotspotNotificationPending;
+      if (!pendingNotification
+        || typeof pendingNotification !== "object"
+        || !sanitizeInput(pendingNotification.message || "")) {
+        contact.hotspotNotificationPending = null;
+      } else if (Math.max(0, Number(pendingNotification.attempts) || 0) > 0) {
+        contact.hotspotNotificationLastStatus = "FAILED";
+        contact.hotspotNotificationLastError = sanitizeInput(
+          pendingNotification.lastError || "Pengiriman notifikasi sebelumnya gagal"
+        );
+        contact.hotspotNotificationLastAttemptAt = this.normalizeOptionalDate(
+          pendingNotification.lastAttemptAt
+        );
         contact.hotspotNotificationPending = null;
       }
       if (!contact.paymentMonths || typeof contact.paymentMonths !== "object" || Array.isArray(contact.paymentMonths)) {
@@ -1550,6 +1560,7 @@ class DataManager {
     return this.getSortedContacts().filter((contact) => {
       const pending = contact.hotspotNotificationPending;
       if (!pending?.message || !pending?.phoneNumber) return false;
+      if (Math.max(0, Number(pending.attempts) || 0) > 0) return false;
       const nextAttemptTime = pending.nextAttemptAt ? new Date(pending.nextAttemptAt).getTime() : 0;
       return !Number.isFinite(nextAttemptTime) || nextAttemptTime <= nowTime;
     });
@@ -1599,6 +1610,8 @@ class DataManager {
           nextAttemptAt: now.toISOString(),
           lastError: null,
         };
+        contact.hotspotNotificationLastStatus = "PENDING";
+        contact.hotspotNotificationLastError = null;
       }
 
       await this.saveContacts(options);
@@ -1606,29 +1619,52 @@ class DataManager {
     });
   }
 
-  async markHotspotNotificationAttempt(contactId, result = {}) {
+  async claimHotspotNotificationAttempt(contactId, notificationId) {
     return this.withDataMutation(async () => {
       const contact = this.getContact(contactId);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
       const pending = contact.hotspotNotificationPending;
-      if (!pending) return this.hydrateContact(contact);
+      if (!pending || (notificationId && String(pending.id) !== String(notificationId))) return null;
 
-      if (result.sent) {
-        contact.hotspotNotificationPending = null;
-      } else {
-        const attempts = Math.max(0, Number(pending.attempts) || 0) + 1;
-        const retryDelay = Math.min(60 * 60 * 1000, 5 * 60 * 1000 * (2 ** (attempts - 1)));
-        contact.hotspotNotificationPending = {
-          ...pending,
-          attempts,
-          lastError: sanitizeInput(result.error || "Pengiriman notifikasi gagal"),
-          lastAttemptAt: new Date().toISOString(),
-          nextAttemptAt: new Date(Date.now() + retryDelay).toISOString(),
-        };
-      }
-      contact.updatedAt = new Date().toISOString();
+      const now = new Date().toISOString();
+      contact.hotspotNotificationPending = null;
+      contact.hotspotNotificationLastStatus = "SENDING";
+      contact.hotspotNotificationLastError = null;
+      contact.hotspotNotificationLastAttemptAt = now;
+      contact.updatedAt = now;
+      await this.saveContacts();
+      return {
+        contact: this.hydrateContact(contact),
+        notification: { ...pending },
+      };
+    });
+  }
+
+  async completeHotspotNotificationAttempt(contactId, result = {}) {
+    return this.withDataMutation(async () => {
+      const contact = this.getContact(contactId);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+
+      const now = new Date().toISOString();
+      contact.hotspotNotificationLastStatus = result.sent ? "SENT" : "FAILED";
+      contact.hotspotNotificationLastError = result.sent
+        ? null
+        : sanitizeInput(result.error || "Pengiriman notifikasi gagal");
+      contact.hotspotNotificationLastAttemptAt = now;
+      contact.updatedAt = now;
       await this.saveContacts();
       return this.hydrateContact(contact);
+    });
+  }
+
+  async markReminderDeliveryAttempt(id) {
+    return this.withDataMutation(async () => {
+      const reminder = this.getReminder(id);
+      if (!reminder || reminder.deliveryAttemptedAt) return null;
+
+      reminder.deliveryAttemptedAt = new Date().toISOString();
+      await this.saveReminders();
+      return this.hydrateReminder(reminder);
     });
   }
 
@@ -1759,21 +1795,6 @@ class DataManager {
       const reminder = this.getReminder(id);
       if (!reminder || !reminder.processingAt) return null;
       delete reminder.processingAt;
-      await this.saveReminders();
-      return this.hydrateReminder(reminder);
-    });
-  }
-
-  async scheduleReminderRetry(id, errorMessage, nextAttemptAt) {
-    return this.withDataMutation(async () => {
-      const reminder = this.getReminder(id);
-      if (!reminder) return null;
-
-      delete reminder.processingAt;
-      reminder.deliveryAttempts = Math.max(0, Number(reminder.deliveryAttempts) || 0) + 1;
-      reminder.lastDeliveryError = sanitizeInput(errorMessage);
-      reminder.lastDeliveryAttemptAt = new Date().toISOString();
-      reminder.nextDeliveryAttemptAt = new Date(nextAttemptAt).toISOString();
       await this.saveReminders();
       return this.hydrateReminder(reminder);
     });
@@ -2855,7 +2876,7 @@ class WebServer {
       if (parseBoolean(req.body.sendCredentials) && this.notificationBot.getStatus().whatsappProviderEnabled) {
         const message = `Yth. Bapak/Ibu *${registered.name}*,\n\nAkun hotspot Anda sudah berhasil dibuat.\n\nDetail Akun Hotspot:\n*Username:* ${registered.username}\n*Password:* ${registered.password}\n*Profile:* ${registered.profile}\n\nSilakan simpan data ini. Terimakasih.`;
         try {
-          await this.notificationBot.sendMessage(registered.phoneNumber, message, { maxAttempts: 1 });
+          await this.notificationBot.sendMessage(registered.phoneNumber, message);
           notification = { sent: true };
         } catch (error) {
           notification = { sent: false, error: error.message };
@@ -2934,9 +2955,7 @@ class WebServer {
 
       const transactionId = `TRX-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
       try {
-        await this.notificationBot.sendPaymentNotification(updatedContact, transactionId, effectivePaymentType, {
-          maxAttempts: 1,
-        });
+        await this.notificationBot.sendPaymentNotification(updatedContact, transactionId, effectivePaymentType);
         return {
           contact: this.dataManager.toPublicContact(updatedContact),
           transactionId,
@@ -3196,9 +3215,7 @@ async function sendMonthlyResetNotification(notificationBot, dataManager, activi
     body += "\n\nTidak ada tunggakan dari periode sebelumnya.";
   }
 
-  await notificationBot.sendAdminBroadcast("Reset pembayaran bulanan", body, {
-    messageOptions: { maxAttempts: 1 },
-  });
+  await notificationBot.sendAdminBroadcast("Reset pembayaran bulanan", body);
 }
 
 async function runScheduledTasks(tasks, activityLog) {

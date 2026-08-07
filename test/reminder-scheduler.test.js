@@ -29,6 +29,12 @@ test("WA reminder yang gagal diarsipkan tanpa retry atau reminder pengganti", as
     getSortedReminders: () => Array.from(reminders.values()),
     getResolvedReminderContact: () => ({ paymentStatus: "UNPAID" }),
     claimDueReminder: async (id) => reminders.get(id) || null,
+    markReminderDeliveryAttempt: async (id) => {
+      const current = reminders.get(id);
+      if (!current || current.deliveryAttemptedAt) return null;
+      current.deliveryAttemptedAt = new Date().toISOString();
+      return current;
+    },
     releaseReminderClaim: async () => null,
     moveToSent: async (id, extras) => {
       const current = reminders.get(id);
@@ -56,7 +62,7 @@ test("WA reminder yang gagal diarsipkan tanpa retry atau reminder pengganti", as
   await scheduler.processDueReminders();
 
   assert.equal(sendCount, 1);
-  assert.deepEqual(sendOptions, [{ maxAttempts: 1 }]);
+  assert.deepEqual(sendOptions, [undefined]);
   assert.equal(archived.length, 1);
   assert.equal(archived[0].deliveryStatus, "FAILED");
   assert.equal(archived[0].deliveryError, "WhatsApp tidak tersambung");
