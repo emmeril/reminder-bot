@@ -2,9 +2,9 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const { ReminderScheduler } = require("../src/schedulers");
-const { addMonthsSafely, formatDate } = require("../src/utils");
+const { formatDate } = require("../src/utils");
 
-test("WA reminder yang gagal diarsipkan tanpa retry dan tetap dijadwalkan bulan berikutnya", async () => {
+test("WA reminder yang gagal tetap pending dan dijadwalkan retry", async () => {
   const timeZone = "Asia/Jakarta";
   const scheduledAt = new Date(Date.now() - 60_000);
   const currentMonthName = scheduledAt.toLocaleString("id-ID", { month: "long", timeZone });
@@ -20,6 +20,7 @@ test("WA reminder yang gagal diarsipkan tanpa retry dan tetap dijadwalkan bulan 
   const reminders = new Map([[reminder.id, reminder]]);
   const archived = [];
   const created = [];
+  const retries = [];
   const sendOptions = [];
   let sendCount = 0;
 
@@ -31,8 +32,18 @@ test("WA reminder yang gagal diarsipkan tanpa retry dan tetap dijadwalkan bulan 
     claimDueReminder: async (id) => reminders.get(id) || null,
     markReminderDeliveryAttempt: async (id) => {
       const current = reminders.get(id);
-      if (!current || current.deliveryAttemptedAt) return null;
-      current.deliveryAttemptedAt = new Date().toISOString();
+      if (!current) return null;
+      current.deliveryAttempts = (current.deliveryAttempts || 0) + 1;
+      current.deliveryAttemptedAt ||= new Date().toISOString();
+      current.providerStatus = "processing";
+      return current;
+    },
+    scheduleReminderRetry: async (id, error, options) => {
+      const current = reminders.get(id);
+      current.providerStatus = "retry";
+      current.providerError = error.message;
+      current.nextDeliveryAttemptAt = new Date(Date.now() + 30_000).toISOString();
+      retries.push({ id, error: error.message, options });
       return current;
     },
     releaseReminderClaim: async () => null,
@@ -62,19 +73,65 @@ test("WA reminder yang gagal diarsipkan tanpa retry dan tetap dijadwalkan bulan 
   await scheduler.processDueReminders();
 
   assert.equal(sendCount, 1);
-  assert.deepEqual(sendOptions, [undefined]);
-  assert.equal(archived.length, 1);
-  assert.equal(archived[0].deliveryStatus, "FAILED");
-  assert.equal(archived[0].deliveryError, "WhatsApp tidak tersambung");
-  assert.equal(created.length, 1);
-  assert.equal(created[0].contactId, reminder.contactId);
-  assert.equal(
-    created[0].reminderDateTime.toISOString(),
-    addMonthsSafely(scheduledAt, 1, timeZone).toISOString()
-  );
+  assert.deepEqual(sendOptions, [{
+    maxAttempts: 1,
+    context: { type: "reminder", reminderId: reminder.id },
+  }]);
+  assert.equal(archived.length, 0);
+  assert.equal(created.length, 0);
+  assert.equal(retries.length, 1);
+  assert.equal(retries[0].id, reminder.id);
+  assert.equal(reminders.get(reminder.id).providerStatus, "retry");
 
   await scheduler.processDueReminders();
   assert.equal(sendCount, 1);
+});
+
+test("reminder baru diarsipkan sent setelah provider memberi konfirmasi", async () => {
+  const reminder = {
+    id: "reminder-confirmed",
+    contactId: "contact-1",
+    phoneNumber: "6281234567890",
+    reminderDateTime: new Date(Date.now() - 1000).toISOString(),
+    message: "Pesan terkonfirmasi",
+    providerStatus: "pending",
+  };
+  const reminders = new Map([[reminder.id, reminder]]);
+  const archived = [];
+  const dataManager = {
+    getSettings: () => ({ autoRescheduleMonthly: false, notifyAdminsOnDelivery: false }),
+    getTimezone: () => "Asia/Jakarta",
+    getSortedReminders: () => Array.from(reminders.values()),
+    getResolvedReminderContact: () => ({ paymentStatus: "UNPAID" }),
+    claimDueReminder: async () => reminder,
+    markReminderDeliveryAttempt: async () => ({ ...reminder, deliveryAttempts: 1 }),
+    releaseReminderClaim: async () => null,
+    moveToSent: async (_id, extras) => {
+      archived.push(extras);
+      reminders.delete(reminder.id);
+      return extras;
+    },
+  };
+  const notificationBot = {
+    getTransportStatus: async () => ({
+      whatsappProviderEnabled: true,
+      isAvailable: true,
+      outboundEnabled: true,
+      selectedProvider: "android",
+    }),
+    sendMessage: async () => ({
+      provider: "android",
+      confirmed: true,
+      messageId: "bridge-confirmation-1",
+    }),
+  };
+
+  await new ReminderScheduler(notificationBot, dataManager, { push() {} }).processDueReminders();
+
+  assert.equal(archived.length, 1);
+  assert.equal(archived[0].deliveryStatus, "SENT_ANDROID");
+  assert.equal(archived[0].providerStatus, "sent");
+  assert.equal(archived[0].providerMessageId, "bridge-confirmation-1");
 });
 
 test("reminder dengan penanda kegagalan lama tetap dijadwalkan bulan berikutnya", async () => {
@@ -134,8 +191,13 @@ test("reminder dengan penanda kegagalan lama tetap dijadwalkan bulan berikutnya"
 test("antrean reminder tidak disentuh selama pengiriman belum diaktifkan", async () => {
   let claims = 0;
   let sends = 0;
+  let pending = 0;
   const dataManager = {
     getSortedReminders: () => [{ id: "lama", reminderDateTime: new Date(0).toISOString() }],
+    markDueRemindersPending: async () => {
+      pending += 1;
+      return 1;
+    },
     claimDueReminder: async () => {
       claims += 1;
       return null;
@@ -153,4 +215,5 @@ test("antrean reminder tidak disentuh selama pengiriman belum diaktifkan", async
 
   assert.equal(claims, 0);
   assert.equal(sends, 0);
+  assert.equal(pending, 1);
 });

@@ -105,3 +105,31 @@ test("menunda alert saat Baileys DOWN dan mengirim rangkuman setelah pulih", asy
   assert.match(fixture.broadcasts[0].body, /baileys: DOWN -> ONLINE/);
   assert.equal(fixture.notifier.pendingChanges.length, 0);
 });
+
+test("provider alternatif yang tidak aktif tidak dianggap DOWN", async () => {
+  const status = buildStatus(true);
+  status.providers.android = {
+    name: "android",
+    configured: true,
+    active: false,
+    connection: { connected: false, detail: "Provider tidak dipilih" },
+  };
+  status.providers.baileys.active = true;
+  const fixture = createNotifier(status);
+
+  await fixture.notifier.processStatusChanges();
+  fixture.setStatus({
+    ...status,
+    providers: {
+      ...status.providers,
+      android: {
+        ...status.providers.android,
+        connection: { connected: true, detail: "Bridge hidup tetapi tidak dipilih" },
+      },
+    },
+  });
+  await fixture.notifier.processStatusChanges();
+
+  assert.equal(fixture.broadcasts.length, 0);
+  assert.equal(fixture.notifier.pendingChanges.length, 0);
+});

@@ -659,6 +659,62 @@
             <!-- <p class="mt-1 text-sm text-ink/60">Konfigurasi operasional untuk perilaku dashboard dan alert.</p> -->
           </div>
           <form class="space-y-4" @input="settingsDirty = true" @change="settingsDirty = true" @submit.prevent="saveSettings()">
+            <div class="rounded-[1.5rem] border border-moss/15 bg-gradient-to-br from-white via-haze/70 to-moss/5 p-5">
+              <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div class="text-xs font-bold uppercase tracking-[0.18em] text-moss">WhatsApp Provider</div>
+                  <h3 class="mt-2 font-display text-xl text-ink" x-text="(whatsappStatus.selectedProvider || forms.settings.whatsappProvider || 'baileys').toUpperCase()"></h3>
+                  <p class="mt-1 text-sm text-ink/60" x-text="whatsappStatus.transportError || 'Provider siap.'"></p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink">
+                    <input type="radio" value="baileys" x-model="forms.settings.whatsappProvider" @change="changeWhatsAppProvider('baileys')" class="accent-moss">
+                    Baileys
+                  </label>
+                  <label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink">
+                    <input type="radio" value="android" x-model="forms.settings.whatsappProvider" @change="changeWhatsAppProvider('android')" class="accent-moss">
+                    Android
+                  </label>
+                </div>
+              </div>
+
+              <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                <div class="rounded-2xl border border-ink/8 bg-white px-4 py-3">
+                  <div class="text-xs font-bold uppercase text-ink/40">Provider</div>
+                  <div class="mt-2 text-sm font-semibold" x-text="whatsappStatus.state || 'DISCONNECTED'"></div>
+                </div>
+                <div class="rounded-2xl border border-ink/8 bg-white px-4 py-3">
+                  <div class="text-xs font-bold uppercase text-ink/40">Waydroid</div>
+                  <div class="mt-2 text-sm font-semibold" x-text="whatsappStatus.waydroid || 'n/a'"></div>
+                </div>
+                <div class="rounded-2xl border border-ink/8 bg-white px-4 py-3">
+                  <div class="text-xs font-bold uppercase text-ink/40">WhatsApp</div>
+                  <div class="mt-2 text-sm font-semibold" x-text="whatsappStatus.whatsapp || (whatsappStatus.deviceReady ? 'ready' : 'stopped')"></div>
+                </div>
+                <div class="rounded-2xl border border-ink/8 bg-white px-4 py-3">
+                  <div class="text-xs font-bold uppercase text-ink/40">Bridge</div>
+                  <div class="mt-2 text-sm font-semibold" x-text="whatsappStatus.bridge || 'n/a'"></div>
+                </div>
+                <div class="rounded-2xl border border-ink/8 bg-white px-4 py-3">
+                  <div class="text-xs font-bold uppercase text-ink/40">Queue</div>
+                  <div class="mt-2 text-sm font-semibold" x-text="String(whatsappStatus.pendingQueue || 0) + ' pending'"></div>
+                </div>
+              </div>
+
+              <div class="mt-5 grid gap-3 lg:grid-cols-[1fr_1.4fr_auto]">
+                <input x-model="forms.whatsappTest.phoneNumber" inputmode="numeric" placeholder="628xxx untuk test" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-moss">
+                <input x-model="forms.whatsappTest.message" maxlength="4096" placeholder="Pesan test" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-moss">
+                <button type="button" @click="sendWhatsAppTest()" :disabled="loading.whatsappAction" class="rounded-full bg-moss px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">
+                  <i class="fa-solid fa-paper-plane mr-2"></i>Send Test Message
+                </button>
+              </div>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <button type="button" @click="testWhatsAppConnection()" :disabled="loading.whatsappAction" class="rounded-full border border-moss/20 bg-white px-4 py-2 text-sm font-semibold text-moss disabled:opacity-50">Test Connection</button>
+                <button type="button" @click="reconnectWhatsApp()" :disabled="loading.whatsappAction" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50">Reconnect</button>
+                <a href="/transport" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink">Transport Detail</a>
+              </div>
+              <p x-cloak x-show="formErrors.whatsapp" x-transition class="mt-3 rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.whatsapp"></p>
+            </div>
             <div class="grid gap-4 md:grid-cols-2">
               <label class="block text-sm text-ink/60">
                 Judul dashboard

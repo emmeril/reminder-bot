@@ -4,6 +4,7 @@
           status: false,
           mikrotikBackup: false,
           hotspotOptions: false,
+          whatsappAction: false,
         },
         toast: {
           show: false,
@@ -39,6 +40,7 @@
           reminderEdit: "",
           template: "",
           settings: "",
+          whatsapp: "",
           deleteConfirm: "",
         },
         contactEditModal: {
@@ -79,6 +81,7 @@
         templates: [],
         logs: [],
         statusCards: [],
+        whatsappStatus: {},
         summaryMetrics: [],
         settingsDirty: false,
         isMobile: window.matchMedia("(max-width: 768px)").matches,
@@ -144,10 +147,12 @@
             notifyAdminsOnPaymentReset: false,
             waRandomDelayMinSeconds: 2,
             waRandomDelayMaxSeconds: 5,
+            whatsappProvider: "baileys",
             enableMikrotikBackupToWa: false,
             mikrotikBackupTime: "02:00",
             mikrotikBackupTimezone: "Asia/Jakarta",
           },
+          whatsappTest: { phoneNumber: "", message: "Pesan test reminder-bot" },
         },
 
         async init() {
@@ -818,8 +823,9 @@
           try {
             const data = await this.api("/api/status", { silent: Boolean(options.silent) });
             this.billingPeriod = data.billingPeriod || this.billingPeriod;
+            this.whatsappStatus = data.bot || {};
             this.statusCards = [
-              { label: "WhatsApp Baileys", value: data.bot.deviceReady ? "Ready" : "Not ready", icon: data.bot.deviceReady ? "fa-solid fa-plug-circle-check" : "fa-solid fa-plug-circle-xmark" },
+              { label: `WhatsApp ${data.bot.selectedProvider || "Provider"}`, value: data.bot.deviceReady ? "Ready" : "Not ready", icon: data.bot.deviceReady ? "fa-solid fa-plug-circle-check" : "fa-solid fa-plug-circle-xmark" },
               { label: "Telegram", value: data.bot.telegramEnabled ? "Ready" : "Not ready", icon: "fa-brands fa-telegram" },
             ];
             this.summaryMetrics = [
@@ -850,6 +856,7 @@
                 notifyAdminsOnPaymentReset: Boolean(data.settings.notifyAdminsOnPaymentReset),
                 waRandomDelayMinSeconds: Number(data.settings.waRandomDelayMinSeconds ?? 2),
                 waRandomDelayMaxSeconds: Number(data.settings.waRandomDelayMaxSeconds ?? 5),
+                whatsappProvider: data.settings.whatsappProvider || data.bot.selectedProvider || "baileys",
                 enableMikrotikBackupToWa: Boolean(data.settings.enableMikrotikBackupToWa),
                 mikrotikBackupTime: data.settings.mikrotikBackupTime || "02:00",
                 mikrotikBackupTimezone: data.settings.mikrotikBackupTimezone || data.settings.timezone || "Asia/Jakarta",
@@ -1436,6 +1443,72 @@
             });
           } catch (error) {
             this.setFormError("settings", error);
+          }
+        },
+
+        async changeWhatsAppProvider(provider) {
+          this.clearFormError("whatsapp");
+          this.loading.whatsappAction = true;
+          try {
+            await this.withProcessing("Mengganti WhatsApp provider...", async () => {
+              await this.api("/api/whatsapp/provider", {
+                method: "POST",
+                body: JSON.stringify({ provider }),
+              });
+              this.forms.settings.whatsappProvider = provider;
+              await this.loadStatus();
+              this.notify(`WhatsApp provider aktif: ${provider}`);
+            });
+          } catch (error) {
+            this.forms.settings.whatsappProvider = this.whatsappStatus.selectedProvider || "baileys";
+            this.setFormError("whatsapp", error);
+          } finally {
+            this.loading.whatsappAction = false;
+          }
+        },
+
+        async testWhatsAppConnection() {
+          this.clearFormError("whatsapp");
+          this.loading.whatsappAction = true;
+          try {
+            await this.api("/api/whatsapp/test", { method: "POST", body: "{}" });
+            this.notify("WhatsApp provider siap menerima pesan.");
+            await this.loadStatus();
+          } catch (error) {
+            this.setFormError("whatsapp", error);
+          } finally {
+            this.loading.whatsappAction = false;
+          }
+        },
+
+        async sendWhatsAppTest() {
+          this.clearFormError("whatsapp");
+          this.loading.whatsappAction = true;
+          try {
+            await this.api("/api/whatsapp/test", {
+              method: "POST",
+              body: JSON.stringify(this.forms.whatsappTest),
+            });
+            this.notify("Pesan test dikonfirmasi terkirim.");
+            await Promise.all([this.loadStatus(), this.loadLogs()]);
+          } catch (error) {
+            this.setFormError("whatsapp", error);
+          } finally {
+            this.loading.whatsappAction = false;
+          }
+        },
+
+        async reconnectWhatsApp() {
+          this.clearFormError("whatsapp");
+          this.loading.whatsappAction = true;
+          try {
+            await this.api("/api/whatsapp/reconnect", { method: "POST", body: "{}" });
+            this.notify("Reconnect WhatsApp dijalankan.");
+            await this.loadStatus();
+          } catch (error) {
+            this.setFormError("whatsapp", error);
+          } finally {
+            this.loading.whatsappAction = false;
           }
         },
 

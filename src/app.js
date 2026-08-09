@@ -21,8 +21,9 @@ const {
 const ActivityLog = require("./activity-log");
 const AsyncLock = require("./async-lock");
 const AuthManager = require("./auth-manager");
-const BaileysManager = require("./baileys-manager");
+const { migrateWhatsAppProviderMetadata } = require("./migrations/whatsapp-provider-metadata");
 const TelegramManager = require("./telegram-manager");
+const WhatsAppProviderManager = require("./whatsapp/provider-manager");
 const {
   ApDownNotifier,
   DatabaseBackupScheduler,
@@ -895,6 +896,10 @@ class DataManager {
 
     this.normalizeLoadedContacts();
     await this.normalizeReminderRelations();
+    const migration = await migrateWhatsAppProviderMetadata(this);
+    if (migration.remindersChanged || migration.sentChanged) {
+      this.activityLog.push("info", "storage", "WhatsApp provider metadata migration selesai", migration);
+    }
     await this.cleanupSentHistory();
     this.activityLog.push("info", "boot", "Data load complete", {
       contacts: this.contacts.size,
@@ -1657,12 +1662,51 @@ class DataManager {
     });
   }
 
-  async markReminderDeliveryAttempt(id) {
+  async markReminderDeliveryAttempt(id, provider = null) {
     return this.withDataMutation(async () => {
       const reminder = this.getReminder(id);
-      if (!reminder || reminder.deliveryAttemptedAt) return null;
+      if (!reminder) return null;
 
-      reminder.deliveryAttemptedAt = new Date().toISOString();
+      const now = new Date().toISOString();
+      reminder.deliveryAttempts = Math.max(0, Number(reminder.deliveryAttempts) || 0) + 1;
+      reminder.deliveryAttemptedAt = reminder.deliveryAttemptedAt || now;
+      reminder.lastDeliveryAttemptAt = now;
+      reminder.whatsappProvider = provider || reminder.whatsappProvider || null;
+      reminder.providerStatus = "processing";
+      reminder.providerError = null;
+      await this.saveReminders();
+      return this.hydrateReminder(reminder);
+    });
+  }
+
+  async markDueRemindersPending(now = new Date(), provider = null) {
+    return this.withDataMutation(async () => {
+      let changed = 0;
+      for (const reminder of this.reminders.values()) {
+        const dueAt = new Date(reminder.nextDeliveryAttemptAt || reminder.reminderDateTime).getTime();
+        if (!Number.isFinite(dueAt) || dueAt > now.getTime() || reminder.processingAt) continue;
+        if (reminder.providerStatus !== "pending" || reminder.whatsappProvider !== provider) {
+          reminder.providerStatus = "pending";
+          reminder.whatsappProvider = provider;
+          changed += 1;
+        }
+      }
+      if (changed > 0) await this.saveReminders();
+      return changed;
+    });
+  }
+
+  async scheduleReminderRetry(id, error, options = {}) {
+    return this.withDataMutation(async () => {
+      const reminder = this.getReminder(id);
+      if (!reminder) return null;
+      const delaySeconds = Math.max(1, Number(options.delaySeconds) || CONFIG.WHATSAPP_RETRY_DELAY);
+      reminder.nextDeliveryAttemptAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
+      reminder.providerStatus = "retry";
+      reminder.providerError = sanitizeInput(error?.message || error || "Pengiriman WhatsApp gagal");
+      reminder.lastDeliveryError = reminder.providerError;
+      reminder.whatsappProvider = options.provider || reminder.whatsappProvider || null;
+      delete reminder.processingAt;
       await this.saveReminders();
       return this.hydrateReminder(reminder);
     });
@@ -1809,6 +1853,10 @@ class DataManager {
         ...this.hydrateReminder(reminder),
         sentAt: extras.sentAt || new Date().toISOString(),
         deliveryStatus: extras.deliveryStatus || "SENT",
+        whatsappProvider: extras.whatsappProvider || reminder.whatsappProvider || null,
+        providerMessageId: extras.providerMessageId || reminder.providerMessageId || null,
+        providerStatus: extras.providerStatus || (extras.deliveryStatus === "FAILED" ? "failed" : "sent"),
+        providerError: extras.providerError || extras.deliveryError || reminder.providerError || null,
       };
       if (extras.deliveryError) {
         sentReminder.deliveryError = sanitizeInput(extras.deliveryError);
@@ -1870,6 +1918,9 @@ class DataManager {
       const requestedDelayMax = payload.waRandomDelayMaxSeconds !== undefined
         ? sanitizePositiveInteger(payload.waRandomDelayMaxSeconds, current.waRandomDelayMaxSeconds, 0, 300)
         : current.waRandomDelayMaxSeconds;
+      const requestedWhatsAppProvider = payload.whatsappProvider !== undefined
+        ? WhatsAppProviderManager.normalizeProvider(payload.whatsappProvider)
+        : current.whatsappProvider;
       this.settings = {
         ...current,
         dashboardTitle: payload.dashboardTitle !== undefined ? sanitizeInput(payload.dashboardTitle) || current.dashboardTitle : current.dashboardTitle,
@@ -1906,6 +1957,7 @@ class DataManager {
         notifyAdminsOnPaymentReset: payload.notifyAdminsOnPaymentReset !== undefined ? parseBoolean(payload.notifyAdminsOnPaymentReset, current.notifyAdminsOnPaymentReset) : current.notifyAdminsOnPaymentReset,
         waRandomDelayMinSeconds: Math.min(requestedDelayMin, requestedDelayMax),
         waRandomDelayMaxSeconds: Math.max(requestedDelayMin, requestedDelayMax),
+        whatsappProvider: requestedWhatsAppProvider,
         enableMikrotikBackupToWa: payload.enableMikrotikBackupToWa !== undefined
           ? parseBoolean(payload.enableMikrotikBackupToWa, current.enableMikrotikBackupToWa)
           : current.enableMikrotikBackupToWa,
@@ -2351,34 +2403,42 @@ class DataManager {
 // ===============================
 
 class NotificationBot {
-  constructor(dataManager, activityLog) {
+  constructor(dataManager, activityLog, providerManager = null) {
     this.dataManager = dataManager;
     this.activityLog = activityLog;
+    this.providerManager = providerManager || new WhatsAppProviderManager({
+      activityLog,
+      getSelectedProvider: () => this.dataManager.getSettings().whatsappProvider,
+    });
+    this.statusCache = {
+      selectedProvider: this.dataManager.getSettings().whatsappProvider || CONFIG.WHATSAPP_PROVIDER,
+      whatsappProviderEnabled: true,
+      isAvailable: false,
+      deviceReady: false,
+      outboundEnabled: false,
+      transportError: "WhatsApp provider belum diinisialisasi",
+      providers: {},
+      transport: { configuredProviders: [], connectedProviders: [] },
+    };
   }
 
   async initialize() {
-    if (BaileysManager.isConfigured()) {
-      await BaileysManager.initialize();
-      await BaileysManager.checkConnection();
-      const status = BaileysManager.getStatus();
-      const level = status.isAvailable ? "info" : "warn";
-      const message = status.isAvailable
-        ? "WhatsApp siap melalui Baileys"
-        : `Baileys menunggu pairing/koneksi: ${status.transportError || "status tidak diketahui"}`;
-      this.activityLog.push(level, "notification", message);
-      return;
-    }
-
-    this.activityLog.push("warn", "notification", "Baileys dinonaktifkan; reminder/notifikasi WhatsApp tidak akan dikirim");
+    await this.providerManager.initialize();
+    const status = await this.getTransportStatus();
+    const level = status.deviceReady ? "info" : "warn";
+    this.activityLog.push(
+      level,
+      "notification",
+      status.deviceReady
+        ? `WhatsApp siap melalui ${status.selectedProvider}`
+        : `${status.selectedProvider} belum siap: ${status.transportError || "status tidak diketahui"}`
+    );
+    return status;
   }
 
   async sendMessage(phoneNumber, message, options = {}) {
-    if (!BaileysManager.isConfigured()) {
-      throw new Error("Baileys dinonaktifkan. Aktifkan BAILEYS_ENABLED untuk mengirim WhatsApp.");
-    }
-
     const settings = this.dataManager.getSettings();
-    const result = await BaileysManager.sendMessage(phoneNumber, message, {
+    const result = await this.providerManager.sendMessage(phoneNumber, message, {
       minDelayMs: Math.max(0, Number(settings.waRandomDelayMinSeconds) || 0) * 1000,
       maxDelayMs: Math.max(0, Number(settings.waRandomDelayMaxSeconds) || 0) * 1000,
       ...options,
@@ -2514,7 +2574,7 @@ class NotificationBot {
   }
 
   getStatus() {
-    const status = BaileysManager.getStatus();
+    const status = this.statusCache;
     const settings = this.dataManager.getSettings();
     return {
       ...status,
@@ -2529,10 +2589,8 @@ class NotificationBot {
   }
 
   async getTransportStatus() {
-    if (!BaileysManager.isConfigured()) return this.getStatus();
-
     try {
-      await BaileysManager.checkConnection();
+      this.statusCache = await this.providerManager.getStatus();
       return this.getStatus();
     } catch (error) {
       return {
@@ -2543,6 +2601,52 @@ class NotificationBot {
         transportError: error.message,
       };
     }
+  }
+
+  async setProvider(provider, options = {}) {
+    const selected = WhatsAppProviderManager.normalizeProvider(provider);
+    if (options.persist !== false) await this.dataManager.updateSettings({ whatsappProvider: selected });
+    await this.providerManager.select(selected, { force: true });
+    return this.getTransportStatus();
+  }
+
+  async resetPairing() {
+    const provider = await this.providerManager.currentProvider({ connect: false });
+    if (provider.name !== "baileys" || typeof provider.resetPairing !== "function") {
+      throw new Error("Reset pairing hanya tersedia untuk provider Baileys.");
+    }
+    await provider.resetPairing();
+    return this.getTransportStatus();
+  }
+
+  enableOutbound() {
+    const provider = this.providerManager.providers[this.dataManager.getSettings().whatsappProvider];
+    if (provider?.name === "baileys" && typeof provider.enableOutbound === "function") {
+      return provider.enableOutbound();
+    }
+    return this.getStatus();
+  }
+
+  disableOutbound() {
+    const provider = this.providerManager.providers[this.dataManager.getSettings().whatsappProvider];
+    if (provider?.name === "baileys" && typeof provider.disableOutbound === "function") {
+      return provider.disableOutbound();
+    }
+    return this.getStatus();
+  }
+
+  async reconnect() {
+    this.statusCache = await this.providerManager.reconnect();
+    return this.getStatus();
+  }
+
+  async testConnection() {
+    this.statusCache = await this.providerManager.testConnection();
+    return this.getStatus();
+  }
+
+  async shutdown() {
+    return this.providerManager.shutdown();
   }
 }
 
@@ -2726,7 +2830,7 @@ class WebServer {
     });
     this.app.post("/transport/reset-pairing", requirePageAuth, async (req, res) => {
       try {
-        await BaileysManager.resetPairing();
+        await this.notificationBot.resetPairing();
         this.activityLog.push("info", "notification", "Pairing Baileys direset tanpa restart aplikasi");
         return res.redirect("/transport?pairingReset=1");
       } catch (error) {
@@ -2736,7 +2840,7 @@ class WebServer {
     });
     this.app.post("/transport/enable-sending", requirePageAuth, async (req, res) => {
       try {
-        BaileysManager.enableOutbound();
+        this.notificationBot.enableOutbound();
         this.activityLog.push("info", "notification", "Pengiriman WhatsApp diaktifkan manual dari halaman transport");
         return res.redirect("/transport?sendingEnabled=1");
       } catch (error) {
@@ -2745,13 +2849,33 @@ class WebServer {
       }
     });
     this.app.post("/transport/disable-sending", requirePageAuth, (req, res) => {
-      BaileysManager.disableOutbound();
+      this.notificationBot.disableOutbound();
       this.activityLog.push("info", "notification", "Pengiriman WhatsApp dijeda manual dari halaman transport");
       return res.redirect("/transport?sendingDisabled=1");
+    });
+    this.app.post("/transport/reconnect", requirePageAuth, async (_req, res) => {
+      try {
+        await this.notificationBot.reconnect();
+        return res.redirect("/transport");
+      } catch (error) {
+        return res.redirect(`/transport?error=${encodeURIComponent(error.message)}`);
+      }
     });
     this.app.get("/transport", requirePageAuth, async (req, res) => {
       const status = await this.notificationBot.getTransportStatus();
       if (status.deviceReady) {
+        if (status.selectedProvider === "android") {
+          return res.send(`
+            <!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WhatsApp Android Ready</title></head>
+            <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f5ef;font-family:Georgia,serif;color:#183f45;">
+              <main style="width:min(92vw,520px);padding:28px;border-radius:24px;background:#fff;box-shadow:0 24px 70px rgba(24,63,69,.18);text-align:center;">
+                <h1 style="margin:0 0 10px;">WhatsApp Android siap</h1>
+                <p style="font:14px/1.7 sans-serif;">Waydroid, WhatsApp, Appium, dan bridge telah memberikan status ready.</p>
+                <form method="post" action="/transport/reconnect"><button type="submit" style="padding:13px 20px;border:0;border-radius:999px;background:#176b5b;color:#fff;font-weight:700;cursor:pointer;">Reconnect</button></form>
+              </main>
+            </body></html>
+          `);
+        }
         const sendingEnabled = req.query.sendingEnabled === "1";
         const sendingDisabled = req.query.sendingDisabled === "1";
         const error = sanitizeInput(req.query.error);
@@ -2774,6 +2898,26 @@ class WebServer {
                   <button type="submit" style="padding:13px 20px;border:0;border-radius:999px;background:#176b5b;color:#fff;font-weight:700;cursor:pointer;">Aktifkan Pengiriman</button>
                 </form>
               `}
+            </main>
+          </body></html>
+        `);
+      }
+
+      if (status.selectedProvider === "android") {
+        return res.status(503).send(`
+          <!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="10"><title>WhatsApp Android</title></head>
+          <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#dcecdf,#f4f5ef 55%);font-family:Georgia,serif;color:#183f45;">
+            <main style="width:min(92vw,560px);padding:28px;border-radius:24px;background:#fff;box-shadow:0 24px 70px rgba(24,63,69,.18);">
+              <h1 style="margin:0 0 8px;font-size:1.8rem;">WhatsApp Android belum siap</h1>
+              <p style="line-height:1.6;">${escapeHtml(status.transportError || "Bridge Waydroid belum siap")}</p>
+              <dl style="font:14px/1.8 sans-serif;background:#f4f5ef;border-radius:16px;padding:14px 18px;">
+                <div><strong>Waydroid:</strong> ${escapeHtml(status.waydroid || "unknown")}</div>
+                <div><strong>WhatsApp:</strong> ${escapeHtml(status.whatsapp || "unknown")}</div>
+                <div><strong>Bridge:</strong> ${escapeHtml(status.bridge || "unknown")}</div>
+                <div><strong>Appium:</strong> ${escapeHtml(status.appium || "unknown")}</div>
+              </dl>
+              <form method="post" action="/transport/reconnect"><button type="submit" style="padding:13px 20px;border:0;border-radius:999px;background:#176b5b;color:#fff;font-weight:700;cursor:pointer;">Reconnect</button></form>
+              <p style="margin:18px 0 0;font:13px/1.5 sans-serif;color:#627773;">Pesan reminder tetap pending sampai seluruh komponen memberi konfirmasi ready.</p>
             </main>
           </body></html>
         `);
@@ -2827,6 +2971,36 @@ class WebServer {
           hotspotReactivationProcessing: this.hotspotReactivationScheduler?.isProcessing || false,
         },
       };
+    }));
+
+    this.app.get("/api/whatsapp/status", requireApiAuth, handleApi(async () => this.notificationBot.getTransportStatus()));
+    this.app.get("/api/whatsapp/provider", requireApiAuth, handleApi(async () => ({
+      provider: this.dataManager.getSettings().whatsappProvider,
+    })));
+    this.app.post("/api/whatsapp/provider", requireApiAuth, handleApi(async (req) => {
+      const provider = WhatsAppProviderManager.normalizeProvider(req.body.provider);
+      const result = await this.dataManager.updateSettings({ whatsappProvider: provider });
+      await this.notificationBot.setProvider(provider, { persist: false });
+      return { provider: result.whatsappProvider, status: await this.notificationBot.getTransportStatus() };
+    }));
+    this.app.post("/api/whatsapp/reconnect", requireApiAuth, handleApi(async () => this.notificationBot.reconnect()));
+    this.app.post("/api/whatsapp/test", requireApiAuth, handleApi(async (req) => {
+      const phoneNumber = normalizePhoneNumber(req.body.phoneNumber || req.body.phone || "");
+      const message = sanitizeMultilineText(req.body.message || "");
+      if (phoneNumber || message) {
+        if (!isValidPhoneNumber(phoneNumber)) throw new Error("Nomor tujuan tidak valid.");
+        if (!message) throw new Error("Pesan test wajib diisi.");
+        const result = await this.notificationBot.sendMessage(phoneNumber, message, {
+          maxAttempts: 1,
+          context: { type: "test" },
+        });
+        this.activityLog.push("info", "manual", `WhatsApp test message sent to ${phoneNumber}`, {
+          event: "whatsapp.message.sent",
+          provider: result.provider,
+        });
+        return { type: "message", phoneNumber, ...result };
+      }
+      return { type: "connection", ...(await this.notificationBot.testConnection()) };
     }));
 
     this.app.get("/api/logs", requireApiAuth, handleApi(async () => this.activityLog.list()));
@@ -3023,7 +3197,14 @@ class WebServer {
     this.app.delete("/api/templates/:name", requireApiAuth, handleApi(async (req) => this.templateManager.deleteTemplate(req.params.name)));
 
     this.app.get("/api/settings", requireApiAuth, handleApi(async () => this.dataManager.getSettings()));
-    this.app.put("/api/settings", requireApiAuth, handleApi(async (req) => this.dataManager.updateSettings(req.body)));
+    this.app.put("/api/settings", requireApiAuth, handleApi(async (req) => {
+      const current = this.dataManager.getSettings();
+      const settings = await this.dataManager.updateSettings(req.body);
+      if (settings.whatsappProvider !== current.whatsappProvider) {
+        await this.notificationBot.setProvider(settings.whatsappProvider, { persist: false });
+      }
+      return settings;
+    }));
 
     this.app.get("/api/admin-recipients", requireApiAuth, handleApi(async () => this.dataManager.getAdminRecipients()));
     this.app.put("/api/admin-recipients", requireApiAuth, handleApi(async (req) => {
@@ -3317,21 +3498,21 @@ async function bootstrap() {
 
   process.on("SIGINT", async () => {
     activityLog.push("info", "shutdown", "Saving data before shutdown");
-    await BaileysManager.shutdown();
+    await notificationBot.shutdown();
     await dataManager.saveAll();
     process.exit(0);
   });
 
   process.on("SIGTERM", async () => {
     activityLog.push("info", "shutdown", "Saving data before shutdown");
-    await BaileysManager.shutdown();
+    await notificationBot.shutdown();
     await dataManager.saveAll();
     process.exit(0);
   });
 
   process.on("uncaughtException", async (error) => {
     activityLog.push("error", "runtime", `Uncaught exception: ${error.message}`);
-    await BaileysManager.shutdown();
+    await notificationBot.shutdown();
     await dataManager.saveAll();
     process.exit(1);
   });
@@ -3339,7 +3520,7 @@ async function bootstrap() {
   process.on("unhandledRejection", async (reason) => {
     const message = reason instanceof Error ? reason.message : String(reason);
     activityLog.push("error", "runtime", `Unhandled rejection: ${message}`);
-    await BaileysManager.shutdown();
+    await notificationBot.shutdown();
     await dataManager.saveAll();
     process.exit(1);
   });

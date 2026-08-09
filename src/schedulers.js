@@ -68,13 +68,25 @@ class ReminderScheduler {
       return;
     }
 
-    const status = this.notificationBot.getStatus();
+    const status = this.notificationBot.getTransportStatus
+      ? await this.notificationBot.getTransportStatus()
+      : this.notificationBot.getStatus();
     if (!status.whatsappProviderEnabled) {
       this.activityLog.push("info", "scheduler", "Skipping run because no WhatsApp provider is configured");
       return;
     }
     if (!status.isAvailable || status.outboundEnabled !== true) {
+      const pendingCount = this.dataManager.markDueRemindersPending
+        ? await this.dataManager.markDueRemindersPending(new Date(), status.selectedProvider || null)
+        : 0;
       this.activityLog.push("info", "scheduler", "Skipping run because WhatsApp is not ready or outbound delivery is paused");
+      if (pendingCount > 0) {
+        this.activityLog.push("info", "whatsapp.message.queued", `${pendingCount} due reminder(s) tetap pending`, {
+          event: "whatsapp.message.queued",
+          provider: status.selectedProvider || null,
+          pendingCount,
+        });
+      }
       return;
     }
 
@@ -104,14 +116,14 @@ class ReminderScheduler {
           claimedReminderId = reminder.id;
           activeReminder = reminder;
 
-          if (Math.max(0, Number(reminder.deliveryAttempts) || 0) > 0
-            || reminder.nextDeliveryAttemptAt
-            || reminder.deliveryAttemptedAt) {
+          if (reminder.deliveryAttemptedAt && !reminder.providerStatus) {
             const errorMessage = reminder.lastDeliveryError || "Pengiriman sebelumnya gagal";
             await this.dataManager.moveToSent(reminder.id, {
               sentAt: reminder.lastDeliveryAttemptAt || new Date().toISOString(),
               deliveryStatus: "FAILED",
               deliveryError: errorMessage,
+              providerStatus: "failed",
+              providerError: errorMessage,
             });
             claimedReminderId = null;
             await this.rescheduleMonthlyReminder(reminder, "FAILED");
@@ -140,7 +152,10 @@ class ReminderScheduler {
           }
 
           const targetPhoneNumber = reminder.phoneNumber;
-          const attemptedReminder = await this.dataManager.markReminderDeliveryAttempt(reminder.id);
+          const attemptedReminder = await this.dataManager.markReminderDeliveryAttempt(
+            reminder.id,
+            status.selectedProvider || null
+          );
           if (!attemptedReminder) {
             this.activityLog.push("warn", "delivery", `Reminder ${reminder.id} dilewati karena sudah pernah dicoba`, {
               reminderId: reminder.id,
@@ -150,20 +165,54 @@ class ReminderScheduler {
           }
           let sendResult;
           try {
-            sendResult = await this.notificationBot.sendMessage(targetPhoneNumber, reminder.message);
+            sendResult = await this.notificationBot.sendMessage(targetPhoneNumber, reminder.message, {
+              maxAttempts: 1,
+              context: { type: "reminder", reminderId: reminder.id },
+            });
+            if (sendResult?.unconfirmed === true || sendResult?.confirmed === false) {
+              const error = new Error("Provider tidak memberikan konfirmasi pengiriman");
+              error.code = "WHATSAPP_SEND_UNCONFIRMED";
+              throw error;
+            }
           } catch (error) {
             const errorMessage = error?.message || String(error);
+            const attempts = Math.max(1, Number(attemptedReminder.deliveryAttempts) || 1);
+            const retryable = error?.retryable !== false && attempts < Math.max(1, CONFIG.WHATSAPP_RETRY_LIMIT);
+            if (retryable && this.dataManager.scheduleReminderRetry) {
+              const retried = await this.dataManager.scheduleReminderRetry(reminder.id, error, {
+                provider: status.selectedProvider || null,
+                delaySeconds: CONFIG.WHATSAPP_RETRY_DELAY,
+              });
+              claimedReminderId = null;
+              this.activityLog.push("warn", "whatsapp.message.failed", `Message failed; retry scheduled: ${targetPhoneNumber}`, {
+                event: "whatsapp.message.failed",
+                reminderId: reminder.id,
+                phoneNumber: targetPhoneNumber,
+                provider: status.selectedProvider || null,
+                attempts,
+                retryAt: retried?.nextDeliveryAttemptAt || null,
+                error: errorMessage,
+              });
+              continue;
+            }
+
             await this.dataManager.moveToSent(reminder.id, {
               sentAt: new Date().toISOString(),
               deliveryStatus: "FAILED",
               deliveryError: errorMessage,
+              whatsappProvider: status.selectedProvider || null,
+              providerStatus: "failed",
+              providerError: errorMessage,
             });
             claimedReminderId = null;
             await this.rescheduleMonthlyReminder(reminder, "FAILED");
-            this.activityLog.push("error", "delivery", `Failed to send reminder ${reminder.id}: ${errorMessage}`, {
+            this.activityLog.push("error", "whatsapp.message.failed", `Message failed: ${targetPhoneNumber}`, {
+              event: "whatsapp.message.failed",
               reminderId: reminder.id,
               error: errorMessage,
               phoneNumber: reminder.phoneNumber,
+              provider: status.selectedProvider || null,
+              attempts,
               retryScheduled: false,
             });
             continue;
@@ -171,19 +220,23 @@ class ReminderScheduler {
           const provider = sendResult?.provider || "baileys";
           const providerDeliveryStatus = {
             baileys: "SENT_BAILEYS",
+            android: "SENT_ANDROID",
           }[provider] || "SENT";
-          const deliveryStatus = sendResult?.unconfirmed
-            ? "SENT_UNCONFIRMED"
-            : providerDeliveryStatus;
+          const deliveryStatus = providerDeliveryStatus;
           const sentReminder = await this.dataManager.moveToSent(reminder.id, {
             sentAt: new Date().toISOString(),
             deliveryStatus,
+            whatsappProvider: provider,
+            providerMessageId: sendResult?.providerMessageId || sendResult?.messageId || null,
+            providerStatus: "sent",
           });
           claimedReminderId = null;
 
-          this.activityLog.push("info", "delivery", `Reminder sent to ${targetPhoneNumber} via ${provider}`, {
+          this.activityLog.push("info", "whatsapp.message.sent", `Message sent: ${targetPhoneNumber}`, {
+            event: "whatsapp.message.sent",
             reminderId: reminder.id,
             provider,
+            providerMessageId: sendResult?.providerMessageId || sendResult?.messageId || null,
           });
 
           if (this.dataManager.getSettings().notifyAdminsOnDelivery) {
@@ -831,7 +884,7 @@ class WhatsAppProviderStatusNotifier {
   getProviderStatuses(status) {
     return new Map(
       Object.values(status.providers || {})
-        .filter((provider) => provider?.configured)
+        .filter((provider) => provider?.configured && provider.active !== false)
         .map((provider) => [provider.name, {
           connected: Boolean(provider.connection?.connected),
           detail: sanitizeInput(provider.connection?.detail || "Status tidak diketahui"),
@@ -852,7 +905,7 @@ class WhatsAppProviderStatusNotifier {
 
   buildAlert(status) {
     const providerLines = Object.values(status.providers || {})
-      .filter((provider) => provider?.configured)
+      .filter((provider) => provider?.configured && provider.active !== false)
       .map((provider) => {
         const connection = provider.connection || {};
         return `- ${provider.name}: ${connection.connected ? "ONLINE" : "DOWN"} (${sanitizeInput(connection.detail || "status tidak diketahui")})`;
@@ -861,7 +914,7 @@ class WhatsAppProviderStatusNotifier {
       `- ${name}: ${previous.connected ? "ONLINE" : "DOWN"} -> ${current.connected ? "ONLINE" : "DOWN"}`
     ));
     const hasDownProvider = Object.values(status.providers || {})
-      .some((provider) => provider?.configured && !provider.connection?.connected);
+      .some((provider) => provider?.configured && provider.active !== false && !provider.connection?.connected);
 
     return {
       title: hasDownProvider ? "Alert provider WhatsApp" : "Provider WhatsApp pulih",

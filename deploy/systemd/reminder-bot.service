@@ -1,0 +1,24 @@
+[Unit]
+Description=Reminder Bot dashboard and scheduler
+Wants=network-online.target whatsapp-bridge.service
+After=network-online.target waydroid-container.service whatsapp-bridge.service
+
+[Service]
+Type=simple
+User=reminderbot
+Group=reminderbot
+WorkingDirectory=/opt/reminder-bot
+EnvironmentFile=/opt/reminder-bot/.env
+Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=256
+ExecStart=/usr/bin/node /opt/reminder-bot/index.js
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/reminder-bot/database /opt/reminder-bot/templates
+
+[Install]
+WantedBy=multi-user.target
