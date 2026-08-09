@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+require("dotenv").config({ quiet: true });
+
 /*
  * Local-only bridge for WhatsApp Android. It uses Appium UiAutomator2 for
  * accessibility/UI automation; it never pretends that WhatsApp has a REST API.
