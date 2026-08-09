@@ -67,6 +67,9 @@ Bridge memakai deep link `wa.me`, tombol accessibility `Send`/`Kirim`, dan resou
 - `appium=disconnected`: periksa Java, Appium, driver UiAutomator2, port 4723, dan serial ADB.
 - Appium `/status` sukses tetapi session gagal: periksa `ANDROID_HOME`,
   `ANDROID_SDK_ROOT`, `ANDROID_ADB_SERIAL`, dan status `adb devices`.
+- DNS berhasil tetapi TCP Android timeout: capture trafik pada bridge dan interface uplink.
+  Jika balasan tiba dengan `TTL=1`, gunakan aturan TTL terbatas dari readiness script;
+  jangan menaikkan TTL seluruh trafik host.
 - `ANDROID_SEND_UNCONFIRMED`: periksa bahasa UI, selector tombol, resource id bubble, dialog permission/update, dan koneksi internet Android.
 - Jangan menandai reminder secara manual sebagai sent untuk menyembunyikan error bridge; perbaiki health/selector lalu biarkan scheduler retry.
 

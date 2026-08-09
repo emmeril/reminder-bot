@@ -119,3 +119,10 @@ dalvik.vm.usejit = false
 Workaround ini menghindari sebagian kode OAT/implicit null-check, tetapi membuat Android
 lebih lambat. Hapus properti dan pulihkan backup konfigurasi bila tidak memperbaiki crash;
 jangan menyatakan provider ready sebelum WhatsApp dan satu session UiAutomator2 stabil.
+
+Pada jaringan yang memaksa paket balasan internet ke `TTL=1`, koneksi host tetap bekerja
+tetapi paket akan kedaluwarsa saat diteruskan ke Waydroid. Readiness script menambahkan
+satu aturan mangle yang sangat terbatas: hanya paket balasan `ESTABLISHED,RELATED` dengan
+TTL 1 untuk koneksi yang berasal dari subnet Waydroid yang dinaikkan satu. Verifikasi
+dengan packet capture sebelum mengandalkan workaround ini; jangan menerapkan perubahan
+TTL global ke trafik LAN atau internet lainnya.
