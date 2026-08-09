@@ -114,6 +114,7 @@ class ReminderScheduler {
               deliveryError: errorMessage,
             });
             claimedReminderId = null;
+            await this.rescheduleMonthlyReminder(reminder, "FAILED");
             this.activityLog.push("warn", "delivery", `Reminder ${reminder.id} tidak dikirim ulang setelah kegagalan sebelumnya`, {
               reminderId: reminder.id,
               error: errorMessage,
@@ -158,6 +159,7 @@ class ReminderScheduler {
               deliveryError: errorMessage,
             });
             claimedReminderId = null;
+            await this.rescheduleMonthlyReminder(reminder, "FAILED");
             this.activityLog.push("error", "delivery", `Failed to send reminder ${reminder.id}: ${errorMessage}`, {
               reminderId: reminder.id,
               error: errorMessage,
