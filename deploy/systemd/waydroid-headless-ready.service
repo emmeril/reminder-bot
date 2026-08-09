@@ -1,0 +1,16 @@
+[Unit]
+Description=Prepare Waydroid network and authenticated local ADB
+Requires=waydroid-session.service
+After=waydroid-session.service
+PartOf=waydroid-session.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/reminder-bot/scripts/waydroid-headless-ready.sh
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=waydroid-session.service
+

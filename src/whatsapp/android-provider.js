@@ -43,6 +43,7 @@ class AndroidProvider extends WhatsAppProvider {
       bridge: "disconnected",
       whatsappInstalled: false,
       whatsappRunning: false,
+      whatsappReady: false,
       ...patch,
     };
   }
@@ -86,6 +87,7 @@ class AndroidProvider extends WhatsAppProvider {
       && payload.waydroid === "running"
       && payload.whatsappInstalled === true
       && payload.whatsappRunning === true
+      && payload.whatsappReady === true
       && payload.bridge === "connected";
     let state = PROVIDER_STATES.UNAVAILABLE;
     if (ready) state = PROVIDER_STATES.READY;
@@ -102,10 +104,11 @@ class AndroidProvider extends WhatsAppProvider {
       outboundEnabled: ready,
       detail: payload.detail || payload.error || (ready ? "WhatsApp Android siap" : "WhatsApp Android belum siap"),
       waydroid: payload.waydroid || "unknown",
-      whatsapp: ready ? "ready" : (payload.whatsappRunning ? "running" : "stopped"),
+      whatsapp: payload.whatsapp || (ready ? "ready" : (payload.whatsappRunning ? "running" : "stopped")),
       bridge: payload.bridge || "disconnected",
       whatsappInstalled: payload.whatsappInstalled === true,
       whatsappRunning: payload.whatsappRunning === true,
+      whatsappReady: payload.whatsappReady === true,
       appium: payload.appium || "unknown",
       checkedAt: payload.checkedAt || new Date().toISOString(),
     };

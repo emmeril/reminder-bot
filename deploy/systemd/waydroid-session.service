@@ -1,0 +1,19 @@
+[Unit]
+Description=Headless Waydroid Android session
+Requires=waydroid-container.service waydroid-weston.service
+Wants=waydroid-headless-ready.service
+After=network-online.target waydroid-container.service waydroid-weston.service
+
+[Service]
+Type=simple
+Environment=XDG_RUNTIME_DIR=/run/user/0
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=PULSE_RUNTIME_PATH=/run/user/0/waydroid-pulse
+ExecStart=/usr/bin/dbus-run-session -- /opt/reminder-bot/scripts/waydroid-headless-session.sh
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+

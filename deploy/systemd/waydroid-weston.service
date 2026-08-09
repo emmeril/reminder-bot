@@ -1,0 +1,18 @@
+[Unit]
+Description=Headless Weston compositor for Waydroid
+After=local-fs.target
+Before=waydroid-session.service
+
+[Service]
+Type=simple
+Environment=XDG_RUNTIME_DIR=/run/user/0
+ExecStartPre=/usr/bin/install -d -m 0700 /run/user/0
+ExecStartPre=/usr/bin/install -d -m 0755 /run/user/0/waydroid-pulse
+ExecStartPre=/usr/bin/touch /run/user/0/waydroid-pulse/native
+ExecStart=/usr/bin/weston --backend=headless-backend.so --socket=wayland-0 --idle-time=0 --width=720 --height=1280 --use-pixman --no-config
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+

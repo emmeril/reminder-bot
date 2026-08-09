@@ -80,6 +80,8 @@ test("AndroidProvider hanya menganggap pesan sent bila bridge mengonfirmasi", as
           waydroid: "running",
           whatsappInstalled: true,
           whatsappRunning: true,
+          whatsappReady: true,
+          whatsapp: "ready",
           bridge: "connected",
           appium: "connected",
         });
@@ -107,6 +109,8 @@ test("AndroidProvider menolak konfirmasi palsu dan bridge non-loopback", async (
           waydroid: "running",
           whatsappInstalled: true,
           whatsappRunning: true,
+          whatsappReady: true,
+          whatsapp: "ready",
           bridge: "connected",
         })
       : response({ confirmed: false }),
@@ -115,4 +119,24 @@ test("AndroidProvider menolak konfirmasi palsu dan bridge non-loopback", async (
     () => provider.sendMessage("6281234567890", "Halo"),
     (error) => error.code === "ANDROID_SEND_UNCONFIRMED"
   );
+});
+
+test("AndroidProvider tidak ready saat WhatsApp masih registrasi", async () => {
+  const provider = new AndroidProvider({
+    fetch: async () => response({
+      ready: false,
+      waydroid: "running",
+      whatsappInstalled: true,
+      whatsappRunning: true,
+      whatsappReady: false,
+      whatsapp: "registration_required",
+      bridge: "connected",
+      appium: "connected",
+    }),
+  });
+
+  const status = await provider.getStatus();
+  assert.equal(status.ready, false);
+  assert.equal(status.whatsapp, "registration_required");
+  assert.equal(status.whatsappReady, false);
 });

@@ -19,6 +19,7 @@ const ADB_SERIAL = process.env.ANDROID_ADB_SERIAL || "";
 const WHATSAPP_PACKAGE = process.env.WHATSAPP_PACKAGE || "com.whatsapp";
 const SEND_XPATH = process.env.ANDROID_SEND_XPATH || '//*[@content-desc="Send" or @content-desc="Kirim"]';
 const CONFIRM_TIMEOUT_MS = Math.max(3000, Number(process.env.ANDROID_CONFIRM_TIMEOUT_MS || 12000));
+const SESSION_TIMEOUT_MS = Math.max(30000, Number(process.env.ANDROID_APPIUM_SESSION_TIMEOUT_MS || 120000));
 const TOKEN = String(process.env.ANDROID_BRIDGE_TOKEN || "").trim();
 const MANAGE_APPIUM = ["1", "true", "yes", "on"].includes(String(process.env.ANDROID_BRIDGE_MANAGE_APPIUM || "").toLowerCase());
 const AUTO_START_WHATSAPP = ["1", "true", "yes", "on"].includes(String(process.env.ANDROID_AUTO_START_WHATSAPP || "").toLowerCase());
@@ -76,11 +77,16 @@ async function probe() {
   let processProbe = adb.ok
     ? await command("adb", adbArgs(["shell", "pidof", WHATSAPP_PACKAGE]))
     : { ok: false, output: "ADB tidak siap" };
-  if (AUTO_START_WHATSAPP && adb.ok && packageProbe.ok && !/\d/.test(processProbe.output.trim())) {
-    await command("adb", adbArgs(["shell", "monkey", "-p", WHATSAPP_PACKAGE, "-c", "android.intent.category.LAUNCHER", "1"]));
+  if (AUTO_START_WHATSAPP && adb.ok && packageProbe.ok) {
+    // A dedicated headless device keeps WhatsApp foreground so readiness can
+    // distinguish the main chat UI from EULA/registration activities.
+    await command("adb", adbArgs(["shell", "am", "start", "-n", `${WHATSAPP_PACKAGE}/.Main`]));
     await new Promise((resolve) => setTimeout(resolve, 1500));
     processProbe = await command("adb", adbArgs(["shell", "pidof", WHATSAPP_PACKAGE]));
   }
+  const activityProbe = adb.ok && packageProbe.ok
+    ? await command("adb", adbArgs(["shell", "dumpsys", "activity", "top"]))
+    : { ok: false, output: "WhatsApp activity tidak tersedia" };
   let appium = { ok: false, output: "Appium tidak siap" };
   try {
     const response = await fetch(`${APPIUM_URL}/status`, { signal: AbortSignal.timeout(5000) });
@@ -91,8 +97,13 @@ async function probe() {
   const waydroidRunning = waydroid.ok && /running/i.test(waydroid.output);
   const whatsappInstalled = packageProbe.ok && /package:/i.test(packageProbe.output);
   const whatsappRunning = processProbe.ok && /\d/.test(processProbe.output.trim());
+  const registrationActivity = /com\.whatsapp(?:\/|\.)[^\s}]*registration|\bEULA\b|RegisterPhone/i.test(activityProbe.output);
+  const whatsappReady = whatsappRunning
+    && activityProbe.ok
+    && /ACTIVITY\s+com\.whatsapp\/\.Main\b/i.test(activityProbe.output)
+    && !registrationActivity;
   const bridgeReady = true;
-  const ready = waydroidRunning && whatsappInstalled && whatsappRunning && appium.ok && bridgeReady;
+  const ready = waydroidRunning && whatsappInstalled && whatsappReady && appium.ok && bridgeReady;
   return {
     ready,
     state: ready ? "ready" : "unavailable",
@@ -100,7 +111,8 @@ async function probe() {
     waydroid: waydroidRunning ? "running" : "stopped",
     whatsappInstalled,
     whatsappRunning,
-    whatsapp: whatsappRunning ? "running" : "stopped",
+    whatsappReady,
+    whatsapp: whatsappReady ? "ready" : (whatsappRunning ? "registration_required" : "stopped"),
     bridge: bridgeReady ? "connected" : "disconnected",
     appium: appium.ok ? "connected" : "disconnected",
     checkedAt: new Date().toISOString(),
@@ -135,10 +147,16 @@ async function createSession() {
           "appium:appPackage": WHATSAPP_PACKAGE,
           "appium:appActivity": "com.whatsapp.Main",
           "appium:noReset": true,
+          // Headless Waydroid has no reliable key-event path on every STB kernel.
+          // The deployment keeps the display awake and dismisses keyguard instead.
+          "appium:skipUnlock": true,
+          "appium:adbExecTimeout": SESSION_TIMEOUT_MS,
+          "appium:uiautomator2ServerLaunchTimeout": SESSION_TIMEOUT_MS,
           "appium:newCommandTimeout": 120,
         },
       },
     }),
+    timeoutMs: SESSION_TIMEOUT_MS,
   });
 }
 
