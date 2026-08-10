@@ -218,11 +218,7 @@ class ReminderScheduler {
             continue;
           }
           const provider = sendResult?.provider || "baileys";
-          const providerDeliveryStatus = {
-            baileys: "SENT_BAILEYS",
-            android: "SENT_ANDROID",
-          }[provider] || "SENT";
-          const deliveryStatus = providerDeliveryStatus;
+          const deliveryStatus = provider === "baileys" ? "SENT_BAILEYS" : "SENT";
           const sentReminder = await this.dataManager.moveToSent(reminder.id, {
             sentAt: new Date().toISOString(),
             deliveryStatus,

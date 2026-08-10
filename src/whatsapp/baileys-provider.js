@@ -74,9 +74,7 @@ class BaileysProvider extends WhatsAppProvider {
       detail: raw.isAvailable && raw.canSend !== true
         ? "Baileys terhubung; pengiriman masih dijeda"
         : (raw.transportError || raw.providers?.baileys?.connection?.detail || null),
-      waydroid: null,
       whatsapp: raw.deviceReady ? "ready" : "disconnected",
-      bridge: null,
     };
   }
 }

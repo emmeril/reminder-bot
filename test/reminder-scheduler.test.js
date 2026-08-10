@@ -117,10 +117,10 @@ test("reminder baru diarsipkan sent setelah provider memberi konfirmasi", async 
       whatsappProviderEnabled: true,
       isAvailable: true,
       outboundEnabled: true,
-      selectedProvider: "android",
+      selectedProvider: "baileys",
     }),
     sendMessage: async () => ({
-      provider: "android",
+      provider: "baileys",
       confirmed: true,
       messageId: "bridge-confirmation-1",
     }),
@@ -129,7 +129,7 @@ test("reminder baru diarsipkan sent setelah provider memberi konfirmasi", async 
   await new ReminderScheduler(notificationBot, dataManager, { push() {} }).processDueReminders();
 
   assert.equal(archived.length, 1);
-  assert.equal(archived[0].deliveryStatus, "SENT_ANDROID");
+  assert.equal(archived[0].deliveryStatus, "SENT_BAILEYS");
   assert.equal(archived[0].providerStatus, "sent");
   assert.equal(archived[0].providerMessageId, "bridge-confirmation-1");
 });

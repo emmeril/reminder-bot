@@ -1,7 +1,7 @@
 [Unit]
 Description=Reminder Bot dashboard and scheduler
-Wants=network-online.target whatsapp-bridge.service
-After=network-online.target waydroid-container.service whatsapp-bridge.service
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=simple

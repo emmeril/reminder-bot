@@ -114,10 +114,9 @@ test("riwayat pembayaran bulanan memakai metadata periode yang diminta", async (
   assert.equal(payload.data[0].paymentType, PAYMENT_TYPES.CURRENT_ONLY);
 });
 
-test("API WhatsApp status dan provider memakai auth existing", async () => {
+test("API WhatsApp status memakai auth existing dan endpoint pemilih provider dihapus", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
-  let settings = { dashboardTitle: "Test", whatsappProvider: "baileys" };
-  let selected = "baileys";
+  let settings = { dashboardTitle: "Test" };
   const baseUrl = await startServer({
     getSettings: () => ({ ...settings }),
     updateSettings: async (patch) => {
@@ -126,16 +125,11 @@ test("API WhatsApp status dan provider memakai auth existing", async () => {
     },
   }, {
     getTransportStatus: async () => ({
-      selectedProvider: selected,
+      selectedProvider: "baileys",
       state: "READY",
       deviceReady: true,
-      waydroid: selected === "android" ? "running" : null,
       whatsapp: "ready",
-      bridge: selected === "android" ? "connected" : null,
     }),
-    setProvider: async (provider) => {
-      selected = provider;
-    },
   });
   const headers = { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" };
 
@@ -147,17 +141,7 @@ test("API WhatsApp status dan provider memakai auth existing", async () => {
   const providerResponse = await fetch(`${baseUrl}/api/whatsapp/provider`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ provider: "android" }),
+    body: JSON.stringify({ provider: "baileys" }),
   });
-  const provider = await providerResponse.json();
-  assert.equal(providerResponse.status, 200);
-  assert.equal(provider.data.provider, "android");
-  assert.equal(provider.data.status.bridge, "connected");
-
-  const invalidResponse = await fetch(`${baseUrl}/api/whatsapp/provider`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ provider: "invalid" }),
-  });
-  assert.equal(invalidResponse.status, 400);
+  assert.equal(providerResponse.status, 404);
 });

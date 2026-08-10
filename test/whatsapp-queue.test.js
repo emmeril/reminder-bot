@@ -12,8 +12,8 @@ test("WhatsApp queue membatasi concurrency dan menyimpan status sent", async () 
     maxActive = Math.max(maxActive, active);
     await new Promise((resolve) => setTimeout(resolve, 5));
     active -= 1;
-    return { provider: "android", messageId: id, confirmed: true };
-  }, { phone: `628${id}`, provider: "android" });
+    return { provider: "baileys", messageId: id, confirmed: true };
+  }, { phone: `628${id}`, provider: "baileys" });
 
   await Promise.all([task("1"), task("2"), task("3")]);
 
@@ -27,9 +27,9 @@ test("WhatsApp queue memberi status retry lalu sent", async () => {
   let attempts = 0;
   const result = await queue.enqueue(async () => {
     attempts += 1;
-    if (attempts < 3) throw new Error("bridge sementara gagal");
-    return { provider: "android", messageId: "ok", confirmed: true };
-  }, { phone: "6281234567890", provider: "android" });
+    if (attempts < 3) throw new Error("koneksi sementara gagal");
+    return { provider: "baileys", messageId: "ok", confirmed: true };
+  }, { phone: "6281234567890", provider: "baileys" });
 
   assert.equal(result.messageId, "ok");
   assert.equal(attempts, 3);
@@ -39,9 +39,9 @@ test("WhatsApp queue memberi status retry lalu sent", async () => {
 test("WhatsApp queue tidak mengubah respons unconfirmed menjadi sent", async () => {
   const queue = new WhatsAppQueue({ concurrency: 1, retryLimit: 1, retryDelayMs: 0 });
   await assert.rejects(
-    () => queue.enqueue(async () => ({ provider: "android", confirmed: false }), {
+    () => queue.enqueue(async () => ({ provider: "baileys", confirmed: false }), {
       phone: "6281234567890",
-      provider: "android",
+      provider: "baileys",
     }),
     /tidak memberikan konfirmasi/
   );

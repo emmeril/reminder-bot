@@ -20,11 +20,6 @@ function envBoolean(name, fallback = false) {
   return ["true", "1", "yes", "on"].includes(value);
 }
 
-function envEnum(name, allowed, fallback) {
-  const value = envString(name, fallback).toLowerCase();
-  return allowed.includes(value) ? value : fallback;
-}
-
 function resolveFromRoot(value, fallback) {
   if (!value) return fallback;
   return path.isAbsolute(value) ? value : path.join(ROOT_DIR, value);
@@ -101,13 +96,9 @@ const CONFIG = {
   BAILEYS_BROWSER_NAME: envString("BAILEYS_BROWSER_NAME", "Reminder Bot"),
   BAILEYS_CONNECT_TIMEOUT: envNumber("BAILEYS_CONNECT_TIMEOUT", 30_000),
   BAILEYS_QUERY_TIMEOUT: envNumber("BAILEYS_QUERY_TIMEOUT", 30_000),
-  WHATSAPP_PROVIDER: envEnum("WHATSAPP_PROVIDER", ["baileys", "android"], "baileys"),
   WHATSAPP_QUEUE_CONCURRENCY: envNumber("WHATSAPP_QUEUE_CONCURRENCY", 1),
   WHATSAPP_RETRY_LIMIT: envNumber("WHATSAPP_RETRY_LIMIT", 3),
   WHATSAPP_RETRY_DELAY: envNumber("WHATSAPP_RETRY_DELAY", 30),
-  ANDROID_BRIDGE_URL: envString("ANDROID_BRIDGE_URL", "http://127.0.0.1:3030"),
-  ANDROID_BRIDGE_TOKEN: envString("ANDROID_BRIDGE_TOKEN"),
-  ANDROID_BRIDGE_TIMEOUT: envNumber("ANDROID_BRIDGE_TIMEOUT", 15_000),
   TELEGRAM_BOT_TOKEN: envString("TELEGRAM_BOT_TOKEN"),
   TELEGRAM_API_URL: envString("TELEGRAM_API_URL", "https://api.telegram.org"),
   TELEGRAM_CHAT_IDS: envString("TELEGRAM_CHAT_IDS"),
@@ -167,9 +158,6 @@ const DEFAULT_SETTINGS = {
   notifyAdminsOnPaymentReset: true,
   waRandomDelayMinSeconds: Math.max(0, Math.round(CONFIG.WA_MESSAGE_DELAY_MIN / 1000)),
   waRandomDelayMaxSeconds: Math.max(0, Math.round(CONFIG.WA_MESSAGE_DELAY_MAX / 1000)),
-  whatsappProvider: ["baileys", "android"].includes(CONFIG.WHATSAPP_PROVIDER)
-    ? CONFIG.WHATSAPP_PROVIDER
-    : "baileys",
   enableMikrotikBackupToWa: false,
   mikrotikBackupTime: "02:00",
   mikrotikBackupTimezone: "Asia/Jakarta",

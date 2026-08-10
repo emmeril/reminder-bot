@@ -4,7 +4,6 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "start:bridge": "node bridge/whatsapp-bridge.js",
     "build:css": "tailwindcss -c tailwind.config.js -i src/tailwind.css -o public/tailwind.css --minify",
     "build": "npm run build:css",
     "test": "node --test test/*.test.js"

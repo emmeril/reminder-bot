@@ -662,38 +662,20 @@
             <div class="rounded-[1.5rem] border border-moss/15 bg-gradient-to-br from-white via-haze/70 to-moss/5 p-5">
               <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <div class="text-xs font-bold uppercase tracking-[0.18em] text-moss">WhatsApp Provider</div>
-                  <h3 class="mt-2 font-display text-xl text-ink" x-text="(whatsappStatus.selectedProvider || forms.settings.whatsappProvider || 'baileys').toUpperCase()"></h3>
-                  <p class="mt-1 text-sm text-ink/60" x-text="whatsappStatus.transportError || 'Provider siap.'"></p>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                  <label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink">
-                    <input type="radio" value="baileys" x-model="forms.settings.whatsappProvider" @change="changeWhatsAppProvider('baileys')" class="accent-moss">
-                    Baileys
-                  </label>
-                  <label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink">
-                    <input type="radio" value="android" x-model="forms.settings.whatsappProvider" @change="changeWhatsAppProvider('android')" class="accent-moss">
-                    Android
-                  </label>
+                  <div class="text-xs font-bold uppercase tracking-[0.18em] text-moss">WhatsApp Baileys</div>
+                  <h3 class="mt-2 font-display text-xl text-ink">Linked Devices</h3>
+                  <p class="mt-1 text-sm text-ink/60" x-text="whatsappStatus.transportError || 'Baileys siap.'"></p>
                 </div>
               </div>
 
-              <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div class="mt-5 grid gap-3 sm:grid-cols-3">
                 <div class="rounded-2xl border border-ink/8 bg-white px-4 py-3">
-                  <div class="text-xs font-bold uppercase text-ink/40">Provider</div>
+                  <div class="text-xs font-bold uppercase text-ink/40">Koneksi</div>
                   <div class="mt-2 text-sm font-semibold" x-text="whatsappStatus.state || 'DISCONNECTED'"></div>
-                </div>
-                <div class="rounded-2xl border border-ink/8 bg-white px-4 py-3">
-                  <div class="text-xs font-bold uppercase text-ink/40">Waydroid</div>
-                  <div class="mt-2 text-sm font-semibold" x-text="whatsappStatus.waydroid || 'n/a'"></div>
                 </div>
                 <div class="rounded-2xl border border-ink/8 bg-white px-4 py-3">
                   <div class="text-xs font-bold uppercase text-ink/40">WhatsApp</div>
                   <div class="mt-2 text-sm font-semibold" x-text="whatsappStatus.whatsapp || (whatsappStatus.deviceReady ? 'ready' : 'stopped')"></div>
-                </div>
-                <div class="rounded-2xl border border-ink/8 bg-white px-4 py-3">
-                  <div class="text-xs font-bold uppercase text-ink/40">Bridge</div>
-                  <div class="mt-2 text-sm font-semibold" x-text="whatsappStatus.bridge || 'n/a'"></div>
                 </div>
                 <div class="rounded-2xl border border-ink/8 bg-white px-4 py-3">
                   <div class="text-xs font-bold uppercase text-ink/40">Queue</div>
