@@ -59,17 +59,18 @@
         },
         activeMenu: "overview",
         sidebarHidden: false,
+        mobileSidebarOpen: false,
         navMenus: [
-          { key: "overview", label: "Overview", icon: "fa-solid fa-chart-pie" },
-          { key: "notifications", label: "Notifikasi", icon: "fa-solid fa-paper-plane" },
-          { key: "contacts", label: "Contacts", icon: "fa-solid fa-address-book" },
-          { key: "monitor-ap", label: "Monitor AP", icon: "fa-solid fa-tower-cell" },
-          { key: "reminders", label: "Reminders", icon: "fa-solid fa-calendar-check" },
-          { key: "payment-amount", label: "Nominal Bayar", icon: "fa-solid fa-money-bill-wave" },
-          { key: "templates", label: "Templates", icon: "fa-solid fa-file-pen" },
-          { key: "settings", label: "Settings", icon: "fa-solid fa-sliders" },
-          { key: "history", label: "Sent History", icon: "fa-solid fa-clock-rotate-left" },
-          { key: "logs", label: "Activity Log", icon: "fa-solid fa-list-check" },
+          { key: "overview", label: "Overview", icon: "fa-solid fa-chart-pie", description: "Ringkasan status layanan, antrean, kontak, dan aktivitas pengiriman." },
+          { key: "notifications", label: "Notifikasi", icon: "fa-solid fa-paper-plane", description: "Kirim notifikasi manual, broadcast, dan kelola penerima admin." },
+          { key: "contacts", label: "Contacts", icon: "fa-solid fa-address-book", description: "Kelola pelanggan, akun hotspot, jatuh tempo, dan status pembayaran." },
+          { key: "monitor-ap", label: "Monitor AP", icon: "fa-solid fa-tower-cell", description: "Pantau konektivitas dan kondisi access point secara terpusat." },
+          { key: "reminders", label: "Reminders", icon: "fa-solid fa-calendar-check", description: "Atur jadwal dan isi pesan reminder pelanggan." },
+          { key: "payment-amount", label: "Nominal Bayar", icon: "fa-solid fa-money-bill-wave", description: "Atur nominal pembayaran bulanan untuk setiap pelanggan." },
+          { key: "templates", label: "Templates", icon: "fa-solid fa-file-pen", description: "Kelola template pesan yang digunakan oleh notifikasi dan reminder." },
+          { key: "settings", label: "Settings", icon: "fa-solid fa-sliders", description: "Konfigurasi identitas, notifikasi, backup, dan perilaku sistem." },
+          { key: "history", label: "Sent History", icon: "fa-solid fa-clock-rotate-left", description: "Lihat riwayat pesan beserta status pengirimannya." },
+          { key: "logs", label: "Activity Log", icon: "fa-solid fa-list-check", description: "Audit aktivitas scheduler, koneksi, API, dan proses internal." },
         ],
         contacts: [],
         mikrotikProfiles: [],
@@ -152,7 +153,8 @@
         },
 
         async init() {
-          const savedMenu = localStorage.getItem("dashboardActiveMenu");
+          const requestedMenu = new URLSearchParams(window.location.search).get("menu");
+          const savedMenu = requestedMenu || localStorage.getItem("dashboardActiveMenu");
           const isValidSavedMenu = this.navMenus.some((menu) => menu.key === savedMenu);
           if (isValidSavedMenu) {
             this.activeMenu = savedMenu;
@@ -199,6 +201,20 @@
 
         toggleSidebar() {
           this.sidebarHidden = !this.sidebarHidden;
+        },
+
+        selectMenu(key) {
+          this.activeMenu = key;
+          this.mobileSidebarOpen = false;
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        },
+
+        get activeMenuLabel() {
+          return this.navMenus.find((menu) => menu.key === this.activeMenu)?.label || "Dashboard";
+        },
+
+        get activeMenuDescription() {
+          return this.navMenus.find((menu) => menu.key === this.activeMenu)?.description || "Panel operasional reminder bot.";
         },
 
         async loadNonCriticalData() {

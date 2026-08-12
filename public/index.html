@@ -10,138 +10,103 @@
   <script defer src="/public/app.js"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
-<body class="min-h-screen bg-slate-100 font-body text-ink">
+<body class="admin-body min-h-screen font-body text-ink">
   <div
     x-data="dashboardApp()"
     x-init="init()"
-    class="app-container mx-auto w-[min(1500px,calc(100%-24px))] py-4 sm:w-[min(1500px,calc(100%-36px))] sm:py-6"
+    class="admin-wrapper"
+    :class="{ 'sidebar-collapsed': sidebarHidden, 'mobile-sidebar-open': mobileSidebarOpen }"
+    @keydown.escape.window="mobileSidebarOpen = false"
   >
     <datalist id="hotspot-users">
       <template x-for="user in hotspotUsers" :key="'hotspot-user-option-' + user.username">
         <option :value="user.username" x-text="user.profile ? user.username + ' - ' + user.profile : user.username"></option>
       </template>
     </datalist>
-    <div
-      class="grid gap-4"
-      :class="sidebarHidden ? 'xl:grid-cols-1' : 'xl:grid-cols-[280px,minmax(0,1fr)]'"
-    >
-      <aside x-show="!sidebarHidden" x-transition.opacity class="hidden xl:flex xl:flex-col xl:gap-4">
-        <section class="panel-shell rounded-[1.4rem] p-5 shadow-soft backdrop-blur-xl">
-          <div class="flex items-center gap-3">
-            <div class="hero-mark !h-12 !w-12 !rounded-[1rem]">
-              <i class="fa-solid fa-bell"></i>
-            </div>
-            <div class="min-w-0">
-              <div class="section-caption">Reminder Operations</div>
-              <!-- <h1 class="mt-1 text-[1.5rem] whitespace-nowrap font-semibold leading-tight text-ink">__DASHBOARD_TITLE__</h1> -->
-            </div>
-          </div>
-        </section>
-
-        <section class="panel-shell rounded-[1.4rem] p-3 shadow-soft backdrop-blur-xl">
-          <div class="mb-3 px-2 pt-1 text-xs font-bold uppercase tracking-[0.18em] text-ink/40">Navigation</div>
-          <div class="space-y-1">
-            <template x-for="menu in navMenus" :key="'sidebar-' + menu.key">
-              <button
-                type="button"
-                @click="activeMenu = menu.key"
-                class="menu-pill nav-item w-full justify-start rounded-2xl border px-4 py-3 text-sm font-semibold transition"
-                :class="activeMenu === menu.key ? 'border-moss bg-moss text-white shadow-lg shadow-moss/20' : 'border-transparent bg-transparent text-ink hover:border-ink/10 hover:bg-haze'"
-              >
-                <i :class="menu.icon + ' mr-3'"></i><span x-text="menu.label"></span>
-              </button>
-            </template>
-          </div>
-        </section>
-      </aside>
-
-      <div class="min-w-0 space-y-4">
-        <header class="panel-shell rounded-[1.4rem] p-4 shadow-soft backdrop-blur-xl sm:p-5">
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div class="min-w-0">
-              <div class="section-caption">Dashboard</div>
-              <h1 class="mt-2 text-2xl font-semibold leading-tight tracking-tight text-ink sm:text-3xl">__DASHBOARD_TITLE__</h1>
-              <p class="mt-2 max-w-2xl text-sm leading-6 text-ink/60">
-                Panel operasional untuk monitoring WhatsApp, reminder, kontak, template, dan log aktivitas.
-              </p>
-            </div>
-            <div class="hidden flex-none items-center justify-end gap-2 lg:flex lg:flex-nowrap">
-              <button
-                type="button"
-                @click="toggleSidebar()"
-                class="hidden shrink-0 whitespace-nowrap rounded-2xl border border-ink/10 bg-white px-3 py-2.5 text-sm font-semibold text-ink transition hover:bg-haze xl:inline-flex"
-                :aria-label="sidebarHidden ? 'Tampilkan sidebar' : 'Sembunyikan sidebar'"
-                :title="sidebarHidden ? 'Tampilkan sidebar' : 'Sembunyikan sidebar'"
-              >
-                <i :class="sidebarHidden ? 'fa-solid fa-table-columns mr-2' : 'fa-solid fa-left-long mr-2'"></i>
-                <span x-text="sidebarHidden ? 'Tampilkan Sidebar' : 'Hide Sidebar'"></span>
-              </button>
-              <a href="/transport" target="_blank" rel="noreferrer" class="action-chip shrink-0 whitespace-nowrap rounded-2xl bg-clay px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
-                <i class="fa-brands fa-whatsapp mr-2"></i>Status Provider WhatsApp
-              </a>
-              <button @click="refreshAll()" class="action-chip shrink-0 whitespace-nowrap rounded-2xl border border-ink/10 bg-white px-3 py-2.5 text-sm font-semibold text-ink transition hover:bg-haze">
-                <i class="fa-solid fa-rotate mr-2"></i>Refresh
-              </button>
-              <button @click="runScheduler()" class="action-chip shrink-0 whitespace-nowrap rounded-2xl bg-ink px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-moss">
-                <i class="fa-solid fa-play mr-2"></i>Run Scheduler
-              </button>
-              <button @click="logout()" class="action-chip shrink-0 whitespace-nowrap rounded-2xl border border-ink/10 bg-white px-3 py-2.5 text-sm font-semibold text-ink transition hover:bg-clay hover:text-white">
-                <i class="fa-solid fa-right-from-bracket mr-2"></i>Logout
-              </button>
-            </div>
-          </div>
-        </header>
-
-        <section class="mobile-nav-panel panel-shell rounded-[1.25rem] p-3 shadow-soft backdrop-blur-xl xl:hidden">
-          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <template x-for="menu in navMenus" :key="menu.key">
-              <button
-                type="button"
-                @click="activeMenu = menu.key"
-                class="menu-pill rounded-full border px-4 py-2 text-sm font-semibold transition"
-                :class="activeMenu === menu.key ? 'border-moss bg-moss text-white shadow-lg shadow-moss/20' : 'border-ink/10 bg-white text-ink hover:bg-haze'"
-              >
-                <i :class="menu.icon + ' mr-2'"></i><span x-text="menu.label"></span>
-              </button>
-            </template>
-          </div>
-        </section>
-
-        <section class="mobile-actions-panel panel-shell rounded-[1.25rem] p-3 shadow-soft backdrop-blur-xl lg:hidden">
-          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4">
-            <a href="/transport" target="_blank" rel="noreferrer" class="action-chip rounded-2xl bg-clay px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
-              <i class="fa-brands fa-whatsapp mr-2"></i>Status Provider WhatsApp
-            </a>
-            <button @click="refreshAll()" class="action-chip rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze">
-              <i class="fa-solid fa-rotate mr-2"></i>Refresh
+    <aside class="main-sidebar" aria-label="Navigasi utama">
+      <a href="/dashboard" class="brand-link">
+        <span class="brand-icon"><i class="fa-solid fa-bell"></i></span>
+        <span class="brand-copy">
+          <strong>Reminder</strong><span>Bot</span>
+          <small>Operations Center</small>
+        </span>
+      </a>
+      <div class="sidebar-body">
+        <div class="user-panel">
+          <span class="user-avatar"><i class="fa-solid fa-user-shield"></i></span>
+          <span class="user-info"><strong>Administrator</strong><small><i class="fa-solid fa-circle"></i> System online</small></span>
+        </div>
+        <div class="nav-header">MAIN NAVIGATION</div>
+        <nav class="sidebar-nav">
+          <template x-for="menu in navMenus" :key="'sidebar-' + menu.key">
+            <button type="button" @click="selectMenu(menu.key)" class="menu-pill nav-item" :class="activeMenu === menu.key ? 'active' : ''" :title="menu.label">
+              <span class="nav-icon"><i :class="menu.icon"></i></span>
+              <span class="nav-label" x-text="menu.label"></span>
+              <i class="fa-solid fa-angle-right nav-arrow"></i>
             </button>
-            <button @click="runScheduler()" class="action-chip rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white transition hover:bg-moss">
-              <i class="fa-solid fa-play mr-2"></i>Run Scheduler
-            </button>
-            <button @click="logout()" class="action-chip rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-clay hover:text-white">
-              <i class="fa-solid fa-right-from-bracket mr-2"></i>Logout
-            </button>
-          </div>
-        </section>
+          </template>
+        </nav>
+      </div>
+      <div class="sidebar-footer">
+        <span class="status-dot"></span><span class="nav-label">Layanan aktif</span>
+      </div>
+    </aside>
 
-        <div
-          class="grid gap-6"
-          :class="activeMenu === 'overview' ? 'xl:grid-cols-2 xl:items-stretch' : 'grid-cols-1'"
-        >
+    <button type="button" class="sidebar-overlay" @click="mobileSidebarOpen = false" aria-label="Tutup navigasi"></button>
+
+    <div class="content-wrapper">
+      <header class="main-header">
+        <div class="header-left">
+          <button type="button" class="navbar-button desktop-menu-toggle" @click="toggleSidebar()" :aria-label="sidebarHidden ? 'Tampilkan sidebar' : 'Ciutkan sidebar'">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+          <button type="button" class="navbar-button mobile-menu-toggle" @click="mobileSidebarOpen = true" aria-label="Buka navigasi">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+          <span class="navbar-title" x-text="activeMenuLabel"></span>
+        </div>
+        <div class="header-actions">
+          <button @click="refreshAll()" class="navbar-button" title="Refresh data"><i class="fa-solid fa-rotate"></i><span class="action-text">Refresh</span></button>
+          <button @click="runScheduler()" class="navbar-button" title="Jalankan scheduler"><i class="fa-solid fa-play"></i><span class="action-text">Scheduler</span></button>
+          <a href="/transport" target="_blank" rel="noreferrer" class="navbar-button provider-link" title="Status Provider WhatsApp">
+            <i class="fa-brands fa-whatsapp"></i><span class="provider-indicator"></span><span class="action-text">Provider</span>
+          </a>
+          <span class="header-divider"></span>
+          <button @click="logout()" class="account-button" title="Logout">
+            <span class="account-avatar"><i class="fa-solid fa-user"></i></span>
+            <span class="account-copy"><strong>Admin</strong><small>Logout</small></span>
+            <i class="fa-solid fa-right-from-bracket"></i>
+          </button>
+        </div>
+      </header>
+
+      <section class="content-header">
+        <div>
+          <div class="eyebrow">REMINDER OPERATIONS</div>
+          <h1 x-text="activeMenuLabel"></h1>
+          <p x-text="activeMenuDescription"></p>
+        </div>
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <span><i class="fa-solid fa-house"></i> Home</span><i class="fa-solid fa-angle-right"></i><strong x-text="activeMenuLabel"></strong>
+        </nav>
+      </section>
+
+      <div class="dashboard-content">
+        <div class="page-grid grid gap-6 grid-cols-1">
       <aside
         x-show="['overview','notifications'].includes(activeMenu)"
         x-transition.opacity
         class="space-y-6"
-        :class="activeMenu === 'overview' ? 'xl:self-stretch' : 'space-y-0 grid gap-6 md:grid-cols-2 xl:grid-cols-3 w-full'"
+        :class="activeMenu === 'overview' ? 'w-full' : 'space-y-0 grid gap-6 md:grid-cols-2 xl:grid-cols-3 w-full'"
       >
-        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl xl:flex xl:h-full xl:flex-col">
+        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell status-panel rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-signal mr-2 text-moss"></i>Status Bot</h2>
             <template x-if="loading.status">
               <span class="inline-flex items-center gap-2 text-xs font-bold uppercase text-ink/45"><i class="fa-solid fa-circle-notch fa-spin"></i>Loading</span>
             </template>
           </div>
-          <div class="grid gap-3 xl:flex-1 xl:auto-rows-fr">
+          <div class="status-card-grid grid gap-3 md:grid-cols-2">
             <template x-for="card in statusCards" :key="card.label">
               <div class="metric-card rounded-3xl border border-ink/8 bg-haze px-4 py-4 xl:h-full">
                 <div class="flex items-center gap-3">
@@ -156,7 +121,7 @@
           </div>
         </section>
 
-        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell notify-manual-card rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <h2 class="font-display text-2xl"><i class="fa-solid fa-paper-plane mr-2 text-clay"></i>Kirim Notifikasi Manual</h2>
           <form class="mt-4 space-y-4" @submit.prevent="sendManualNotification()">
             <label class="block text-sm text-ink/60">
@@ -192,7 +157,7 @@
           </form>
         </section>
 
-        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell notify-broadcast-card rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <h2 class="font-display text-2xl"><i class="fa-solid fa-tower-broadcast mr-2 text-moss"></i>Broadcast ke Semua Contact</h2>
           <p class="mt-1 text-sm text-ink/60">Kirim pesan ke semua customer sekaligus.</p>
           <form class="mt-4 space-y-4" @submit.prevent="sendBroadcast()">
@@ -220,7 +185,7 @@
           </form>
         </section>
 
-        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
+        <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell notify-recipient-card rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <h2 class="font-display text-2xl"><i class="fa-solid fa-user-shield mr-2 text-ink/70"></i>Admin Recipients</h2>
           <form class="mt-4 space-y-4" @submit.prevent="saveRecipients()">
             <label class="block text-sm text-ink/60">
@@ -235,13 +200,13 @@
         </section>
       </aside>
 
-      <main class="space-y-6" :class="activeMenu === 'overview' ? 'xl:h-full' : 'w-full max-w-none'">
-        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl xl:h-full">
+      <main class="space-y-6 w-full max-w-none">
+        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell summary-panel rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-chart-line mr-2 text-moss"></i>Overview</h2>
             <!-- <p class="mt-1 text-sm text-ink/60">Ringkasan health bot, antrean notifikasi, dan hasil kirim.</p> -->
           </div>
-          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div class="summary-metric-grid grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <template x-for="metric in summaryMetrics" :key="metric.label">
               <div class="metric-card rounded-[1.5rem] border border-ink/8 bg-gradient-to-b from-white to-haze px-4 py-5">
                 <div class="flex items-start justify-between gap-4">

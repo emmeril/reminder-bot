@@ -10,48 +10,52 @@
   <script defer src="/public/login.js"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
-<body class="min-h-screen bg-[linear-gradient(145deg,#f8fafc_0%,#eef5f4_44%,#fff7ed_100%)] font-body text-ink">
-  <main class="grid min-h-screen place-items-center px-5">
-    <section
-      x-data="loginApp()"
-      class="hero-panel w-full max-w-md rounded-[2rem] border border-white/70 bg-white/85 p-8 shadow-soft backdrop-blur-xl"
-    >
-      <span class="inline-flex items-center gap-2 rounded-full bg-clay/10 px-3 py-1 text-xs font-bold uppercase text-clay">
-        <i class="fa-solid fa-lock"></i>
-        Protected Dashboard
-      </span>
-      <div class="mt-5 space-y-3">
-        <h6 class="font-display text-4xl whitespace-nowrap  font-extrabold leading-none tracking-tight sm:text-5xl">__DASHBOARD_TITLE__</h6>
-        <!-- <p class="text-sm leading-7 text-ink/60">
-          Masuk dulu untuk membuka dashboard, melihat output bot, dan mengelola semua notifikasi dari satu tempat.
-        </p> -->
+<body class="font-body">
+  <main class="login-page" x-data="loginApp()">
+    <section class="login-shell">
+      <div class="login-aside">
+        <div class="login-brand">
+          <span class="brand-icon"><i class="fa-solid fa-bell"></i></span>
+          <span><strong>Reminder</strong>Bot</span>
+        </div>
+        <div>
+          <h1>Kelola operasional dari satu dashboard.</h1>
+          <p>Pantau provider, pelanggan, reminder, pembayaran, dan aktivitas sistem secara terpusat.</p>
+        </div>
+        <div class="login-feature">
+          <span><i class="fa-solid fa-circle-check"></i> Monitoring layanan real-time</span>
+          <span><i class="fa-solid fa-shield-halved"></i> Dashboard terlindungi</span>
+          <span><i class="fa-solid fa-paper-plane"></i> Notifikasi terintegrasi</span>
+        </div>
       </div>
-
-      <form class="mt-8 space-y-4" @submit.prevent="submit()">
-        <label class="block text-sm text-ink/60">
-          Username
-          <div class="relative mt-2">
-            <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-ink/35"></i>
-            <input x-model="form.username" autocomplete="username" class="w-full rounded-2xl border border-ink/10 bg-white py-3 pl-11 pr-4 outline-none transition focus:border-clay" required>
-          </div>
-        </label>
-        <label class="block text-sm text-ink/60">
-          Password
-          <div class="relative mt-2">
-            <i class="fa-solid fa-key absolute left-4 top-1/2 -translate-y-1/2 text-ink/35"></i>
-            <input x-model="form.password" type="password" autocomplete="current-password" class="w-full rounded-2xl border border-ink/10 bg-white py-3 pl-11 pr-4 outline-none transition focus:border-clay" required>
-          </div>
-        </label>
-        <div class="min-h-6 text-sm text-clay" x-text="error"></div>
-        <button class="w-full rounded-full bg-gradient-to-r from-clay to-orange-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:-translate-y-0.5">
-          <span x-show="!submitting"><i class="fa-solid fa-right-to-bracket mr-2"></i>Masuk</span>
-          <span x-show="submitting"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memproses...</span>
-        </button>
-      </form>
-
-      <!-- <p class="mt-6 text-xs leading-6 text-ink/50">
-        Gunakan <code>AUTH_USERNAME</code> dan <code>AUTH_PASSWORD</code> di environment untuk mengganti kredensial default.
-      </p> -->
+      <div class="login-card">
+        <div class="login-heading">
+          <h2>Sign in</h2>
+          <p>Masuk untuk melanjutkan ke __DASHBOARD_TITLE__</p>
+        </div>
+        <form @submit.prevent="submit()">
+          <label>
+            Username
+            <div class="login-input">
+              <i class="fa-solid fa-user"></i>
+              <input x-model="form.username" autocomplete="username" placeholder="Masukkan username" required autofocus>
+            </div>
+          </label>
+          <label>
+            Password
+            <div class="login-input">
+              <i class="fa-solid fa-lock"></i>
+              <input x-model="form.password" type="password" autocomplete="current-password" placeholder="Masukkan password" required>
+            </div>
+          </label>
+          <div class="login-error" x-text="error"></div>
+          <button class="login-submit" :disabled="submitting">
+            <span x-show="!submitting"><i class="fa-solid fa-right-to-bracket mr-2"></i>Masuk ke Dashboard</span>
+            <span x-cloak x-show="submitting"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memproses...</span>
+          </button>
+          <p class="login-footnote"><i class="fa-solid fa-lock mr-1"></i> Secure administrator access</p>
+        </form>
+      </div>
     </section>
   </main>
 
