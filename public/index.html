@@ -653,6 +653,37 @@
           </div>
         </section>
 
+        <section x-show="activeMenu === 'payment-amount'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
+          <div class="mb-5">
+            <h2 class="font-display text-2xl"><i class="fa-solid fa-money-bill-wave mr-2 text-moss"></i>Nominal Bayar</h2>
+            <p class="mt-2 max-w-3xl text-sm leading-6 text-ink/60">
+              Atur nominal pembayaran masing-masing pelanggan. Reminder akan mengambil nominal dari contact tujuan secara otomatis.
+            </p>
+          </div>
+          <div class="overflow-hidden rounded-[1.5rem] border border-ink/8">
+            <div class="table-scroll" tabindex="0" role="region" aria-label="Daftar nominal pembayaran pelanggan">
+              <table class="dashboard-table min-w-full text-sm">
+                <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
+                  <tr><th class="px-4 py-3">Pelanggan</th><th class="px-4 py-3">No. WA</th><th class="px-4 py-3">Nominal per bulan</th><th class="px-4 py-3">Aksi</th></tr>
+                </thead>
+                <tbody class="divide-y divide-ink/6 bg-white/70">
+                  <template x-if="!contacts.length"><tr><td colspan="4" class="px-4 py-8 text-center text-ink/45">Belum ada pelanggan.</td></tr></template>
+                  <template x-for="contact in contacts" :key="'payment-amount-' + contact.id">
+                    <tr>
+                      <td class="px-4 py-4 font-medium" data-label="Pelanggan" x-text="contact.name"></td>
+                      <td class="px-4 py-4 text-ink/65" data-label="No. WA" x-text="contact.phoneNumber"></td>
+                      <td class="px-4 py-4" data-label="Nominal">
+                        <div class="relative max-w-xs"><span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-ink/45">Rp</span><input x-model.number="contact.monthlyPaymentAmount" type="number" min="0" max="1000000000" step="1000" class="w-full rounded-xl border border-ink/10 bg-white py-2 pl-10 pr-3 tabular-nums outline-none focus:border-moss"></div>
+                      </td>
+                      <td class="px-4 py-4" data-label="Aksi"><button type="button" @click="saveContactPaymentAmount(contact)" class="rounded-full bg-moss px-4 py-2 text-xs font-semibold text-white transition hover:bg-moss/90"><i class="fa-solid fa-floppy-disk mr-1.5"></i>Simpan</button></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <section x-show="activeMenu === 'settings'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
             <h2 class="font-display text-2xl"><i class="fa-solid fa-sliders mr-2 text-ink/70"></i>Settings</h2>

@@ -52,10 +52,79 @@ class ReminderScheduler {
     return createdReminder;
   }
 
-  isPaidReminder(reminder) {
+  getReminderBilling(reminder) {
     const contact = this.dataManager.getResolvedReminderContact(reminder);
-    return String(contact?.dueStatus || "").toUpperCase() === "PAID"
-      || String(contact?.paymentStatus || "").toUpperCase() === "PAID";
+    const contactState = contact && typeof this.dataManager.hydrateContact === "function"
+      ? this.dataManager.hydrateContact(contact)
+      : contact;
+    const debtCount = Math.max(0, Number(
+      contactState?.debtCount ?? contactState?.debtPeriods?.length ?? 0
+    ) || 0);
+    const currentPaid = String(
+      contactState?.currentPaymentStatus || contactState?.paymentStatus || "UNPAID"
+    ).toUpperCase() === "PAID";
+    const monthlyAmount = Math.max(0, Number(contactState?.monthlyPaymentAmount) || 0);
+    const currentAmount = currentPaid ? 0 : monthlyAmount;
+    const debtAmount = monthlyAmount * debtCount;
+
+    return {
+      contact: contactState,
+      currentPaid,
+      debtCount,
+      monthlyAmount,
+      currentAmount,
+      debtAmount,
+      totalAmount: currentAmount + debtAmount,
+      totalPeriods: (currentPaid ? 0 : 1) + debtCount,
+    };
+  }
+
+  formatRupiah(value) {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      maximumFractionDigits: 0,
+    }).format(Math.max(0, Number(value) || 0));
+  }
+
+  buildReminderMessage(reminder) {
+    const billing = this.getReminderBilling(reminder);
+    if (billing.monthlyAmount <= 0 || billing.totalPeriods <= 0) return reminder.message;
+
+    const variables = {
+      monthlyAmount: this.formatRupiah(billing.monthlyAmount),
+      currentAmount: this.formatRupiah(billing.currentAmount),
+      debtAmount: this.formatRupiah(billing.debtAmount),
+      totalAmount: this.formatRupiah(billing.totalAmount),
+      debtCount: String(billing.debtCount),
+    };
+    let message = reminder.message;
+    let usedAmountPlaceholder = false;
+
+    for (const [key, value] of Object.entries(variables)) {
+      const pattern = new RegExp(`{{\\s*${key}\\s*}}`, "gi");
+      if (pattern.test(message)) usedAmountPlaceholder = true;
+      message = message.replace(pattern, value);
+    }
+
+    if (usedAmountPlaceholder) return message;
+
+    const details = [
+      "*Rincian Pembayaran*",
+      `Nominal bulanan: ${variables.monthlyAmount}`,
+    ];
+    if (!billing.currentPaid) {
+      details.push(`Bulan berjalan: ${variables.currentAmount}`);
+    }
+    if (billing.debtCount > 0) {
+      details.push(`Tunggakan: ${billing.debtCount} bulan (${variables.debtAmount})`);
+    }
+    details.push(`*Total tagihan: ${variables.totalAmount}*`);
+    return `${message.trim()}\n\n${details.join("\n")}`;
+  }
+
+  isPaidReminder(reminder) {
+    return this.getReminderBilling(reminder).totalPeriods === 0;
   }
 
   getDueTime(reminder) {
@@ -141,6 +210,7 @@ class ReminderScheduler {
           }
 
           const targetPhoneNumber = reminder.phoneNumber;
+          const outgoingMessage = this.buildReminderMessage(reminder);
           const attemptedReminder = await this.dataManager.markReminderDeliveryAttempt(
             reminder.id,
             status.selectedProvider || null
@@ -154,7 +224,7 @@ class ReminderScheduler {
           }
           let sendResult;
           try {
-            sendResult = await this.notificationBot.sendMessage(targetPhoneNumber, reminder.message, {
+            sendResult = await this.notificationBot.sendMessage(targetPhoneNumber, outgoingMessage, {
               maxAttempts: 1,
               context: { type: "reminder", reminderId: reminder.id },
             });
@@ -174,6 +244,7 @@ class ReminderScheduler {
               whatsappProvider: status.selectedProvider || null,
               providerStatus: "failed",
               providerError: errorMessage,
+              message: outgoingMessage,
             });
             claimedReminderId = null;
             await this.rescheduleMonthlyReminder(reminder, "FAILED");
@@ -196,6 +267,7 @@ class ReminderScheduler {
             whatsappProvider: provider,
             providerMessageId: sendResult?.providerMessageId || sendResult?.messageId || null,
             providerStatus: "sent",
+            message: outgoingMessage,
           });
           claimedReminderId = null;
 
@@ -214,7 +286,7 @@ class ReminderScheduler {
             try {
               await this.notificationBot.sendAdminBroadcast(
                 "Reminder terkirim",
-                `Tujuan: ${reminder.contactName || targetPhoneNumber} (${targetPhoneNumber})\nJadwal: ${formatDateTime(reminder.reminderDateTime, this.dataManager.getTimezone())}\n\n${reminder.message}`,
+                `Tujuan: ${reminder.contactName || targetPhoneNumber} (${targetPhoneNumber})\nJadwal: ${formatDateTime(reminder.reminderDateTime, this.dataManager.getTimezone())}\n\n${outgoingMessage}`,
                 { silentLog: true }
               );
             } catch (error) {

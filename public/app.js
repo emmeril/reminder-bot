@@ -65,6 +65,7 @@
           { key: "contacts", label: "Contacts", icon: "fa-solid fa-address-book" },
           { key: "monitor-ap", label: "Monitor AP", icon: "fa-solid fa-tower-cell" },
           { key: "reminders", label: "Reminders", icon: "fa-solid fa-calendar-check" },
+          { key: "payment-amount", label: "Nominal Bayar", icon: "fa-solid fa-money-bill-wave" },
           { key: "templates", label: "Templates", icon: "fa-solid fa-file-pen" },
           { key: "settings", label: "Settings", icon: "fa-solid fa-sliders" },
           { key: "history", label: "Sent History", icon: "fa-solid fa-clock-rotate-left" },
@@ -603,6 +604,14 @@
           return `Hutang ${count || 1} bulan`;
         },
 
+        formatRupiah(value) {
+          return new Intl.NumberFormat("id-ID", {
+            style: "currency",
+            currency: "IDR",
+            maximumFractionDigits: 0,
+          }).format(Math.max(0, Number(value) || 0));
+        },
+
         getDueStatusLabel(status) {
           const labels = {
             NOT_SCHEDULED: "Belum Dijadwalkan",
@@ -863,6 +872,21 @@
         async loadContacts() {
           this.contacts = await this.api("/api/contacts");
           this.clampPage("contacts", this.filteredContacts.length);
+        },
+
+        async saveContactPaymentAmount(contact) {
+          if (!contact?.id) return;
+          const amount = Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0));
+          await this.withProcessing(`Menyimpan nominal ${contact.name}...`, async () => {
+            const updated = await this.api(`/api/contacts/${contact.id}/payment-amount`, {
+              method: "POST",
+              body: JSON.stringify({ monthlyPaymentAmount: amount }),
+            });
+            const index = this.contacts.findIndex((item) => String(item.id) === String(contact.id));
+            if (index >= 0) this.contacts.splice(index, 1, updated);
+            this.notify(`Nominal ${contact.name} disimpan.`);
+            await this.loadReminders();
+          });
         },
 
         exportPaymentRecap() {

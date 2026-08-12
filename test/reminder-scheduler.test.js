@@ -4,6 +4,62 @@ const test = require("node:test");
 const { ReminderScheduler } = require("../src/schedulers");
 const { formatDate } = require("../src/utils");
 
+test("nominal reminder otomatis bertambah sesuai jumlah tunggakan", () => {
+  const reminder = { message: "Halo, tagihan Anda sudah terbit." };
+  const dataManager = {
+    getSettings: () => ({}),
+    getResolvedReminderContact: () => ({
+      paymentStatus: "UNPAID",
+      currentPaymentStatus: "UNPAID",
+      debtCount: 2,
+      monthlyPaymentAmount: 150_000,
+    }),
+  };
+  const scheduler = new ReminderScheduler({}, dataManager, { push() {} });
+
+  const message = scheduler.buildReminderMessage(reminder);
+
+  assert.match(message, /Nominal bulanan: Rp\s?150\.000/);
+  assert.match(message, /Tunggakan: 2 bulan \(Rp\s?300\.000\)/);
+  assert.match(message, /Total tagihan: Rp\s?450\.000/);
+});
+
+test("reminder hutang tetap dikirim ketika bulan berjalan sudah dibayar", () => {
+  const dataManager = {
+    getSettings: () => ({}),
+    getResolvedReminderContact: () => ({
+      paymentStatus: "PAID",
+      currentPaymentStatus: "PAID",
+      debtCount: 1,
+      monthlyPaymentAmount: 150_000,
+    }),
+  };
+  const scheduler = new ReminderScheduler({}, dataManager, { push() {} });
+
+  assert.equal(scheduler.isPaidReminder({}), false);
+  assert.match(scheduler.buildReminderMessage({ message: "Tagihan" }), /Total tagihan: Rp\s?150\.000/);
+});
+
+test("placeholder nominal pada template diganti tanpa menambah blok rincian kedua", () => {
+  const dataManager = {
+    getSettings: () => ({}),
+    getResolvedReminderContact: () => ({
+      paymentStatus: "UNPAID",
+      currentPaymentStatus: "UNPAID",
+      debtCount: 1,
+      monthlyPaymentAmount: 100_000,
+    }),
+  };
+  const scheduler = new ReminderScheduler({}, dataManager, { push() {} });
+
+  const message = scheduler.buildReminderMessage({
+    message: "Total {{totalAmount}}, tunggakan {{debtCount}} bulan.",
+  });
+
+  assert.match(message, /Total Rp\s?200\.000, tunggakan 1 bulan/);
+  assert.doesNotMatch(message, /Rincian Pembayaran/);
+});
+
 test("WA reminder yang gagal tetap diarsipkan dan dijadwalkan bulan berikutnya", async () => {
   const timeZone = "Asia/Jakarta";
   const scheduledAt = new Date(Date.now() - 60_000);

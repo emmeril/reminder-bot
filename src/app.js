@@ -1035,6 +1035,12 @@ class DataManager {
       contact.paymentStatus = String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase();
       const normalizedType = String(contact.paymentType || "").toUpperCase();
       contact.paymentType = Object.values(PAYMENT_TYPES).includes(normalizedType) ? normalizedType : null;
+      contact.monthlyPaymentAmount = sanitizePositiveInteger(
+        contact.monthlyPaymentAmount,
+        0,
+        0,
+        1_000_000_000
+      );
       contact.linkedApHost = sanitizeInput(String(contact.linkedApHost || ""));
       contact.mikrotikUsername = sanitizeInput(String(contact.mikrotikUsername || ""));
       contact.mikrotikProfile = sanitizeInput(String(contact.mikrotikProfile || ""));
@@ -1424,6 +1430,7 @@ class DataManager {
         id: generateId(),
         name,
         phoneNumber,
+        monthlyPaymentAmount: sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000),
         paymentStatus: PAYMENT_STATUS.UNPAID,
         paymentDate: null,
         paymentMonths: {},
@@ -1472,6 +1479,7 @@ class DataManager {
           id: String(generateId()),
           name,
           phoneNumber,
+          monthlyPaymentAmount: sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000),
           paymentStatus: PAYMENT_STATUS.UNPAID,
           paymentDate: null,
           paymentMonths: {},
@@ -1486,6 +1494,14 @@ class DataManager {
       } else {
         contact.name = name;
         contact.linkedApHost = linkedApHost;
+        if (payload.monthlyPaymentAmount !== undefined) {
+          contact.monthlyPaymentAmount = sanitizePositiveInteger(
+            payload.monthlyPaymentAmount,
+            Number(contact.monthlyPaymentAmount) || 0,
+            0,
+            1_000_000_000
+          );
+        }
         Object.assign(contact, hotspotFields);
         contact.updatedAt = now;
       }
@@ -1534,6 +1550,14 @@ class DataManager {
       contact.name = nextName;
       contact.phoneNumber = nextPhone;
       contact.linkedApHost = nextLinkedApHost;
+      if (payload.monthlyPaymentAmount !== undefined) {
+        contact.monthlyPaymentAmount = sanitizePositiveInteger(
+          payload.monthlyPaymentAmount,
+          Number(contact.monthlyPaymentAmount) || 0,
+          0,
+          1_000_000_000
+        );
+      }
       Object.assign(contact, hotspotFields);
       contact.updatedAt = new Date().toISOString();
 
@@ -1551,6 +1575,21 @@ class DataManager {
         await this.saveReminders(options);
       }));
       return contact;
+    });
+  }
+
+  async updateContactPaymentAmount(id, amount) {
+    return this.withDataMutation(async () => {
+      const contact = this.getContact(id);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      const parsed = Number(amount);
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1_000_000_000) {
+        throw new Error("Nominal pembayaran harus antara 0 sampai 1 miliar.");
+      }
+      contact.monthlyPaymentAmount = Math.floor(parsed);
+      contact.updatedAt = new Date().toISOString();
+      await this.saveContacts();
+      return this.hydrateContact(contact);
     });
   }
 
@@ -1857,6 +1896,7 @@ class DataManager {
 
       const sentReminder = {
         ...this.hydrateReminder(reminder),
+        message: extras.message || reminder.message,
         sentAt: extras.sentAt || new Date().toISOString(),
         deliveryStatus: extras.deliveryStatus || "SENT",
         whatsappProvider: extras.whatsappProvider || reminder.whatsappProvider || null,
@@ -1900,7 +1940,9 @@ class DataManager {
   }
 
   getSettings() {
-    return { ...DEFAULT_SETTINGS, ...this.settings };
+    const settings = { ...DEFAULT_SETTINGS, ...this.settings };
+    delete settings.monthlyPaymentAmount;
+    return settings;
   }
 
   async updateSettings(payload) {
@@ -3101,6 +3143,14 @@ class WebServer {
           notificationError: error.message,
         };
       }
+    }));
+
+    this.app.post("/api/contacts/:id/payment-amount", requireApiAuth, handleApi(async (req) => {
+      const contact = await this.dataManager.updateContactPaymentAmount(
+        req.params.id,
+        req.body.monthlyPaymentAmount
+      );
+      return this.dataManager.toPublicContact(contact);
     }));
 
     this.app.post("/api/contacts/:id/payment-month", requireApiAuth, handleApi(async (req) => {
