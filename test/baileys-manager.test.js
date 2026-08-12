@@ -23,6 +23,7 @@ beforeEach(() => {
   BaileysManager.pendingQueue = 0;
   BaileysManager.failedQueue = 0;
   BaileysManager.lastSentAt = 0;
+  BaileysManager.pairingQrSeen = false;
   BaileysManager.outboundEnabled = true;
   BaileysManager.connectionCache = {
     checkedAt: Date.now(),
@@ -42,6 +43,7 @@ afterEach(() => {
   BaileysManager.socket = null;
   BaileysManager.authState = null;
   BaileysManager.outboundEnabled = false;
+  BaileysManager.pairingQrSeen = false;
 });
 
 test("memblokir pengiriman sampai operator mengaktifkannya manual", async () => {
@@ -216,6 +218,46 @@ test("mendeteksi state setengah pairing yang mencegah QR baru", () => {
     me: { id: "6281@s.whatsapp.net" },
     account: { details: "paired" },
   }), false);
+});
+
+test("pairing QR yang terputus sebelum registered otomatis menyiapkan QR baru", async () => {
+  const originalAuthStore = BaileysManager.authStore;
+  const originalBaileys = BaileysManager.baileys;
+  let authCleared = false;
+  let reconnectScheduled = false;
+  const freshState = { creds: { registered: false } };
+
+  BaileysManager.baileys = { DisconnectReason: {} };
+  BaileysManager.authState = { creds: { registered: false } };
+  BaileysManager.authStore = {
+    async clear() { authCleared = true; },
+    async initialize() {
+      return { state: freshState, saveCreds: async () => {} };
+    },
+  };
+  BaileysManager.socket = {};
+  const generation = BaileysManager.connectionGeneration;
+  const socket = BaileysManager.socket;
+  const originalScheduleReconnect = BaileysManager.scheduleReconnect;
+  BaileysManager.scheduleReconnect = () => { reconnectScheduled = true; };
+
+  try {
+    await BaileysManager.handleConnectionUpdate({ qr: "qr-baru", connection: "connecting" }, socket, generation);
+    await BaileysManager.handleConnectionUpdate({
+      connection: "close",
+      lastDisconnect: { error: new Error("pairing belum selesai") },
+    }, socket, generation);
+  } finally {
+    BaileysManager.scheduleReconnect = originalScheduleReconnect;
+    BaileysManager.authStore = originalAuthStore;
+    BaileysManager.baileys = originalBaileys;
+  }
+
+  assert.equal(authCleared, true);
+  assert.equal(reconnectScheduled, true);
+  assert.equal(BaileysManager.authState, freshState);
+  assert.equal(BaileysManager.connectionCache.state, "RECONNECTING");
+  assert.match(BaileysManager.connectionCache.detail, /Pairing WhatsApp belum selesai/);
 });
 
 test("menganggap sesi rusak sebagai auth invalid agar QR baru dapat dibuat", () => {

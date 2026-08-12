@@ -35,6 +35,8 @@ class BaileysManager {
 
   static connectionGeneration = 0;
 
+  static pairingQrSeen = false;
+
   static shuttingDown = false;
 
   static sendQueue = Promise.resolve();
@@ -172,6 +174,7 @@ class BaileysManager {
     if (generation !== this.connectionGeneration) return;
 
     if (update.qr) {
+      this.pairingQrSeen = true;
       this.outboundEnabled = false;
       this.updateConnection({
         connected: false,
@@ -191,6 +194,7 @@ class BaileysManager {
     }
 
     if (update.connection === "open") {
+      this.pairingQrSeen = false;
       this.reconnectAttempts = 0;
       this.lastActivity = Date.now();
       this.updateConnection({
@@ -213,14 +217,18 @@ class BaileysManager {
     const disconnectCode = this.getDisconnectCode(update.lastDisconnect);
     const disconnectMessage = update.lastDisconnect?.error?.message || null;
     const invalidAuth = this.isInvalidAuthDisconnect(disconnectCode);
+    const unfinishedPairing = this.pairingQrSeen && this.authState?.creds?.registered !== true;
     const canReconnect = !this.shuttingDown
       && this.reconnectAttempts < Math.max(0, CONFIG.MAX_RECONNECT_ATTEMPTS);
 
-    if (invalidAuth && canReconnect) {
+    if ((invalidAuth || unfinishedPairing) && canReconnect) {
+      this.pairingQrSeen = false;
       await this.resetAuthState();
       this.updateConnection({
         connected: false,
-        detail: "Sesi Baileys tidak valid; menyiapkan QR pairing WhatsApp baru",
+        detail: unfinishedPairing
+          ? "Pairing WhatsApp belum selesai; menyiapkan QR baru"
+          : "Sesi Baileys tidak valid; menyiapkan QR pairing WhatsApp baru",
         state: "RECONNECTING",
         qr: null,
         device: null,
@@ -286,6 +294,7 @@ class BaileysManager {
       this.reconnectTimer = null;
       this.shuttingDown = false;
       this.outboundEnabled = false;
+      this.pairingQrSeen = false;
       this.reconnectAttempts = 0;
       this.connectionGeneration += 1;
 
@@ -515,6 +524,7 @@ class BaileysManager {
     this.authState = null;
     this.saveCreds = null;
     this.pairingReset = null;
+    this.pairingQrSeen = false;
   }
 }
 

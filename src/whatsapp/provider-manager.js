@@ -47,11 +47,14 @@ class WhatsAppProviderManager {
 
     return {
       ...status,
-      status: status.ready ? "connected" : String(status.state || "unavailable").toLowerCase(),
+      status: status.connected ? "connected" : String(status.state || "unavailable").toLowerCase(),
       selectedProvider: "baileys",
       whatsappProviderEnabled: status.configured !== false,
       isAvailable: status.connected === true,
-      deviceReady: status.ready === true,
+      // Perangkat yang sudah tertaut tetap READY walaupun operator belum
+      // mengaktifkan pengiriman. Izin kirim dilaporkan terpisah lewat
+      // outboundEnabled/canSend.
+      deviceReady: status.connected === true,
       outboundEnabled: status.outboundEnabled === true,
       pendingQueue: queue.waiting + queue.active,
       failedQueue: queue.counts.failed,

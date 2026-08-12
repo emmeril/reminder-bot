@@ -48,3 +48,28 @@ test("provider manager mengirim dan melaporkan status Baileys", async () => {
   assert.deepEqual(status.transport.connectedProviders, ["baileys"]);
   assert.equal(baileys.connectCalls, 1);
 });
+
+test("perangkat terhubung tetap deviceReady saat pengiriman masih dijeda", async () => {
+  const baileys = fakeProvider();
+  baileys.getStatus = async () => ({
+    provider: "baileys",
+    state: "CONNECTED",
+    configured: true,
+    connected: true,
+    ready: false,
+    canSend: false,
+    outboundEnabled: false,
+    detail: "Baileys terhubung; pengiriman masih dijeda",
+  });
+  const manager = new WhatsAppProviderManager({
+    provider: baileys,
+    queue: new WhatsAppQueue({ concurrency: 1, retryLimit: 1, retryDelayMs: 0 }),
+  });
+
+  const status = await manager.getStatus();
+
+  assert.equal(status.status, "connected");
+  assert.equal(status.deviceReady, true);
+  assert.equal(status.isAvailable, true);
+  assert.equal(status.outboundEnabled, false);
+});
