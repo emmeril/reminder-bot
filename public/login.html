@@ -13,36 +13,28 @@
 <body class="font-body">
   <main class="login-page" x-data="loginApp()">
     <section class="login-shell">
-      <div class="login-aside">
+      <div class="login-intro">
         <div class="login-brand">
           <span class="brand-icon"><i class="fa-solid fa-bell"></i></span>
-          <span><strong>Reminder</strong>Bot</span>
+          <span class="login-brand-copy"><strong>Reminder Bot</strong><small>Customer operations</small></span>
         </div>
-        <div>
-          <h1>Kelola operasional dari satu dashboard.</h1>
-          <p>Pantau provider, pelanggan, reminder, pembayaran, dan aktivitas sistem secara terpusat.</p>
-        </div>
-        <div class="login-feature">
-          <span><i class="fa-solid fa-circle-check"></i> Monitoring layanan real-time</span>
-          <span><i class="fa-solid fa-shield-halved"></i> Dashboard terlindungi</span>
-          <span><i class="fa-solid fa-paper-plane"></i> Notifikasi terintegrasi</span>
+        <div class="login-welcome">
+          <span class="login-eyebrow"><i class="fa-solid fa-shield-halved"></i> Administrator area</span>
+          <h1>Selamat datang kembali</h1>
+          <p>Masuk untuk mengelola pelanggan, pembayaran, reminder, dan aktivitas layanan.</p>
         </div>
       </div>
       <div class="login-card">
-        <div class="login-heading">
-          <h2>Sign in</h2>
-          <p>Masuk untuk melanjutkan ke __DASHBOARD_TITLE__</p>
-        </div>
         <form @submit.prevent="submit()">
           <label>
-            Username
+            <span>Username</span>
             <div class="login-input">
               <i class="fa-solid fa-user"></i>
               <input x-model="form.username" autocomplete="username" placeholder="Masukkan username" required autofocus>
             </div>
           </label>
           <label>
-            Password
+            <span>Password</span>
             <div class="login-input">
               <i class="fa-solid fa-lock"></i>
               <input x-model="form.password" type="password" autocomplete="current-password" placeholder="Masukkan password" required>
@@ -53,7 +45,6 @@
             <span x-show="!submitting"><i class="fa-solid fa-right-to-bracket mr-2"></i>Masuk ke Dashboard</span>
             <span x-cloak x-show="submitting"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memproses...</span>
           </button>
-          <p class="login-footnote"><i class="fa-solid fa-lock mr-1"></i> Secure administrator access</p>
         </form>
       </div>
     </section>
