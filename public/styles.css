@@ -547,6 +547,12 @@ label { color: #4a5567 !important; font-size: 10px !important; font-weight: 650;
 input:not([type="checkbox"]):not([type="radio"]), textarea, select { min-height: 42px; padding: 9px 12px !important; color: #3e495b; border: 1px solid #dfe2e9 !important; border-radius: 9px !important; background: #fff !important; box-shadow: none !important; font-size: 11px; }
 textarea { min-height: 112px; line-height: 1.6; }
 input:focus, textarea:focus, select:focus { border-color: #8b85f2 !important; box-shadow: 0 0 0 3px rgba(79,70,229,.09) !important; }
+.currency-input-group { display: flex; width: 100%; min-width: 180px; min-height: 42px; overflow: hidden; border: 1px solid #dfe2e9; border-radius: 9px; background: #fff; transition: border-color .15s ease, box-shadow .15s ease; }
+.currency-input-group:focus-within { border-color: #8b85f2; box-shadow: 0 0 0 3px rgba(79,70,229,.09); }
+.currency-prefix { display: inline-flex; min-width: 42px; flex: 0 0 42px; align-items: center; justify-content: center; color: #667085; border-right: 1px solid #e5e7eb; background: #f8f9fb; font-size: 10px; font-weight: 700; }
+.currency-input-group input:not([type="checkbox"]):not([type="radio"]) { width: 100%; min-width: 0; min-height: 40px; padding: 9px 12px !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+.currency-input-group input:focus { border: 0 !important; box-shadow: none !important; outline: 0; }
+.login-page .login-input input:not([type="checkbox"]):not([type="radio"]) { padding-left: 39px !important; }
 .filter-inline { gap: 9px; padding: 10px !important; border: 1px solid #eceef3; border-radius: 12px; background: #fafbfc; }
 .panel-shell > .filter-inline + div { margin-top: 14px !important; }
 .panel-shell button[class*="bg-moss"], .panel-shell button[class*="bg-ink"], .panel-shell button[class*="from-moss"] { border-color: #4f46e5 !important; border-radius: 9px !important; background: #4f46e5 !important; }
@@ -640,6 +646,7 @@ table tbody tr:hover { background: #fafaff; }
   .payment-progress-card { align-items: flex-start; flex-direction: column; gap: 12px; }
   .progress-visual { width: 100%; }
   .filter-inline { padding: 8px !important; }
+  .currency-input-group { min-width: 0; }
   .settings-section { gap: 12px; padding: 13px; }
   .notification-template-grid { grid-template-columns: 1fr; }
   .notification-template-header { align-items: flex-start; flex-wrap: wrap; }
