@@ -734,7 +734,7 @@
                     <span class="notification-template-badge">Jaringan</span>
                   </span>
                   <textarea x-model="forms.settings.apDownMessageTemplate" placeholder="Tulis pesan ketika AP pelanggan terputus..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel:</strong> {{name}}, {{host}}, {{status}}, {{supportSignature}}, {{companyName}}</span>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{host}}</code><code>{{status}}</code><code>{{supportSignature}}</code><code>{{companyName}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-info">
                   <span class="notification-template-header">
@@ -743,7 +743,7 @@
                     <span class="notification-template-badge">Hotspot</span>
                   </span>
                   <textarea x-model="forms.settings.hotspotReactivationMessageTemplate" placeholder="Tulis pesan reaktivasi akun hotspot..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel:</strong> {{name}}, {{phoneNumber}}, {{username}}, {{password}}, {{profile}}, {{reactivatedAt}}, {{nextReactivationAt}}, {{supportSignature}}, {{companyName}}</span>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{phoneNumber}}</code><code>{{username}}</code><code>{{password}}</code><code>{{profile}}</code><code>{{reactivatedAt}}</code><code>{{nextReactivationAt}}</code><code>{{supportSignature}}</code><code>{{companyName}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-amber">
                   <span class="notification-template-header">
@@ -752,7 +752,7 @@
                     <span class="notification-template-badge">Arrears only</span>
                   </span>
                   <textarea x-model="forms.settings.paymentMessageTemplateArrearsOnly" placeholder="Tulis konfirmasi pembayaran tunggakan..."></textarea>
-                  <span class="notification-template-variables"><strong>Digunakan untuk:</strong> pembayaran dengan tipe ARREARS-ONLY.</span>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-violet">
                   <span class="notification-template-header">
@@ -761,7 +761,7 @@
                     <span class="notification-template-badge">Current only</span>
                   </span>
                   <textarea x-model="forms.settings.paymentMessageTemplateCurrentOnly" placeholder="Tulis konfirmasi pembayaran bulan ini..."></textarea>
-                  <span class="notification-template-variables"><strong>Digunakan untuk:</strong> pembayaran dengan tipe CURRENT-ONLY.</span>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-success">
                   <span class="notification-template-header">
@@ -770,7 +770,7 @@
                     <span class="notification-template-badge">Full paid</span>
                   </span>
                   <textarea x-model="forms.settings.paymentMessageTemplateFullPaid" placeholder="Tulis konfirmasi pembayaran lunas..."></textarea>
-                  <span class="notification-template-variables"><strong>Digunakan untuk:</strong> pembayaran dengan tipe FULL-PAID.</span>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
               </div>
             </section>

@@ -581,8 +581,10 @@ table tbody tr:hover { background: #fafaff; }
 .notification-template-copy small { margin-top: 3px; color: #8a94a5; font-size: 8px; font-weight: 400; line-height: 1.45; }
 .notification-template-badge { flex: 0 0 auto; padding: 5px 7px; color: #b42318; border-radius: 7px; background: #fff1f0; font-size: 7px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
 .notification-template-card textarea { width: 100%; min-height: 145px; margin: 0; resize: vertical; line-height: 1.55; }
-.notification-template-variables { display: block; color: #8993a4; font-size: 8px; font-weight: 450; line-height: 1.5; overflow-wrap: anywhere; }
-.notification-template-variables strong { color: #667085; font-weight: 700; }
+.notification-template-variables { display: flex; flex-direction: column; gap: 7px; color: #8993a4; font-size: 8px; font-weight: 450; line-height: 1.5; }
+.notification-template-variables > strong { color: #667085; font-size: 8px; font-weight: 700; }
+.template-variable-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.template-variable-list code { padding: 4px 6px; color: #5147c7; border: 1px solid #e2e0ff; border-radius: 6px; background: #f6f5ff; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 7px; font-weight: 650; line-height: 1; overflow-wrap: anywhere; }
 .notification-template-card.tone-info .notification-template-icon { color: #0284c7; background: #eaf7ff; }
 .notification-template-card.tone-info .notification-template-badge { color: #0369a1; background: #eaf7ff; }
 .notification-template-card.tone-amber .notification-template-icon { color: #d97706; background: #fff6e7; }
