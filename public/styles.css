@@ -263,9 +263,9 @@ table tbody tr:hover { background: #f2f7fc; }
 table td { padding: 11px 13px !important; color: #495057 !important; border: 0 !important; font-size: 12px !important; vertical-align: middle; }
 table td button { min-height: 30px !important; padding: 5px 9px !important; font-size: 10px !important; }
 .sent-history-table table { table-layout: fixed; }
-.sent-message { display: -webkit-box; max-height: 4.7rem; overflow: hidden; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.sent-message { display: -webkit-box; width: 100%; max-height: 4.7rem; overflow: hidden; line-height: 1.5; text-align: left; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .sent-message-expanded { display: block; max-height: none; -webkit-line-clamp: unset; }
-.read-more-button { color: var(--primary) !important; }
+.read-more-button { display: inline-flex; min-height: 0 !important; align-items: center; justify-content: flex-start; margin-left: 0; padding: 0 !important; color: var(--primary) !important; border: 0; background: transparent; line-height: 1.4; text-align: left; }
 .filter-inline { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
 .filter-inline > * { flex: 0 0 auto; }
 .filter-inline-search { width: 100%; min-width: 240px; flex: 1 1 auto !important; }
