@@ -456,7 +456,6 @@ body { color: var(--ink); background: var(--canvas); font-size: 14px; }
 .page-title-wrap { display: flex; align-items: center; gap: 14px; }
 .page-title-icon { display: inline-flex; width: 44px; height: 44px; flex: 0 0 44px; align-items: center; justify-content: center; color: #4f46e5; border: 1px solid #e3e1ff; border-radius: 13px; background: #eeedff; font-size: 16px; }
 .page-title-icon i { display: inline-block; }
-.page-title-icon i.fa-grid-2::before { content: "\f00a"; }
 .content-header h1 { margin: 0 0 3px; color: #182230; font-size: 22px; font-weight: 700; letter-spacing: -.02em !important; }
 .content-header p { color: #7d8798; font-size: 11px; }
 .page-actions { display: flex; align-items: center; gap: 8px; }

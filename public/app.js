@@ -67,7 +67,7 @@
           { key: "system", label: "Sistem" },
         ],
         navMenus: [
-          { key: "overview", group: "workspace", label: "Ringkasan", icon: "fa-solid fa-grid-2", description: "Kondisi layanan dan pekerjaan penting hari ini." },
+          { key: "overview", group: "workspace", label: "Ringkasan", icon: "fa-solid fa-table-cells-large", description: "Kondisi layanan dan pekerjaan penting hari ini." },
           { key: "contacts", group: "operations", label: "Pelanggan", icon: "fa-solid fa-users", description: "Kelola pelanggan, akun hotspot, jatuh tempo, dan pembayaran." },
           { key: "reminders", group: "operations", label: "Jadwal Reminder", icon: "fa-solid fa-calendar-check", description: "Atur jadwal dan isi pesan reminder pelanggan." },
           { key: "payment-amount", group: "operations", label: "Nominal Tagihan", icon: "fa-solid fa-wallet", description: "Atur nominal pembayaran bulanan setiap pelanggan." },
@@ -224,7 +224,7 @@
         },
 
         get activeMenuIcon() {
-          return this.navMenus.find((menu) => menu.key === this.activeMenu)?.icon || "fa-solid fa-grid-2";
+          return this.navMenus.find((menu) => menu.key === this.activeMenu)?.icon || "fa-solid fa-table-cells-large";
         },
 
         get currentDateLabel() {
