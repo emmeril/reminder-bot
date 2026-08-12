@@ -724,28 +724,55 @@
               </label>
               </div>
             </section>
-            <section class="settings-section">
+            <section class="settings-section notification-settings-section">
               <div class="settings-section-heading"><span><i class="fa-solid fa-message"></i></span><div><strong>Template notifikasi</strong><small>Pesan otomatis untuk jaringan, hotspot, dan pembayaran</small></div></div>
-            <label class="block text-sm text-ink/60">
-              Template Notifikasi AP Down
-              <textarea x-model="forms.settings.apDownMessageTemplate" class="mt-2 min-h-36 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Gunakan placeholder: {{name}}, {{host}}, {{status}}, {{supportSignature}}, {{companyName}}"></textarea>
-            </label>
-            <label class="block text-sm text-ink/60">
-              Template Notifikasi Reaktivasi Hotspot
-              <textarea x-model="forms.settings.hotspotReactivationMessageTemplate" class="mt-2 min-h-36 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Gunakan placeholder: {{name}}, {{phoneNumber}}, {{username}}, {{password}}, {{profile}}, {{reactivatedAt}}, {{nextReactivationAt}}, {{supportSignature}}, {{companyName}}"></textarea>
-            </label>
-            <label class="block text-sm text-ink/60">
-              Template Pembayaran: Hanya Tunggakan
-              <textarea x-model="forms.settings.paymentMessageTemplateArrearsOnly" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Template khusus untuk tipe ARREARS-ONLY"></textarea>
-            </label>
-            <label class="block text-sm text-ink/60">
-              Template Pembayaran: Bulan Ini Saja
-              <textarea x-model="forms.settings.paymentMessageTemplateCurrentOnly" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Template khusus untuk tipe CURRENT-ONLY"></textarea>
-            </label>
-            <label class="block text-sm text-ink/60">
-              Template Pembayaran: Lunas Semua
-              <textarea x-model="forms.settings.paymentMessageTemplateFullPaid" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Template khusus untuk tipe FULL-PAID"></textarea>
-            </label>
+              <div class="notification-template-grid">
+                <label class="notification-template-card tone-danger">
+                  <span class="notification-template-header">
+                    <span class="notification-template-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                    <span class="notification-template-copy"><strong>AP terputus</strong><small>Dikirim saat perangkat pelanggan terdeteksi offline.</small></span>
+                    <span class="notification-template-badge">Jaringan</span>
+                  </span>
+                  <textarea x-model="forms.settings.apDownMessageTemplate" placeholder="Tulis pesan ketika AP pelanggan terputus..."></textarea>
+                  <span class="notification-template-variables"><strong>Variabel:</strong> {{name}}, {{host}}, {{status}}, {{supportSignature}}, {{companyName}}</span>
+                </label>
+                <label class="notification-template-card tone-info">
+                  <span class="notification-template-header">
+                    <span class="notification-template-icon"><i class="fa-solid fa-wifi"></i></span>
+                    <span class="notification-template-copy"><strong>Reaktivasi hotspot</strong><small>Dikirim setelah akun hotspot pelanggan diaktifkan kembali.</small></span>
+                    <span class="notification-template-badge">Hotspot</span>
+                  </span>
+                  <textarea x-model="forms.settings.hotspotReactivationMessageTemplate" placeholder="Tulis pesan reaktivasi akun hotspot..."></textarea>
+                  <span class="notification-template-variables"><strong>Variabel:</strong> {{name}}, {{phoneNumber}}, {{username}}, {{password}}, {{profile}}, {{reactivatedAt}}, {{nextReactivationAt}}, {{supportSignature}}, {{companyName}}</span>
+                </label>
+                <label class="notification-template-card tone-amber">
+                  <span class="notification-template-header">
+                    <span class="notification-template-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
+                    <span class="notification-template-copy"><strong>Pembayaran tunggakan</strong><small>Konfirmasi pembayaran yang hanya melunasi tunggakan.</small></span>
+                    <span class="notification-template-badge">Arrears only</span>
+                  </span>
+                  <textarea x-model="forms.settings.paymentMessageTemplateArrearsOnly" placeholder="Tulis konfirmasi pembayaran tunggakan..."></textarea>
+                  <span class="notification-template-variables"><strong>Digunakan untuk:</strong> pembayaran dengan tipe ARREARS-ONLY.</span>
+                </label>
+                <label class="notification-template-card tone-violet">
+                  <span class="notification-template-header">
+                    <span class="notification-template-icon"><i class="fa-solid fa-calendar-check"></i></span>
+                    <span class="notification-template-copy"><strong>Pembayaran bulan ini</strong><small>Konfirmasi pembayaran tagihan periode berjalan.</small></span>
+                    <span class="notification-template-badge">Current only</span>
+                  </span>
+                  <textarea x-model="forms.settings.paymentMessageTemplateCurrentOnly" placeholder="Tulis konfirmasi pembayaran bulan ini..."></textarea>
+                  <span class="notification-template-variables"><strong>Digunakan untuk:</strong> pembayaran dengan tipe CURRENT-ONLY.</span>
+                </label>
+                <label class="notification-template-card tone-success">
+                  <span class="notification-template-header">
+                    <span class="notification-template-icon"><i class="fa-solid fa-circle-check"></i></span>
+                    <span class="notification-template-copy"><strong>Pembayaran lunas</strong><small>Konfirmasi bahwa seluruh tagihan pelanggan telah lunas.</small></span>
+                    <span class="notification-template-badge">Full paid</span>
+                  </span>
+                  <textarea x-model="forms.settings.paymentMessageTemplateFullPaid" placeholder="Tulis konfirmasi pembayaran lunas..."></textarea>
+                  <span class="notification-template-variables"><strong>Digunakan untuk:</strong> pembayaran dengan tipe FULL-PAID.</span>
+                </label>
+              </div>
             </section>
             <section class="settings-section">
               <div class="settings-section-heading"><span><i class="fa-solid fa-bell"></i></span><div><strong>Otomasi dan pemberitahuan</strong><small>Pilih aktivitas yang berjalan dan siapa yang menerima update</small></div></div>
