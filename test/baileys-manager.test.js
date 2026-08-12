@@ -63,6 +63,48 @@ test("memblokir pengiriman sampai operator mengaktifkannya manual", async () => 
   assert.equal(status.canSend, true);
 });
 
+test("WA dijeda gagal cepat tanpa menunggu delay dan tanpa retry", async () => {
+  BaileysManager.outboundEnabled = false;
+  BaileysManager.lastSentAt = Date.now();
+
+  const startedAt = Date.now();
+  await assert.rejects(
+    () => BaileysManager.sendMessage("6281234567890", "Halo", {
+      minDelayMs: 60_000,
+      maxDelayMs: 60_000,
+    }),
+    (error) => {
+      assert.equal(error.code, "WHATSAPP_OUTBOUND_PAUSED");
+      assert.equal(error.retryable, false);
+      return true;
+    }
+  );
+
+  assert.ok(Date.now() - startedAt < 1_000);
+});
+
+test("WA terputus gagal cepat tanpa menunggu delay dan tanpa retry", async () => {
+  BaileysManager.connectionCache.connected = false;
+  BaileysManager.connectionCache.state = "DISCONNECTED";
+  BaileysManager.socket = null;
+  BaileysManager.lastSentAt = Date.now();
+
+  const startedAt = Date.now();
+  await assert.rejects(
+    () => BaileysManager.sendMessage("6281234567890", "Halo", {
+      minDelayMs: 60_000,
+      maxDelayMs: 60_000,
+    }),
+    (error) => {
+      assert.equal(error.code, "WHATSAPP_PROVIDER_UNAVAILABLE");
+      assert.equal(error.retryable, false);
+      return true;
+    }
+  );
+
+  assert.ok(Date.now() - startedAt < 1_000);
+});
+
 test("mengirim pesan ke LID ketika mapping PN tersedia", async () => {
   let request;
   BaileysManager.socket = {

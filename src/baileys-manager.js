@@ -370,17 +370,47 @@ class BaileysManager {
     }
   }
 
-  static async sendOnce(number, message, options = {}) {
-    const selectedDelay = this.getRandomDelayMs(options);
-    const remainingDelay = Math.max(0, selectedDelay - (Date.now() - this.lastSentAt));
-    if (remainingDelay > 0) await sleep(remainingDelay);
+  static assertOutboundReady() {
+    let error = null;
+    if (!this.isConfigured()) {
+      error = new Error("Baileys dinonaktifkan");
+      error.code = "WHATSAPP_PROVIDER_DISABLED";
+    } else if (!this.outboundEnabled) {
+      error = new Error("Pengiriman WhatsApp belum diaktifkan dari halaman transport");
+      error.code = "WHATSAPP_OUTBOUND_PAUSED";
+    } else if (!this.connectionCache.connected || !this.socket) {
+      error = new Error(`Baileys belum terhubung (${this.connectionCache.state})`);
+      error.code = "WHATSAPP_PROVIDER_UNAVAILABLE";
+    }
 
+    if (error) {
+      // Kondisi transport tidak akan pulih hanya dengan mengulang item yang
+      // sama. Gagal cepat agar fitur utama pemanggil dapat langsung lanjut.
+      error.retryable = false;
+      error.statusCode = 503;
+      throw error;
+    }
+  }
+
+  static async sendOnce(number, message, options = {}) {
     try {
+      // Jangan menunggu jeda acak jika transport sejak awal memang tidak bisa
+      // mengirim. sendRequest() tetap memeriksa ulang setelah jeda untuk
+      // menangani koneksi yang berubah ketika pesan sedang menunggu.
+      this.assertOutboundReady();
+      const selectedDelay = this.getRandomDelayMs(options);
+      const remainingDelay = Math.max(0, selectedDelay - (Date.now() - this.lastSentAt));
+      if (remainingDelay > 0) await sleep(remainingDelay);
+
       const result = await this.sendRequest(number, message);
       this.lastSentAt = Date.now();
       return { ...result, attempts: 1 };
     } catch (error) {
-      this.lastSentAt = Date.now();
+      if (error?.code !== "WHATSAPP_PROVIDER_DISABLED"
+        && error?.code !== "WHATSAPP_OUTBOUND_PAUSED"
+        && error?.code !== "WHATSAPP_PROVIDER_UNAVAILABLE") {
+        this.lastSentAt = Date.now();
+      }
       this.failedQueue += 1;
       throw error;
     }
@@ -400,18 +430,13 @@ class BaileysManager {
   }
 
   static async sendRequest(number, message) {
-    if (!this.isConfigured()) throw new Error("Baileys dinonaktifkan");
-    if (!this.outboundEnabled) {
-      throw new Error("Pengiriman WhatsApp belum diaktifkan dari halaman transport");
-    }
+    this.assertOutboundReady();
 
     const normalized = normalizePhoneNumber(number);
     if (!isValidPhoneNumber(normalized)) throw new Error("Invalid target phone number");
 
     await this.initialize();
-    if (!this.connectionCache.connected || !this.socket) {
-      throw new Error(`Baileys belum terhubung (${this.connectionCache.state})`);
-    }
+    this.assertOutboundReady();
 
     try {
       const jid = await this.resolveRecipientJid(normalized);
