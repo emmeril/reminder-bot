@@ -49,8 +49,8 @@ class BaileysManager {
 
   static lastActivity = null;
 
-  // Pengiriman selalu terkunci ketika proses baru dimulai atau pairing baru
-  // dibuat. Operator harus mengaktifkannya secara eksplisit dari /transport.
+  // Pengiriman aktif otomatis setelah koneksi WhatsApp benar-benar terbuka.
+  // Selama pairing/reconnect belum selesai nilainya tetap false.
   static outboundEnabled = false;
 
   static connectionCache = {
@@ -195,6 +195,7 @@ class BaileysManager {
 
     if (update.connection === "open") {
       this.pairingQrSeen = false;
+      this.outboundEnabled = true;
       this.reconnectAttempts = 0;
       this.lastActivity = Date.now();
       this.updateConnection({

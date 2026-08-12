@@ -260,6 +260,28 @@ test("pairing QR yang terputus sebelum registered otomatis menyiapkan QR baru", 
   assert.match(BaileysManager.connectionCache.detail, /Pairing WhatsApp belum selesai/);
 });
 
+test("scan QR yang berhasil langsung mengaktifkan pengiriman", async () => {
+  BaileysManager.outboundEnabled = false;
+  BaileysManager.pairingQrSeen = true;
+  const generation = BaileysManager.connectionGeneration;
+  const socket = {
+    user: {
+      id: "6281234567890@s.whatsapp.net",
+      name: "Reminder Bot",
+    },
+  };
+  BaileysManager.socket = socket;
+
+  await BaileysManager.handleConnectionUpdate({ connection: "open" }, socket, generation);
+
+  const status = BaileysManager.getStatus();
+  assert.equal(status.deviceReady, true);
+  assert.equal(status.outboundEnabled, true);
+  assert.equal(status.canSend, true);
+  assert.equal(status.state, "READY");
+  assert.equal(status.account, "Reminder Bot");
+});
+
 test("menganggap sesi rusak sebagai auth invalid agar QR baru dapat dibuat", () => {
   BaileysManager.baileys = {
     DisconnectReason: {
