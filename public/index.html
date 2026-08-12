@@ -85,7 +85,7 @@
             <p x-text="activeMenuDescription"></p>
           </div>
         </div>
-        <div class="page-actions">
+        <div x-cloak x-show="activeMenu === 'overview'" class="page-actions">
           <button type="button" @click="runScheduler()" class="secondary-action"><i class="fa-solid fa-play"></i><span>Jalankan scheduler</span></button>
           <button type="button" @click="selectMenu('notifications')" class="primary-action"><i class="fa-solid fa-paper-plane"></i><span>Kirim pesan</span></button>
         </div>
