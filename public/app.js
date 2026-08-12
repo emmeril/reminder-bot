@@ -60,17 +60,23 @@
         activeMenu: "overview",
         sidebarHidden: false,
         mobileSidebarOpen: false,
+        navGroups: [
+          { key: "workspace", label: "Workspace" },
+          { key: "operations", label: "Operasional" },
+          { key: "messages", label: "Komunikasi" },
+          { key: "system", label: "Sistem" },
+        ],
         navMenus: [
-          { key: "overview", label: "Overview", icon: "fa-solid fa-chart-pie", description: "Ringkasan status layanan, antrean, kontak, dan aktivitas pengiriman." },
-          { key: "notifications", label: "Notifikasi", icon: "fa-solid fa-paper-plane", description: "Kirim notifikasi manual, broadcast, dan kelola penerima admin." },
-          { key: "contacts", label: "Contacts", icon: "fa-solid fa-address-book", description: "Kelola pelanggan, akun hotspot, jatuh tempo, dan status pembayaran." },
-          { key: "monitor-ap", label: "Monitor AP", icon: "fa-solid fa-tower-cell", description: "Pantau konektivitas dan kondisi access point secara terpusat." },
-          { key: "reminders", label: "Reminders", icon: "fa-solid fa-calendar-check", description: "Atur jadwal dan isi pesan reminder pelanggan." },
-          { key: "payment-amount", label: "Nominal Bayar", icon: "fa-solid fa-money-bill-wave", description: "Atur nominal pembayaran bulanan untuk setiap pelanggan." },
-          { key: "templates", label: "Templates", icon: "fa-solid fa-file-pen", description: "Kelola template pesan yang digunakan oleh notifikasi dan reminder." },
-          { key: "settings", label: "Settings", icon: "fa-solid fa-sliders", description: "Konfigurasi identitas, notifikasi, backup, dan perilaku sistem." },
-          { key: "history", label: "Sent History", icon: "fa-solid fa-clock-rotate-left", description: "Lihat riwayat pesan beserta status pengirimannya." },
-          { key: "logs", label: "Activity Log", icon: "fa-solid fa-list-check", description: "Audit aktivitas scheduler, koneksi, API, dan proses internal." },
+          { key: "overview", group: "workspace", label: "Ringkasan", icon: "fa-solid fa-grid-2", description: "Kondisi layanan dan pekerjaan penting hari ini." },
+          { key: "contacts", group: "operations", label: "Pelanggan", icon: "fa-solid fa-users", description: "Kelola pelanggan, akun hotspot, jatuh tempo, dan pembayaran." },
+          { key: "reminders", group: "operations", label: "Jadwal Reminder", icon: "fa-solid fa-calendar-check", description: "Atur jadwal dan isi pesan reminder pelanggan." },
+          { key: "payment-amount", group: "operations", label: "Nominal Tagihan", icon: "fa-solid fa-wallet", description: "Atur nominal pembayaran bulanan setiap pelanggan." },
+          { key: "monitor-ap", group: "operations", label: "Monitor Jaringan", icon: "fa-solid fa-tower-broadcast", description: "Pantau konektivitas dan kondisi access point." },
+          { key: "notifications", group: "messages", label: "Kirim Pesan", icon: "fa-solid fa-paper-plane", description: "Kirim pesan personal, broadcast, dan kelola penerima admin." },
+          { key: "templates", group: "messages", label: "Template Pesan", icon: "fa-solid fa-file-lines", description: "Siapkan format pesan untuk notifikasi dan reminder." },
+          { key: "history", group: "messages", label: "Riwayat Kirim", icon: "fa-solid fa-clock-rotate-left", description: "Lihat pesan yang dikirim beserta statusnya." },
+          { key: "settings", group: "system", label: "Pengaturan", icon: "fa-solid fa-sliders", description: "Konfigurasi identitas, notifikasi, backup, dan sistem." },
+          { key: "logs", group: "system", label: "Log Aktivitas", icon: "fa-solid fa-list-check", description: "Audit aktivitas scheduler, koneksi, dan proses internal." },
         ],
         contacts: [],
         mikrotikProfiles: [],
@@ -215,6 +221,29 @@
 
         get activeMenuDescription() {
           return this.navMenus.find((menu) => menu.key === this.activeMenu)?.description || "Panel operasional reminder bot.";
+        },
+
+        get activeMenuIcon() {
+          return this.navMenus.find((menu) => menu.key === this.activeMenu)?.icon || "fa-solid fa-grid-2";
+        },
+
+        get currentDateLabel() {
+          return new Intl.DateTimeFormat("id-ID", {
+            timeZone: this.getAppTimezone(),
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          }).format(new Date());
+        },
+
+        summaryValue(label) {
+          return Number(this.summaryMetrics.find((metric) => metric.label === label)?.value || 0);
+        },
+
+        get paymentProgress() {
+          const total = this.summaryValue("Pelanggan");
+          return total ? Math.min(100, Math.round((this.summaryValue("Sudah bayar") / total) * 100)) : 0;
         },
 
         async loadNonCriticalData() {
@@ -848,12 +877,12 @@
               { label: "Telegram", value: data.bot.telegramEnabled ? "Ready" : "Not ready", icon: "fa-brands fa-telegram" },
             ];
             this.summaryMetrics = [
-              { label: "Contacts", value: data.summary.contacts, icon: "fa-solid fa-address-book" },
-              { label: "Queued reminders", value: data.summary.reminders, icon: "fa-solid fa-calendar-days" },
-              { label: "Sent outputs", value: data.summary.sentReminders, icon: "fa-solid fa-paper-plane" },
-              { label: "Admin recipients", value: data.summary.adminRecipients, icon: "fa-solid fa-user-shield" },
-              { label: "Paid contacts", value: data.summary.paidContacts, icon: "fa-solid fa-circle-check" },
-              { label: "Unpaid contacts", value: data.summary.unpaidContacts, icon: "fa-solid fa-triangle-exclamation" },
+              { label: "Pelanggan", value: data.summary.contacts, icon: "fa-solid fa-users", tone: "blue" },
+              { label: "Reminder aktif", value: data.summary.reminders, icon: "fa-solid fa-calendar-check", tone: "violet" },
+              { label: "Pesan terkirim", value: data.summary.sentReminders, icon: "fa-solid fa-paper-plane", tone: "cyan" },
+              { label: "Penerima admin", value: data.summary.adminRecipients, icon: "fa-solid fa-user-shield", tone: "slate" },
+              { label: "Sudah bayar", value: data.summary.paidContacts, icon: "fa-solid fa-circle-check", tone: "green" },
+              { label: "Belum bayar", value: data.summary.unpaidContacts, icon: "fa-solid fa-clock", tone: "amber" },
               { label: "Masih ada hutang", value: data.summary.debtContacts || 0, icon: "fa-solid fa-file-invoice-dollar" },
             ];
             this.updateApSummaryMetrics();
@@ -970,13 +999,13 @@
           }).length;
 
           const baseMetrics = this.summaryMetrics.filter(
-            (metric) => metric.label !== "Status AP UP" && metric.label !== "Status AP DOWN"
+            (metric) => metric.label !== "AP online" && metric.label !== "AP bermasalah"
           );
 
           this.summaryMetrics = [
             ...baseMetrics,
-            { label: "Status AP UP", value: apUp, icon: "fa-solid fa-tower-cell" },
-            { label: "Status AP DOWN", value: apDown, icon: "fa-solid fa-tower-cell" },
+            { label: "AP online", value: apUp, icon: "fa-solid fa-wifi", tone: "green" },
+            { label: "AP bermasalah", value: apDown, icon: "fa-solid fa-triangle-exclamation", tone: "red" },
           ];
         },
 

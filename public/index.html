@@ -27,28 +27,29 @@
       <a href="/dashboard" class="brand-link">
         <span class="brand-icon"><i class="fa-solid fa-bell"></i></span>
         <span class="brand-copy">
-          <strong>Reminder</strong><span>Bot</span>
-          <small>Operations Center</small>
+          <strong>Reminder Bot</strong>
+          <small>Customer operations</small>
         </span>
       </a>
       <div class="sidebar-body">
-        <div class="user-panel">
-          <span class="user-avatar"><i class="fa-solid fa-user-shield"></i></span>
-          <span class="user-info"><strong>Administrator</strong><small><i class="fa-solid fa-circle"></i> System online</small></span>
-        </div>
-        <div class="nav-header">MAIN NAVIGATION</div>
         <nav class="sidebar-nav">
-          <template x-for="menu in navMenus" :key="'sidebar-' + menu.key">
-            <button type="button" @click="selectMenu(menu.key)" class="menu-pill nav-item" :class="activeMenu === menu.key ? 'active' : ''" :title="menu.label">
-              <span class="nav-icon"><i :class="menu.icon"></i></span>
-              <span class="nav-label" x-text="menu.label"></span>
-              <i class="fa-solid fa-angle-right nav-arrow"></i>
-            </button>
+          <template x-for="group in navGroups" :key="group.key">
+            <div class="nav-group">
+              <div class="nav-header" x-text="group.label"></div>
+              <template x-for="menu in navMenus.filter(item => item.group === group.key)" :key="'sidebar-' + menu.key">
+                <button type="button" @click="selectMenu(menu.key)" class="menu-pill nav-item" :class="activeMenu === menu.key ? 'active' : ''" :title="menu.label">
+                  <span class="nav-icon"><i :class="menu.icon"></i></span>
+                  <span class="nav-label" x-text="menu.label"></span>
+                </button>
+              </template>
+            </div>
           </template>
         </nav>
       </div>
       <div class="sidebar-footer">
-        <span class="status-dot"></span><span class="nav-label">Layanan aktif</span>
+        <span class="user-avatar"><i class="fa-solid fa-user"></i></span>
+        <span class="user-info"><strong>Administrator</strong><small><span class="status-dot"></span> Sistem berjalan</small></span>
+        <button type="button" @click="logout()" class="sidebar-logout" title="Keluar"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
       </div>
     </aside>
 
@@ -63,36 +64,35 @@
           <button type="button" class="navbar-button mobile-menu-toggle" @click="mobileSidebarOpen = true" aria-label="Buka navigasi">
             <i class="fa-solid fa-bars"></i>
           </button>
-          <span class="navbar-title" x-text="activeMenuLabel"></span>
+          <div class="header-context">
+            <span class="navbar-title" x-text="activeMenuLabel"></span>
+            <small x-text="currentDateLabel"></small>
+          </div>
         </div>
         <div class="header-actions">
-          <button @click="refreshAll()" class="navbar-button" title="Refresh data"><i class="fa-solid fa-rotate"></i><span class="action-text">Refresh</span></button>
-          <button @click="runScheduler()" class="navbar-button" title="Jalankan scheduler"><i class="fa-solid fa-play"></i><span class="action-text">Scheduler</span></button>
           <a href="/transport" target="_blank" rel="noreferrer" class="navbar-button provider-link" title="Status Provider WhatsApp">
-            <i class="fa-brands fa-whatsapp"></i><span class="provider-indicator"></span><span class="action-text">Provider</span>
+            <span class="provider-dot"></span><span class="action-text">WhatsApp Provider</span><i class="fa-solid fa-arrow-up-right-from-square"></i>
           </a>
-          <span class="header-divider"></span>
-          <button @click="logout()" class="account-button" title="Logout">
-            <span class="account-avatar"><i class="fa-solid fa-user"></i></span>
-            <span class="account-copy"><strong>Admin</strong><small>Logout</small></span>
-            <i class="fa-solid fa-right-from-bracket"></i>
-          </button>
+          <button @click="refreshAll()" class="navbar-button icon-only" title="Muat ulang data"><i class="fa-solid fa-rotate"></i></button>
         </div>
       </header>
 
       <section class="content-header">
-        <div>
-          <div class="eyebrow">REMINDER OPERATIONS</div>
-          <h1 x-text="activeMenuLabel"></h1>
-          <p x-text="activeMenuDescription"></p>
+        <div class="page-title-wrap">
+          <span class="page-title-icon"><i :class="activeMenuIcon"></i></span>
+          <div>
+            <h1 x-text="activeMenuLabel"></h1>
+            <p x-text="activeMenuDescription"></p>
+          </div>
         </div>
-        <nav class="breadcrumb" aria-label="Breadcrumb">
-          <span><i class="fa-solid fa-house"></i> Home</span><i class="fa-solid fa-angle-right"></i><strong x-text="activeMenuLabel"></strong>
-        </nav>
+        <div class="page-actions">
+          <button type="button" @click="runScheduler()" class="secondary-action"><i class="fa-solid fa-play"></i><span>Jalankan scheduler</span></button>
+          <button type="button" @click="selectMenu('notifications')" class="primary-action"><i class="fa-solid fa-paper-plane"></i><span>Kirim pesan</span></button>
+        </div>
       </section>
 
       <div class="dashboard-content">
-        <div class="page-grid grid gap-6 grid-cols-1">
+        <div class="page-grid grid gap-6 grid-cols-1" :class="activeMenu === 'overview' ? 'overview-workspace' : ''">
       <aside
         x-show="['overview','notifications'].includes(activeMenu)"
         x-transition.opacity
@@ -101,28 +101,56 @@
       >
         <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell status-panel rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-4 flex items-center justify-between">
-            <h2 class="font-display text-2xl"><i class="fa-solid fa-signal mr-2 text-moss"></i>Status Bot</h2>
+            <div><h2 class="font-display text-2xl">Kondisi layanan</h2><p class="card-description">Koneksi kanal pengiriman saat ini</p></div>
             <template x-if="loading.status">
-              <span class="inline-flex items-center gap-2 text-xs font-bold uppercase text-ink/45"><i class="fa-solid fa-circle-notch fa-spin"></i>Loading</span>
+              <span class="loading-label"><i class="fa-solid fa-circle-notch fa-spin"></i> Memuat</span>
             </template>
           </div>
           <div class="status-card-grid grid gap-3 md:grid-cols-2">
             <template x-for="card in statusCards" :key="card.label">
-              <div class="metric-card rounded-3xl border border-ink/8 bg-haze px-4 py-4 xl:h-full">
-                <div class="flex items-center gap-3">
-                  <span class="icon-chip"><i :class="card.icon"></i></span>
-                  <div>
-                    <div class="text-xs font-bold uppercase text-ink/45" x-text="card.label"></div>
-                    <div class="mt-1 text-2xl font-semibold" x-text="card.value"></div>
-                  </div>
+              <div class="service-card">
+                <div class="service-icon"><i :class="card.icon"></i></div>
+                <div class="service-copy">
+                  <strong x-text="card.label"></strong>
+                  <span><i class="fa-solid fa-circle"></i><span x-text="card.value"></span></span>
                 </div>
+                <a href="/transport" target="_blank" rel="noreferrer" title="Lihat detail"><i class="fa-solid fa-chevron-right"></i></a>
               </div>
             </template>
           </div>
         </section>
 
+        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell attention-panel">
+          <div class="mb-4 flex items-center justify-between">
+            <div><h2>Perlu perhatian</h2><p class="card-description">Prioritas yang sebaiknya ditindaklanjuti</p></div>
+            <span class="attention-count" x-text="summaryValue('Belum bayar') + summaryValue('AP bermasalah')"></span>
+          </div>
+          <div class="attention-list">
+            <button type="button" @click="selectMenu('contacts')" class="attention-item warning">
+              <span class="attention-icon"><i class="fa-solid fa-wallet"></i></span>
+              <span><strong><span x-text="summaryValue('Belum bayar')"></span> pelanggan belum bayar</strong><small>Cek status dan tindak lanjuti tagihan</small></span>
+              <i class="fa-solid fa-arrow-right"></i>
+            </button>
+            <button type="button" @click="selectMenu('monitor-ap')" class="attention-item" :class="summaryValue('AP bermasalah') ? 'danger' : 'success'">
+              <span class="attention-icon"><i class="fa-solid fa-wifi"></i></span>
+              <span><strong x-text="summaryValue('AP bermasalah') ? summaryValue('AP bermasalah') + ' AP bermasalah' : 'Semua AP terpantau normal'"></strong><small>Lihat status jaringan pelanggan</small></span>
+              <i class="fa-solid fa-arrow-right"></i>
+            </button>
+          </div>
+        </section>
+
+        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell quick-panel">
+          <div class="mb-4"><div><h2>Aksi cepat</h2><p class="card-description">Pekerjaan rutin tanpa banyak langkah</p></div></div>
+          <div class="quick-grid">
+            <button type="button" @click="openContactCreateModal()"><span><i class="fa-solid fa-user-plus"></i></span><strong>Tambah pelanggan</strong><small>Daftarkan pelanggan baru</small></button>
+            <button type="button" @click="openReminderCreateModal()"><span><i class="fa-solid fa-calendar-plus"></i></span><strong>Buat reminder</strong><small>Jadwalkan pesan tagihan</small></button>
+            <button type="button" @click="selectMenu('notifications')"><span><i class="fa-solid fa-paper-plane"></i></span><strong>Kirim pesan</strong><small>Personal atau broadcast</small></button>
+            <button type="button" @click="exportPaymentRecap()"><span><i class="fa-solid fa-file-excel"></i></span><strong>Unduh rekap</strong><small>Ekspor pembayaran Excel</small></button>
+          </div>
+        </section>
+
         <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell notify-manual-card rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
-          <h2 class="font-display text-2xl"><i class="fa-solid fa-paper-plane mr-2 text-clay"></i>Kirim Notifikasi Manual</h2>
+          <h2 class="font-display text-2xl"><i class="fa-solid fa-paper-plane mr-2 text-clay"></i>Pesan personal</h2>
           <form class="mt-4 space-y-4" @submit.prevent="sendManualNotification()">
             <label class="block text-sm text-ink/60">
               Pilih contact (opsional)
@@ -158,7 +186,7 @@
         </section>
 
         <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell notify-broadcast-card rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
-          <h2 class="font-display text-2xl"><i class="fa-solid fa-tower-broadcast mr-2 text-moss"></i>Broadcast ke Semua Contact</h2>
+          <h2 class="font-display text-2xl"><i class="fa-solid fa-tower-broadcast mr-2 text-moss"></i>Broadcast pelanggan</h2>
           <p class="mt-1 text-sm text-ink/60">Kirim pesan ke semua customer sekaligus.</p>
           <form class="mt-4 space-y-4" @submit.prevent="sendBroadcast()">
             <label class="block text-sm text-ink/60">
@@ -186,7 +214,7 @@
         </section>
 
         <section x-show="activeMenu === 'notifications'" x-transition.opacity class="panel-shell notify-recipient-card rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
-          <h2 class="font-display text-2xl"><i class="fa-solid fa-user-shield mr-2 text-ink/70"></i>Admin Recipients</h2>
+          <h2 class="font-display text-2xl"><i class="fa-solid fa-user-shield mr-2 text-ink/70"></i>Penerima admin</h2>
           <form class="mt-4 space-y-4" @submit.prevent="saveRecipients()">
             <label class="block text-sm text-ink/60">
               Nomor admin
@@ -203,32 +231,31 @@
       <main class="space-y-6 w-full max-w-none">
         <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell summary-panel rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
-            <h2 class="font-display text-2xl"><i class="fa-solid fa-chart-line mr-2 text-moss"></i>Overview</h2>
-            <!-- <p class="mt-1 text-sm text-ink/60">Ringkasan health bot, antrean notifikasi, dan hasil kirim.</p> -->
+            <div><h2 class="font-display text-2xl">Ringkasan operasional</h2><p class="card-description">Angka penting dari seluruh aktivitas</p></div>
           </div>
           <div class="summary-metric-grid grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <template x-for="metric in summaryMetrics" :key="metric.label">
-              <div class="metric-card rounded-[1.5rem] border border-ink/8 bg-gradient-to-b from-white to-haze px-4 py-5">
-                <div class="flex items-start justify-between gap-4">
-                  <div>
-                    <div class="text-xs font-bold uppercase text-ink/45" x-text="metric.label"></div>
-                    <div class="mt-3 text-3xl font-semibold" x-text="metric.value"></div>
-                  </div>
-                  <span class="icon-chip"><i :class="metric.icon"></i></span>
-                </div>
-              </div>
+              <button type="button" class="metric-card" :class="'tone-' + (metric.tone || 'blue')" @click="metric.label === 'Pelanggan' || metric.label.includes('bayar') || metric.label.includes('hutang') ? selectMenu('contacts') : metric.label.includes('Reminder') ? selectMenu('reminders') : metric.label.includes('AP') ? selectMenu('monitor-ap') : metric.label.includes('Pesan') ? selectMenu('history') : null">
+                <div class="metric-top"><span class="icon-chip"><i :class="metric.icon"></i></span><i class="fa-solid fa-arrow-up-right metric-arrow"></i></div>
+                <div class="metric-value" x-text="metric.value"></div>
+                <div class="metric-label" x-text="metric.label"></div>
+              </button>
             </template>
+          </div>
+          <div class="payment-progress-card">
+            <div class="progress-copy"><span><i class="fa-solid fa-chart-pie"></i></span><div><strong>Progres pembayaran bulan ini</strong><small><span x-text="summaryValue('Sudah bayar')"></span> dari <span x-text="summaryValue('Pelanggan')"></span> pelanggan sudah tercatat</small></div></div>
+            <div class="progress-visual"><strong x-text="paymentProgress + '%'" ></strong><div><span :style="'width:' + paymentProgress + '%'" ></span></div></div>
           </div>
         </section>
 
         <section x-show="activeMenu === 'contacts'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
             <div>
-              <h2 class="font-display text-2xl"><i class="fa-solid fa-address-book mr-2 text-moss"></i>Contacts</h2>
+              <h2 class="font-display text-2xl"><i class="fa-solid fa-address-book mr-2 text-moss"></i>Daftar pelanggan</h2>
               <!-- <p class="mt-1 text-sm text-ink/60">Sumber data penerima yang dikelola dari dashboard.</p> -->
             </div>
             <button @click="withProcessing('Memuat kontak...', () => loadContacts())" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
-              <i class="fa-solid fa-rotate mr-2"></i>Reload
+              <i class="fa-solid fa-rotate mr-2"></i>Muat ulang
             </button>
           </div>
           <div class="mb-4 flex items-center justify-start gap-2">
@@ -404,7 +431,7 @@
         <section x-show="activeMenu === 'monitor-ap'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
             <div>
-              <h2 class="font-display text-2xl"><i class="fa-solid fa-tower-cell mr-2 text-moss"></i>Monitor AP</h2>
+              <h2 class="font-display text-2xl"><i class="fa-solid fa-tower-cell mr-2 text-moss"></i>Status jaringan</h2>
             </div>
             <button @click="withProcessing('Memuat monitor AP...', () => loadApMonitors())" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
               <i class="fa-solid fa-rotate mr-2"></i>Reload
@@ -473,7 +500,7 @@
               <h2 class="font-display text-2xl"><i class="fa-solid fa-calendar-check mr-2 text-clay"></i>Reminders</h2>
               <!-- <p class="mt-1 text-sm text-ink/60">Seluruh jadwal outbound dibuat dan diubah dari sini.</p> -->
             </div>
-            <button @click="withProcessing('Memuat reminders...', () => loadReminders())" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white"><i class="fa-solid fa-rotate mr-2"></i>Reload</button>
+            <button @click="withProcessing('Memuat reminders...', () => loadReminders())" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white"><i class="fa-solid fa-rotate mr-2"></i>Muat ulang</button>
           </div>
           <div class="mb-4 flex flex-nowrap items-center justify-start gap-2 overflow-x-auto pb-1">
             <button type="button" @click="openReminderCreateModal()" class="shrink-0 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">
@@ -572,7 +599,7 @@
 
         <section x-show="activeMenu === 'templates'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
-            <h2 class="font-display text-2xl"><i class="fa-solid fa-file-pen mr-2 text-moss"></i>Templates</h2>
+            <h2 class="font-display text-2xl"><i class="fa-solid fa-file-pen mr-2 text-moss"></i>Template pesan</h2>
             <!-- <p class="mt-1 text-sm text-ink/60">Kelola format pesan tanpa masuk ke kode bot.</p> -->
           </div>
           <form class="space-y-4" @submit.prevent="createTemplate()">
@@ -651,11 +678,13 @@
 
         <section x-show="activeMenu === 'settings'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
-            <h2 class="font-display text-2xl"><i class="fa-solid fa-sliders mr-2 text-ink/70"></i>Settings</h2>
+            <h2 class="font-display text-2xl"><i class="fa-solid fa-sliders mr-2 text-ink/70"></i>Pengaturan sistem</h2>
             <!-- <p class="mt-1 text-sm text-ink/60">Konfigurasi operasional untuk perilaku dashboard dan alert.</p> -->
           </div>
           <form class="space-y-4" @input="settingsDirty = true" @change="settingsDirty = true" @submit.prevent="saveSettings()">
-            <div class="grid gap-4 md:grid-cols-2">
+            <section class="settings-section">
+              <div class="settings-section-heading"><span><i class="fa-solid fa-building"></i></span><div><strong>Identitas dashboard</strong><small>Nama dan zona waktu yang digunakan aplikasi</small></div></div>
+              <div class="grid gap-4 md:grid-cols-2">
               <label class="block text-sm text-ink/60">
                 Judul dashboard
                 <input x-model="forms.settings.dashboardTitle" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
@@ -672,6 +701,11 @@
                 Timezone
                 <input x-model="forms.settings.timezone" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               </label>
+              </div>
+            </section>
+            <section class="settings-section">
+              <div class="settings-section-heading"><span><i class="fa-solid fa-database"></i></span><div><strong>Backup dan pengiriman</strong><small>Jadwal backup serta jeda aman WhatsApp</small></div></div>
+              <div class="grid gap-4 md:grid-cols-2">
               <label class="block text-sm text-ink/60">
                 Jam backup MikroTik dan database harian (HH:MM)
                 <input x-model="forms.settings.mikrotikBackupTime" placeholder="02:00" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
@@ -688,7 +722,10 @@
                 Jeda acak maksimum WhatsApp (detik)
                 <input x-model.number="forms.settings.waRandomDelayMaxSeconds" type="number" min="0" max="300" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               </label>
-            </div>
+              </div>
+            </section>
+            <section class="settings-section">
+              <div class="settings-section-heading"><span><i class="fa-solid fa-message"></i></span><div><strong>Template notifikasi</strong><small>Pesan otomatis untuk jaringan, hotspot, dan pembayaran</small></div></div>
             <label class="block text-sm text-ink/60">
               Template Notifikasi AP Down
               <textarea x-model="forms.settings.apDownMessageTemplate" class="mt-2 min-h-36 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Gunakan placeholder: {{name}}, {{host}}, {{status}}, {{supportSignature}}, {{companyName}}"></textarea>
@@ -709,6 +746,9 @@
               Template Pembayaran: Lunas Semua
               <textarea x-model="forms.settings.paymentMessageTemplateFullPaid" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Template khusus untuk tipe FULL-PAID"></textarea>
             </label>
+            </section>
+            <section class="settings-section">
+              <div class="settings-section-heading"><span><i class="fa-solid fa-bell"></i></span><div><strong>Otomasi dan pemberitahuan</strong><small>Pilih aktivitas yang berjalan dan siapa yang menerima update</small></div></div>
             <div class="grid gap-3 rounded-[1.5rem] border border-ink/8 bg-haze p-4">
               <label class="flex items-start gap-3 text-sm text-ink/75">
                 <input x-model="forms.settings.autoRescheduleMonthly" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
@@ -735,8 +775,9 @@
                 <span>Aktifkan backup MikroTik harian dan kirim file via Telegram</span>
               </label>
             </div>
+            </section>
             <div class="flex flex-wrap gap-2">
-              <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Settings</button>
+              <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan pengaturan</button>
               <button type="button" @click="sendMikrotikBackupNow()" :disabled="loading.mikrotikBackup" class="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-haze disabled:cursor-not-allowed disabled:opacity-60">
                 <i :class="loading.mikrotikBackup ? 'fa-solid fa-spinner fa-spin mr-2' : 'fa-solid fa-file-export mr-2'"></i>
                 <span x-text="loading.mikrotikBackup ? 'Mengirim Backup...' : 'Kirim Backup Sekarang'"></span>
@@ -748,7 +789,7 @@
 
         <section x-show="activeMenu === 'history'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
-            <h2 class="font-display text-2xl"><i class="fa-solid fa-paper-plane mr-2 text-clay"></i>Sent History</h2>
+            <h2 class="font-display text-2xl"><i class="fa-solid fa-paper-plane mr-2 text-clay"></i>Riwayat pengiriman</h2>
             <!-- <p class="mt-1 text-sm text-ink/60">Output notifikasi yang sudah keluar dari bot.</p> -->
           </div>
           <div class="filter-inline mb-5">
@@ -840,7 +881,7 @@
         <section x-show="activeMenu === 'logs'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
             <div>
-              <h2 class="font-display text-2xl"><i class="fa-solid fa-list-check mr-2 text-moss"></i>Activity Log</h2>
+              <h2 class="font-display text-2xl"><i class="fa-solid fa-list-check mr-2 text-moss"></i>Aktivitas sistem</h2>
               <!-- <p class="mt-1 text-sm text-ink/60">Monitoring internal untuk koneksi, scheduler, API, dan delivery.</p> -->
             </div>
             <div class="flex w-full items-center gap-2 sm:w-auto">
@@ -849,7 +890,7 @@
                   <option :value="size" x-text="size + ' / page'"></option>
                 </template>
               </select>
-              <button @click="withProcessing('Memuat activity log...', () => loadLogs())" class="action-chip inline-flex items-center justify-center whitespace-nowrap rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white"><i class="fa-solid fa-rotate mr-2"></i>Reload</button>
+              <button @click="withProcessing('Memuat activity log...', () => loadLogs())" class="action-chip inline-flex items-center justify-center whitespace-nowrap rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white"><i class="fa-solid fa-rotate mr-2"></i>Muat ulang</button>
             </div>
           </div>
           <div class="space-y-3">
