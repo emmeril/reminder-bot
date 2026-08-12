@@ -209,32 +209,17 @@ test("mereset pairing dan membuka socket baru tanpa restart aplikasi", async () 
   assert.equal(BaileysManager.connectionCache.state, "RECONNECTING");
 });
 
-test("mendeteksi state setengah pairing yang mencegah QR baru", () => {
-  assert.equal(BaileysManager.hasIncompletePairing({ registered: false }), false);
-  assert.equal(BaileysManager.hasIncompletePairing({ registered: true, me: { id: "6281@s.whatsapp.net" } }), false);
-  assert.equal(BaileysManager.hasIncompletePairing({ registered: false, me: { id: "6281@s.whatsapp.net" } }), true);
-  assert.equal(BaileysManager.hasIncompletePairing({
-    registered: false,
-    me: { id: "6281@s.whatsapp.net" },
-    account: { details: "paired" },
-  }), false);
-});
-
-test("pairing QR yang terputus sebelum registered otomatis menyiapkan QR baru", async () => {
-  const originalAuthStore = BaileysManager.authStore;
+test("restart setelah scan mempertahankan auth dan menyelesaikan pairing yang sama", async () => {
   const originalBaileys = BaileysManager.baileys;
-  let authCleared = false;
   let reconnectScheduled = false;
-  const freshState = { creds: { registered: false } };
+  let credsSaved = false;
+  const pairedState = { creds: { registered: true, me: { id: "6281@s.whatsapp.net" } } };
 
-  BaileysManager.baileys = { DisconnectReason: {} };
-  BaileysManager.authState = { creds: { registered: false } };
-  BaileysManager.authStore = {
-    async clear() { authCleared = true; },
-    async initialize() {
-      return { state: freshState, saveCreds: async () => {} };
-    },
+  BaileysManager.baileys = {
+    DisconnectReason: { restartRequired: 515 },
   };
+  BaileysManager.authState = pairedState;
+  BaileysManager.saveCreds = async () => { credsSaved = true; };
   BaileysManager.socket = {};
   const generation = BaileysManager.connectionGeneration;
   const socket = BaileysManager.socket;
@@ -245,19 +230,18 @@ test("pairing QR yang terputus sebelum registered otomatis menyiapkan QR baru", 
     await BaileysManager.handleConnectionUpdate({ qr: "qr-baru", connection: "connecting" }, socket, generation);
     await BaileysManager.handleConnectionUpdate({
       connection: "close",
-      lastDisconnect: { error: new Error("pairing belum selesai") },
+      lastDisconnect: { error: { output: { statusCode: 515 }, message: "restart required" } },
     }, socket, generation);
   } finally {
     BaileysManager.scheduleReconnect = originalScheduleReconnect;
-    BaileysManager.authStore = originalAuthStore;
     BaileysManager.baileys = originalBaileys;
   }
 
-  assert.equal(authCleared, true);
   assert.equal(reconnectScheduled, true);
-  assert.equal(BaileysManager.authState, freshState);
+  assert.equal(credsSaved, true);
+  assert.equal(BaileysManager.authState, pairedState);
   assert.equal(BaileysManager.connectionCache.state, "RECONNECTING");
-  assert.match(BaileysManager.connectionCache.detail, /Pairing WhatsApp belum selesai/);
+  assert.match(BaileysManager.connectionCache.detail, /QR diterima/);
 });
 
 test("scan QR yang berhasil langsung mengaktifkan pengiriman", async () => {

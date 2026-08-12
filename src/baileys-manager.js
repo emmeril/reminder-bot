@@ -79,10 +79,6 @@ class BaileysManager {
     };
   }
 
-  static hasIncompletePairing(creds) {
-    return Boolean(creds?.me && creds.registered === false && !creds.account);
-  }
-
   static async initialize() {
     if (!this.isConfigured()) {
       this.updateConnection({
@@ -105,11 +101,7 @@ class BaileysManager {
     const baileys = await this.loadBaileys();
     if (!this.authStore) {
       this.authStore = new BaileysAuthStore(CONFIG.BAILEYS_AUTH_STORAGE);
-      let auth = await this.authStore.initialize(baileys);
-      if (this.hasIncompletePairing(auth.state.creds)) {
-        await this.authStore.clear();
-        auth = await this.authStore.initialize(baileys);
-      }
+      const auth = await this.authStore.initialize(baileys);
       this.authState = auth.state;
       this.saveCreds = auth.saveCreds;
     }
@@ -218,18 +210,33 @@ class BaileysManager {
     const disconnectCode = this.getDisconnectCode(update.lastDisconnect);
     const disconnectMessage = update.lastDisconnect?.error?.message || null;
     const invalidAuth = this.isInvalidAuthDisconnect(disconnectCode);
-    const unfinishedPairing = this.pairingQrSeen && this.authState?.creds?.registered !== true;
+    const restartRequired = disconnectCode === this.baileys?.DisconnectReason?.restartRequired;
     const canReconnect = !this.shuttingDown
       && this.reconnectAttempts < Math.max(0, CONFIG.MAX_RECONNECT_ATTEMPTS);
 
-    if ((invalidAuth || unfinishedPairing) && canReconnect) {
+    // Setelah QR dipindai, WhatsApp biasanya meminta socket direstart. Sesi
+    // yang baru diterima wajib dipertahankan dan dipakai untuk reconnect,
+    // sama seperti perilaku WhatsApp Web. Auth hanya dihapus bila server
+    // menyatakan sesi benar-benar tidak valid.
+    if (restartRequired && canReconnect) {
+      this.pairingQrSeen = false;
+      await this.saveCreds?.();
+      this.updateConnection({
+        connected: false,
+        detail: "QR diterima; menyelesaikan koneksi WhatsApp",
+        state: "RECONNECTING",
+        qr: null,
+      });
+      this.scheduleReconnect();
+      return;
+    }
+
+    if (invalidAuth && canReconnect) {
       this.pairingQrSeen = false;
       await this.resetAuthState();
       this.updateConnection({
         connected: false,
-        detail: unfinishedPairing
-          ? "Pairing WhatsApp belum selesai; menyiapkan QR baru"
-          : "Sesi Baileys tidak valid; menyiapkan QR pairing WhatsApp baru",
+        detail: "Sesi Baileys tidak valid; menyiapkan QR pairing WhatsApp baru",
         state: "RECONNECTING",
         qr: null,
         device: null,
