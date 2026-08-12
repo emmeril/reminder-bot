@@ -1439,6 +1439,9 @@ class DataManager {
         contact.monthlyPaymentAmount = amount;
         contactsChanged = true;
       }
+      if (contact && this.rewriteReminderPaymentMessage(reminder, contact)) {
+        remindersChanged = true;
+      }
     }
     for (const reminder of this.sentReminders.values()) {
       const amount = Number(reminder.paymentAmount) || parsePaymentAmountFromMessage(reminder.message);
@@ -1455,6 +1458,33 @@ class DataManager {
     if (contactsChanged) await this.saveContacts();
     if (remindersChanged) await this.saveReminders();
     if (remindersChanged) await this.saveSentReminders();
+  }
+
+  formatPaymentAmount(amount) {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      maximumFractionDigits: 0,
+    }).format(Math.max(0, Number(amount) || 0));
+  }
+
+  rewriteReminderPaymentMessage(reminder, contact) {
+    const monthlyAmount = Math.max(0, Number(reminder.paymentAmount ?? contact.monthlyPaymentAmount) || 0);
+    if (monthlyAmount <= 0) return false;
+    const debtInfo = this.buildDebtInfo(contact);
+    const debtCount = Math.max(0, Number(debtInfo.debtCount) || 0);
+    const currentPaid = String(debtInfo.currentPaymentStatus || contact.paymentStatus || "UNPAID").toUpperCase() === PAYMENT_STATUS.PAID;
+    const totalAmount = monthlyAmount * ((currentPaid ? 0 : 1) + debtCount);
+    if (totalAmount <= 0) return false;
+
+    const totalText = this.formatPaymentAmount(totalAmount);
+    const amountPattern = /Rp\s*[0-9][0-9.]*(?:,[0-9]{1,2})?/i;
+    const nextMessage = amountPattern.test(String(reminder.message || ""))
+      ? String(reminder.message).replace(amountPattern, totalText).replace(/(Rp\s*[0-9][0-9.]*(?:,[0-9]{1,2})?)(?=[A-Za-z])/gi, "$1 ")
+      : `${String(reminder.message || "").trim()}\n\n*Total tagihan: ${totalText}*`;
+    if (nextMessage === reminder.message) return false;
+    reminder.message = nextMessage;
+    return true;
   }
 
   async addContact(payload) {

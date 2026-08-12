@@ -120,9 +120,11 @@ class ReminderScheduler {
       details.push(`Tunggakan: ${billing.debtCount} bulan (${variables.debtAmount})`);
     }
     details.push(`*Total tagihan: ${variables.totalAmount}*`);
-    const amountPattern = /(?:sebesar\s*)?Rp\s*[0-9][0-9.\s]*(?:,[0-9]{1,2})?/i;
+    const amountPattern = /(?:sebesar\s*)?Rp\s*[0-9][0-9.]*(?:,[0-9]{1,2})?/i;
     if (amountPattern.test(message)) {
-      return message.replace(/Rp\s*[0-9][0-9.\s]*(?:,[0-9]{1,2})?/i, variables.totalAmount);
+      return message
+        .replace(/Rp\s*[0-9][0-9.]*(?:,[0-9]{1,2})?/i, variables.totalAmount)
+        .replace(/(Rp\s*[0-9][0-9.]*(?:,[0-9]{1,2})?)(?=[A-Za-z])/gi, "$1 ");
     }
     return `${message.trim()}\n\n${details.join("\n")}`;
   }
