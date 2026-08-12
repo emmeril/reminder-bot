@@ -71,30 +71,12 @@ class ReminderScheduler {
     const status = this.notificationBot.getTransportStatus
       ? await this.notificationBot.getTransportStatus()
       : this.notificationBot.getStatus();
-    if (!status.whatsappProviderEnabled) {
-      this.activityLog.push("info", "scheduler", "Skipping run because no WhatsApp provider is configured");
-      return;
-    }
-    if (status.outboundEnabled !== true) {
-      const pendingCount = this.dataManager.markDueRemindersPending
-        ? await this.dataManager.markDueRemindersPending(new Date(), status.selectedProvider || null)
-        : 0;
-      this.activityLog.push("info", "scheduler", "Skipping run because outbound WhatsApp delivery is paused");
-      if (pendingCount > 0) {
-        this.activityLog.push("info", "whatsapp.message.queued", `${pendingCount} due reminder(s) tetap pending`, {
-          event: "whatsapp.message.queued",
-          provider: status.selectedProvider || null,
-          pendingCount,
-        });
-      }
-      return;
-    }
-
-    // Provider yang putus tetap diproses. sendMessage() akan mencatat kegagalan
-    // per reminder, lalu reminder tersebut diarsipkan dan siklus bulan berikutnya
-    // tetap dibuat. Hanya pengiriman yang memang sengaja dipause yang ditahan.
-    if (!status.isAvailable) {
-      this.activityLog.push("warn", "scheduler", "WhatsApp is not ready; due reminders will be finalized as failed");
+    // Semua kondisi WA tidak siap—termasuk provider dimatikan, koneksi putus,
+    // dan pengiriman yang dijeda operator—tetap diproses. sendMessage() akan
+    // gagal, kemudian reminder diarsipkan sebagai FAILED dan siklus bulan
+    // berikutnya tetap dibuat.
+    if (!status.whatsappProviderEnabled || !status.isAvailable || status.outboundEnabled !== true) {
+      this.activityLog.push("warn", "scheduler", "WhatsApp is unavailable, disabled, or outbound delivery is paused; due reminders will be finalized as failed");
     }
 
     this.isProcessing = true;
@@ -224,15 +206,24 @@ class ReminderScheduler {
             providerMessageId: sendResult?.providerMessageId || sendResult?.messageId || null,
           });
 
-          if (this.dataManager.getSettings().notifyAdminsOnDelivery) {
-            await this.notificationBot.sendAdminBroadcast(
-              "Reminder terkirim",
-              `Tujuan: ${reminder.contactName || targetPhoneNumber} (${targetPhoneNumber})\nJadwal: ${formatDateTime(reminder.reminderDateTime, this.dataManager.getTimezone())}\n\n${reminder.message}`,
-              { silentLog: true }
-            );
-          }
-
+          // Jadwal berikutnya adalah proses inti reminder. Selesaikan lebih
+          // dahulu agar notifikasi tambahan ke admin tidak dapat menahannya.
           await this.rescheduleMonthlyReminder(reminder, deliveryStatus);
+
+          if (this.dataManager.getSettings().notifyAdminsOnDelivery) {
+            try {
+              await this.notificationBot.sendAdminBroadcast(
+                "Reminder terkirim",
+                `Tujuan: ${reminder.contactName || targetPhoneNumber} (${targetPhoneNumber})\nJadwal: ${formatDateTime(reminder.reminderDateTime, this.dataManager.getTimezone())}\n\n${reminder.message}`,
+                { silentLog: true }
+              );
+            } catch (error) {
+              this.activityLog.push("error", "notification", `Notifikasi admin reminder gagal: ${error.message}`, {
+                reminderId: reminder.id,
+                error: error.message,
+              });
+            }
+          }
 
           if (!sentReminder) {
             this.activityLog.push("error", "delivery", "Sent reminder could not be archived", {
