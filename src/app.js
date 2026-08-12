@@ -96,6 +96,15 @@ function listBillingPeriods(start, end) {
   return periods;
 }
 
+function parsePaymentAmountFromMessage(message) {
+  const text = String(message || "");
+  const match = text.match(/(?:sebesar\s*)?Rp\s*([0-9][0-9.\s]*(?:,[0-9]{1,2})?)/i);
+  if (!match) return 0;
+  const digits = match[1].replace(/[.\s]/g, "").replace(/,.*$/, "");
+  const amount = Number(digits);
+  return Number.isFinite(amount) && amount >= 0 && amount <= 1_000_000_000 ? Math.floor(amount) : 0;
+}
+
 const PAYMENT_TYPE_LABELS = {
   [PAYMENT_TYPES.ARREARS_ONLY]: "Hanya Tunggakan",
   [PAYMENT_TYPES.CURRENT_ONLY]: "Bulan Ini Saja",
@@ -902,6 +911,7 @@ class DataManager {
 
     this.normalizeLoadedContacts();
     await this.normalizeReminderRelations();
+    await this.migrateReminderPaymentAmounts();
     const migration = await migrateWhatsAppProviderMetadata(this);
     if (migration.remindersChanged || migration.sentChanged) {
       this.activityLog.push("info", "storage", "WhatsApp provider metadata migration selesai", migration);
@@ -1269,6 +1279,7 @@ class DataManager {
       contactId: reminder.contactId || contact?.id || null,
       contactName: contact?.name || reminder.contactName || null,
       phoneNumber: contact?.phoneNumber || reminder.phoneNumber || null,
+      paymentAmount: Math.max(0, Number(reminder.paymentAmount ?? contact?.monthlyPaymentAmount) || 0),
     };
   }
 
@@ -1412,6 +1423,38 @@ class DataManager {
     if (hasChanges) {
       await this.saveReminders();
     }
+  }
+
+  async migrateReminderPaymentAmounts() {
+    let contactsChanged = false;
+    let remindersChanged = false;
+    for (const reminder of this.reminders.values()) {
+      const amount = Number(reminder.paymentAmount) || parsePaymentAmountFromMessage(reminder.message);
+      const contact = this.getResolvedReminderContact(reminder);
+      if (amount > 0 && !Number(reminder.paymentAmount)) {
+        reminder.paymentAmount = amount;
+        remindersChanged = true;
+      }
+      if (contact && amount > 0 && !Number(contact.monthlyPaymentAmount)) {
+        contact.monthlyPaymentAmount = amount;
+        contactsChanged = true;
+      }
+    }
+    for (const reminder of this.sentReminders.values()) {
+      const amount = Number(reminder.paymentAmount) || parsePaymentAmountFromMessage(reminder.message);
+      const contact = this.getResolvedReminderContact(reminder);
+      if (amount > 0 && !Number(reminder.paymentAmount)) {
+        reminder.paymentAmount = amount;
+        remindersChanged = true;
+      }
+      if (contact && amount > 0 && !Number(contact.monthlyPaymentAmount)) {
+        contact.monthlyPaymentAmount = amount;
+        contactsChanged = true;
+      }
+    }
+    if (contactsChanged) await this.saveContacts();
+    if (remindersChanged) await this.saveReminders();
+    if (remindersChanged) await this.saveSentReminders();
   }
 
   async addContact(payload) {
@@ -1798,6 +1841,7 @@ class DataManager {
         contactId: String(contact.id),
         contactName: contact.name,
         phoneNumber: contact.phoneNumber,
+        paymentAmount: Math.max(0, Number(contact.monthlyPaymentAmount) || 0),
         reminderDateTime: reminderDate.toISOString(),
         message,
         templateName: payload.templateName ? sanitizeInput(payload.templateName) : null,
@@ -1828,6 +1872,14 @@ class DataManager {
         const message = sanitizeMultilineText(payload.message);
         if (!message) throw new Error("Isi reminder wajib diisi.");
         reminder.message = message;
+      }
+
+      if (payload.paymentAmount !== undefined) {
+        const paymentAmount = Number(payload.paymentAmount);
+        if (!Number.isFinite(paymentAmount) || paymentAmount < 0 || paymentAmount > 1_000_000_000) {
+          throw new Error("Nominal reminder harus antara 0 sampai 1 miliar.");
+        }
+        reminder.paymentAmount = Math.floor(paymentAmount);
       }
 
       if (payload.reminderDateTime !== undefined) {

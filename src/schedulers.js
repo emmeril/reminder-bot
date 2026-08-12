@@ -120,6 +120,10 @@ class ReminderScheduler {
       details.push(`Tunggakan: ${billing.debtCount} bulan (${variables.debtAmount})`);
     }
     details.push(`*Total tagihan: ${variables.totalAmount}*`);
+    const amountPattern = /(?:sebesar\s*)?Rp\s*[0-9][0-9.\s]*(?:,[0-9]{1,2})?/i;
+    if (amountPattern.test(message)) {
+      return message.replace(/Rp\s*[0-9][0-9.\s]*(?:,[0-9]{1,2})?/i, variables.totalAmount);
+    }
     return `${message.trim()}\n\n${details.join("\n")}`;
   }
 

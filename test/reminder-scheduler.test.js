@@ -60,6 +60,23 @@ test("placeholder nominal pada template diganti tanpa menambah blok rincian kedu
   assert.doesNotMatch(message, /Rincian Pembayaran/);
 });
 
+test("nominal yang sudah ada di pesan reminder diperbarui menjadi total hutang", () => {
+  const dataManager = {
+    getSettings: () => ({}),
+    getResolvedReminderContact: () => ({
+      paymentStatus: "UNPAID",
+      currentPaymentStatus: "UNPAID",
+      debtCount: 1,
+      monthlyPaymentAmount: 100_000,
+    }),
+  };
+  const scheduler = new ReminderScheduler({}, dataManager, { push() {} });
+  const message = scheduler.buildReminderMessage({ message: "Tagihan Emmeril Hotspot Anda sebesar Rp 100.000 belum kami terima." });
+
+  assert.match(message, /sebesar Rp\s?200\.000/);
+  assert.doesNotMatch(message, /Rincian Pembayaran/);
+});
+
 test("WA reminder yang gagal tetap diarsipkan dan dijadwalkan bulan berikutnya", async () => {
   const timeZone = "Asia/Jakarta";
   const scheduledAt = new Date(Date.now() - 60_000);
