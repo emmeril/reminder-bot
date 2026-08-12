@@ -142,10 +142,10 @@
         <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell quick-panel">
           <div class="mb-4"><div><h2>Aksi cepat</h2><p class="card-description">Pekerjaan rutin tanpa banyak langkah</p></div></div>
           <div class="quick-grid">
-            <button type="button" @click="openContactCreateModal()"><span><i class="fa-solid fa-user-plus"></i></span><strong>Tambah pelanggan</strong><small>Daftarkan pelanggan baru</small></button>
-            <button type="button" @click="openReminderCreateModal()"><span><i class="fa-solid fa-calendar-plus"></i></span><strong>Buat reminder</strong><small>Jadwalkan pesan tagihan</small></button>
-            <button type="button" @click="selectMenu('notifications')"><span><i class="fa-solid fa-paper-plane"></i></span><strong>Kirim pesan</strong><small>Personal atau broadcast</small></button>
-            <button type="button" @click="exportPaymentRecap()"><span><i class="fa-solid fa-file-excel"></i></span><strong>Unduh rekap</strong><small>Ekspor pembayaran Excel</small></button>
+            <button type="button" @click="openContactCreateModal()"><span><i class="fa-solid fa-user-plus"></i></span><span class="quick-copy"><strong>Tambah pelanggan</strong><small>Daftarkan pelanggan baru</small></span></button>
+            <button type="button" @click="openReminderCreateModal()"><span><i class="fa-solid fa-calendar-plus"></i></span><span class="quick-copy"><strong>Buat reminder</strong><small>Jadwalkan pesan tagihan</small></span></button>
+            <button type="button" @click="selectMenu('notifications')"><span><i class="fa-solid fa-paper-plane"></i></span><span class="quick-copy"><strong>Kirim pesan</strong><small>Personal atau broadcast</small></span></button>
+            <button type="button" @click="exportPaymentRecap()"><span><i class="fa-solid fa-file-excel"></i></span><span class="quick-copy"><strong>Unduh rekap</strong><small>Ekspor pembayaran Excel</small></span></button>
           </div>
         </section>
 
@@ -236,9 +236,9 @@
           <div class="summary-metric-grid grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <template x-for="metric in summaryMetrics" :key="metric.label">
               <button type="button" class="metric-card" :class="'tone-' + (metric.tone || 'blue')" @click="metric.label === 'Pelanggan' || metric.label.includes('bayar') || metric.label.includes('hutang') ? selectMenu('contacts') : metric.label.includes('Reminder') ? selectMenu('reminders') : metric.label.includes('AP') ? selectMenu('monitor-ap') : metric.label.includes('Pesan') ? selectMenu('history') : null">
-                <div class="metric-top"><span class="icon-chip"><i :class="metric.icon"></i></span><i class="fa-solid fa-arrow-up-right metric-arrow"></i></div>
-                <div class="metric-value" x-text="metric.value"></div>
-                <div class="metric-label" x-text="metric.label"></div>
+                <span class="icon-chip"><i :class="metric.icon"></i></span>
+                <span class="metric-copy"><span class="metric-label" x-text="metric.label"></span><strong class="metric-value" x-text="metric.value"></strong></span>
+                <i class="fa-solid fa-chevron-right metric-arrow"></i>
               </button>
             </template>
           </div>
