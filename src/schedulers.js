@@ -75,11 +75,11 @@ class ReminderScheduler {
       this.activityLog.push("info", "scheduler", "Skipping run because no WhatsApp provider is configured");
       return;
     }
-    if (!status.isAvailable || status.outboundEnabled !== true) {
+    if (status.outboundEnabled !== true) {
       const pendingCount = this.dataManager.markDueRemindersPending
         ? await this.dataManager.markDueRemindersPending(new Date(), status.selectedProvider || null)
         : 0;
-      this.activityLog.push("info", "scheduler", "Skipping run because WhatsApp is not ready or outbound delivery is paused");
+      this.activityLog.push("info", "scheduler", "Skipping run because outbound WhatsApp delivery is paused");
       if (pendingCount > 0) {
         this.activityLog.push("info", "whatsapp.message.queued", `${pendingCount} due reminder(s) tetap pending`, {
           event: "whatsapp.message.queued",
@@ -88,6 +88,13 @@ class ReminderScheduler {
         });
       }
       return;
+    }
+
+    // Provider yang putus tetap diproses. sendMessage() akan mencatat kegagalan
+    // per reminder, lalu reminder tersebut diarsipkan dan siklus bulan berikutnya
+    // tetap dibuat. Hanya pengiriman yang memang sengaja dipause yang ditahan.
+    if (!status.isAvailable) {
+      this.activityLog.push("warn", "scheduler", "WhatsApp is not ready; due reminders will be finalized as failed");
     }
 
     this.isProcessing = true;
@@ -177,24 +184,6 @@ class ReminderScheduler {
           } catch (error) {
             const errorMessage = error?.message || String(error);
             const attempts = Math.max(1, Number(attemptedReminder.deliveryAttempts) || 1);
-            const retryable = error?.retryable !== false && attempts < Math.max(1, CONFIG.WHATSAPP_RETRY_LIMIT);
-            if (retryable && this.dataManager.scheduleReminderRetry) {
-              const retried = await this.dataManager.scheduleReminderRetry(reminder.id, error, {
-                provider: status.selectedProvider || null,
-                delaySeconds: CONFIG.WHATSAPP_RETRY_DELAY,
-              });
-              claimedReminderId = null;
-              this.activityLog.push("warn", "whatsapp.message.failed", `Message failed; retry scheduled: ${targetPhoneNumber}`, {
-                event: "whatsapp.message.failed",
-                reminderId: reminder.id,
-                phoneNumber: targetPhoneNumber,
-                provider: status.selectedProvider || null,
-                attempts,
-                retryAt: retried?.nextDeliveryAttemptAt || null,
-                error: errorMessage,
-              });
-              continue;
-            }
 
             await this.dataManager.moveToSent(reminder.id, {
               sentAt: new Date().toISOString(),
