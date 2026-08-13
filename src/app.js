@@ -2790,12 +2790,12 @@ class NotificationBot {
     }
   }
 
-  async resetPairing() {
+  async resetPairing(instanceId = null) {
     const provider = await this.providerManager.currentProvider({ connect: false });
     if (provider.name !== "baileys" || typeof provider.resetPairing !== "function") {
       throw new Error("Reset pairing hanya tersedia untuk provider Baileys.");
     }
-    await provider.resetPairing();
+    await provider.resetPairing(instanceId);
     return this.getTransportStatus();
   }
 
@@ -3010,9 +3010,10 @@ class WebServer {
     });
     this.app.post("/transport/reset-pairing", requirePageAuth, async (req, res) => {
       try {
-        await this.notificationBot.resetPairing();
-        this.activityLog.push("info", "notification", "Pairing Baileys direset tanpa restart aplikasi");
-        return res.redirect("/transport?pairingReset=1");
+        const instanceId = sanitizeInput(req.body.instanceId) || null;
+        await this.notificationBot.resetPairing(instanceId);
+        this.activityLog.push("info", "notification", `Pairing Baileys ${instanceId || "primary"} direset tanpa restart aplikasi`);
+        return res.redirect(`/transport?pairingReset=1${instanceId ? `&instance=${encodeURIComponent(instanceId)}` : ""}`);
       } catch (error) {
         this.activityLog.push("error", "notification", `Gagal mereset pairing Baileys: ${error.message}`);
         return res.redirect(`/transport?error=${encodeURIComponent(error.message)}`);
@@ -3043,18 +3044,55 @@ class WebServer {
     });
     this.app.get("/transport", requirePageAuth, async (req, res) => {
       const status = await this.notificationBot.getTransportStatus();
-      if (status.deviceReady) {
+      if (status.whatsappProviderEnabled) {
+        const instances = Array.isArray(status.instances) && status.instances.length > 0
+          ? status.instances
+          : [{
+              id: "primary",
+              role: "primary",
+              connected: status.deviceReady,
+              canSend: status.outboundEnabled,
+              account: status.account,
+              currentQR: status.currentQR,
+              detail: status.transportError,
+            }];
+        const instanceCards = await Promise.all(instances.map(async (instance) => {
+          const qrDataUrl = instance.currentQR
+            ? await QRCode.toDataURL(instance.currentQR, { width: 280, margin: 2, errorCorrectionLevel: "M" })
+            : null;
+          const stateColor = instance.connected ? "#17603a" : (qrDataUrl ? "#775b00" : "#991b1b");
+          const stateBackground = instance.connected ? "#e6f4ea" : (qrDataUrl ? "#fff4ce" : "#fee2e2");
+          return `
+            <section style="padding:20px;border:1px solid #d8e2dc;border-radius:18px;background:#fff;text-align:left;">
+              <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;">
+                <div><strong style="font-size:1.1rem;">${escapeHtml(instance.id)}</strong><small style="display:block;margin-top:3px;color:#70837e;font:12px/1.4 sans-serif;text-transform:uppercase;letter-spacing:.08em;">${escapeHtml(instance.role || "backup")}</small></div>
+                <span style="padding:7px 10px;border-radius:999px;background:${stateBackground};color:${stateColor};font:700 12px/1 sans-serif;">${instance.connected ? (instance.id === status.activeInstanceId ? "AKTIF" : "STANDBY") : (qrDataUrl ? "BUTUH QR" : "TERPUTUS")}</span>
+              </div>
+              ${instance.account ? `<p style="margin:14px 0 0;font:14px/1.5 sans-serif;color:#405d58;">Akun: ${escapeHtml(instance.account)}</p>` : ""}
+              ${instance.detail ? `<p style="margin:12px 0 0;font:14px/1.5 sans-serif;color:#627773;">${escapeHtml(instance.detail)}</p>` : ""}
+              ${qrDataUrl ? `<div style="margin-top:16px;text-align:center;"><img src="${qrDataUrl}" alt="QR pairing ${escapeHtml(instance.id)}" width="280" height="280" style="max-width:100%;height:auto;border-radius:14px;"><p style="font:13px/1.5 sans-serif;color:#627773;">Pindai sebagai perangkat tertaut yang berbeda.</p></div>` : ""}
+              <form method="post" action="/transport/reset-pairing" style="margin-top:16px;">
+                <input type="hidden" name="instanceId" value="${escapeHtml(instance.id)}">
+                <button type="submit" style="padding:10px 15px;border:1px solid #176b5b;border-radius:999px;background:#fff;color:#176b5b;font:700 13px/1 sans-serif;cursor:pointer;">${instance.connected ? "Tautkan Ulang" : "Buat QR Baru"}</button>
+              </form>
+            </section>
+          `;
+        }));
         const sendingEnabled = req.query.sendingEnabled === "1";
         const sendingDisabled = req.query.sendingDisabled === "1";
+        const pairingReset = req.query.pairingReset === "1";
         const error = sanitizeInput(req.query.error);
-        return res.send(`
+        return res.status(status.deviceReady ? 200 : 503).send(`
           <!doctype html>
-          <html><body style="display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f4f5ef;font-family:Georgia,serif;">
-            <main style="width:min(92vw,520px);padding:28px 34px;border-radius:20px;background:white;box-shadow:0 20px 60px rgba(0,0,0,.12);color:#204b57;text-align:center;">
-              <h1 style="margin:0 0 12px;font-size:1.5rem;">WhatsApp terhubung${status.account ? ` (${escapeHtml(status.account)})` : ""}</h1>
+          <html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="5"><title>Koneksi WhatsApp</title></head><body style="display:flex;justify-content:center;min-height:100vh;margin:0;background:radial-gradient(circle at top,#dcecdf,#f4f5ef 55%);font-family:Georgia,serif;">
+            <main style="width:min(94vw,760px);margin:32px 0;padding:28px 34px;border-radius:24px;background:#f8faf7;box-shadow:0 20px 60px rgba(0,0,0,.12);color:#204b57;text-align:center;">
+              <h1 style="margin:0 0 8px;font-size:1.7rem;">Koneksi WhatsApp Baileys</h1>
+              <p style="margin:0 0 20px;font:14px/1.6 sans-serif;color:#627773;">${instances.filter((item) => item.connected).length}/${instances.length} koneksi terhubung. Pengiriman memakai satu koneksi aktif dan berpindah otomatis ke cadangan.</p>
               ${sendingEnabled ? '<p style="padding:10px;border-radius:12px;background:#e6f4ea;color:#17603a;">Pengiriman WhatsApp sudah diaktifkan.</p>' : ""}
               ${sendingDisabled ? '<p style="padding:10px;border-radius:12px;background:#fff4ce;color:#775b00;">Pengiriman WhatsApp sudah dijeda.</p>' : ""}
+              ${pairingReset ? '<p style="padding:10px;border-radius:12px;background:#e6f4ea;color:#17603a;">Pairing instance direset. QR baru sedang disiapkan.</p>' : ""}
               ${error ? `<p style="padding:10px;border-radius:12px;background:#fee2e2;color:#991b1b;">${escapeHtml(error)}</p>` : ""}
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin:20px 0;">${instanceCards.join("")}</div>
               <p style="margin:0 0 18px;line-height:1.6;">Status pengiriman: <strong>${status.outboundEnabled ? "AKTIF" : "DIJEDA"}</strong>.</p>
               ${status.outboundEnabled ? `
                 <form method="post" action="/transport/disable-sending">
@@ -3066,41 +3104,9 @@ class WebServer {
                   <button type="submit" style="padding:13px 20px;border:0;border-radius:999px;background:#176b5b;color:#fff;font-weight:700;cursor:pointer;">Aktifkan Pengiriman</button>
                 </form>
               `}
+              <p style="margin:18px 0 0;font:13px/1.6 sans-serif;color:#70837e;">Buka WhatsApp &gt; Perangkat tertaut &gt; Tautkan perangkat untuk setiap QR. Jangan gunakan database sesi yang sama pada dua instance.</p>
             </main>
           </body></html>
-        `);
-      }
-
-      if (status.whatsappProviderEnabled) {
-        const qrDataUrl = status.currentQR
-          ? await QRCode.toDataURL(status.currentQR, { width: 320, margin: 2, errorCorrectionLevel: "M" })
-          : null;
-        const pairingReset = req.query.pairingReset === "1";
-        const error = sanitizeInput(req.query.error);
-        return res.status(503).send(`
-          <!doctype html>
-          <html lang="id">
-            <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="5"><title>Hubungkan WhatsApp</title></head>
-            <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#dcecdf,#f4f5ef 55%);font-family:Georgia,serif;color:#183f45;">
-              <main style="width:min(92vw,520px);padding:28px;border-radius:24px;background:#fff;box-shadow:0 24px 70px rgba(24,63,69,.18);text-align:center;">
-                <h1 style="margin:0 0 8px;font-size:1.8rem;">Pindai QR WhatsApp</h1>
-                <p style="margin:0 0 20px;line-height:1.5;">${escapeHtml(status.transportError || "Buka Perangkat tertaut pada WhatsApp.")}</p>
-                ${pairingReset ? '<p style="padding:10px;border-radius:12px;background:#e6f4ea;color:#17603a;font:600 14px/1.5 sans-serif;">Pairing direset. QR baru sedang disiapkan.</p>' : ""}
-                ${error ? `<p style="padding:10px;border-radius:12px;background:#fee2e2;color:#991b1b;font:600 14px/1.5 sans-serif;">${escapeHtml(error)}</p>` : ""}
-                ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR pairing WhatsApp" width="320" height="320" style="max-width:100%;height:auto;border-radius:16px;">` : ""}
-                ${qrDataUrl ? "" : `
-                  <div style="margin:18px 0;padding:16px;border-radius:16px;background:#f4f5ef;font:14px/1.6 sans-serif;color:#627773;">
-                    QR belum tersedia atau socket sedang macet. Buat QR baru tanpa me-restart aplikasi.
-                  </div>
-                  <form method="post" action="/transport/reset-pairing" style="margin:0;">
-                    <button type="submit" style="padding:13px 20px;border:0;border-radius:999px;background:#176b5b;color:#fff;font:700 14px/1 sans-serif;cursor:pointer;">Buat QR Baru</button>
-                  </form>
-                `}
-                <p style="margin:18px 0 0;font:14px/1.6 sans-serif;color:#627773;">Di WhatsApp buka <strong>Perangkat tertaut</strong>, pilih <strong>Tautkan perangkat</strong>, lalu pindai QR. Koneksi melalui nomor atau pairing code dinonaktifkan.</p>
-                <p style="margin:10px 0 0;font:13px/1.5 sans-serif;color:#879895;">Halaman diperbarui otomatis setiap 5 detik.</p>
-              </main>
-            </body>
-          </html>
         `);
       }
 

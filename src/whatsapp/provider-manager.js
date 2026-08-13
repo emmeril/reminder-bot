@@ -61,9 +61,12 @@ class WhatsAppProviderManager {
       queue,
       providers: { baileys: providerStatus },
       transport: {
+        ...status.transport,
         provider: "baileys",
-        configuredProviders: providerStatus.configured ? ["baileys"] : [],
-        connectedProviders: status.connected ? ["baileys"] : [],
+        configuredProviders: status.transport?.configuredProviders
+          || (providerStatus.configured ? ["baileys"] : []),
+        connectedProviders: status.transport?.connectedProviders
+          || (status.connected ? ["baileys"] : []),
       },
       transportError: status.ready ? null : status.detail,
     };

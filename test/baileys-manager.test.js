@@ -6,6 +6,8 @@ const { CONFIG } = require("../src/config");
 
 const originalConfig = {
   BAILEYS_ENABLED: CONFIG.BAILEYS_ENABLED,
+  BAILEYS_INSTANCES: CONFIG.BAILEYS_INSTANCES,
+  BAILEYS_AUTH_STORAGES: CONFIG.BAILEYS_AUTH_STORAGES,
   WA_MESSAGE_DELAY_MIN: CONFIG.WA_MESSAGE_DELAY_MIN,
   WA_MESSAGE_DELAY_MAX: CONFIG.WA_MESSAGE_DELAY_MAX,
 };
@@ -13,6 +15,8 @@ const originalConfig = {
 beforeEach(() => {
   Object.assign(CONFIG, {
     BAILEYS_ENABLED: true,
+    BAILEYS_INSTANCES: ["primary"],
+    BAILEYS_AUTH_STORAGES: { primary: CONFIG.BAILEYS_AUTH_STORAGE },
     WA_MESSAGE_DELAY_MIN: 0,
     WA_MESSAGE_DELAY_MAX: 0,
   });
@@ -33,6 +37,7 @@ beforeEach(() => {
     qr: null,
     device: null,
   };
+  BaileysManager.activeInstanceId = null;
 });
 
 afterEach(() => {
@@ -167,7 +172,8 @@ test("menonaktifkan pairing code agar koneksi hanya melalui QR", async () => {
 });
 
 test("mereset pairing dan membuka socket baru tanpa restart aplikasi", async () => {
-  const originalInitialize = BaileysManager.initialize;
+  const connection = BaileysManager.getPrimaryConnection();
+  const originalInitialize = connection.initialize;
   const originalAuthStore = BaileysManager.authStore;
   const originalBaileys = BaileysManager.baileys;
   let socketEnded = false;
@@ -189,7 +195,7 @@ test("mereset pairing dan membuka socket baru tanpa restart aplikasi", async () 
       return { state: freshState, saveCreds: async () => {} };
     },
   };
-  BaileysManager.initialize = async () => {
+  connection.initialize = async () => {
     initialized = true;
     return BaileysManager.connectionCache;
   };
@@ -197,7 +203,7 @@ test("mereset pairing dan membuka socket baru tanpa restart aplikasi", async () 
   try {
     await BaileysManager.resetPairing();
   } finally {
-    BaileysManager.initialize = originalInitialize;
+    connection.initialize = originalInitialize;
     BaileysManager.authStore = originalAuthStore;
     BaileysManager.baileys = originalBaileys;
   }
@@ -223,8 +229,9 @@ test("restart setelah scan mempertahankan auth dan menyelesaikan pairing yang sa
   BaileysManager.socket = {};
   const generation = BaileysManager.connectionGeneration;
   const socket = BaileysManager.socket;
-  const originalScheduleReconnect = BaileysManager.scheduleReconnect;
-  BaileysManager.scheduleReconnect = () => { reconnectScheduled = true; };
+  const connection = BaileysManager.getPrimaryConnection();
+  const originalScheduleReconnect = connection.scheduleReconnect;
+  connection.scheduleReconnect = () => { reconnectScheduled = true; };
 
   try {
     await BaileysManager.handleConnectionUpdate({ qr: "qr-baru", connection: "connecting" }, socket, generation);
@@ -233,7 +240,7 @@ test("restart setelah scan mempertahankan auth dan menyelesaikan pairing yang sa
       lastDisconnect: { error: { output: { statusCode: 515 }, message: "restart required" } },
     }, socket, generation);
   } finally {
-    BaileysManager.scheduleReconnect = originalScheduleReconnect;
+    connection.scheduleReconnect = originalScheduleReconnect;
     BaileysManager.baileys = originalBaileys;
   }
 

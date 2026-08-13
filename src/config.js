@@ -25,6 +25,36 @@ function resolveFromRoot(value, fallback) {
   return path.isAbsolute(value) ? value : path.join(ROOT_DIR, value);
 }
 
+function envList(name, fallback = []) {
+  const values = envString(name).split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => /^[a-z0-9_-]+$/.test(value));
+  return [...new Set(values.length > 0 ? values : fallback)];
+}
+
+const BAILEYS_INSTANCES = envList("BAILEYS_INSTANCES", ["primary"]);
+const DEFAULT_BAILEYS_AUTH_STORAGE = resolveFromRoot(
+  process.env.BAILEYS_AUTH_STORAGE,
+  path.join(ROOT_DIR, "database", "baileys_auth.sqlite")
+);
+
+function getBaileysAuthStorage(instanceId, index) {
+  const envName = `BAILEYS_AUTH_STORAGE_${instanceId.replace(/[^a-z0-9]/gi, "_").toUpperCase()}`;
+  if (process.env[envName]) return resolveFromRoot(process.env[envName]);
+  if (index === 0) return DEFAULT_BAILEYS_AUTH_STORAGE;
+
+  const extension = path.extname(DEFAULT_BAILEYS_AUTH_STORAGE) || ".sqlite";
+  const baseName = DEFAULT_BAILEYS_AUTH_STORAGE.slice(0, -extension.length);
+  return `${baseName}.${instanceId}${extension}`;
+}
+
+const BAILEYS_AUTH_STORAGES = Object.fromEntries(
+  BAILEYS_INSTANCES.map((instanceId, index) => [
+    instanceId,
+    getBaileysAuthStorage(instanceId, index),
+  ])
+);
+
 const CONFIG = {
   HOST: envString("HOST", "127.0.0.1"),
   TRUST_PROXY: envBoolean("TRUST_PROXY", false),
@@ -89,10 +119,9 @@ const CONFIG = {
   },
   MIKROTIK_FTP_TIMEOUT: envNumber("MIKROTIK_FTP_TIMEOUT", 30_000),
   BAILEYS_ENABLED: envString("BAILEYS_ENABLED") ? envBoolean("BAILEYS_ENABLED") : true,
-  BAILEYS_AUTH_STORAGE: resolveFromRoot(
-    process.env.BAILEYS_AUTH_STORAGE,
-    path.join(ROOT_DIR, "database", "baileys_auth.sqlite")
-  ),
+  BAILEYS_INSTANCES,
+  BAILEYS_AUTH_STORAGE: DEFAULT_BAILEYS_AUTH_STORAGE,
+  BAILEYS_AUTH_STORAGES,
   BAILEYS_BROWSER_NAME: envString("BAILEYS_BROWSER_NAME", "Reminder Bot"),
   BAILEYS_CONNECT_TIMEOUT: envNumber("BAILEYS_CONNECT_TIMEOUT", 30_000),
   BAILEYS_QUERY_TIMEOUT: envNumber("BAILEYS_QUERY_TIMEOUT", 30_000),

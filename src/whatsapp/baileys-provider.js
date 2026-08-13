@@ -54,8 +54,8 @@ class BaileysProvider extends WhatsAppProvider {
     return this.manager.disableOutbound();
   }
 
-  resetPairing() {
-    return this.manager.resetPairing();
+  resetPairing(instanceId = null) {
+    return this.manager.resetPairing(instanceId);
   }
 
   async getStatus() {
