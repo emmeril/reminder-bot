@@ -1469,22 +1469,66 @@ class DataManager {
   }
 
   rewriteReminderPaymentMessage(reminder, contact) {
-    const monthlyAmount = Math.max(0, Number(reminder.paymentAmount ?? contact.monthlyPaymentAmount) || 0);
-    if (monthlyAmount <= 0) return false;
+    const monthlyAmount = Math.max(0, Number(contact.monthlyPaymentAmount ?? reminder.paymentAmount) || 0);
+    const sourceMessage = sanitizeMultilineText(reminder.messageSource || reminder.message);
+    if (!sourceMessage) return false;
+    let changed = false;
+    if (!reminder.messageSource) {
+      reminder.messageSource = sourceMessage;
+      changed = true;
+    }
+    if (Number(reminder.paymentAmount) !== monthlyAmount) {
+      reminder.paymentAmount = monthlyAmount;
+      changed = true;
+    }
+
     const debtInfo = this.buildDebtInfo(contact);
     const debtCount = Math.max(0, Number(debtInfo.debtCount) || 0);
     const currentPaid = String(debtInfo.currentPaymentStatus || contact.paymentStatus || "UNPAID").toUpperCase() === PAYMENT_STATUS.PAID;
-    const totalAmount = monthlyAmount * ((currentPaid ? 0 : 1) + debtCount);
-    if (totalAmount <= 0) return false;
+    const totalPeriods = (currentPaid ? 0 : 1) + debtCount;
+    const totalAmount = monthlyAmount * totalPeriods;
 
-    const totalText = this.formatPaymentAmount(totalAmount);
-    const amountPattern = /Rp\s*[0-9][0-9.]*(?:,[0-9]{1,2})?/i;
-    const nextMessage = amountPattern.test(String(reminder.message || ""))
-      ? String(reminder.message).replace(amountPattern, totalText).replace(/(Rp\s*[0-9][0-9.]*(?:,[0-9]{1,2})?)(?=[A-Za-z])/gi, "$1 ")
-      : `${String(reminder.message || "").trim()}\n\n*Total tagihan: ${totalText}*`;
-    if (nextMessage === reminder.message) return false;
+    let nextMessage;
+    if (totalPeriods <= 0) {
+      nextMessage = `*Status pembayaran: LUNAS*\n\nSeluruh tagihan ${contact.name || "pelanggan"} sudah lunas. Reminder ini akan dilewati otomatis selama status pembayaran tetap lunas.`;
+    } else if (monthlyAmount <= 0) {
+      nextMessage = sourceMessage;
+    } else {
+      const totalText = this.formatPaymentAmount(totalAmount);
+      const amountPattern = /Rp\s*[0-9][0-9.]*(?:,[0-9]{1,2})?/i;
+      nextMessage = amountPattern.test(sourceMessage)
+        ? sourceMessage.replace(amountPattern, totalText).replace(/(Rp\s*[0-9][0-9.]*(?:,[0-9]{1,2})?)(?=[A-Za-z])/gi, "$1 ")
+        : `${sourceMessage.trim()}\n\n*Total tagihan: ${totalText}*`;
+    }
+
+    if (nextMessage === reminder.message) return changed;
     reminder.message = nextMessage;
     return true;
+  }
+
+  updateContactReminderMessages(contact) {
+    let changed = 0;
+    for (const reminder of this.reminders.values()) {
+      const resolvedContact = this.getResolvedReminderContact(reminder);
+      if (!resolvedContact || String(resolvedContact.id) !== String(contact.id)) continue;
+      if (this.rewriteReminderPaymentMessage(reminder, contact)) {
+        changed += 1;
+      }
+    }
+    return changed;
+  }
+
+  async savePaymentAndReminderChanges(remindersChanged) {
+    if (!remindersChanged) {
+      await this.saveContacts();
+      return;
+    }
+
+    await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+      const options = { transaction };
+      await this.saveContacts(options);
+      await this.saveReminders(options);
+    }));
   }
 
   async addContact(payload) {
@@ -1661,7 +1705,8 @@ class DataManager {
       }
       contact.monthlyPaymentAmount = Math.floor(parsed);
       contact.updatedAt = new Date().toISOString();
-      await this.saveContacts();
+      const remindersChanged = this.updateContactReminderMessages(contact);
+      await this.savePaymentAndReminderChanges(remindersChanged);
       return this.hydrateContact(contact);
     });
   }
@@ -1874,9 +1919,12 @@ class DataManager {
         paymentAmount: Math.max(0, Number(contact.monthlyPaymentAmount) || 0),
         reminderDateTime: reminderDate.toISOString(),
         message,
+        messageSource: sanitizeMultilineText(payload.messageSource || message),
         templateName: payload.templateName ? sanitizeInput(payload.templateName) : null,
         createdAt: new Date().toISOString(),
       };
+
+      this.rewriteReminderPaymentMessage(reminder, contact);
 
       this.reminders.set(reminder.id, reminder);
       await this.saveReminders();
@@ -1902,6 +1950,7 @@ class DataManager {
         const message = sanitizeMultilineText(payload.message);
         if (!message) throw new Error("Isi reminder wajib diisi.");
         reminder.message = message;
+        reminder.messageSource = message;
       }
 
       if (payload.paymentAmount !== undefined) {
@@ -1922,6 +1971,11 @@ class DataManager {
 
       if (payload.templateName !== undefined) {
         reminder.templateName = payload.templateName ? sanitizeInput(payload.templateName) : null;
+      }
+
+      const contact = this.getResolvedReminderContact(reminder);
+      if (contact) {
+        this.rewriteReminderPaymentMessage(reminder, contact);
       }
 
       await this.saveReminders();
@@ -2339,7 +2393,8 @@ class DataManager {
       };
       contact.updatedAt = now.toISOString();
 
-      await this.saveContacts();
+      const remindersChanged = this.updateContactReminderMessages(contact);
+      await this.savePaymentAndReminderChanges(remindersChanged);
       return this.hydrateContact(contact);
     });
   }
@@ -2399,7 +2454,8 @@ class DataManager {
       }
       contact.updatedAt = now.toISOString();
 
-      await this.saveContacts();
+      const remindersChanged = this.updateContactReminderMessages(contact);
+      await this.savePaymentAndReminderChanges(remindersChanged);
       return this.hydrateContact(contact);
     });
   }
@@ -2443,6 +2499,7 @@ class DataManager {
 
   async resetAllPaymentStatusUnlocked(options = {}) {
     let resetCount = 0;
+    let remindersChanged = 0;
     const currentKey = getBillingPeriodKey(new Date(), this.getTimezone());
 
     for (const contact of this.contacts.values()) {
@@ -2457,11 +2514,13 @@ class DataManager {
         paidDate: null,
         paymentType: null,
       };
+      contact.updatedAt = new Date().toISOString();
+      remindersChanged += this.updateContactReminderMessages(contact);
       resetCount += 1;
     }
 
     if (resetCount > 0 && options.save !== false) {
-      await this.saveContacts();
+      await this.savePaymentAndReminderChanges(remindersChanged);
     }
 
     return resetCount;
@@ -2485,6 +2544,7 @@ class DataManager {
         contact.paymentDate = nextPaymentDate;
         contact.paymentType = nextPaymentType;
         contact.updatedAt = new Date().toISOString();
+        this.updateContactReminderMessages(contact);
         changed += 1;
       }
     }
@@ -2502,7 +2562,10 @@ class DataManager {
         this.settings.lastPaymentResetPeriod = currentPeriod;
         await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
           const options = { transaction };
-          if (synchronized > 0) await this.saveContacts(options);
+          if (synchronized > 0) {
+            await this.saveContacts(options);
+            await this.saveReminders(options);
+          }
           await this.saveSettings(options);
         }));
         return { reset: false, initialized: true, period: currentPeriod, count: synchronized };
@@ -2517,6 +2580,7 @@ class DataManager {
       await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
         const options = { transaction };
         await this.saveContacts(options);
+        await this.saveReminders(options);
         await this.saveSettings(options);
       }));
       return { reset: true, period: currentPeriod, count };

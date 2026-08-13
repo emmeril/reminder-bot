@@ -15,6 +15,11 @@ function createManager(contact) {
   const manager = new DataManager({ push() {} });
   manager.contacts.set(String(contact.id), contact);
   manager.saveContacts = async () => {};
+  manager.saveReminders = async () => {};
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.sequelize = {
+    transaction: async (operation) => operation({}),
+  };
   return manager;
 }
 
@@ -69,6 +74,127 @@ test("pembayaran lunas tanpa jenis eksplisit default ke bulan berjalan", async (
 
   assert.equal(updated.paymentStatus, PAYMENT_STATUS.PAID);
   assert.equal(updated.paymentType, PAYMENT_TYPES.CURRENT_ONLY);
+});
+
+test("perubahan status pembayaran langsung memperbarui pesan reminder aktif", async () => {
+  const { year, month } = getBillingPeriodParts();
+  const createdAt = new Date(Date.UTC(year, month - 2, 2)).toISOString();
+  const contact = {
+    id: "contact-reminder",
+    name: "Pelanggan Reminder",
+    phoneNumber: "6281234567895",
+    createdAt,
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentDate: null,
+    paymentType: null,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+  const reminder = {
+    id: "reminder-payment",
+    contactId: contact.id,
+    phoneNumber: contact.phoneNumber,
+    paymentAmount: 100_000,
+    message: "Tagihan Anda sebesar Rp 200.000 belum kami terima.",
+    reminderDateTime: new Date(Date.now() + 86_400_000).toISOString(),
+  };
+  manager.reminders.set(reminder.id, reminder);
+
+  await manager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID, PAYMENT_TYPES.CURRENT_ONLY);
+
+  assert.match(reminder.message, /Rp\s?100\.000/);
+  assert.equal(reminder.messageSource, "Tagihan Anda sebesar Rp 200.000 belum kami terima.");
+});
+
+test("pesan reminder lunas kembali menjadi tagihan ketika status di-reset", async () => {
+  const contact = {
+    id: "contact-reminder-reset",
+    name: "Pelanggan Reset",
+    phoneNumber: "6281234567896",
+    createdAt: new Date().toISOString(),
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentDate: null,
+    paymentType: null,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+  const reminder = {
+    id: "reminder-payment-reset",
+    contactId: contact.id,
+    phoneNumber: contact.phoneNumber,
+    paymentAmount: 100_000,
+    message: "Tagihan Anda sebesar Rp 100.000 belum kami terima.",
+    reminderDateTime: new Date(Date.now() + 86_400_000).toISOString(),
+  };
+  manager.reminders.set(reminder.id, reminder);
+
+  await manager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID, PAYMENT_TYPES.FULL_PAID);
+  assert.match(reminder.message, /Status pembayaran: LUNAS/);
+  assert.doesNotMatch(reminder.message, /belum kami terima/);
+
+  await manager.updatePaymentStatus(contact.id, PAYMENT_STATUS.UNPAID);
+  assert.match(reminder.message, /Rp\s?100\.000/);
+  assert.match(reminder.message, /belum kami terima/);
+});
+
+test("reset pembayaran bulanan juga menyegarkan pesan reminder aktif", async () => {
+  const contact = {
+    id: "contact-monthly-reset",
+    name: "Pelanggan Bulanan",
+    phoneNumber: "6281234567897",
+    createdAt: new Date().toISOString(),
+    monthlyPaymentAmount: 75_000,
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentDate: new Date().toISOString(),
+    paymentType: PAYMENT_TYPES.FULL_PAID,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+  const reminder = {
+    id: "reminder-monthly-reset",
+    contactId: contact.id,
+    phoneNumber: contact.phoneNumber,
+    paymentAmount: 75_000,
+    message: "*Status pembayaran: LUNAS*",
+    messageSource: "Tagihan Anda sebesar Rp 75.000 belum kami terima.",
+    reminderDateTime: new Date(Date.now() + 86_400_000).toISOString(),
+  };
+  manager.reminders.set(reminder.id, reminder);
+
+  await manager.resetAllPaymentStatus();
+
+  assert.equal(contact.paymentStatus, PAYMENT_STATUS.UNPAID);
+  assert.match(reminder.message, /Rp\s?75\.000/);
+  assert.match(reminder.message, /belum kami terima/);
+});
+
+test("status lunas tetap mengubah pesan reminder tanpa nominal pembayaran", async () => {
+  const contact = {
+    id: "contact-no-amount",
+    name: "Pelanggan Tanpa Nominal",
+    phoneNumber: "6281234567898",
+    createdAt: new Date().toISOString(),
+    monthlyPaymentAmount: 0,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentDate: null,
+    paymentType: null,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+  const reminder = {
+    id: "reminder-no-amount",
+    contactId: contact.id,
+    phoneNumber: contact.phoneNumber,
+    message: "Tagihan internet Anda belum kami terima.",
+    reminderDateTime: new Date(Date.now() + 86_400_000).toISOString(),
+  };
+  manager.reminders.set(reminder.id, reminder);
+
+  await manager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID, PAYMENT_TYPES.FULL_PAID);
+
+  assert.match(reminder.message, /Status pembayaran: LUNAS/);
 });
 
 test("menolak kombinasi status dan jenis pembayaran yang kontradiktif", async () => {

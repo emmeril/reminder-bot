@@ -1224,7 +1224,7 @@
             } else {
               this.notify("Status pembayaran diperbarui.");
             }
-            await Promise.all([this.loadContacts(), this.loadStatus()]);
+            await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
           });
         },
 

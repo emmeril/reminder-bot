@@ -25,7 +25,7 @@ class ReminderScheduler {
     const nextDate = addMonthsSafely(reminder.reminderDateTime, 1, timeZone);
     const nextDateText = formatDate(nextDate, timeZone);
     const nextMonthName = nextDate.toLocaleString("id-ID", { month: "long", timeZone });
-    const nextMessage = reminder.message
+    const nextMessage = String(reminder.messageSource || reminder.message || "")
       .replace(/\d{4}-\d{2}-\d{2}/, nextDateText)
       .replace(/bulan\s+\w+/gi, `bulan ${nextMonthName}`);
 
@@ -33,6 +33,7 @@ class ReminderScheduler {
       contactId: reminder.contactId,
       reminderDateTime: nextDate,
       message: nextMessage,
+      messageSource: nextMessage,
       templateName: reminder.templateName || null,
     };
   }
