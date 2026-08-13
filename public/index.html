@@ -963,7 +963,7 @@
       x-transition.opacity
       @keydown.escape.window="closeContactCreateModal()"
       @click.self="closeContactCreateModal()"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+      class="dashboard-modal-overlay fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
     >
       <div
         x-show="contactCreateModal.open"
@@ -1057,7 +1057,7 @@
       x-transition.opacity
       @keydown.escape.window="closeReminderCreateModal()"
       @click.self="closeReminderCreateModal()"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+      class="dashboard-modal-overlay fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
     >
       <div
         x-show="reminderCreateModal.open"
@@ -1128,7 +1128,7 @@
       x-transition.opacity
       @keydown.escape.window="closeContactEditModal()"
       @click.self="closeContactEditModal()"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+      class="dashboard-modal-overlay fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
     >
       <div
         x-show="contactEditModal.open"
@@ -1233,7 +1233,7 @@
       x-transition.opacity
       @keydown.escape.window="closeReminderEditModal()"
       @click.self="closeReminderEditModal()"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+      class="dashboard-modal-overlay fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
     >
       <div
         x-show="reminderEditModal.open"
@@ -1302,7 +1302,7 @@
       x-cloak
       x-show="processingModal.open"
       x-transition.opacity.duration.150ms
-      class="fixed inset-0 z-[70] flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+      class="dashboard-modal-overlay dashboard-modal-overlay-priority fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
       role="status"
       aria-live="polite"
       aria-modal="true"
@@ -1336,7 +1336,7 @@
       x-transition.opacity
       @keydown.escape.window="closeDeleteConfirm()"
       @click.self="closeDeleteConfirm()"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+      class="dashboard-modal-overlay fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
     >
       <div
         x-show="deleteConfirm.open"
