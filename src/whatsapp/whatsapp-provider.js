@@ -42,6 +42,10 @@ class WhatsAppProvider {
     throw new Error("sendMessage() belum diimplementasikan");
   }
 
+  async checkPhoneNumber(_phone) {
+    throw new Error("checkPhoneNumber() belum diimplementasikan");
+  }
+
   async isReady() {
     const status = await this.getStatus();
     return status.state === PROVIDER_STATES.READY && status.canSend === true;

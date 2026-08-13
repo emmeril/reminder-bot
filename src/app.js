@@ -2637,6 +2637,10 @@ class NotificationBot {
     return result;
   }
 
+  async checkPhoneNumber(phoneNumber) {
+    return this.providerManager.checkPhoneNumber(phoneNumber);
+  }
+
   async sendFile(phoneNumber, filePath, caption = "") {
     throw new Error("Pengiriman file WhatsApp tidak tersedia. Gunakan Telegram untuk backup file.");
   }
@@ -2926,6 +2930,24 @@ class WebServer {
       }
     };
 
+    const requireRegisteredWhatsAppNumber = async (value) => {
+      const phoneNumber = normalizePhoneNumber(value);
+      if (!isValidPhoneNumber(phoneNumber)) {
+        const error = new Error("Nomor WhatsApp harus berformat 628xxx.");
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const result = await this.notificationBot.checkPhoneNumber(phoneNumber);
+      if (!result.registered) {
+        const error = new Error(`Nomor ${phoneNumber} tidak terdaftar di WhatsApp.`);
+        error.code = "WHATSAPP_NUMBER_NOT_REGISTERED";
+        error.statusCode = 422;
+        throw error;
+      }
+      return result;
+    };
+
     this.app.get("/", (req, res) => res.redirect("/dashboard"));
     this.app.get("/login", async (req, res, next) => {
       try {
@@ -3129,6 +3151,10 @@ class WebServer {
 
     this.app.get("/api/whatsapp/status", requireApiAuth, handleApi(async () => this.notificationBot.getTransportStatus()));
     this.app.post("/api/whatsapp/reconnect", requireApiAuth, handleApi(async () => this.notificationBot.reconnect()));
+    this.app.post("/api/whatsapp/validate-number", requireApiAuth, handleApi(async (req) => {
+      const result = await requireRegisteredWhatsAppNumber(req.body.phoneNumber || req.body.phone || "");
+      return { phoneNumber: result.phoneNumber, registered: true };
+    }));
     this.app.post("/api/whatsapp/test", requireApiAuth, handleApi(async (req) => {
       const phoneNumber = normalizePhoneNumber(req.body.phoneNumber || req.body.phone || "");
       const message = sanitizeMultilineText(req.body.message || "");
@@ -3151,8 +3177,19 @@ class WebServer {
     this.app.get("/api/logs", requireApiAuth, handleApi(async () => this.activityLog.list()));
 
     this.app.get("/api/contacts", requireApiAuth, handleApi(async () => this.dataManager.getSortedContacts().map((contact) => this.dataManager.toPublicContact(contact))));
-    this.app.post("/api/contacts", requireApiAuth, handleApi(async (req) => this.dataManager.toPublicContact(await this.dataManager.addContact(req.body))));
-    this.app.put("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.dataManager.toPublicContact(await this.dataManager.updateContact(req.params.id, req.body))));
+    this.app.post("/api/contacts", requireApiAuth, handleApi(async (req) => {
+      await requireRegisteredWhatsAppNumber(req.body.phoneNumber);
+      return this.dataManager.toPublicContact(await this.dataManager.addContact(req.body));
+    }));
+    this.app.put("/api/contacts/:id", requireApiAuth, handleApi(async (req) => {
+      const current = this.dataManager.getContact(req.params.id);
+      if (!current) throw new Error("Kontak tidak ditemukan.");
+      if (req.body.phoneNumber !== undefined
+        && normalizePhoneNumber(req.body.phoneNumber) !== current.phoneNumber) {
+        await requireRegisteredWhatsAppNumber(req.body.phoneNumber);
+      }
+      return this.dataManager.toPublicContact(await this.dataManager.updateContact(req.params.id, req.body));
+    }));
     this.app.delete("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.dataManager.deleteContact(req.params.id)));
 
     this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotProfiles()));
@@ -3170,6 +3207,7 @@ class WebServer {
     }));
     this.app.post("/api/hotspot/reactivations/run", requireApiAuth, handleApi(async () => this.hotspotReactivationScheduler.processDueReactivations()));
     this.app.post("/api/mikrotik/customers", requireApiAuth, handleApi(async (req) => {
+      await requireRegisteredWhatsAppNumber(req.body.phoneNumber);
       const registered = await this.mikrotikService.createHotspotCustomer({
         name: req.body.name,
         phoneNumber: req.body.phoneNumber,

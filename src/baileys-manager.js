@@ -125,6 +125,22 @@ class BaileysManager {
     return { ...result, instanceId: connection.id };
   }
 
+  static async checkPhoneNumber(number) {
+    const connection = this.getInstanceIds()
+      .map((id) => this.getConnection(id))
+      .find((item) => item.getStatus().deviceReady === true);
+    if (!connection) {
+      const error = new Error("WhatsApp belum terhubung; nomor belum dapat diperiksa.");
+      error.code = "WHATSAPP_PROVIDER_UNAVAILABLE";
+      error.retryable = false;
+      error.statusCode = 503;
+      throw error;
+    }
+
+    const result = await connection.checkPhoneNumber(number);
+    return { ...result, instanceId: connection.id };
+  }
+
   static async checkConnection() {
     await Promise.allSettled(
       this.getInstanceIds().map((id) => this.getConnection(id).checkConnection())

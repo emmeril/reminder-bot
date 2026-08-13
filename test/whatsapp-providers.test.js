@@ -16,6 +16,7 @@ test("BaileysProvider mempertahankan kontrak dan hasil BaileysManager", async ()
     shutdown: async () => calls.push("disconnect"),
     checkConnection: async () => {},
     sendMessage: async (phone, message) => ({ provider: "baileys", phone, message, messageId: "b-1" }),
+    checkPhoneNumber: async (phone) => ({ phoneNumber: phone, registered: true }),
     getStatus: () => ({
       state: "READY",
       isAvailable: true,
@@ -30,9 +31,11 @@ test("BaileysProvider mempertahankan kontrak dan hasil BaileysManager", async ()
 
   await provider.connect();
   const sent = await provider.sendMessage("6281234567890", "Halo");
+  const validation = await provider.checkPhoneNumber("6281234567890");
   const status = await provider.getStatus();
 
   assert.equal(sent.provider, "baileys");
+  assert.equal(validation.registered, true);
   assert.equal(status.state, "READY");
   assert.equal(status.ready, true);
   assert.deepEqual(calls, ["connect"]);

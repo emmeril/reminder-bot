@@ -28,6 +28,9 @@ function fakeProvider(ready = true) {
     async sendMessage(phone, message) {
       return { provider: "baileys", target: phone, message, messageId: "baileys-1", confirmed: true };
     },
+    async checkPhoneNumber(phone) {
+      return { phoneNumber: phone, registered: true };
+    },
   };
 }
 
@@ -40,9 +43,11 @@ test("provider manager mengirim dan melaporkan status Baileys", async () => {
 
   await manager.initialize();
   const sent = await manager.sendMessage("6281234567890", "Halo");
+  const validation = await manager.checkPhoneNumber("6281234567890");
   const status = await manager.getStatus();
 
   assert.equal(sent.provider, "baileys");
+  assert.equal(validation.registered, true);
   assert.equal(status.selectedProvider, "baileys");
   assert.deepEqual(status.transport.configuredProviders, ["baileys"]);
   assert.deepEqual(status.transport.connectedProviders, ["baileys"]);

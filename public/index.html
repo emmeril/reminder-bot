@@ -1001,7 +1001,8 @@
           </label>
           <label class="block text-sm text-ink/60">
             Nomor WhatsApp
-            <input x-model="forms.contact.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="628xxx" required>
+            <input x-model="forms.contact.phoneNumber" inputmode="numeric" autocomplete="tel" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="628xxx" required>
+            <span class="mt-1 block text-xs text-ink/45">Nomor akan diperiksa langsung ke WhatsApp sebelum pelanggan disimpan.</span>
           </label>
           <label class="block text-sm text-ink/60">
             AP tujuan (opsional)
@@ -1166,7 +1167,8 @@
           </label>
           <label class="block text-sm text-ink/60">
             Nomor WhatsApp
-            <input x-model="forms.contactEdit.phoneNumber" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="628xxx" required>
+            <input x-model="forms.contactEdit.phoneNumber" inputmode="numeric" autocomplete="tel" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="628xxx" required>
+            <span class="mt-1 block text-xs text-ink/45">Jika nomor diubah, nomor baru akan diperiksa langsung ke WhatsApp.</span>
           </label>
           <label class="block text-sm text-ink/60">
             AP tujuan (opsional)

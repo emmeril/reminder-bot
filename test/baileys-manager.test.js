@@ -147,6 +147,49 @@ test("menolak nomor yang tidak terdaftar di WhatsApp tanpa retry", async () => {
   assert.equal(BaileysManager.failedQueue, 1);
 });
 
+test("memvalidasi nomor WhatsApp walaupun pengiriman sedang dijeda", async () => {
+  BaileysManager.outboundEnabled = false;
+  BaileysManager.socket = {
+    onWhatsApp: async () => [{ exists: true, jid: "6281234567890@s.whatsapp.net" }],
+  };
+
+  const result = await BaileysManager.checkPhoneNumber("0812-3456-7890".replace(/^0/, "62"));
+
+  assert.equal(result.phoneNumber, "6281234567890");
+  assert.equal(result.registered, true);
+  assert.equal(result.jid, "6281234567890@s.whatsapp.net");
+});
+
+test("validasi nomor melaporkan akun yang tidak terdaftar tanpa mengirim pesan", async () => {
+  let sendCalls = 0;
+  BaileysManager.socket = {
+    onWhatsApp: async () => [],
+    sendMessage: async () => { sendCalls += 1; },
+  };
+
+  const result = await BaileysManager.checkPhoneNumber("6281234567890");
+
+  assert.equal(result.registered, false);
+  assert.equal(result.jid, null);
+  assert.equal(sendCalls, 0);
+});
+
+test("kegagalan query validasi nomor dilaporkan sebagai gangguan WhatsApp", async () => {
+  BaileysManager.socket = {
+    onWhatsApp: async () => { throw new Error("query timeout"); },
+  };
+
+  await assert.rejects(
+    () => BaileysManager.checkPhoneNumber("6281234567890"),
+    (error) => {
+      assert.equal(error.code, "WHATSAPP_NUMBER_CHECK_FAILED");
+      assert.equal(error.statusCode, 503);
+      assert.match(error.message, /query timeout/);
+      return true;
+    }
+  );
+});
+
 test("setiap pesan hanya dicoba sekali walaupun opsi lama meminta lebih banyak percobaan", async () => {
   let attempts = 0;
   BaileysManager.socket = {

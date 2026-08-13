@@ -440,16 +440,58 @@ class BaileysConnection {
   }
 
   async resolveRecipientJid(normalized) {
-    const matches = await this.socket.onWhatsApp(normalized);
-    const match = Array.isArray(matches) ? matches.find((item) => item?.exists) : null;
-    if (!match?.jid) throw new Error("Nomor tujuan tidak terdaftar di WhatsApp");
+    const result = await this.checkPhoneNumber(normalized);
+    if (!result.registered || !result.jid) {
+      const error = new Error("Nomor tujuan tidak terdaftar di WhatsApp");
+      error.code = "WHATSAPP_NUMBER_NOT_REGISTERED";
+      error.retryable = false;
+      error.statusCode = 422;
+      throw error;
+    }
 
     try {
-      const lid = await this.socket.signalRepository?.lidMapping?.getLIDForPN?.(match.jid);
-      return lid || match.jid;
+      const lid = await this.socket.signalRepository?.lidMapping?.getLIDForPN?.(result.jid);
+      return lid || result.jid;
     } catch {
-      return match.jid;
+      return result.jid;
     }
+  }
+
+  async checkPhoneNumber(number) {
+    const normalized = normalizePhoneNumber(number);
+    if (!isValidPhoneNumber(normalized)) {
+      const error = new Error("Nomor WhatsApp harus berformat 628xxx.");
+      error.code = "INVALID_PHONE_NUMBER";
+      error.retryable = false;
+      error.statusCode = 400;
+      throw error;
+    }
+
+    await this.initialize();
+    if (!this.isConfigured() || !this.connectionCache.connected || !this.socket) {
+      const error = new Error("WhatsApp belum terhubung; nomor belum dapat diperiksa.");
+      error.code = "WHATSAPP_PROVIDER_UNAVAILABLE";
+      error.retryable = false;
+      error.statusCode = 503;
+      throw error;
+    }
+
+    let matches;
+    try {
+      matches = await this.socket.onWhatsApp(normalized);
+    } catch (cause) {
+      const error = new Error(`Gagal memeriksa nomor ke WhatsApp: ${cause.message}`, { cause });
+      error.code = "WHATSAPP_NUMBER_CHECK_FAILED";
+      error.retryable = false;
+      error.statusCode = 503;
+      throw error;
+    }
+    const match = Array.isArray(matches) ? matches.find((item) => item?.exists && item?.jid) : null;
+    return {
+      phoneNumber: normalized,
+      registered: Boolean(match),
+      jid: match?.jid || null,
+    };
   }
 
   async sendRequest(number, message) {
@@ -481,7 +523,11 @@ class BaileysConnection {
         type: "chat",
       };
     } catch (cause) {
-      throw new Error(`Baileys gagal mengirim pesan: ${cause.message}`);
+      const error = new Error(`Baileys gagal mengirim pesan: ${cause.message}`, { cause });
+      error.code = cause.code;
+      error.retryable = cause.retryable;
+      error.statusCode = cause.statusCode;
+      throw error;
     }
   }
 

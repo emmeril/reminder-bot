@@ -32,6 +32,10 @@ class WhatsAppProviderManager {
     );
   }
 
+  async checkPhoneNumber(phone) {
+    return this.provider.checkPhoneNumber(phone);
+  }
+
   async getStatus() {
     const status = await this.provider.getStatus();
     const queue = this.queue.getStatus();

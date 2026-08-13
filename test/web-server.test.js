@@ -26,6 +26,7 @@ async function startServer(dataManager = {}, notificationBot = {}) {
       setProvider: async () => ({}),
       reconnect: async () => ({}),
       testConnection: async () => ({}),
+      checkPhoneNumber: async (phoneNumber) => ({ phoneNumber, registered: true }),
       sendMessage: async () => ({ provider: "baileys", messageId: "test" }),
       ...notificationBot,
     },
@@ -144,4 +145,59 @@ test("API WhatsApp status memakai auth existing dan endpoint pemilih provider di
     body: JSON.stringify({ provider: "baileys" }),
   });
   assert.equal(providerResponse.status, 404);
+});
+
+test("API menolak pelanggan dengan nomor yang tidak terdaftar di WhatsApp", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  let addContactCalls = 0;
+  const baseUrl = await startServer({
+    addContact: async (payload) => {
+      addContactCalls += 1;
+      return payload;
+    },
+    toPublicContact: (contact) => contact,
+  }, {
+    checkPhoneNumber: async (phoneNumber) => ({ phoneNumber, registered: false }),
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts`, {
+    method: "POST",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({ name: "Tidak Ada WA", phoneNumber: "6281234567890" }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 422);
+  assert.match(payload.error, /tidak terdaftar di WhatsApp/);
+  assert.equal(addContactCalls, 0);
+});
+
+test("API menyimpan pelanggan setelah nomor dipastikan terdaftar di WhatsApp", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  let validatedPhone = null;
+  let savedPayload = null;
+  const baseUrl = await startServer({
+    addContact: async (payload) => {
+      savedPayload = payload;
+      return { id: "contact-1", ...payload };
+    },
+    toPublicContact: (contact) => contact,
+  }, {
+    checkPhoneNumber: async (phoneNumber) => {
+      validatedPhone = phoneNumber;
+      return { phoneNumber, registered: true };
+    },
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts`, {
+    method: "POST",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({ name: "Ada WA", phoneNumber: "6281234567890" }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(validatedPhone, "6281234567890");
+  assert.equal(savedPayload.phoneNumber, "6281234567890");
+  assert.equal(payload.data.id, "contact-1");
 });

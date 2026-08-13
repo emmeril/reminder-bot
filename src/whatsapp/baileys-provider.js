@@ -46,6 +46,10 @@ class BaileysProvider extends WhatsAppProvider {
     return this.manager.sendMessage(phone, message, options);
   }
 
+  async checkPhoneNumber(phone) {
+    return this.manager.checkPhoneNumber(phone);
+  }
+
   enableOutbound() {
     return this.manager.enableOutbound();
   }
