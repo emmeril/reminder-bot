@@ -97,6 +97,7 @@
         pageSizes: [10, 25, 50, 100],
         filters: {
           contacts: { search: "", status: "ALL", dueStatus: "ALL", page: 1, pageSize: 10 },
+          paymentAmount: { search: "", page: 1, pageSize: 10 },
           monitorAp: { search: "", status: "ALL", page: 1, pageSize: 10 },
           reminders: { search: "", schedule: "ALL", page: 1, pageSize: 10 },
           sent: { search: "", status: "ALL", page: 1, pageSize: 10 },
@@ -769,6 +770,14 @@
           });
         },
 
+        get filteredPaymentAmountContacts() {
+          return this.contacts.filter((contact) => this.searchMatches(
+            contact,
+            ["name", "phoneNumber", "monthlyPaymentAmount"],
+            this.filters.paymentAmount.search
+          ));
+        },
+
         get filteredReminders() {
           const now = Date.now();
           return this.reminders.filter((reminder) => {
@@ -791,6 +800,10 @@
 
         get paginatedContacts() {
           return this.paginate(this.filteredContacts, "contacts");
+        },
+
+        get paginatedPaymentAmountContacts() {
+          return this.paginate(this.filteredPaymentAmountContacts, "paymentAmount");
         },
 
         get paginatedApMonitors() {
@@ -833,6 +846,7 @@
         setPage(key, page) {
           const totalsByKey = {
             contacts: this.filteredContacts.length,
+            paymentAmount: this.filteredPaymentAmountContacts.length,
             monitorAp: this.filteredApMonitors.length,
             reminders: this.filteredReminders.length,
             sent: this.filteredSent.length,
@@ -917,6 +931,7 @@
         async loadContacts() {
           this.contacts = await this.api("/api/contacts");
           this.clampPage("contacts", this.filteredContacts.length);
+          this.clampPage("paymentAmount", this.filteredPaymentAmountContacts.length);
         },
 
         async saveContactPaymentAmount(contact) {

@@ -658,15 +658,25 @@
               Atur nominal pembayaran masing-masing pelanggan. Reminder akan mengambil nominal dari contact tujuan secara otomatis.
             </p>
           </div>
-          <div class="overflow-hidden rounded-[1.5rem] border border-ink/8">
+          <div class="filter-inline mt-5">
+            <input x-model="filters.paymentAmount.search" @input="resetPage('paymentAmount')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama, nomor WA, atau nominal">
+            <select x-model.number="filters.paymentAmount.pageSize" @change="resetPage('paymentAmount')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+              <template x-for="size in pageSizes" :key="'payment-amount-size-' + size">
+                <option :value="size" x-text="size + ' / page'"></option>
+              </template>
+            </select>
+          </div>
+          <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
             <div class="table-scroll" tabindex="0" role="region" aria-label="Daftar nominal pembayaran pelanggan">
               <table class="dashboard-table min-w-full text-sm">
                 <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
                   <tr><th class="px-4 py-3">Pelanggan</th><th class="px-4 py-3">No. WA</th><th class="px-4 py-3">Nominal per bulan</th><th class="px-4 py-3">Aksi</th></tr>
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white/70">
-                  <template x-if="!contacts.length"><tr><td colspan="4" class="px-4 py-8 text-center text-ink/45">Belum ada pelanggan.</td></tr></template>
-                  <template x-for="contact in contacts" :key="'payment-amount-' + contact.id">
+                  <template x-if="!filteredPaymentAmountContacts.length">
+                    <tr><td colspan="4" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada pelanggan yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
+                  </template>
+                  <template x-for="contact in paginatedPaymentAmountContacts" :key="'payment-amount-' + contact.id">
                     <tr>
                       <td class="px-4 py-4 font-medium" data-label="Pelanggan" x-text="contact.name"></td>
                       <td class="px-4 py-4 text-ink/65" data-label="No. WA" x-text="contact.phoneNumber"></td>
@@ -678,6 +688,14 @@
                   </template>
                 </tbody>
               </table>
+            </div>
+          </div>
+          <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
+            <div class="min-w-0" x-text="paginationLabel('paymentAmount', filteredPaymentAmountContacts.length)"></div>
+            <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
+              <button @click="setPage('paymentAmount', filters.paymentAmount.page - 1)" :disabled="filters.paymentAmount.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
+              <span class="px-2" x-text="filters.paymentAmount.page + ' / ' + totalPages('paymentAmount', filteredPaymentAmountContacts.length)"></span>
+              <button @click="setPage('paymentAmount', filters.paymentAmount.page + 1)" :disabled="filters.paymentAmount.page >= totalPages('paymentAmount', filteredPaymentAmountContacts.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
           </div>
         </section>
