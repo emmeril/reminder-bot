@@ -610,6 +610,12 @@
             <label class="block text-sm text-ink/60">
               Isi template
               <textarea x-model="forms.template.content" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Gunakan placeholder seperti {{name}} atau {{date}}" required></textarea>
+              <span class="notification-template-variables mt-3">
+                <strong>Variabel Reminder yang bisa digunakan</strong>
+                <span class="template-variable-list">
+                  <code>{{name}}</code><code>{{date}}</code><code>{{monthlyAmount}}</code><code>{{currentAmount}}</code><code>{{debtAmount}}</code><code>{{totalAmount}}</code><code>{{debtCount}}</code>
+                </span>
+              </span>
             </label>
             <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Template Baru</button>
             <p x-cloak x-show="formErrors.template" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.template"></p>
@@ -1095,6 +1101,12 @@
           <label class="block text-sm text-ink/60">
             Pesan reminder
             <textarea x-model="forms.reminder.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required></textarea>
+            <span class="notification-template-variables mt-3">
+              <strong>Variabel yang bisa digunakan</strong>
+              <span class="template-variable-list">
+                <code>{{name}}</code><code>{{date}}</code><code>{{monthlyAmount}}</code><code>{{currentAmount}}</code><code>{{debtAmount}}</code><code>{{totalAmount}}</code><code>{{debtCount}}</code>
+              </span>
+            </span>
           </label>
           <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" @click="closeReminderCreateModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="reminderCreateModal.loading">Batal</button>
@@ -1265,6 +1277,12 @@
           <label class="block text-sm text-ink/60">
             Pesan reminder
             <textarea x-model="forms.reminderEdit.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required></textarea>
+            <span class="notification-template-variables mt-3">
+              <strong>Variabel yang bisa digunakan</strong>
+              <span class="template-variable-list">
+                <code>{{name}}</code><code>{{date}}</code><code>{{monthlyAmount}}</code><code>{{currentAmount}}</code><code>{{debtAmount}}</code><code>{{totalAmount}}</code><code>{{debtCount}}</code>
+              </span>
+            </span>
           </label>
           <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" @click="closeReminderEditModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="reminderEditModal.loading">Batal</button>
