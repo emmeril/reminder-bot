@@ -568,19 +568,6 @@
           return this.formatDateTime(contact.hotspotReactivationAt);
         },
 
-        getHotspotUserOptionLabel(user) {
-          const profile = user?.profile ? ` - ${user.profile}` : "";
-          const source = user?.source === "active" ? " - aktif" : "";
-          const disabled = user?.disabled ? " (disabled)" : "";
-          return `${user?.username || "-"}${profile}${source}${disabled}`;
-        },
-
-        hasHotspotUser(username) {
-          const needle = String(username || "").trim().toLowerCase();
-          if (!needle) return true;
-          return this.hotspotUsers.some((user) => String(user.username || "").trim().toLowerCase() === needle);
-        },
-
         hasMikrotikProfile(profileName) {
           const needle = String(profileName || "").trim().toLowerCase();
           if (!needle) return true;
@@ -1247,7 +1234,7 @@
           this.clearFormError("contactEdit");
           try {
             await this.withProcessing("Menyimpan perubahan kontak...", async () => {
-              await this.api(`/api/contacts/${this.forms.contactEdit.id}`, {
+              const result = await this.api(`/api/contacts/${this.forms.contactEdit.id}`, {
                 method: "PUT",
                 body: JSON.stringify({
                   name: this.forms.contactEdit.name,
@@ -1262,12 +1249,15 @@
                   hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contactEdit),
                 }),
               });
-              this.notify("Contact diperbarui.");
+              this.notify(result.hotspotSynced
+                ? "Contact diperbarui dan akun hotspot sudah disinkronkan ke MikroTik."
+                : "Contact diperbarui.");
               this.closeContactEditModal();
-              await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
+              await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus(), this.loadLogs()]);
             });
           } catch (error) {
             this.setFormError("contactEdit", error);
+            await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]).catch(() => {});
           } finally {
             this.contactEditModal.loading = false;
           }

@@ -1213,7 +1213,7 @@
             <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div class="text-sm font-semibold text-ink">Options Hotspot</div>
-                <div class="text-xs text-ink/55">Atur user hotspot, jadwal reaktivasi otomatis, atau jadwal hapus user saat auto reaktivasi nonaktif.</div>
+                <div class="text-xs text-ink/55">Perubahan akun disimpan dahulu, disinkronkan ke MikroTik, lalu diverifikasi otomatis.</div>
               </div>
               <button type="button" @click="loadHotspotOptions('contactEdit')" :disabled="loading.hotspotOptions" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white disabled:cursor-not-allowed disabled:opacity-60">
                 <i :class="loading.hotspotOptions ? 'fa-solid fa-circle-notch fa-spin mr-1.5' : 'fa-solid fa-cloud-arrow-down mr-1.5'"></i>
@@ -1223,15 +1223,8 @@
             <div class="grid gap-4 md:grid-cols-2">
               <label class="block text-sm text-ink/60">
                 User hotspot
-                <select x-model="forms.contactEdit.mikrotikUsername" @change="syncHotspotUserToForm('contactEdit')" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss">
-                  <option value="">-- Pilih user hotspot --</option>
-                  <template x-if="forms.contactEdit.mikrotikUsername && !hasHotspotUser(forms.contactEdit.mikrotikUsername)">
-                    <option :value="forms.contactEdit.mikrotikUsername" x-text="forms.contactEdit.mikrotikUsername"></option>
-                  </template>
-                  <template x-for="user in hotspotUsers" :key="'contact-edit-hotspot-user-' + user.username">
-                    <option :value="user.username" x-text="getHotspotUserOptionLabel(user)"></option>
-                  </template>
-                </select>
+                <input list="hotspot-users" x-model="forms.contactEdit.mikrotikUsername" @change="syncHotspotUserToForm('contactEdit')" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="Pilih atau ketik username baru">
+                <span class="mt-1 block text-xs text-ink/45">Username baru akan diperiksa agar tidak menimpa akun MikroTik lain.</span>
               </label>
               <label class="block text-sm text-ink/60">
                 Profile hotspot
@@ -1247,7 +1240,7 @@
               </label>
               <label class="block text-sm text-ink/60">
                 Password hotspot
-                <input x-model="forms.contactEdit.mikrotikPassword" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="Kosong = 5 digit akhir WA">
+                <input x-model="forms.contactEdit.mikrotikPassword" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="Kosong = pertahankan password lama">
               </label>
               <label class="block text-sm text-ink/60">
                 Jadwal reaktivasi / hapus
@@ -1261,7 +1254,7 @@
               <input type="checkbox" x-model="forms.contactEdit.hotspotReactivationEnabled" class="h-4 w-4 accent-moss">
               Aktifkan reaktivasi otomatis bulanan
             </label>
-            <p class="mt-2 text-xs text-ink/55">Jika jadwal diisi tetapi reaktivasi otomatis nonaktif, sistem akan menghapus user hotspot dan sesi aktif saat jadwal jatuh tempo.</p>
+            <p class="mt-2 text-xs text-ink/55">Mengosongkan user dan profile hanya melepas hubungan akun dari aplikasi; akun MikroTik tidak dihapus. Jika jadwal diisi tetapi reaktivasi otomatis nonaktif, sistem akan menghapus user saat jadwal jatuh tempo.</p>
           </div>
           <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" @click="closeContactEditModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="contactEditModal.loading">Batal</button>

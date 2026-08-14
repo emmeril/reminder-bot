@@ -321,6 +321,7 @@ test("endpoint retry provisioning memakai data pelanggan tersimpan secara idempo
     mikrotikProfile: "100M",
     mikrotikPassword: "67892",
     hotspotProvisioningStatus: "FAILED",
+    hotspotProvisioningOperation: "CREATE",
     hotspotSendCredentials: false,
   };
   const baseUrl = await startServer({
@@ -346,5 +347,128 @@ test("endpoint retry provisioning memakai data pelanggan tersimpan secara idempo
   assert.equal(response.status, 200);
   assert.equal(payload.data.created, false);
   assert.equal(payload.data.contact.hotspotProvisioningStatus, "ACTIVE");
+  assert.deepEqual(statuses, ["PROVISIONING", "ACTIVE"]);
+});
+
+test("edit hotspot menyimpan PENDING sebelum memperbarui akun MikroTik lama", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const events = [];
+  const contact = {
+    id: "contact-hotspot-edit",
+    name: "Pelanggan Edit",
+    phoneNumber: "6281234567893",
+    mikrotikUsername: "pelanggan_baru",
+    mikrotikProfile: "100M",
+    mikrotikPassword: "67893",
+    hotspotProvisioningStatus: "PENDING",
+    hotspotProvisioningOperation: "UPDATE",
+    hotspotProvisioningPrevious: {
+      username: "pelanggan_lama",
+      phoneNumber: "6281234567892",
+      profile: "50M",
+      password: "67892",
+    },
+  };
+  const baseUrl = await startServer({
+    getContact: () => contact,
+    prepareContactUpdate: async () => {
+      events.push("db:pending-update");
+      return { contact, hotspotSyncRequired: true };
+    },
+    updateHotspotProvisioningStatus: async (_id, status) => {
+      events.push(`db:${status.toLowerCase()}`);
+      contact.hotspotProvisioningStatus = status;
+      if (status === "ACTIVE") {
+        contact.hotspotProvisioningOperation = "NONE";
+        contact.hotspotProvisioningPrevious = null;
+      }
+      return { contact, pelanggan: { username: contact.mikrotikUsername } };
+    },
+    toPublicContact: (value) => value,
+  }, {}, {
+    updateHotspotCustomer: async (payload) => {
+      events.push(`mikrotik:update:${payload.previousUsername}`);
+      return {
+        username: payload.username,
+        password: payload.password,
+        profile: payload.profile,
+        name: payload.name,
+        phoneNumber: payload.phoneNumber,
+        updated: true,
+      };
+    },
+    verifyHotspotCustomer: async (registered) => {
+      events.push("mikrotik:verify");
+      return { username: registered.username };
+    },
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}`, {
+    method: "PUT",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({
+      name: contact.name,
+      phoneNumber: contact.phoneNumber,
+      mikrotikUsername: contact.mikrotikUsername,
+      mikrotikProfile: contact.mikrotikProfile,
+    }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.hotspotSynced, true);
+  assert.deepEqual(events, [
+    "db:pending-update",
+    "db:provisioning",
+    "mikrotik:update:pelanggan_lama",
+    "mikrotik:verify",
+    "db:active",
+  ]);
+});
+
+test("retry edit hotspot tetap memakai snapshot username lama", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const statuses = [];
+  let previousUsername = null;
+  const contact = {
+    id: "contact-hotspot-edit-retry",
+    name: "Pelanggan Edit Retry",
+    phoneNumber: "6281234567894",
+    mikrotikUsername: "username_baru",
+    mikrotikProfile: "100M",
+    mikrotikPassword: "67894",
+    hotspotProvisioningStatus: "FAILED",
+    hotspotProvisioningOperation: "UPDATE",
+    hotspotProvisioningPrevious: {
+      username: "username_lama",
+      phoneNumber: "6281234567893",
+      profile: "50M",
+      password: "67893",
+    },
+  };
+  const baseUrl = await startServer({
+    getContact: () => contact,
+    updateHotspotProvisioningStatus: async (_id, status) => {
+      statuses.push(status);
+      contact.hotspotProvisioningStatus = status;
+      return { contact, pelanggan: { username: contact.mikrotikUsername } };
+    },
+    toPublicContact: (value) => value,
+  }, {}, {
+    updateHotspotCustomer: async (payload) => {
+      previousUsername = payload.previousUsername;
+      return { ...payload, updated: false };
+    },
+    verifyHotspotCustomer: async (registered) => ({ username: registered.username }),
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/hotspot/provision`, {
+    method: "POST",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({}),
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(previousUsername, "username_lama");
   assert.deepEqual(statuses, ["PROVISIONING", "ACTIVE"]);
 });

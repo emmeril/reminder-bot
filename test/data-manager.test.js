@@ -339,6 +339,132 @@ test("status FAILED menyimpan error tanpa menghapus pelanggan", async () => {
   assert.equal(result.pelanggan.hotspotProvisioningStatus, "FAILED");
 });
 
+test("edit akun hotspot menyimpan snapshot lama sebagai PENDING UPDATE", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+  manager.saveReminders = async () => {};
+  const contact = {
+    id: "contact-edit-hotspot",
+    name: "Pelanggan Lama",
+    phoneNumber: "6281234567805",
+    mikrotikUsername: "pelanggan_lama",
+    mikrotikProfile: "50M",
+    mikrotikPassword: "67805",
+    hotspotProvisioningStatus: "ACTIVE",
+    hotspotProvisioningOperation: "NONE",
+    paymentMonths: {},
+    createdAt: new Date().toISOString(),
+  };
+  manager.contacts.set(contact.id, contact);
+  manager.pelanggan.set(contact.mikrotikUsername, {
+    username: contact.mikrotikUsername,
+    nomer: contact.phoneNumber,
+    profile: contact.mikrotikProfile,
+    password: contact.mikrotikPassword,
+    contactId: contact.id,
+  });
+
+  const result = await manager.prepareContactUpdate(contact.id, {
+    name: "Pelanggan Baru",
+    phoneNumber: "6281234567806",
+    mikrotikUsername: "pelanggan_baru",
+    mikrotikProfile: "100M",
+    mikrotikPassword: "67806",
+  });
+
+  assert.equal(result.hotspotSyncRequired, true);
+  assert.equal(result.contact.hotspotProvisioningStatus, "PENDING");
+  assert.equal(result.contact.hotspotProvisioningOperation, "UPDATE");
+  assert.deepEqual(result.contact.hotspotProvisioningPrevious, {
+    username: "pelanggan_lama",
+    profile: "50M",
+    password: "67805",
+    phoneNumber: "6281234567805",
+  });
+  assert.equal(manager.pelanggan.has("pelanggan_lama"), false);
+  assert.equal(manager.pelanggan.get("pelanggan_baru").status, "pending");
+
+  const failed = await manager.updateHotspotProvisioningStatus(
+    contact.id,
+    "FAILED",
+    { error: "router timeout" }
+  );
+  assert.equal(failed.contact.hotspotProvisioningOperation, "UPDATE");
+  assert.equal(failed.contact.hotspotProvisioningPrevious.username, "pelanggan_lama");
+});
+
+test("edit data umum tidak memicu sinkronisasi ulang hotspot", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+  manager.saveReminders = async () => {};
+  const contact = {
+    id: "contact-edit-general",
+    name: "Nama Lama",
+    phoneNumber: "6281234567807",
+    linkedApHost: "",
+    mikrotikUsername: "nama_lama",
+    mikrotikProfile: "50M",
+    mikrotikPassword: "67807",
+    hotspotProvisioningStatus: "ACTIVE",
+    hotspotProvisioningOperation: "NONE",
+    paymentMonths: {},
+  };
+  manager.contacts.set(contact.id, contact);
+
+  const result = await manager.prepareContactUpdate(contact.id, {
+    name: "Nama Baru",
+    linkedApHost: "10.0.0.9",
+  });
+
+  assert.equal(result.hotspotSyncRequired, false);
+  assert.equal(result.contact.hotspotProvisioningStatus, "ACTIVE");
+  assert.equal(result.contact.hotspotProvisioningPrevious, undefined);
+});
+
+test("mengosongkan user dan profile hanya melepas hubungan hotspot dari aplikasi", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+  manager.saveReminders = async () => {};
+  const contact = {
+    id: "contact-unlink-hotspot",
+    name: "Pelanggan Unlink",
+    phoneNumber: "6281234567808",
+    mikrotikUsername: "pelanggan_unlink",
+    mikrotikProfile: "50M",
+    mikrotikPassword: "67808",
+    hotspotProvisioningStatus: "ACTIVE",
+    hotspotProvisioningOperation: "NONE",
+    hotspotReactivationEnabled: false,
+    paymentMonths: {},
+  };
+  manager.contacts.set(contact.id, contact);
+  manager.pelanggan.set(contact.mikrotikUsername, {
+    username: contact.mikrotikUsername,
+    contactId: contact.id,
+  });
+
+  const result = await manager.prepareContactUpdate(contact.id, {
+    mikrotikUsername: "",
+    mikrotikProfile: "",
+    hotspotReactivationEnabled: false,
+    hotspotReactivationAt: "",
+  });
+
+  assert.equal(result.hotspotSyncRequired, false);
+  assert.equal(result.contact.hotspotProvisioningStatus, "NONE");
+  assert.equal(result.contact.mikrotikPassword, "");
+  assert.equal(manager.pelanggan.size, 0);
+});
+
 test("mengembalikan state in-memory ketika penyimpanan database gagal", async () => {
   const manager = new DataManager({ push() {} });
   manager.saveContacts = async () => {
@@ -359,6 +485,10 @@ test("response publik tidak membocorkan password hotspot atau isi antrean kreden
     name: "Pelanggan",
     phoneNumber: "6281234567802",
     mikrotikPassword: "router-secret",
+    hotspotProvisioningPrevious: {
+      username: "akun-lama",
+      password: "password-lama",
+    },
     hotspotNotificationPending: {
       message: "Password router-secret",
       attempts: 1,
@@ -370,6 +500,7 @@ test("response publik tidak membocorkan password hotspot atau isi antrean kreden
 
   const result = manager.toPublicContact(contact);
   assert.equal("mikrotikPassword" in result, false);
+  assert.equal("hotspotProvisioningPrevious" in result, false);
   assert.equal(result.hotspotNotificationPending.message, undefined);
   assert.equal(result.hotspotNotificationPending.attempts, 1);
 });
