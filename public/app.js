@@ -535,7 +535,8 @@
             PENDING: "Menunggu provisioning",
             PROVISIONING: "Sedang diproses",
             ACTIVE: "Aktif di MikroTik",
-            FAILED: "Provisioning gagal",
+            FAILED: "Sinkronisasi gagal",
+            DEACTIVATED: "Dinonaktifkan terjadwal",
             MISSING: "Akun tidak ditemukan",
             CHANGED: "Data akun berubah",
           }[this.getHotspotProvisioningStatus(contact)] || "Status tidak dikenal";
@@ -547,6 +548,7 @@
             PENDING: "bg-amber-100 text-amber-800",
             PROVISIONING: "bg-sky-100 text-sky-800",
             FAILED: "bg-red-100 text-red-700",
+            DEACTIVATED: "bg-slate-200/70 text-slate-700",
             MISSING: "bg-red-100 text-red-700",
             CHANGED: "bg-orange-100 text-orange-800",
           }[this.getHotspotProvisioningStatus(contact)] || "bg-slate-200/70 text-slate-700";
@@ -558,8 +560,8 @@
           );
         },
 
-        isHotspotProvisioningActive(contact) {
-          return this.getHotspotProvisioningStatus(contact) === "ACTIVE";
+        canReactivateHotspot(contact) {
+          return ["ACTIVE", "DEACTIVATED"].includes(this.getHotspotProvisioningStatus(contact));
         },
 
         getReactivationLabel(contact) {
@@ -821,7 +823,7 @@
             if (selectedStatus === "CONFIGURED" && !hasAccount) return false;
             if (selectedStatus === "UNCONFIGURED" && hasAccount) return false;
             if (selectedStatus === "AUTO" && !contact.hotspotReactivationEnabled) return false;
-            if (["ACTIVE", "PENDING", "FAILED", "MISSING", "CHANGED"].includes(selectedStatus)
+            if (["ACTIVE", "PENDING", "FAILED", "DEACTIVATED", "MISSING", "CHANGED"].includes(selectedStatus)
               && provisioningStatus !== selectedStatus) return false;
 
             return this.searchMatches(
@@ -1323,18 +1325,21 @@
         async reactivateHotspotContact(contact) {
           if (!contact?.id) return;
           await this.withProcessing("Mereaktivasi hotspot...", async () => {
-            const result = await this.api(`/api/contacts/${contact.id}/hotspot/reactivate`, {
-              method: "POST",
-              body: JSON.stringify({}),
-            });
-            if (result.contact.hotspotReactivationEnabled && result.contact.hotspotReactivationAt) {
-              const notificationText = result.notification?.sent ? " Akun terkirim ke WhatsApp." : (result.notification?.error ? ` WA gagal: ${result.notification.error}` : "");
-              this.notify(`Hotspot ${result.username} direaktivasi. Jadwal berikutnya ${this.formatDateTime(result.contact.hotspotReactivationAt)}.${notificationText}`);
-            } else {
-              const notificationText = result.notification?.sent ? " Akun terkirim ke WhatsApp." : (result.notification?.error ? ` WA gagal: ${result.notification.error}` : "");
-              this.notify(`Hotspot ${result.username} direaktivasi.${notificationText}`);
+            try {
+              const result = await this.api(`/api/contacts/${contact.id}/hotspot/reactivate`, {
+                method: "POST",
+                body: JSON.stringify({}),
+              });
+              if (result.contact.hotspotReactivationEnabled && result.contact.hotspotReactivationAt) {
+                const notificationText = result.notification?.sent ? " Akun terkirim ke WhatsApp." : (result.notification?.error ? ` WA gagal: ${result.notification.error}` : "");
+                this.notify(`Hotspot ${result.username} direaktivasi. Jadwal berikutnya ${this.formatDateTime(result.contact.hotspotReactivationAt)}.${notificationText}`);
+              } else {
+                const notificationText = result.notification?.sent ? " Akun terkirim ke WhatsApp." : (result.notification?.error ? ` WA gagal: ${result.notification.error}` : "");
+                this.notify(`Hotspot ${result.username} direaktivasi.${notificationText}`);
+              }
+            } finally {
+              await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
             }
-            await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
           });
         },
 
@@ -1349,7 +1354,11 @@
               const notificationText = result.notification?.sent
                 ? " Kredensial terkirim ke WhatsApp."
                 : (result.notification?.error ? ` WA belum terkirim: ${result.notification.error}` : "");
-              this.notify(`Hotspot ${result.username} berhasil diaktifkan.${notificationText}`);
+              if (result.operation === "DEACTIVATE") {
+                this.notify(`Hotspot ${result.username} berhasil dinonaktifkan.`);
+              } else {
+                this.notify(`Hotspot ${result.username} berhasil diaktifkan.${notificationText}`);
+              }
             } finally {
               await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
             }

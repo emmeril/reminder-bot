@@ -15,6 +15,7 @@ function createManager(contact) {
   const manager = new DataManager({ push() {} });
   manager.contacts.set(String(contact.id), contact);
   manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
   manager.saveReminders = async () => {};
   manager.withDatabaseWrite = async (operation) => operation();
   manager.sequelize = {
@@ -463,6 +464,49 @@ test("mengosongkan user dan profile hanya melepas hubungan hotspot dari aplikasi
   assert.equal(result.contact.hotspotProvisioningStatus, "NONE");
   assert.equal(result.contact.mikrotikPassword, "");
   assert.equal(manager.pelanggan.size, 0);
+});
+
+test("lifecycle reaktivasi dan deaktivasi memperbarui status Contact serta Pelanggan", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+  const contact = {
+    id: "contact-lifecycle-hotspot",
+    name: "Pelanggan Lifecycle",
+    phoneNumber: "6281234567809",
+    mikrotikUsername: "pelanggan_lifecycle",
+    mikrotikProfile: "100M",
+    mikrotikPassword: "67809",
+    hotspotProvisioningStatus: "ACTIVE",
+    hotspotReactivationEnabled: false,
+    hotspotReactivationAt: new Date().toISOString(),
+    paymentMonths: {},
+  };
+  manager.contacts.set(contact.id, contact);
+  manager.pelanggan.set(contact.mikrotikUsername, {
+    username: contact.mikrotikUsername,
+    contactId: contact.id,
+  });
+
+  await manager.prepareHotspotLifecycleOperation(contact.id, "REACTIVATE");
+  assert.equal(contact.hotspotProvisioningStatus, "PENDING");
+  assert.equal(contact.hotspotProvisioningOperation, "REACTIVATE");
+
+  await manager.markHotspotReactivated(contact.id, {
+    password: contact.mikrotikPassword,
+    profile: contact.mikrotikProfile,
+  });
+  assert.equal(contact.hotspotProvisioningStatus, "ACTIVE");
+  assert.equal(contact.hotspotProvisioningOperation, "NONE");
+  assert.equal(manager.pelanggan.get(contact.mikrotikUsername).status, "verified");
+
+  await manager.prepareHotspotLifecycleOperation(contact.id, "DEACTIVATE");
+  await manager.markHotspotDeactivated(contact.id, { removedUsers: 1 });
+  assert.equal(contact.hotspotProvisioningStatus, "DEACTIVATED");
+  assert.equal(contact.hotspotProvisioningOperation, "NONE");
+  assert.equal(manager.pelanggan.get(contact.mikrotikUsername).status, "deactivated");
 });
 
 test("mengembalikan state in-memory ketika penyimpanan database gagal", async () => {

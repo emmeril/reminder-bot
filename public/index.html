@@ -445,7 +445,8 @@
                 <option value="UNCONFIGURED">Belum ada akun</option>
                 <option value="ACTIVE">Aktif di MikroTik</option>
                 <option value="PENDING">Menunggu provisioning</option>
-                <option value="FAILED">Provisioning gagal</option>
+                <option value="FAILED">Sinkronisasi gagal</option>
+                <option value="DEACTIVATED">Dinonaktifkan terjadwal</option>
                 <option value="AUTO">Auto reaktivasi aktif</option>
               </select>
               <select x-model.number="filters.contactHotspot.pageSize" @change="resetPage('contactHotspot')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
@@ -486,7 +487,7 @@
                         <td class="px-4 py-4" data-label="Aksi">
                           <div class="customer-action-group">
                             <button x-show="canRetryHotspotProvisioning(contact)" type="button" @click="retryHotspotProvisioning(contact)" class="border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"><i class="fa-solid fa-rotate mr-1.5"></i>Coba lagi</button>
-                            <button x-show="contact.mikrotikUsername && contact.mikrotikProfile && isHotspotProvisioningActive(contact)" type="button" @click="reactivateHotspotContact(contact)" class="border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-rotate-right mr-1.5"></i>Reaktivasi</button>
+                            <button x-show="contact.mikrotikUsername && contact.mikrotikProfile && canReactivateHotspot(contact)" type="button" @click="reactivateHotspotContact(contact)" class="border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-rotate-right mr-1.5"></i>Reaktivasi</button>
                             <button type="button" @click="openContactEditModal(contact)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-gear mr-1.5"></i>Atur hotspot</button>
                           </div>
                         </td>

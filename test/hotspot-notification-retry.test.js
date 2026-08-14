@@ -7,6 +7,9 @@ const { HotspotReactivationScheduler } = require("../src/schedulers");
 test("notifikasi kredensial yang gagal ditutup tanpa percobaan ulang", async () => {
   const manager = new DataManager({ push() {} });
   manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.sequelize = { transaction: async (operation) => operation({}) };
   const contact = {
     id: "contact-retry",
     name: "Pelanggan",
@@ -28,6 +31,9 @@ test("notifikasi kredensial yang gagal ditutup tanpa percobaan ulang", async () 
       async reactivateHotspotUser(payload) {
         routerCalls += 1;
         return { ...payload, activeSessionsKilled: 0, removedUsers: 1 };
+      },
+      async verifyHotspotCustomer(payload) {
+        return payload;
       },
     },
     manager,
@@ -55,6 +61,9 @@ test("notifikasi kredensial yang gagal ditutup tanpa percobaan ulang", async () 
 test("menyelesaikan semua pekerjaan router sebelum memproses notifikasi WA", async () => {
   const manager = new DataManager({ push() {} });
   manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.sequelize = { transaction: async (operation) => operation({}) };
   const contacts = ["satu", "dua"].map((name, index) => ({
     id: `contact-${name}`,
     name,
@@ -77,6 +86,9 @@ test("menyelesaikan semua pekerjaan router sebelum memproses notifikasi WA", asy
         routerCalls += 1;
         return { ...payload, activeSessionsKilled: 0, removedUsers: 1 };
       },
+      async verifyHotspotCustomer(payload) {
+        return payload;
+      },
     },
     manager,
     { push() {} },
@@ -96,4 +108,49 @@ test("menyelesaikan semua pekerjaan router sebelum memproses notifikasi WA", asy
     results.filter((item) => item.action === "reactivate" && item.status === "success").length,
     2
   );
+});
+
+test("kegagalan reaktivasi disimpan sebagai FAILED tanpa memajukan jadwal", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  const originalSchedule = new Date(Date.now() - 60_000).toISOString();
+  const contact = {
+    id: "contact-reactivation-failed",
+    name: "Pelanggan Gagal",
+    phoneNumber: "6281234567898",
+    mikrotikUsername: "pelanggan_gagal",
+    mikrotikPassword: "67898",
+    mikrotikProfile: "100M",
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: originalSchedule,
+    hotspotProvisioningStatus: "ACTIVE",
+    paymentMonths: {},
+  };
+  manager.contacts.set(contact.id, contact);
+  const scheduler = new HotspotReactivationScheduler(
+    {
+      async reactivateHotspotUser() {
+        throw new Error("router timeout");
+      },
+      async verifyHotspotCustomer(payload) {
+        return payload;
+      },
+    },
+    manager,
+    { push() {} }
+  );
+
+  await assert.rejects(
+    () => scheduler.reactivateContact(manager.hydrateContact(contact)),
+    /Reaktivasi hotspot gagal: router timeout/
+  );
+
+  const failed = manager.getContact(contact.id);
+  assert.equal(failed.hotspotProvisioningStatus, "FAILED");
+  assert.equal(failed.hotspotProvisioningOperation, "REACTIVATE");
+  assert.equal(failed.hotspotReactivationAt, originalSchedule);
+  assert.match(failed.hotspotProvisioningError, /router timeout/);
 });

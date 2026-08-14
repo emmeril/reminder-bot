@@ -584,8 +584,29 @@ class HotspotReactivationScheduler {
       throw new Error("Username hotspot wajib diisi untuk menghapus user hotspot.");
     }
 
-    const result = await this.mikrotikService.deleteHotspotUser(contact.mikrotikUsername);
-    const updatedContact = await this.dataManager.markHotspotDeactivated(contact.id, result, options);
+    let operationPrepared = false;
+    let result;
+    let updatedContact;
+    try {
+      const prepared = await this.dataManager.prepareHotspotLifecycleOperation(contact.id, "DEACTIVATE");
+      operationPrepared = true;
+      await this.dataManager.updateHotspotProvisioningStatus(contact.id, "PROVISIONING", { error: "" });
+      result = await this.mikrotikService.deleteHotspotUser(
+        prepared.mikrotikUsername,
+        prepared.phoneNumber
+      );
+      updatedContact = await this.dataManager.markHotspotDeactivated(contact.id, result, options);
+    } catch (error) {
+      if (operationPrepared) {
+        await this.dataManager.updateHotspotProvisioningStatus(contact.id, "FAILED", {
+          error: error.message,
+          checkedAt: new Date().toISOString(),
+        }).catch((statusError) => {
+          this.activityLog.push("error", "hotspot-reactivation", `Gagal menyimpan status deaktivasi ${contact.mikrotikUsername}: ${statusError.message}`);
+        });
+      }
+      throw new Error(`Deaktivasi hotspot gagal: ${error.message}`, { cause: error });
+    }
     this.activityLog.push("info", "hotspot-reactivation", `User hotspot ${result.username} dihapus sesuai jadwal non-auto reaktivasi`, {
       contactId: contact.id,
       username: result.username,
@@ -594,6 +615,7 @@ class HotspotReactivationScheduler {
     });
 
     return {
+      operation: "DEACTIVATE",
       contact: updatedContact,
       notification: { sent: false, error: "Jadwal non-auto reaktivasi hanya menghapus user hotspot." },
       ...result,
@@ -602,22 +624,45 @@ class HotspotReactivationScheduler {
 
   async reactivateContact(contact, options = {}) {
     const { deferNotification = false, ...persistenceOptions } = options;
+    let operationPrepared = false;
+    let prepared;
+    let result;
+    let updatedContact;
     const password = this.buildPassword(contact);
     if (!password) {
       throw new Error("Password hotspot kosong. Isi password atau nomor WhatsApp yang valid.");
     }
 
-    const result = await this.mikrotikService.reactivateHotspotUser({
-      username: contact.mikrotikUsername,
-      password,
-      profile: contact.mikrotikProfile,
-      phoneNumber: contact.phoneNumber,
-    });
-
-    const updatedContact = await this.dataManager.markHotspotReactivated(contact.id, result, {
-      ...persistenceOptions,
-      pendingNotificationBuilder: (updated) => this.buildReactivationNotification(contact, result, updated),
-    });
+    try {
+      prepared = await this.dataManager.prepareHotspotLifecycleOperation(contact.id, "REACTIVATE");
+      operationPrepared = true;
+      await this.dataManager.updateHotspotProvisioningStatus(contact.id, "PROVISIONING", { error: "" });
+      result = await this.mikrotikService.reactivateHotspotUser({
+        username: prepared.mikrotikUsername,
+        password,
+        profile: prepared.mikrotikProfile,
+        phoneNumber: prepared.phoneNumber,
+      });
+      await this.mikrotikService.verifyHotspotCustomer({
+        username: result.username,
+        phoneNumber: prepared.phoneNumber,
+        profile: result.profile,
+      });
+      updatedContact = await this.dataManager.markHotspotReactivated(contact.id, result, {
+        ...persistenceOptions,
+        pendingNotificationBuilder: (updated) => this.buildReactivationNotification(contact, result, updated),
+      });
+    } catch (error) {
+      if (operationPrepared) {
+        await this.dataManager.updateHotspotProvisioningStatus(contact.id, "FAILED", {
+          error: error.message,
+          checkedAt: new Date().toISOString(),
+        }).catch((statusError) => {
+          this.activityLog.push("error", "hotspot-reactivation", `Gagal menyimpan status reaktivasi ${contact.mikrotikUsername}: ${statusError.message}`);
+        });
+      }
+      throw new Error(`Reaktivasi hotspot gagal: ${error.message}`, { cause: error });
+    }
     this.activityLog.push("info", "hotspot-reactivation", `User hotspot ${result.username} direaktivasi`, {
       contactId: contact.id,
       username: result.username,
@@ -632,6 +677,7 @@ class HotspotReactivationScheduler {
       : await this.sendReactivationNotification(updatedContact);
 
     return {
+      operation: "REACTIVATE",
       contact: notification.contact || updatedContact,
       notification,
       ...result,

@@ -7,6 +7,7 @@ function createServiceWithUsers(initialUsers = []) {
   const users = initialUsers.map((user) => ({ ...user }));
   let addCalls = 0;
   let updateCalls = 0;
+  let removeCalls = 0;
   let killedSessions = 0;
   const userMenu = {
     print: async () => users.map((user) => ({ ...user })),
@@ -20,6 +21,12 @@ function createServiceWithUsers(initialUsers = []) {
       const user = users.find((item) => String(item[".id"] || item.id) === String(id));
       if (!user) throw new Error("user tidak ditemukan");
       Object.assign(user, payload);
+      return [];
+    },
+    remove: async (id) => {
+      removeCalls += 1;
+      const index = users.findIndex((item) => String(item[".id"] || item.id) === String(id));
+      if (index >= 0) users.splice(index, 1);
       return [];
     },
   };
@@ -49,6 +56,7 @@ function createServiceWithUsers(initialUsers = []) {
     users,
     getAddCalls: () => addCalls,
     getUpdateCalls: () => updateCalls,
+    getRemoveCalls: () => removeCalls,
     getKilledSessions: () => killedSessions,
   };
 }
@@ -188,4 +196,87 @@ test("edit hotspot menolak username baru yang sudah digunakan akun lain", async 
     /Username baru.*sudah dipakai/
   );
   assert.equal(getUpdateCalls(), 0);
+});
+
+test("reaktivasi memperbarui akun yang sama tanpa menghapus user terlebih dahulu", async () => {
+  const {
+    service,
+    users,
+    getUpdateCalls,
+    getRemoveCalls,
+    getKilledSessions,
+  } = createServiceWithUsers([{
+    ".id": "*1",
+    name: "pelanggan_reaktivasi",
+    profile: "50M",
+    password: "lama",
+    email: "6281234567895@localhost.local",
+    disabled: "true",
+    active: true,
+  }]);
+
+  const result = await service.reactivateHotspotUser({
+    username: "pelanggan_reaktivasi",
+    phoneNumber: "6281234567895",
+    password: "67895",
+    profile: "100M",
+  });
+
+  assert.equal(result.updated, true);
+  assert.equal(result.created, false);
+  assert.equal(users.length, 1);
+  assert.equal(users[0].password, "67895");
+  assert.equal(users[0].disabled, "no");
+  assert.equal(getUpdateCalls(), 1);
+  assert.equal(getRemoveCalls(), 0);
+  assert.equal(getKilledSessions(), 1);
+});
+
+test("reaktivasi membuat akun jika user memang sudah tidak ada", async () => {
+  const { service, users, getAddCalls } = createServiceWithUsers();
+
+  const result = await service.reactivateHotspotUser({
+    username: "pelanggan_hilang",
+    phoneNumber: "6281234567896",
+    password: "67896",
+    profile: "100M",
+  });
+
+  assert.equal(result.created, true);
+  assert.equal(result.updated, false);
+  assert.equal(users[0].name, "pelanggan_hilang");
+  assert.equal(getAddCalls(), 1);
+});
+
+test("deaktivasi memastikan user sudah tidak tersisa di MikroTik", async () => {
+  const { service, users, getRemoveCalls } = createServiceWithUsers([{
+    ".id": "*1",
+    name: "pelanggan_nonaktif",
+    profile: "100M",
+    email: "6281234567897@localhost.local",
+  }]);
+
+  const result = await service.deleteHotspotUser("pelanggan_nonaktif", "6281234567897");
+
+  assert.equal(result.removedUsers, 1);
+  assert.equal(users.length, 0);
+  assert.equal(getRemoveCalls(), 1);
+});
+
+test("deaktivasi menolak menghapus akun yang dimiliki pelanggan lain", async () => {
+  const { service, users, getRemoveCalls, getKilledSessions } = createServiceWithUsers([{
+    ".id": "*1",
+    name: "pelanggan_nonaktif",
+    profile: "100M",
+    email: "6289999999999@localhost.local",
+    active: true,
+  }]);
+
+  await assert.rejects(
+    () => service.deleteHotspotUser("pelanggan_nonaktif", "6281234567897"),
+    /terhubung ke pelanggan yang berbeda/
+  );
+  assert.equal(users.length, 1);
+  assert.equal(getRemoveCalls(), 0);
+  assert.equal(getKilledSessions(), 0);
 });

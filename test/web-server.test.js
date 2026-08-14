@@ -16,7 +16,7 @@ afterEach(async () => {
   })));
 });
 
-async function startServer(dataManager = {}, notificationBot = {}, mikrotikService = {}) {
+async function startServer(dataManager = {}, notificationBot = {}, mikrotikService = {}, hotspotReactivationScheduler = {}) {
   const activityLog = { push() {}, list: () => [] };
   const authManager = new AuthManager(activityLog);
   const server = new WebServer(
@@ -40,7 +40,7 @@ async function startServer(dataManager = {}, notificationBot = {}, mikrotikServi
     { isProcessing: false, processDueReminders: async () => {} },
     authManager,
     mikrotikService,
-    { isProcessing: false }
+    { isProcessing: false, ...hotspotReactivationScheduler }
   ).app.listen(0, "127.0.0.1");
   openServers.push(server);
   await new Promise((resolve) => server.once("listening", resolve));
@@ -471,4 +471,54 @@ test("retry edit hotspot tetap memakai snapshot username lama", async () => {
   assert.equal(response.status, 200);
   assert.equal(previousUsername, "username_lama");
   assert.deepEqual(statuses, ["PROVISIONING", "ACTIVE"]);
+});
+
+test("retry lifecycle reaktivasi diteruskan ke scheduler, bukan provisioning create", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  let schedulerCalls = 0;
+  let createCalls = 0;
+  const contact = {
+    id: "contact-reactivation-retry",
+    name: "Pelanggan Reaktivasi",
+    phoneNumber: "6281234567899",
+    mikrotikUsername: "pelanggan_reaktivasi",
+    mikrotikProfile: "100M",
+    hotspotProvisioningStatus: "FAILED",
+    hotspotProvisioningOperation: "REACTIVATE",
+  };
+  const baseUrl = await startServer({
+    getContact: () => contact,
+    hydrateContact: (value) => value,
+    toPublicContact: (value) => value,
+  }, {}, {
+    createHotspotCustomer: async () => {
+      createCalls += 1;
+    },
+  }, {
+    reactivateContact: async () => {
+      schedulerCalls += 1;
+      contact.hotspotProvisioningStatus = "ACTIVE";
+      contact.hotspotProvisioningOperation = "NONE";
+      return {
+        operation: "REACTIVATE",
+        username: contact.mikrotikUsername,
+        password: "secret",
+        contact,
+        notification: { sent: false },
+      };
+    },
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/hotspot/provision`, {
+    method: "POST",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.operation, "REACTIVATE");
+  assert.equal(payload.data.password, undefined);
+  assert.equal(schedulerCalls, 1);
+  assert.equal(createCalls, 0);
 });
