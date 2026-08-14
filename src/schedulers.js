@@ -481,6 +481,39 @@ class DatabaseBackupScheduler {
   }
 }
 
+class HotspotStatusSyncScheduler {
+  constructor(mikrotikService, dataManager, activityLog) {
+    this.mikrotikService = mikrotikService;
+    this.dataManager = dataManager;
+    this.activityLog = activityLog;
+    this.isProcessing = false;
+  }
+
+  async processStatusSync() {
+    if (this.isProcessing) {
+      return { skipped: true, reason: "Sinkronisasi sebelumnya masih berjalan." };
+    }
+
+    this.isProcessing = true;
+    const observedAt = new Date().toISOString();
+    try {
+      const routerUsers = await this.mikrotikService.getHotspotUsers();
+      const result = await this.dataManager.reconcileHotspotStatuses(routerUsers, {
+        observedAt,
+        checkedAt: new Date().toISOString(),
+      });
+
+      if (result.updated > 0) {
+        const level = result.missing > 0 || result.changed > 0 ? "warn" : "info";
+        this.activityLog.push(level, "hotspot-sync", `Status hotspot diperbarui untuk ${result.updated} pelanggan`, result);
+      }
+      return result;
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+}
+
 class HotspotReactivationScheduler {
   constructor(mikrotikService, dataManager, activityLog, notificationBot = null) {
     this.mikrotikService = mikrotikService;
@@ -1087,6 +1120,7 @@ module.exports = {
   ApDownNotifier,
   DatabaseBackupScheduler,
   HotspotReactivationScheduler,
+  HotspotStatusSyncScheduler,
   MikrotikBackupScheduler,
   ReminderScheduler,
   WhatsAppProviderStatusNotifier,

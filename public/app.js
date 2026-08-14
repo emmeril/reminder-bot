@@ -208,7 +208,11 @@
 
           this.pollers.push(setInterval(() => {
             if (!document.hidden) {
-              this.loadStatus({ silent: true });
+              const requests = [this.loadStatus({ silent: true })];
+              if (this.activeMenu === "contacts" && this.activeContactTab === "hotspot") {
+                requests.push(this.loadContacts({ silent: true }));
+              }
+              void Promise.allSettled(requests);
             }
           }, statusInterval));
 
@@ -1002,8 +1006,8 @@
           }
         },
 
-        async loadContacts() {
-          this.contacts = await this.api("/api/contacts");
+        async loadContacts(options = {}) {
+          this.contacts = await this.api("/api/contacts", { silent: Boolean(options.silent) });
           this.clampPage("contacts", this.filteredContacts.length);
           this.clampPage("contactBilling", this.filteredBillingContacts.length);
           this.clampPage("contactHotspot", this.filteredHotspotContacts.length);

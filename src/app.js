@@ -28,6 +28,7 @@ const {
   ApDownNotifier,
   DatabaseBackupScheduler,
   HotspotReactivationScheduler,
+  HotspotStatusSyncScheduler,
   MikrotikBackupScheduler,
   ReminderScheduler,
   WhatsAppProviderStatusNotifier,
@@ -2294,6 +2295,153 @@ class DataManager {
     });
   }
 
+  async reconcileHotspotStatuses(routerUsers, options = {}) {
+    return this.withDataMutation(async () => {
+      const observedAt = this.normalizeOptionalDate(options.observedAt) || new Date().toISOString();
+      const checkedAt = this.normalizeOptionalDate(options.checkedAt) || new Date().toISOString();
+      const observedTime = new Date(observedAt).getTime();
+      const usersByUsername = new Map();
+
+      for (const routerUser of Array.isArray(routerUsers) ? routerUsers : []) {
+        const username = sanitizeInput(routerUser?.username || routerUser?.name || "");
+        if (username) usersByUsername.set(username.toLowerCase(), routerUser);
+      }
+
+      const summary = {
+        checked: 0,
+        active: 0,
+        missing: 0,
+        changed: 0,
+        deactivated: 0,
+        skipped: 0,
+        updated: 0,
+      };
+
+      for (const contact of this.contacts.values()) {
+        const username = sanitizeInput(contact.mikrotikUsername || "");
+        const expectedProfile = sanitizeInput(contact.mikrotikProfile || "");
+        if (!username) continue;
+        if (!expectedProfile) {
+          summary.skipped += 1;
+          continue;
+        }
+
+        const currentStatus = normalizeHotspotProvisioningStatus(
+          contact.hotspotProvisioningStatus,
+          HOTSPOT_PROVISIONING_STATUS.ACTIVE
+        );
+        if ([
+          HOTSPOT_PROVISIONING_STATUS.PENDING,
+          HOTSPOT_PROVISIONING_STATUS.PROVISIONING,
+          HOTSPOT_PROVISIONING_STATUS.FAILED,
+        ].includes(currentStatus)) {
+          summary.skipped += 1;
+          continue;
+        }
+
+        const lastSyncedTime = new Date(contact.hotspotLastSyncedAt || 0).getTime();
+        if (Number.isFinite(lastSyncedTime) && lastSyncedTime > observedTime) {
+          summary.skipped += 1;
+          continue;
+        }
+
+        const matchedRouterUser = usersByUsername.get(username.toLowerCase()) || null;
+        const routerUser = matchedRouterUser?.source === "active" ? null : matchedRouterUser;
+        let nextStatus;
+        let nextError = "";
+
+        if (!routerUser) {
+          if (currentStatus === HOTSPOT_PROVISIONING_STATUS.DEACTIVATED) {
+            nextStatus = HOTSPOT_PROVISIONING_STATUS.DEACTIVATED;
+          } else {
+            nextStatus = HOTSPOT_PROVISIONING_STATUS.MISSING;
+            nextError = `Akun "${username}" tidak ditemukan di MikroTik saat sinkronisasi otomatis.`;
+          }
+        } else {
+          const differences = [];
+          const actualProfile = sanitizeInput(routerUser.profile || "");
+          const expectedEmail = buildHotspotEmailFromPhone(contact.phoneNumber);
+          const actualEmail = sanitizeInput(routerUser.email || "").toLowerCase();
+          const disabled = routerUser.disabled === true
+            || String(routerUser.disabled || "").toLowerCase() === "true";
+
+          if (expectedProfile && actualProfile !== expectedProfile) differences.push("profile berbeda");
+          if (expectedEmail && actualEmail !== expectedEmail.toLowerCase()) {
+            differences.push("email pemilik berbeda");
+          }
+          if (disabled) differences.push("akun dinonaktifkan");
+
+          if (differences.length > 0) {
+            nextStatus = HOTSPOT_PROVISIONING_STATUS.CHANGED;
+            nextError = `Data akun "${username}" di MikroTik berubah: ${differences.join(", ")}.`;
+          } else {
+            nextStatus = HOTSPOT_PROVISIONING_STATUS.ACTIVE;
+          }
+        }
+
+        const previousError = sanitizeInput(contact.hotspotProvisioningError || "");
+        const currentOperation = normalizeHotspotProvisioningOperation(
+          contact.hotspotProvisioningOperation,
+          HOTSPOT_PROVISIONING_OPERATION.NONE
+        );
+        let stateChanged = currentStatus !== nextStatus || previousError !== nextError;
+        if (nextStatus === HOTSPOT_PROVISIONING_STATUS.ACTIVE
+          && (currentOperation !== HOTSPOT_PROVISIONING_OPERATION.NONE
+            || contact.hotspotProvisioningPrevious)) {
+          stateChanged = true;
+        }
+        contact.hotspotProvisioningStatus = nextStatus;
+        contact.hotspotProvisioningError = nextError;
+        contact.hotspotLastCheckedAt = checkedAt;
+        if (nextStatus === HOTSPOT_PROVISIONING_STATUS.ACTIVE) {
+          contact.hotspotLastSyncedAt = checkedAt;
+          contact.hotspotProvisioningOperation = HOTSPOT_PROVISIONING_OPERATION.NONE;
+          contact.hotspotProvisioningPrevious = null;
+        }
+
+        const pelanggan = this.pelanggan.get(username) || Array.from(this.pelanggan.values()).find(
+          (item) => String(item.contactId || "") === String(contact.id)
+        ) || null;
+        if (pelanggan) {
+          const nextPelangganStatus = nextStatus === HOTSPOT_PROVISIONING_STATUS.ACTIVE
+            ? "verified"
+            : nextStatus.toLowerCase();
+          if (pelanggan.status !== nextPelangganStatus
+            || pelanggan.hotspotProvisioningStatus !== nextStatus
+            || sanitizeInput(pelanggan.hotspotProvisioningError || "") !== nextError) {
+            stateChanged = true;
+          }
+          pelanggan.status = nextPelangganStatus;
+          pelanggan.hotspotProvisioningStatus = nextStatus;
+          pelanggan.hotspotProvisioningError = nextError;
+          pelanggan.hotspotLastCheckedAt = checkedAt;
+          if (nextStatus === HOTSPOT_PROVISIONING_STATUS.ACTIVE) {
+            pelanggan.hotspotLastSyncedAt = checkedAt;
+          }
+          if (stateChanged) pelanggan.tanggalUpdate = checkedAt;
+        }
+        if (stateChanged) contact.updatedAt = checkedAt;
+
+        summary.checked += 1;
+        summary.updated += stateChanged ? 1 : 0;
+        if (nextStatus === HOTSPOT_PROVISIONING_STATUS.ACTIVE) summary.active += 1;
+        if (nextStatus === HOTSPOT_PROVISIONING_STATUS.MISSING) summary.missing += 1;
+        if (nextStatus === HOTSPOT_PROVISIONING_STATUS.CHANGED) summary.changed += 1;
+        if (nextStatus === HOTSPOT_PROVISIONING_STATUS.DEACTIVATED) summary.deactivated += 1;
+      }
+
+      if (summary.updated > 0) {
+        await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+          const saveOptions = { transaction };
+          await this.saveContacts(saveOptions);
+          await this.savePelanggan(saveOptions);
+        }));
+      }
+
+      return summary;
+    });
+  }
+
   async prepareHotspotLifecycleOperation(contactId, operation) {
     return this.withDataMutation(async () => {
       const contact = this.getContact(contactId);
@@ -4383,6 +4531,11 @@ async function bootstrap() {
     activityLog,
     notificationBot
   );
+  const hotspotStatusSyncScheduler = new HotspotStatusSyncScheduler(
+    mikrotikService,
+    dataManager,
+    activityLog
+  );
 
   await dataManager.loadAll();
 
@@ -4408,6 +4561,7 @@ async function bootstrap() {
       { name: "mikrotik-backup", run: () => mikrotikBackupScheduler.processDailyBackup() },
       { name: "database-backup", run: () => databaseBackupScheduler.processDailyBackup() },
       { name: "hotspot-reactivation", run: () => hotspotReactivationScheduler.processDueReactivations() },
+      { name: "hotspot-status-sync", run: () => hotspotStatusSyncScheduler.processStatusSync() },
       { name: "monthly-payment-reset", run: () => sendMonthlyResetNotification(notificationBot, dataManager, activityLog) },
     ], activityLog);
   });
