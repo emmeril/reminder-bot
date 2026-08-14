@@ -146,6 +146,7 @@
             paymentMessageTemplateArrearsOnly: "",
             paymentMessageTemplateCurrentOnly: "",
             paymentMessageTemplateFullPaid: "",
+            billingReminderMessageTemplate: "",
             timezone: "",
             autoRescheduleMonthly: false,
             notifyContactsOnApDown: true,
@@ -694,6 +695,11 @@
           return this.getDebtPeriods(contact).length > 0;
         },
 
+        canSendBillingReminder(contact) {
+          const status = String(contact?.currentPaymentStatus || contact?.paymentStatus || "UNPAID").toUpperCase();
+          return status === "UNPAID" && this.hasDebt(contact);
+        },
+
         getDebtNote(contact) {
           const periods = this.getDebtPeriods(contact);
           return contact.debtNote || `Masih ada hutang ${periods.map((period) => period.label).join(", ") || contact.debtPeriodLabel || this.getPreviousBillingPeriodLabel()}.`;
@@ -988,6 +994,7 @@
                 paymentMessageTemplateArrearsOnly: data.settings.paymentMessageTemplateArrearsOnly || "",
                 paymentMessageTemplateCurrentOnly: data.settings.paymentMessageTemplateCurrentOnly || "",
                 paymentMessageTemplateFullPaid: data.settings.paymentMessageTemplateFullPaid || "",
+                billingReminderMessageTemplate: data.settings.billingReminderMessageTemplate || "",
                 timezone: data.settings.timezone || "",
                 autoRescheduleMonthly: Boolean(data.settings.autoRescheduleMonthly),
                 notifyContactsOnApDown: data.settings.notifyContactsOnApDown !== false,
@@ -1323,6 +1330,18 @@
               this.notify("Status pembayaran diperbarui.");
             }
             await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
+          });
+        },
+
+        async sendBillingReminder(contact) {
+          if (!contact?.id) return;
+          await this.withProcessing(`Mengirim pengingat ke ${contact.name}...`, async () => {
+            const result = await this.api(`/api/contacts/${contact.id}/billing-reminder`, {
+              method: "POST",
+              body: JSON.stringify({}),
+            });
+            this.notify(`Pengingat tagihan terkirim ke ${result.phoneNumber}.`);
+            await this.loadLogs({ silent: true });
           });
         },
 

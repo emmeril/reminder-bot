@@ -2927,6 +2927,9 @@ class DataManager {
         paymentMessageTemplateFullPaid: payload.paymentMessageTemplateFullPaid !== undefined
           ? sanitizeMultilineText(payload.paymentMessageTemplateFullPaid) || current.paymentMessageTemplateFullPaid
           : current.paymentMessageTemplateFullPaid,
+        billingReminderMessageTemplate: payload.billingReminderMessageTemplate !== undefined
+          ? sanitizeMultilineText(payload.billingReminderMessageTemplate) || current.billingReminderMessageTemplate
+          : current.billingReminderMessageTemplate,
         apDownMinimumDownMinutes: payload.apDownMinimumDownMinutes !== undefined
           ? sanitizePositiveInteger(
               payload.apDownMinimumDownMinutes,
@@ -3561,6 +3564,90 @@ class NotificationBot {
       contactId: contact.id,
     });
     return { phoneNumber: contact.phoneNumber, transactionId };
+  }
+
+  async sendBillingDebtReminder(contact, options = {}) {
+    const contactState = typeof this.dataManager.hydrateContact === "function"
+      ? this.dataManager.hydrateContact(contact)
+      : contact;
+    const currentStatus = String(
+      contactState.currentPaymentStatus || contactState.paymentStatus || PAYMENT_STATUS.UNPAID
+    ).toUpperCase();
+    const debtCount = Math.max(0, Number(
+      contactState.debtCount ?? contactState.debtPeriods?.length ?? 0
+    ) || 0);
+
+    if (currentStatus !== PAYMENT_STATUS.UNPAID) {
+      throw new Error("Pengingat hanya dapat dikirim kepada pelanggan yang belum membayar bulan berjalan.");
+    }
+    if (!contactState.hasDebt || debtCount <= 0) {
+      throw new Error("Pelanggan tidak memiliki tunggakan yang perlu diingatkan.");
+    }
+
+    const monthlyAmount = Math.max(0, Number(contactState.monthlyPaymentAmount) || 0);
+    const currentAmount = monthlyAmount;
+    const debtAmount = monthlyAmount * debtCount;
+    const totalAmount = currentAmount + debtAmount;
+    const settings = this.dataManager.getSettings();
+    const messageTemplate = sanitizeMultilineText(settings.billingReminderMessageTemplate)
+      || DEFAULT_SETTINGS.billingReminderMessageTemplate;
+    const companyName = sanitizeInput(settings.companyName) || "Emmeril Hotspot";
+    const supportSignature = sanitizeInput(settings.supportSignature) || "CS Emmeril Hotspot";
+    const { year, month } = getBillingPeriodParts(new Date(), this.dataManager.getTimezone());
+    const debtPeriods = (contactState.debtPeriods || [])
+      .map((period) => sanitizeInput(period.label || period.key || ""))
+      .filter(Boolean)
+      .join(", ") || contactState.debtPeriodLabel || "-";
+    const dueDateValue = contactState.dueDate ? new Date(contactState.dueDate) : null;
+    const dueDate = dueDateValue && !Number.isNaN(dueDateValue.getTime())
+      ? dueDateValue.toLocaleString("id-ID", {
+          day: "2-digit",
+          month: "long",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: this.dataManager.getTimezone(),
+        })
+      : "Belum dijadwalkan";
+    const formatAmount = (value) => this.dataManager.formatPaymentAmount(value);
+    const variables = {
+      name: contactState.name || "-",
+      phoneNumber: contactState.phoneNumber || "-",
+      monthlyAmount: formatAmount(monthlyAmount),
+      currentAmount: formatAmount(currentAmount),
+      debtAmount: formatAmount(debtAmount),
+      totalAmount: formatAmount(totalAmount),
+      debtCount: String(debtCount),
+      debtPeriods,
+      billingPeriod: formatBillingPeriodLabel(year, month),
+      dueDate,
+      companyName,
+      companyNameUpper: companyName.toUpperCase(),
+      supportSignature,
+    };
+    let message = messageTemplate;
+    for (const [key, value] of Object.entries(variables)) {
+      message = message.replace(new RegExp(`{{\\s*${key}\\s*}}`, "gi"), () => value);
+    }
+
+    const delivery = await this.sendMessage(contactState.phoneNumber, message, options);
+    this.activityLog.push("info", "billing-reminder", `Pengingat tagihan terkirim ke ${contactState.phoneNumber}`, {
+      contactId: contactState.id,
+      debtCount,
+      totalAmount,
+      provider: delivery.provider,
+    });
+    return {
+      phoneNumber: contactState.phoneNumber,
+      debtCount,
+      debtPeriods,
+      monthlyAmount,
+      currentAmount,
+      debtAmount,
+      totalAmount,
+      provider: delivery.provider,
+      messageId: delivery.messageId || null,
+    };
   }
 
   async notifyAdminsIfEnabled(title, body) {
@@ -4229,6 +4316,27 @@ class WebServer {
           notificationError: error.message,
         };
       }
+    }));
+
+    this.app.post("/api/contacts/:id/billing-reminder", requireApiAuth, handleApi(async (req) => {
+      const contact = this.dataManager.getContact(req.params.id);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      const contactState = this.dataManager.hydrateContact(contact);
+      const currentStatus = String(
+        contactState.currentPaymentStatus || contactState.paymentStatus || PAYMENT_STATUS.UNPAID
+      ).toUpperCase();
+      if (currentStatus !== PAYMENT_STATUS.UNPAID) {
+        throw new Error("Pengingat hanya dapat dikirim kepada pelanggan yang belum membayar bulan berjalan.");
+      }
+      if (!contactState.hasDebt || Number(contactState.debtCount) <= 0) {
+        throw new Error("Pelanggan tidak memiliki tunggakan yang perlu diingatkan.");
+      }
+
+      const result = await this.notificationBot.sendBillingDebtReminder(contactState);
+      return {
+        contact: this.dataManager.toPublicContact(contactState),
+        ...result,
+      };
     }));
 
     this.app.post("/api/contacts/:id/payment-amount", requireApiAuth, handleApi(async (req) => {

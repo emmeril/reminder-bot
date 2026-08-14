@@ -522,3 +522,74 @@ test("retry lifecycle reaktivasi diteruskan ke scheduler, bukan provisioning cre
   assert.equal(schedulerCalls, 1);
   assert.equal(createCalls, 0);
 });
+
+test("endpoint pengingat tagihan mengirim hanya untuk pelanggan belum bayar yang memiliki tunggakan", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  let sentContact = null;
+  const contact = {
+    id: "contact-billing-reminder",
+    name: "Pelanggan Tunggakan",
+    phoneNumber: "6281234567890",
+    paymentStatus: "UNPAID",
+    currentPaymentStatus: "UNPAID",
+    hasDebt: true,
+    debtCount: 2,
+  };
+  const baseUrl = await startServer({
+    getContact: () => contact,
+    hydrateContact: (value) => value,
+    toPublicContact: (value) => value,
+  }, {
+    sendBillingDebtReminder: async (value) => {
+      sentContact = value;
+      return {
+        phoneNumber: value.phoneNumber,
+        debtCount: value.debtCount,
+        totalAmount: 300000,
+        provider: "baileys",
+      };
+    },
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/billing-reminder`, {
+    method: "POST",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(sentContact.id, contact.id);
+  assert.equal(payload.data.phoneNumber, contact.phoneNumber);
+  assert.equal(payload.data.totalAmount, 300000);
+});
+
+test("endpoint pengingat tagihan menolak pelanggan lunas atau tanpa tunggakan", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const cases = [
+    {
+      contact: { id: "paid", paymentStatus: "PAID", currentPaymentStatus: "PAID", hasDebt: true, debtCount: 1 },
+      error: /belum membayar bulan berjalan/,
+    },
+    {
+      contact: { id: "no-debt", paymentStatus: "UNPAID", currentPaymentStatus: "UNPAID", hasDebt: false, debtCount: 0 },
+      error: /tidak memiliki tunggakan/,
+    },
+  ];
+
+  for (const item of cases) {
+    const baseUrl = await startServer({
+      getContact: () => item.contact,
+      hydrateContact: (value) => value,
+    });
+    const response = await fetch(`${baseUrl}/api/contacts/${item.contact.id}/billing-reminder`, {
+      method: "POST",
+      headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.match(payload.error, item.error);
+  }
+});

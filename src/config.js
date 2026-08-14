@@ -178,6 +178,7 @@ const DEFAULT_SETTINGS = {
   paymentMessageTemplateArrearsOnly: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nTerima kasih. Pembayaran tunggakan bulan sebelumnya telah kami terima.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
   paymentMessageTemplateCurrentOnly: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nTerima kasih. Pembayaran bulan ini telah kami terima.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
   paymentMessageTemplateFullPaid: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nTerima kasih. Semua tagihan Anda sudah lunas.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
+  billingReminderMessageTemplate: "*PENGINGAT TAGIHAN {{companyNameUpper}}*\n\nHalo {{name}},\n\nKami mengingatkan bahwa tagihan layanan Anda masih belum lunas.\n\n*Periode berjalan:* {{billingPeriod}}\n*Tagihan bulan berjalan:* {{currentAmount}}\n*Tunggakan:* {{debtCount}} bulan ({{debtAmount}})\n*Periode tunggakan:* {{debtPeriods}}\n*Total tagihan:* {{totalAmount}}\n*Jatuh tempo:* {{dueDate}}\n\nMohon melakukan pembayaran. Jika sudah membayar, abaikan pesan ini.\n\n{{supportSignature}}",
   timezone: "Asia/Jakarta",
   lastPaymentResetPeriod: "",
   autoRescheduleMonthly: true,

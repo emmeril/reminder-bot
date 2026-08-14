@@ -262,6 +262,20 @@ test("menolak timezone aplikasi yang tidak dikenal", async () => {
   );
 });
 
+test("menyimpan template pengingat tagihan dari menu pengaturan", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.saveSettings = async () => {};
+
+  const settings = await manager.updateSettings({
+    billingReminderMessageTemplate: "Halo {{name}}, total tagihan {{totalAmount}}.",
+  });
+
+  assert.equal(
+    settings.billingReminderMessageTemplate,
+    "Halo {{name}}, total tagihan {{totalAmount}}."
+  );
+});
+
 test("registrasi pelanggan MikroTik menyimpan AP dan jadwal reaktivasi dari form", async () => {
   const manager = new DataManager({ push() {} });
   manager.sequelize = {
