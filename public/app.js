@@ -1421,9 +1421,7 @@
           if (!name) return;
           const tpl = this.templates.find((t) => t.name === name);
           if (!tpl) return;
-          const contact = this.contacts.find((c) => c.id === this.forms.reminder.contactId) || null;
-          const dateIso = (this.forms.reminder.reminderDate && this.forms.reminder.reminderTime) ? `${this.forms.reminder.reminderDate}T${this.forms.reminder.reminderTime}:00` : null;
-          this.forms.reminder.message = this.applyTemplateContent(tpl.content, contact, dateIso);
+          this.forms.reminder.message = tpl.content || "";
         },
         onManualContactChange() {
           const selected = this.contacts.find((c) => String(c.id) === String(this.forms.manual.contactId));
@@ -1525,7 +1523,7 @@
             reminderDate: this.formatDateInput(reminder.reminderDateTime),
             reminderTime: this.formatTimeInput(reminder.reminderDateTime),
             templateName: reminder.templateName || "",
-            message: reminder.message || "",
+            message: reminder.messageSource || reminder.message || "",
           };
           this.clearFormError("reminderEdit");
           this.reminderEditModal.open = true;
@@ -1545,11 +1543,7 @@
           if (!name) return;
           const tpl = this.templates.find((t) => t.name === name);
           if (!tpl) return;
-          const contact = this.contacts.find((c) => c.id === this.forms.reminderEdit.contactId) || null;
-          const dateIso = (this.forms.reminderEdit.reminderDate && this.forms.reminderEdit.reminderTime)
-            ? `${this.forms.reminderEdit.reminderDate}T${this.forms.reminderEdit.reminderTime}:00`
-            : null;
-          this.forms.reminderEdit.message = this.applyTemplateContent(tpl.content, contact, dateIso);
+          this.forms.reminderEdit.message = tpl.content || "";
         },
 
         onReminderEditContactChange() {

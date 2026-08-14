@@ -168,6 +168,8 @@ const PAYMENT_TYPES = {
   FULL_PAID: "FULL-PAID",
 };
 
+const DEFAULT_REMINDER_MESSAGE_TEMPLATE = "Yth. {{name}},\n\nKami ingin menginformasikan bahwa tagihan Wifi {{companyName}} Anda sebesar {{totalAmount}} belum kami terima. Mohon melakukan pembayaran paling lambat {{date}} agar layanan tetap aktif.\n\nMetode pembayaran yang tersedia:\n\nTransfer Bank: BCA 134-266-9497 a/n Hafriyanto\nE-Wallet: DANA 087728972090\n\nJika Anda sudah melakukan pembayaran, silakan abaikan pesan ini.\n\nTerima kasih atas perhatian dan kerjasamanya.\nHormat kami,\n{{supportSignature}}";
+
 const DEFAULT_SETTINGS = {
   dashboardTitle: "Reminder Bot Control Center",
   companyName: "Emmeril Hotspot",
@@ -193,10 +195,12 @@ const DEFAULT_SETTINGS = {
   mikrotikBackupTimezone: "Asia/Jakarta",
   mikrotikBackupLastRunDate: "",
   databaseBackupLastRunDate: "",
+  reminderVariableTemplateMigrationVersion: 0,
 };
 
 module.exports = {
   CONFIG,
+  DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   DEFAULT_SETTINGS,
   MONTH_NAMES,
   PAYMENT_STATUS,

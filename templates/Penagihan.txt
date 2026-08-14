@@ -1,6 +1,6 @@
-Yth. {{nama}},
+Yth. {{name}},
 
-Kami ingin menginformasikan bahwa tagihan Wifi Emmeril Hotspot Anda sebesar Rp 100.000 belum kami terima. Mohon melakukan pembayaran paling lambat 2026-05-22 agar layanan tetap aktif.
+Kami ingin menginformasikan bahwa tagihan Wifi {{companyName}} Anda sebesar {{totalAmount}} belum kami terima. Mohon melakukan pembayaran paling lambat {{date}} agar layanan tetap aktif.
 
 Metode pembayaran yang tersedia:
 
@@ -11,4 +11,4 @@ Jika Anda sudah melakukan pembayaran, silakan abaikan pesan ini.
 
 Terima kasih atas perhatian dan kerjasamanya.
 Hormat kami,
-CS Emmeril Hotspot
+{{supportSignature}}

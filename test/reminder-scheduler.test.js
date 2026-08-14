@@ -2,7 +2,42 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const { ReminderScheduler } = require("../src/schedulers");
+const { DEFAULT_REMINDER_MESSAGE_TEMPLATE } = require("../src/config");
 const { formatDate } = require("../src/utils");
+
+test("template reminder dirender dari variabel saat pesan akan dikirim", () => {
+  const reminder = {
+    contactName: "Nouval",
+    phoneNumber: "6287728972090",
+    reminderDateTime: "2026-08-15T01:00:00.000Z",
+    message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+    messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+  };
+  const dataManager = {
+    getSettings: () => ({
+      companyName: "Emmeril Hotspot",
+      supportSignature: "CS Emmeril Hotspot",
+    }),
+    getTimezone: () => "Asia/Jakarta",
+    getResolvedReminderContact: () => ({
+      name: "Nouval",
+      phoneNumber: "6287728972090",
+      paymentStatus: "UNPAID",
+      currentPaymentStatus: "UNPAID",
+      debtCount: 1,
+      debtPeriods: [{ key: "2026-07", label: "Juli 2026" }],
+      monthlyPaymentAmount: 100_000,
+    }),
+  };
+
+  const message = new ReminderScheduler({}, dataManager, { push() {} }).buildReminderMessage(reminder);
+
+  assert.match(message, /^Yth\. Nouval,/);
+  assert.match(message, /Wifi Emmeril Hotspot Anda sebesar Rp\s?200\.000/);
+  assert.match(message, /paling lambat 2026-08-15/);
+  assert.match(message, /CS Emmeril Hotspot$/);
+  assert.doesNotMatch(message, /{{|}}/);
+});
 
 test("nominal reminder otomatis bertambah sesuai jumlah tunggakan", () => {
   const reminder = { message: "Halo, tagihan Anda sudah terbit." };

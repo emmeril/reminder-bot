@@ -13,6 +13,7 @@ const { RouterOSClient } = require("routeros-client");
 const { Sequelize, DataTypes } = require("sequelize");
 const {
   CONFIG,
+  DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   DEFAULT_SETTINGS,
   MONTH_NAMES,
   PAYMENT_STATUS,
@@ -1169,6 +1170,7 @@ class DataManager {
     this.normalizeLoadedContacts();
     await this.normalizeReminderRelations();
     await this.migrateReminderPaymentAmounts();
+    await this.migrateReminderVariableTemplates();
     const migration = await migrateWhatsAppProviderMetadata(this);
     if (migration.remindersChanged || migration.sentChanged) {
       this.activityLog.push("info", "storage", "WhatsApp provider metadata migration selesai", migration);
@@ -1779,6 +1781,40 @@ class DataManager {
     if (remindersChanged) await this.saveSentReminders();
   }
 
+  async migrateReminderVariableTemplates() {
+    return this.withDataMutation(async () => {
+      const settings = this.getSettings();
+      if (Number(settings.reminderVariableTemplateMigrationVersion) >= 1) {
+        return { migrated: 0, version: 1 };
+      }
+
+      let migrated = 0;
+      for (const reminder of this.reminders.values()) {
+        if (String(reminder.templateName || "").toLowerCase() !== "penagihan.txt") continue;
+        reminder.messageSource = DEFAULT_REMINDER_MESSAGE_TEMPLATE;
+        reminder.message = DEFAULT_REMINDER_MESSAGE_TEMPLATE;
+        const contact = this.getResolvedReminderContact(reminder);
+        if (contact) this.rewriteReminderPaymentMessage(reminder, contact);
+        migrated += 1;
+      }
+
+      this.settings = {
+        ...settings,
+        reminderVariableTemplateMigrationVersion: 1,
+      };
+      await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+        const options = { transaction };
+        if (migrated > 0) await this.saveReminders(options);
+        await this.saveSettings(options);
+      }));
+      this.activityLog.push("info", "storage", `Template variabel diterapkan ke ${migrated} reminder aktif`, {
+        migration: "reminder-variable-template-v1",
+        migrated,
+      });
+      return { migrated, version: 1 };
+    });
+  }
+
   formatPaymentAmount(amount) {
     return new Intl.NumberFormat("id-ID", {
       style: "currency",
@@ -1806,11 +1842,14 @@ class DataManager {
     const currentPaid = String(debtInfo.currentPaymentStatus || contact.paymentStatus || "UNPAID").toUpperCase() === PAYMENT_STATUS.PAID;
     const totalPeriods = (currentPaid ? 0 : 1) + debtCount;
     const totalAmount = monthlyAmount * totalPeriods;
+    const hasBillingVariables = /{{\s*(?:monthlyAmount|currentAmount|debtAmount|totalAmount|debtCount|debtPeriods|totalPeriods)\s*}}/i.test(sourceMessage);
 
     let nextMessage;
     if (totalPeriods <= 0) {
       nextMessage = `*Status pembayaran: LUNAS*\n\nSeluruh tagihan ${contact.name || "pelanggan"} sudah lunas. Reminder ini akan dilewati otomatis selama status pembayaran tetap lunas.`;
     } else if (monthlyAmount <= 0) {
+      nextMessage = sourceMessage;
+    } else if (hasBillingVariables) {
       nextMessage = sourceMessage;
     } else {
       const totalText = this.formatPaymentAmount(totalAmount);

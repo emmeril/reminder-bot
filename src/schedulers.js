@@ -90,25 +90,60 @@ class ReminderScheduler {
 
   buildReminderMessage(reminder) {
     const billing = this.getReminderBilling(reminder);
-    if (billing.monthlyAmount <= 0 || billing.totalPeriods <= 0) return reminder.message;
-
+    const settings = typeof this.dataManager.getSettings === "function"
+      ? this.dataManager.getSettings()
+      : {};
+    const timeZone = typeof this.dataManager.getTimezone === "function"
+      ? this.dataManager.getTimezone()
+      : "Asia/Jakarta";
+    const scheduledAt = reminder.reminderDateTime || new Date();
+    const companyName = sanitizeInput(settings.companyName) || "Emmeril Hotspot";
+    const supportSignature = sanitizeInput(settings.supportSignature) || "CS Emmeril Hotspot";
+    const debtPeriods = (billing.contact?.debtPeriods || [])
+      .map((period) => sanitizeInput(period.label || period.key || ""))
+      .filter(Boolean)
+      .join(", ") || billing.contact?.debtPeriodLabel || "-";
     const variables = {
+      name: billing.contact?.name || reminder.contactName || "-",
+      nama: billing.contact?.name || reminder.contactName || "-",
+      phoneNumber: billing.contact?.phoneNumber || reminder.phoneNumber || "-",
+      date: formatDate(scheduledAt, timeZone),
+      dateTime: formatDateTime(scheduledAt, timeZone),
+      billingPeriod: new Date(scheduledAt).toLocaleString("id-ID", {
+        month: "long",
+        year: "numeric",
+        timeZone,
+      }),
       monthlyAmount: this.formatRupiah(billing.monthlyAmount),
       currentAmount: this.formatRupiah(billing.currentAmount),
       debtAmount: this.formatRupiah(billing.debtAmount),
       totalAmount: this.formatRupiah(billing.totalAmount),
       debtCount: String(billing.debtCount),
+      debtPeriods,
+      totalPeriods: String(billing.totalPeriods),
+      companyName,
+      companyNameUpper: companyName.toUpperCase(),
+      supportSignature,
     };
-    let message = reminder.message;
+    let message = String(reminder.messageSource || reminder.message || "");
     let usedAmountPlaceholder = false;
+    const amountVariables = new Set([
+      "monthlyAmount",
+      "currentAmount",
+      "debtAmount",
+      "totalAmount",
+      "debtCount",
+      "debtPeriods",
+      "totalPeriods",
+    ]);
 
     for (const [key, value] of Object.entries(variables)) {
       const pattern = new RegExp(`{{\\s*${key}\\s*}}`, "gi");
-      if (pattern.test(message)) usedAmountPlaceholder = true;
-      message = message.replace(pattern, value);
+      if (amountVariables.has(key) && pattern.test(message)) usedAmountPlaceholder = true;
+      message = message.replace(pattern, () => value);
     }
 
-    if (usedAmountPlaceholder) return message;
+    if (usedAmountPlaceholder || billing.monthlyAmount <= 0 || billing.totalPeriods <= 0) return message;
 
     const details = [
       "*Rincian Pembayaran*",

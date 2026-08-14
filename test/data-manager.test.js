@@ -3,6 +3,7 @@ const test = require("node:test");
 
 const { DataManager } = require("../src/app");
 const {
+  DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   PAYMENT_STATUS,
   PAYMENT_TYPES,
 } = require("../src/config");
@@ -140,6 +141,31 @@ test("pesan reminder lunas kembali menjadi tagihan ketika status di-reset", asyn
   assert.match(reminder.message, /belum kami terima/);
 });
 
+test("reminder baru menyimpan template variabel tanpa mengganti data pelanggan", async () => {
+  const contact = {
+    id: "contact-variable-reminder",
+    name: "Nouval",
+    phoneNumber: "6287728972090",
+    createdAt: new Date().toISOString(),
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+
+  const reminder = await manager.addReminder({
+    contactId: contact.id,
+    reminderDateTime: new Date(Date.now() + 86_400_000),
+    message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+    templateName: "Penagihan.txt",
+  });
+
+  assert.equal(reminder.message, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
+  assert.equal(reminder.messageSource, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
+  assert.match(reminder.message, /{{name}}/);
+  assert.match(reminder.message, /{{totalAmount}}/);
+});
+
 test("reset pembayaran bulanan juga menyegarkan pesan reminder aktif", async () => {
   const contact = {
     id: "contact-monthly-reset",
@@ -274,6 +300,49 @@ test("menyimpan template pengingat tagihan dari menu pengaturan", async () => {
     settings.billingReminderMessageTemplate,
     "Halo {{name}}, total tagihan {{totalAmount}}."
   );
+});
+
+test("migration mengganti reminder Penagihan existing dengan template variabel satu kali", async () => {
+  const contact = {
+    id: "contact-reminder-migration",
+    name: "Nouval",
+    phoneNumber: "6287728972090",
+    createdAt: new Date().toISOString(),
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+  manager.saveSettings = async () => {};
+  manager.settings.reminderVariableTemplateMigrationVersion = 0;
+  manager.reminders.set("billing", {
+    id: "billing",
+    contactId: contact.id,
+    phoneNumber: contact.phoneNumber,
+    message: "Yth. Nouval, tagihan Rp 100.000 jatuh tempo 2026-08-15.",
+    messageSource: "Yth. Nouval, tagihan Rp 100.000 jatuh tempo 2026-08-15.",
+    reminderDateTime: "2026-08-15T01:00:00.000Z",
+    templateName: "Penagihan.txt",
+  });
+  manager.reminders.set("custom", {
+    id: "custom",
+    contactId: contact.id,
+    phoneNumber: contact.phoneNumber,
+    message: "Pesan khusus pelanggan.",
+    messageSource: "Pesan khusus pelanggan.",
+    reminderDateTime: "2026-08-16T01:00:00.000Z",
+    templateName: "Info.txt",
+  });
+
+  const first = await manager.migrateReminderVariableTemplates();
+  const second = await manager.migrateReminderVariableTemplates();
+
+  assert.equal(first.migrated, 1);
+  assert.equal(second.migrated, 0);
+  assert.equal(manager.reminders.get("billing").messageSource, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
+  assert.equal(manager.reminders.get("billing").message, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
+  assert.equal(manager.reminders.get("custom").message, "Pesan khusus pelanggan.");
+  assert.equal(manager.settings.reminderVariableTemplateMigrationVersion, 1);
 });
 
 test("registrasi pelanggan MikroTik menyimpan AP dan jadwal reaktivasi dari form", async () => {
