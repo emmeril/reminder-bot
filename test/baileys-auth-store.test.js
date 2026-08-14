@@ -28,7 +28,7 @@ afterEach(async () => {
   )));
 });
 
-test("menyimpan creds dan seluruh jenis key auth Baileys v7", async () => {
+test("menyimpan creds dan seluruh jenis key auth Baileys", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "reminder-baileys-"));
   temporaryDirectories.push(directory);
   const storagePath = path.join(directory, "auth.sqlite");
