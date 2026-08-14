@@ -4,6 +4,33 @@ const { isValidPhoneNumber, normalizePhoneNumber } = require("./utils");
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+class BoundedCache {
+  constructor(limit = 1000) {
+    this.limit = limit;
+    this.values = new Map();
+  }
+
+  get(key) {
+    return this.values.get(key);
+  }
+
+  set(key, value) {
+    this.values.delete(key);
+    this.values.set(key, value);
+    while (this.values.size > this.limit) {
+      this.values.delete(this.values.keys().next().value);
+    }
+  }
+
+  del(key) {
+    this.values.delete(key);
+  }
+
+  flushAll() {
+    this.values.clear();
+  }
+}
+
 const silentLogger = {
   trace() {},
   debug() {},
@@ -54,6 +81,12 @@ class BaileysConnection {
   lastSentAt = 0;
 
   lastActivity = null;
+
+  messageStore = new Map();
+
+  messageStoreLimit = 1000;
+
+  msgRetryCounterCache = new BoundedCache(1000);
 
   // Pengiriman aktif otomatis setelah koneksi WhatsApp benar-benar terbuka.
   // Selama pairing/reconnect belum selesai nilainya tetap false.
@@ -127,11 +160,11 @@ class BaileysConnection {
       auth: this.authState,
       browser,
       logger: silentLogger,
-      printQRInTerminal: false,
       markOnlineOnConnect: false,
       syncFullHistory: false,
-      shouldSyncHistoryMessage: () => false,
       generateHighQualityLinkPreview: false,
+      msgRetryCounterCache: this.msgRetryCounterCache,
+      getMessage: async (key) => this.getStoredMessage(key),
       connectTimeoutMs: Math.max(10_000, CONFIG.BAILEYS_CONNECT_TIMEOUT),
       defaultQueryTimeoutMs: Math.max(10_000, CONFIG.BAILEYS_QUERY_TIMEOUT),
     });
@@ -266,6 +299,7 @@ class BaileysConnection {
   async resetAuthState() {
     this.connectionGeneration += 1;
     this.outboundEnabled = false;
+    this.clearMessageRetryState();
     await this.authStore.clear();
     const auth = await this.authStore.initialize(this.baileys);
     this.authState = auth.state;
@@ -316,7 +350,7 @@ class BaileysConnection {
       this.socket = null;
       if (socket?.end) {
         try {
-          socket.end(new Error("Pairing WhatsApp direset dari halaman transport"))?.catch?.(() => {});
+          await socket.end(new Error("Pairing WhatsApp direset dari halaman transport"));
         } catch {}
       }
 
@@ -324,6 +358,7 @@ class BaileysConnection {
       if (!this.authStore) {
         this.authStore = new BaileysAuthStore(this.authStorage);
       }
+      this.clearMessageRetryState();
       await this.authStore.clear();
       const auth = await this.authStore.initialize(baileys);
       this.authState = auth.state;
@@ -457,6 +492,39 @@ class BaileysConnection {
     }
   }
 
+  getMessageStoreKey(key) {
+    const remoteJid = String(key?.remoteJid || "");
+    const participant = String(key?.participant || "");
+    const messageId = String(key?.id || "");
+    return remoteJid && messageId ? `${remoteJid}:${participant}:${messageId}` : null;
+  }
+
+  rememberMessage(message) {
+    const storeKey = this.getMessageStoreKey(message?.key);
+    if (!storeKey || !message?.message) return;
+
+    this.messageStore.delete(storeKey);
+    this.messageStore.set(storeKey, message.message);
+    while (this.messageStore.size > this.messageStoreLimit) {
+      this.messageStore.delete(this.messageStore.keys().next().value);
+    }
+  }
+
+  async getStoredMessage(key) {
+    const storeKey = this.getMessageStoreKey(key);
+    if (!storeKey) return undefined;
+    if (this.messageStore.has(storeKey)) return this.messageStore.get(storeKey);
+
+    const message = await this.authStore?.getMessage?.(key);
+    if (message) this.rememberMessage({ key, message });
+    return message;
+  }
+
+  clearMessageRetryState() {
+    this.messageStore.clear();
+    this.msgRetryCounterCache.flushAll();
+  }
+
   async checkPhoneNumber(number) {
     const normalized = normalizePhoneNumber(number);
     if (!isValidPhoneNumber(normalized)) {
@@ -506,6 +574,8 @@ class BaileysConnection {
     try {
       const jid = await this.resolveRecipientJid(normalized);
       const result = await this.socket.sendMessage(jid, { text: String(message || "") });
+      this.rememberMessage(result);
+      await this.authStore?.saveMessage?.(result?.key, result?.message).catch(() => {});
       this.lastActivity = Date.now();
       this.updateConnection({
         connected: true,
@@ -581,7 +651,11 @@ class BaileysConnection {
     this.connectionGeneration += 1;
     const socket = this.socket;
     this.socket = null;
-    if (socket?.end) socket.end(new Error("Application shutdown"));
+    if (socket?.end) {
+      try {
+        await socket.end(new Error("Application shutdown"));
+      } catch {}
+    }
     if (this.authStore) await this.authStore.close();
     this.authStore = null;
     this.authState = null;

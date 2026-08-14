@@ -43,6 +43,10 @@ test("menyimpan creds dan seluruh jenis key auth Baileys v7", async () => {
     tctoken: { token1: { token: "secret" } },
     "app-state-sync-key": { sync1: { keyData: "value" } },
   });
+  await store.saveMessage(
+    { remoteJid: "6281234567890@s.whatsapp.net", id: "message-1" },
+    { conversation: "Halo" }
+  );
   await store.close();
 
   const reopened = new BaileysAuthStore(storagePath);
@@ -61,5 +65,14 @@ test("menyimpan creds dan seluruh jenis key auth Baileys v7", async () => {
   assert.deepEqual(await restored.state.keys.get("app-state-sync-key", ["sync1"]), {
     sync1: { keyData: "value", hydrated: true },
   });
+  assert.deepEqual(await reopened.getMessage({
+    remoteJid: "6281234567890@s.whatsapp.net",
+    id: "message-1",
+  }), { conversation: "Halo" });
+  await reopened.clear();
+  assert.equal(await reopened.getMessage({
+    remoteJid: "6281234567890@s.whatsapp.net",
+    id: "message-1",
+  }), undefined);
   await reopened.close();
 });

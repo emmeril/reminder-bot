@@ -38,6 +38,7 @@ beforeEach(() => {
     device: null,
   };
   BaileysManager.activeInstanceId = null;
+  BaileysManager.getPrimaryConnection().clearMessageRetryState();
 });
 
 afterEach(() => {
@@ -123,7 +124,11 @@ test("mengirim pesan ke LID ketika mapping PN tersedia", async () => {
     },
     sendMessage: async (jid, content) => {
       request = { jid, content };
-      return { key: { id: "message-1", remoteJid: jid }, messageTimestamp: 123 };
+      return {
+        key: { id: "message-1", remoteJid: jid },
+        message: { conversation: "Halo" },
+        messageTimestamp: 123,
+      };
     },
   };
 
@@ -133,6 +138,42 @@ test("mengirim pesan ke LID ketika mapping PN tersedia", async () => {
   assert.equal(result.provider, "baileys");
   assert.equal(result.messageId, "message-1");
   assert.equal(result.targetJid, "123456789@lid");
+  assert.deepEqual(await BaileysManager.getPrimaryConnection().getStoredMessage({
+    id: "message-1",
+    remoteJid: "123456789@lid",
+  }), { conversation: "Halo" });
+});
+
+test("socket memakai sync bawaan Baileys dan menyediakan message retry store", async () => {
+  const connection = BaileysManager.getPrimaryConnection();
+  const originalBaileys = connection.baileys;
+  const originalAuthStore = connection.authStore;
+  const originalAuthState = connection.authState;
+  let socketConfig;
+
+  connection.authStore = {};
+  connection.authState = { creds: { registered: true }, keys: {} };
+  connection.baileys = {
+    default: (config) => {
+      socketConfig = config;
+      return { ev: { on() {} } };
+    },
+    Browsers: { ubuntu: (name) => ["Ubuntu", name, "1.0.0"] },
+  };
+
+  try {
+    await connection.connect();
+  } finally {
+    connection.socket = null;
+    connection.baileys = originalBaileys;
+    connection.authStore = originalAuthStore;
+    connection.authState = originalAuthState;
+  }
+
+  assert.equal(Object.hasOwn(socketConfig, "shouldSyncHistoryMessage"), false);
+  assert.equal(Object.hasOwn(socketConfig, "printQRInTerminal"), false);
+  assert.equal(typeof socketConfig.getMessage, "function");
+  assert.equal(socketConfig.msgRetryCounterCache, connection.msgRetryCounterCache);
 });
 
 test("menolak nomor yang tidak terdaftar di WhatsApp tanpa retry", async () => {
@@ -256,6 +297,45 @@ test("mereset pairing dan membuka socket baru tanpa restart aplikasi", async () 
   assert.equal(initialized, true);
   assert.equal(BaileysManager.authState, freshState);
   assert.equal(BaileysManager.connectionCache.state, "RECONNECTING");
+});
+
+test("reset pairing menunggu socket lama berhenti sebelum menghapus auth", async () => {
+  const connection = BaileysManager.getPrimaryConnection();
+  const originalInitialize = connection.initialize;
+  const originalAuthStore = connection.authStore;
+  const originalBaileys = connection.baileys;
+  const events = [];
+  let releaseSocket;
+
+  connection.baileys = {};
+  connection.socket = {
+    end: async () => {
+      events.push("end-start");
+      await new Promise((resolve) => { releaseSocket = resolve; });
+      events.push("end-finish");
+    },
+  };
+  connection.authStore = {
+    async clear() { events.push("auth-clear"); },
+    async initialize() {
+      return { state: { creds: { registered: false } }, saveCreds: async () => {} };
+    },
+  };
+  connection.initialize = async () => connection.connectionCache;
+
+  try {
+    const reset = connection.resetPairing();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(events, ["end-start"]);
+    releaseSocket();
+    await reset;
+  } finally {
+    connection.initialize = originalInitialize;
+    connection.authStore = originalAuthStore;
+    connection.baileys = originalBaileys;
+  }
+
+  assert.deepEqual(events, ["end-start", "end-finish", "auth-clear"]);
 });
 
 test("restart setelah scan mempertahankan auth dan menyelesaikan pairing yang sama", async () => {

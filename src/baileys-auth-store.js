@@ -3,6 +3,8 @@ const path = require("path");
 const sqlite3 = require("sqlite3");
 
 class BaileysAuthStore {
+  static MESSAGE_RETENTION_LIMIT = 1000;
+
   constructor(storagePath) {
     this.storagePath = storagePath;
     this.db = null;
@@ -32,6 +34,16 @@ class BaileysAuthStore {
         value TEXT NOT NULL,
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (category, key_type, key_id)
+      )
+    `);
+    await this.run(`
+      CREATE TABLE IF NOT EXISTS baileys_messages (
+        remote_jid TEXT NOT NULL,
+        participant TEXT NOT NULL DEFAULT '',
+        message_id TEXT NOT NULL,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (remote_jid, participant, message_id)
       )
     `);
     await Promise.all([
@@ -170,9 +182,59 @@ class BaileysAuthStore {
     ));
   }
 
+  async saveMessage(key, message) {
+    const remoteJid = String(key?.remoteJid || "");
+    const participant = String(key?.participant || "");
+    const messageId = String(key?.id || "");
+    if (!remoteJid || !messageId || !message) return;
+
+    await this.queueWrite(async () => {
+      await this.run(
+        `INSERT INTO baileys_messages (remote_jid, participant, message_id, value, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(remote_jid, participant, message_id)
+         DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+        [remoteJid, participant, messageId, this.encode(message), Date.now()]
+      );
+      await this.run(
+        `DELETE FROM baileys_messages
+         WHERE rowid NOT IN (
+           SELECT rowid FROM baileys_messages
+           ORDER BY updated_at DESC
+           LIMIT ?
+         )`,
+        [BaileysAuthStore.MESSAGE_RETENTION_LIMIT]
+      );
+    });
+  }
+
+  async getMessage(key) {
+    const remoteJid = String(key?.remoteJid || "");
+    const participant = String(key?.participant || "");
+    const messageId = String(key?.id || "");
+    if (!remoteJid || !messageId) return undefined;
+
+    const row = await this.get(
+      `SELECT value FROM baileys_messages
+       WHERE remote_jid = ? AND participant = ? AND message_id = ?`,
+      [remoteJid, participant, messageId]
+    );
+    return row ? this.decode(row.value) : undefined;
+  }
+
   async clear() {
     if (!this.db) await this.open();
-    await this.queueWrite(() => this.run("DELETE FROM baileys_auth"));
+    await this.queueWrite(async () => {
+      await this.run("BEGIN IMMEDIATE");
+      try {
+        await this.run("DELETE FROM baileys_auth");
+        await this.run("DELETE FROM baileys_messages");
+        await this.run("COMMIT");
+      } catch (error) {
+        await this.run("ROLLBACK").catch(() => {});
+        throw error;
+      }
+    });
     this.state = null;
   }
 
