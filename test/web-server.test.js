@@ -523,7 +523,7 @@ test("retry lifecycle reaktivasi diteruskan ke scheduler, bukan provisioning cre
   assert.equal(createCalls, 0);
 });
 
-test("endpoint pengingat tagihan mengirim hanya untuk pelanggan belum bayar yang memiliki tunggakan", async () => {
+test("endpoint pengingat tagihan mengirim untuk pelanggan belum bayar yang memiliki tunggakan", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   let sentContact = null;
   const contact = {
@@ -564,7 +564,43 @@ test("endpoint pengingat tagihan mengirim hanya untuk pelanggan belum bayar yang
   assert.equal(payload.data.totalAmount, 300000);
 });
 
-test("endpoint pengingat tagihan menolak pelanggan lunas atau tanpa tunggakan", async () => {
+test("endpoint pengingat tagihan mengirim tagihan jatuh tempo meski belum memiliki tunggakan bulan lalu", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  let sentContact = null;
+  const contact = {
+    id: "overdue-current-billing",
+    name: "Pelanggan Jatuh Tempo",
+    phoneNumber: "6281234567890",
+    paymentStatus: "UNPAID",
+    currentPaymentStatus: "UNPAID",
+    dueStatus: "OVERDUE",
+    hasDebt: false,
+    debtCount: 0,
+  };
+  const baseUrl = await startServer({
+    getContact: () => contact,
+    hydrateContact: (value) => value,
+    toPublicContact: (value) => value,
+  }, {
+    sendBillingDebtReminder: async (value) => {
+      sentContact = value;
+      return { phoneNumber: value.phoneNumber, debtCount: 0, totalAmount: 100000, provider: "baileys" };
+    },
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/billing-reminder`, {
+    method: "POST",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(sentContact.id, contact.id);
+  assert.equal(payload.data.totalAmount, 100000);
+});
+
+test("endpoint pengingat tagihan menolak pelanggan lunas atau tagihan yang belum jatuh tempo tanpa tunggakan", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   const cases = [
     {
@@ -572,8 +608,8 @@ test("endpoint pengingat tagihan menolak pelanggan lunas atau tanpa tunggakan", 
       error: /belum membayar bulan berjalan/,
     },
     {
-      contact: { id: "no-debt", paymentStatus: "UNPAID", currentPaymentStatus: "UNPAID", hasDebt: false, debtCount: 0 },
-      error: /tidak memiliki tunggakan/,
+      contact: { id: "no-debt", paymentStatus: "UNPAID", currentPaymentStatus: "UNPAID", dueStatus: "UPCOMING", hasDebt: false, debtCount: 0 },
+      error: /jatuh tempo atau memiliki tunggakan/,
     },
   ];
 

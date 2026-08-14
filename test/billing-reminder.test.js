@@ -74,7 +74,24 @@ test("pengingat tagihan merender rincian tunggakan lalu langsung mengirim WhatsA
   assert.equal(result.provider, "baileys");
 });
 
-test("pengingat tagihan menolak pelanggan lunas atau tanpa tunggakan", async () => {
+test("pengingat tagihan dapat dikirim untuk bulan berjalan yang sudah jatuh tempo", async () => {
+  const { bot, sent } = createBot();
+
+  const result = await bot.sendBillingDebtReminder(createContact({
+    hasDebt: false,
+    debtCount: 0,
+    debtPeriods: [],
+    dueStatus: "OVERDUE",
+  }));
+
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /Berjalan Rp 100\.000/);
+  assert.match(sent[0].message, /Tunggakan 0 bulan: Rp 0/);
+  assert.match(sent[0].message, /Total Rp 100\.000/);
+  assert.equal(result.totalAmount, 100000);
+});
+
+test("pengingat tagihan menolak pelanggan lunas atau tagihan yang belum jatuh tempo tanpa tunggakan", async () => {
   const { bot, sent } = createBot();
 
   await assert.rejects(
@@ -82,8 +99,13 @@ test("pengingat tagihan menolak pelanggan lunas atau tanpa tunggakan", async () 
     /belum membayar bulan berjalan/
   );
   await assert.rejects(
-    () => bot.sendBillingDebtReminder(createContact({ hasDebt: false, debtCount: 0, debtPeriods: [] })),
-    /tidak memiliki tunggakan/
+    () => bot.sendBillingDebtReminder(createContact({
+      hasDebt: false,
+      debtCount: 0,
+      debtPeriods: [],
+      dueStatus: "UPCOMING",
+    })),
+    /jatuh tempo atau memiliki tunggakan/
   );
   assert.equal(sent.length, 0);
 });

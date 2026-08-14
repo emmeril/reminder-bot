@@ -3619,8 +3619,9 @@ class NotificationBot {
     if (currentStatus !== PAYMENT_STATUS.UNPAID) {
       throw new Error("Pengingat hanya dapat dikirim kepada pelanggan yang belum membayar bulan berjalan.");
     }
-    if (!contactState.hasDebt || debtCount <= 0) {
-      throw new Error("Pelanggan tidak memiliki tunggakan yang perlu diingatkan.");
+    const isOverdue = String(contactState.dueStatus || "").toUpperCase() === "OVERDUE";
+    if ((!contactState.hasDebt || debtCount <= 0) && !isOverdue) {
+      throw new Error("Pengingat hanya dapat dikirim untuk tagihan yang jatuh tempo atau memiliki tunggakan.");
     }
 
     const monthlyAmount = Math.max(0, Number(contactState.monthlyPaymentAmount) || 0);
@@ -4367,8 +4368,9 @@ class WebServer {
       if (currentStatus !== PAYMENT_STATUS.UNPAID) {
         throw new Error("Pengingat hanya dapat dikirim kepada pelanggan yang belum membayar bulan berjalan.");
       }
-      if (!contactState.hasDebt || Number(contactState.debtCount) <= 0) {
-        throw new Error("Pelanggan tidak memiliki tunggakan yang perlu diingatkan.");
+      const isOverdue = String(contactState.dueStatus || "").toUpperCase() === "OVERDUE";
+      if ((!contactState.hasDebt || Number(contactState.debtCount) <= 0) && !isOverdue) {
+        throw new Error("Pengingat hanya dapat dikirim untuk tagihan yang jatuh tempo atau memiliki tunggakan.");
       }
 
       const result = await this.notificationBot.sendBillingDebtReminder(contactState);
