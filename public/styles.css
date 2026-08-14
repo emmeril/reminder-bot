@@ -732,11 +732,29 @@ table tbody tr:hover { background: #fafaff; }
 .customer-name, .customer-meta { display: block; }
 .customer-name { color: #344054; font-size: 13px; font-weight: 700; }
 .customer-meta { margin-top: 3px; color: #8a94a5; font-size: 11px; }
-.customer-amount-editor { display: flex; min-width: 255px; align-items: center; gap: 6px; }
-.customer-amount-editor .currency-input-group { min-width: 165px; }
-.customer-amount-editor > button { display: inline-flex; min-width: 38px; align-items: center; justify-content: center; gap: 6px; }
-.customer-payment-actions { display: grid; min-width: 150px; gap: 6px; }
-.customer-payment-actions button { width: 100%; white-space: nowrap; }
+.customer-table-frame { width: 100%; }
+.customer-workspace-table { width: 100%; min-width: 0; table-layout: fixed; }
+.customer-workspace-table th, .customer-workspace-table td { overflow-wrap: anywhere; }
+.customer-data-table th:nth-child(1) { width: 20%; }
+.customer-data-table th:nth-child(2) { width: 20%; }
+.customer-data-table th:nth-child(3) { width: 20%; }
+.customer-data-table th:nth-child(4) { width: 22%; }
+.customer-data-table th:nth-child(5) { width: 18%; }
+.customer-due-date { display: block; color: #596579; font-size: 12px; line-height: 1.45; }
+.customer-due-status { margin-top: 7px; }
+.customer-amount-editor { display: flex; min-width: 0; align-items: center; gap: 6px; }
+.customer-amount-editor .currency-input-group { min-width: 0; flex: 1; }
+.customer-amount-save { display: inline-flex; width: 38px; min-width: 38px; height: 38px; align-items: center; justify-content: center; padding: 0 !important; }
+.customer-payment-menu { width: 100%; min-width: 0; }
+.customer-payment-menu summary { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; color: #4f46e5; border: 1px solid #d9d7ff; border-radius: 8px; background: #f8f7ff; font-size: 11px; font-weight: 700; list-style: none; cursor: pointer; }
+.customer-payment-menu summary::-webkit-details-marker { display: none; }
+.customer-payment-menu summary > span { display: inline-flex; min-width: 0; align-items: center; gap: 7px; }
+.customer-payment-menu summary > span > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.customer-payment-menu summary > i { flex: 0 0 auto; color: #9893d8; font-size: 9px; transition: transform .15s ease; }
+.customer-payment-menu[open] summary > i { transform: rotate(180deg); }
+.customer-payment-actions { padding-top: 6px; }
+.customer-payment-action-list { display: grid; gap: 5px; }
+.customer-payment-action-list button { width: 100%; white-space: normal; }
 .customer-debt-note { display: flex; max-width: 220px; flex-direction: column; gap: 3px; margin-top: 7px; padding: 7px 8px; color: #b42318; border: 1px solid #f4c7c3; border-radius: 8px; background: #fff7f6; }
 .customer-debt-note strong { display: flex; align-items: center; gap: 5px; font-size: 11px; }
 .customer-debt-note small { color: #c05a50; font-size: 10px; line-height: 1.4; }
@@ -744,8 +762,16 @@ table tbody tr:hover { background: #fafaff; }
 .customer-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; color: #7b8494; font-size: 12px; }
 .customer-pagination-controls { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; white-space: nowrap; }
 .customer-pagination-controls span { min-width: 48px; text-align: center; }
-.customer-billing-table { min-width: 1050px; }
-.customer-hotspot-table { min-width: 820px; }
+.customer-billing-table th:nth-child(1) { width: 17%; }
+.customer-billing-table th:nth-child(2) { width: 17%; }
+.customer-billing-table th:nth-child(3) { width: 23%; }
+.customer-billing-table th:nth-child(4) { width: 23%; }
+.customer-billing-table th:nth-child(5) { width: 20%; }
+.customer-hotspot-table th:nth-child(1) { width: 19%; }
+.customer-hotspot-table th:nth-child(2) { width: 18%; }
+.customer-hotspot-table th:nth-child(3) { width: 22%; }
+.customer-hotspot-table th:nth-child(4) { width: 23%; }
+.customer-hotspot-table th:nth-child(5) { width: 18%; }
 
 @media (max-width: 767px) {
   .customer-heading { align-items: stretch; flex-direction: column; gap: 11px; }
@@ -759,12 +785,12 @@ table tbody tr:hover { background: #fafaff; }
   .customer-tab-panel { margin-top: 13px; }
   .customer-panel-toolbar { align-items: stretch; flex-direction: column; gap: 9px; }
   .customer-panel-toolbar button { width: 100%; }
-  .customer-billing-table, .customer-hotspot-table { min-width: 0; }
-  .customer-action-group, .customer-payment-actions { width: 100%; }
+  .customer-workspace-table { table-layout: auto; }
+  .customer-action-group, .customer-payment-menu, .customer-payment-actions { width: 100%; }
   .customer-action-group button { min-width: 0; flex: 1; }
   .customer-amount-editor { width: 100%; min-width: 0; }
   .customer-amount-editor .currency-input-group { min-width: 0; flex: 1; }
-  .customer-amount-editor > button span { display: none; }
+  .customer-payment-menu summary { min-height: 42px; font-size: 12px; }
   .customer-debt-note { width: 100%; max-width: none; }
   .customer-pagination { align-items: flex-start; }
   .customer-panel .table-scroll { max-height: none; overflow: visible; }

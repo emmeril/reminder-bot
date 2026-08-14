@@ -288,9 +288,9 @@
                 </template>
               </select>
             </div>
-            <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
+            <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Data pelanggan">
-                <table class="contacts-table min-w-full text-sm">
+                <table class="customer-workspace-table customer-data-table contacts-table min-w-full text-sm">
                   <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
                     <tr>
                       <th class="px-4 py-3"><i class="fa-solid fa-user mr-2"></i>Nama</th>
@@ -362,32 +362,33 @@
                 </template>
               </select>
             </div>
-            <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
+            <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Tagihan pelanggan">
-                <table class="customer-billing-table min-w-full text-sm">
+                <table class="customer-workspace-table customer-billing-table min-w-full text-sm">
                   <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
                     <tr>
                       <th class="px-4 py-3">Pelanggan</th>
                       <th class="px-4 py-3">Jatuh Tempo</th>
-                      <th class="px-4 py-3">Status Tempo</th>
                       <th class="px-4 py-3">Nominal Bulanan</th>
                       <th class="px-4 py-3">Pembayaran</th>
-                      <th class="px-4 py-3">Aksi Pembayaran</th>
+                      <th class="px-4 py-3">Aksi</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-ink/6 bg-white/70">
                     <template x-if="!filteredBillingContacts.length">
-                      <tr><td colspan="6" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada tagihan yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
+                      <tr><td colspan="5" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada tagihan yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
                     </template>
                     <template x-for="contact in paginatedBillingContacts" :key="'billing-' + contact.id">
                       <tr>
                         <td class="px-4 py-4" data-label="Pelanggan"><strong class="customer-name" x-text="contact.name"></strong><small class="customer-meta" x-text="contact.phoneNumber"></small></td>
-                        <td class="px-4 py-4 text-ink/65" data-label="Jatuh Tempo" x-text="contact.dueDate ? formatDateTime(contact.dueDate) : '-'"></td>
-                        <td class="px-4 py-4" data-label="Status Tempo"><span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getDueStatusClass(contact.dueStatus)" x-text="getDueStatusLabel(contact.dueStatus)"></span></td>
+                        <td class="px-4 py-4" data-label="Jatuh Tempo">
+                          <span class="customer-due-date" x-text="contact.dueDate ? formatDateTime(contact.dueDate) : 'Belum dijadwalkan'"></span>
+                          <span class="customer-due-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getDueStatusClass(contact.dueStatus)" x-text="getDueStatusLabel(contact.dueStatus)"></span>
+                        </td>
                         <td class="px-4 py-4" data-label="Nominal Bulanan">
                           <div class="customer-amount-editor">
                             <div class="currency-input-group"><span class="currency-prefix">Rp</span><input x-model.number="contact.monthlyPaymentAmount" type="number" min="0" max="1000000000" step="1000" class="tabular-nums" aria-label="Nominal pembayaran per bulan"></div>
-                            <button type="button" @click="saveContactPaymentAmount(contact)" class="bg-moss px-3 py-2 text-xs font-semibold text-white"><i class="fa-solid fa-floppy-disk"></i><span>Simpan</span></button>
+                            <button type="button" @click="saveContactPaymentAmount(contact)" class="customer-amount-save bg-moss text-xs font-semibold text-white" title="Simpan nominal" aria-label="Simpan nominal"><i class="fa-solid fa-floppy-disk"></i></button>
                           </div>
                         </td>
                         <td class="px-4 py-4" data-label="Pembayaran">
@@ -396,20 +397,28 @@
                             <div class="customer-debt-note"><strong><i class="fa-solid fa-triangle-exclamation"></i><span x-text="getDebtCountLabel(contact)"></span></strong><small x-text="getDebtNote(contact)"></small></div>
                           </template>
                         </td>
-                        <td class="px-4 py-4 align-top" data-label="Aksi Pembayaran">
-                          <template x-if="contact.paymentStatus !== 'PAID'">
+                        <td class="px-4 py-4 align-top" data-label="Aksi">
+                          <details class="customer-payment-menu">
+                            <summary>
+                              <span><i class="fa-solid fa-wallet"></i><span x-text="contact.paymentStatus === 'PAID' ? 'Kelola pembayaran' : 'Catat pembayaran'"></span></span>
+                              <i class="fa-solid fa-chevron-down"></i>
+                            </summary>
                             <div class="customer-payment-actions">
-                              <button x-show="hasDebt(contact)" type="button" @click="togglePayment(contact.id, 'UNPAID', 'ARREARS-ONLY')" class="border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink"><i class="fa-solid fa-circle-check mr-1.5"></i>Bayar tunggakan</button>
-                              <button type="button" @click="togglePayment(contact.id, 'PAID', 'CURRENT-ONLY')" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-calendar-check mr-1.5"></i>Bulan ini</button>
-                              <button type="button" @click="togglePayment(contact.id, 'PAID', 'FULL-PAID')" class="border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay"><i class="fa-solid fa-sack-dollar mr-1.5"></i>Lunas semua</button>
+                              <template x-if="contact.paymentStatus !== 'PAID'">
+                                <div class="customer-payment-action-list">
+                                  <button x-show="hasDebt(contact)" type="button" @click="togglePayment(contact.id, 'UNPAID', 'ARREARS-ONLY')" class="border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink"><i class="fa-solid fa-circle-check mr-1.5"></i>Bayar tunggakan</button>
+                                  <button type="button" @click="togglePayment(contact.id, 'PAID', 'CURRENT-ONLY')" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-calendar-check mr-1.5"></i>Bayar bulan ini</button>
+                                  <button type="button" @click="togglePayment(contact.id, 'PAID', 'FULL-PAID')" class="border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay"><i class="fa-solid fa-sack-dollar mr-1.5"></i>Lunas semua</button>
+                                </div>
+                              </template>
+                              <template x-if="contact.paymentStatus === 'PAID'">
+                                <div class="customer-payment-action-list">
+                                  <button x-show="hasDebt(contact)" type="button" @click="togglePayment(contact.id, 'PAID', 'FULL-PAID')" class="border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay"><i class="fa-solid fa-sack-dollar mr-1.5"></i>Lunasi hutang</button>
+                                  <button type="button" @click="togglePayment(contact.id, 'UNPAID')" class="border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink"><i class="fa-solid fa-rotate-left mr-1.5"></i>Reset pembayaran</button>
+                                </div>
+                              </template>
                             </div>
-                          </template>
-                          <template x-if="contact.paymentStatus === 'PAID'">
-                            <div class="customer-payment-actions">
-                              <button x-show="hasDebt(contact)" type="button" @click="togglePayment(contact.id, 'PAID', 'FULL-PAID')" class="border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay"><i class="fa-solid fa-sack-dollar mr-1.5"></i>Lunasi hutang</button>
-                              <button type="button" @click="togglePayment(contact.id, 'UNPAID')" class="border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink"><i class="fa-solid fa-rotate-left mr-1.5"></i>Reset pembayaran</button>
-                            </div>
-                          </template>
+                          </details>
                         </td>
                       </tr>
                     </template>
@@ -442,9 +451,9 @@
                 </template>
               </select>
             </div>
-            <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
+            <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Hotspot pelanggan">
-                <table class="customer-hotspot-table min-w-full text-sm">
+                <table class="customer-workspace-table customer-hotspot-table min-w-full text-sm">
                   <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
                     <tr>
                       <th class="px-4 py-3">Pelanggan</th>
