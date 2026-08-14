@@ -58,6 +58,7 @@
           loading: false,
         },
         activeMenu: "overview",
+        activeContactTab: "data",
         sidebarHidden: false,
         mobileSidebarOpen: false,
         navGroups: [
@@ -68,9 +69,8 @@
         ],
         navMenus: [
           { key: "overview", group: "workspace", label: "Ringkasan", icon: "fa-solid fa-table-cells-large", description: "Kondisi layanan dan pekerjaan penting hari ini." },
-          { key: "contacts", group: "operations", label: "Pelanggan", icon: "fa-solid fa-users", description: "Kelola pelanggan, akun hotspot, jatuh tempo, dan pembayaran." },
+          { key: "contacts", group: "operations", label: "Pelanggan", icon: "fa-solid fa-users", description: "Kelola data, tagihan, dan layanan hotspot pelanggan dalam tab terpisah." },
           { key: "reminders", group: "operations", label: "Jadwal Reminder", icon: "fa-solid fa-calendar-check", description: "Atur jadwal dan isi pesan reminder pelanggan." },
-          { key: "payment-amount", group: "operations", label: "Nominal Tagihan", icon: "fa-solid fa-wallet", description: "Atur nominal pembayaran bulanan setiap pelanggan." },
           { key: "monitor-ap", group: "operations", label: "Monitor Jaringan", icon: "fa-solid fa-tower-broadcast", description: "Pantau konektivitas dan kondisi access point." },
           { key: "notifications", group: "messages", label: "Kirim Pesan", icon: "fa-solid fa-paper-plane", description: "Kirim pesan personal, broadcast, dan kelola penerima admin." },
           { key: "templates", group: "messages", label: "Template Pesan", icon: "fa-solid fa-file-lines", description: "Siapkan format pesan untuk notifikasi dan reminder." },
@@ -96,8 +96,9 @@
         billingPeriod: "",
         pageSizes: [10, 25, 50, 100],
         filters: {
-          contacts: { search: "", status: "ALL", dueStatus: "ALL", page: 1, pageSize: 10 },
-          paymentAmount: { search: "", page: 1, pageSize: 10 },
+          contacts: { search: "", page: 1, pageSize: 10 },
+          contactBilling: { search: "", status: "ALL", dueStatus: "ALL", page: 1, pageSize: 10 },
+          contactHotspot: { search: "", status: "ALL", page: 1, pageSize: 10 },
           monitorAp: { search: "", status: "ALL", page: 1, pageSize: 10 },
           reminders: { search: "", schedule: "ALL", page: 1, pageSize: 10 },
           sent: { search: "", status: "ALL", page: 1, pageSize: 10 },
@@ -162,9 +163,18 @@
         async init() {
           const requestedMenu = new URLSearchParams(window.location.search).get("menu");
           const savedMenu = requestedMenu || localStorage.getItem("dashboardActiveMenu");
+          const savedContactTab = localStorage.getItem("dashboardContactTab");
           const isValidSavedMenu = this.navMenus.some((menu) => menu.key === savedMenu);
-          if (isValidSavedMenu) {
+          if (savedMenu === "payment-amount") {
+            this.activeMenu = "contacts";
+            this.activeContactTab = "billing";
+            localStorage.setItem("dashboardActiveMenu", "contacts");
+            localStorage.setItem("dashboardContactTab", "billing");
+          } else if (isValidSavedMenu) {
             this.activeMenu = savedMenu;
+          }
+          if (savedMenu !== "payment-amount" && ["data", "billing", "hotspot"].includes(savedContactTab)) {
+            this.activeContactTab = savedContactTab;
           }
           this.sidebarHidden = localStorage.getItem("dashboardSidebarHidden") === "true";
 
@@ -173,6 +183,9 @@
           });
           this.$watch("sidebarHidden", (value) => {
             localStorage.setItem("dashboardSidebarHidden", value ? "true" : "false");
+          });
+          this.$watch("activeContactTab", (value) => {
+            localStorage.setItem("dashboardContactTab", value);
           });
 
           await this.loadStatus();
@@ -211,9 +224,18 @@
         },
 
         selectMenu(key) {
+          if (key === "payment-amount") {
+            this.activeContactTab = "billing";
+            key = "contacts";
+          }
           this.activeMenu = key;
           this.mobileSidebarOpen = false;
           window.scrollTo({ top: 0, behavior: "smooth" });
+        },
+
+        selectContactTab(key) {
+          if (!["data", "billing", "hotspot"].includes(key)) return;
+          this.activeContactTab = key;
         },
 
         get activeMenuLabel() {
@@ -733,9 +755,17 @@
         },
 
         get filteredContacts() {
+          return this.contacts.filter((contact) => this.searchMatches(
+            contact,
+            ["name", "phoneNumber", "linkedApHost"],
+            this.filters.contacts.search
+          ));
+        },
+
+        get filteredBillingContacts() {
           return this.contacts.filter((contact) => {
-            const selectedStatus = String(this.filters.contacts.status || "ALL").toUpperCase();
-            const selectedDueStatus = String(this.filters.contacts.dueStatus || "ALL").toUpperCase();
+            const selectedStatus = String(this.filters.contactBilling.status || "ALL").toUpperCase();
+            const selectedDueStatus = String(this.filters.contactBilling.dueStatus || "ALL").toUpperCase();
             const paymentStatus = String(contact.paymentStatus || "UNPAID").toUpperCase();
             const savedPaymentType = String(contact.paymentType || "").toUpperCase();
             const dueStatus = String(contact.dueStatus || "NOT_SCHEDULED").toUpperCase();
@@ -751,8 +781,24 @@
 
             return this.searchMatches(
               contact,
-              ["name", "phoneNumber", "linkedApHost", "mikrotikUsername", "mikrotikProfile", "paymentStatus", "paymentType", "debtNote", "dueStatus", "dueDate", "hotspotReactivationAt"],
-              this.filters.contacts.search
+              ["name", "phoneNumber", "monthlyPaymentAmount", "paymentStatus", "paymentType", "debtNote", "dueStatus", "dueDate"],
+              this.filters.contactBilling.search
+            );
+          });
+        },
+
+        get filteredHotspotContacts() {
+          return this.contacts.filter((contact) => {
+            const selectedStatus = String(this.filters.contactHotspot.status || "ALL").toUpperCase();
+            const hasAccount = Boolean(contact.mikrotikUsername);
+            if (selectedStatus === "CONFIGURED" && !hasAccount) return false;
+            if (selectedStatus === "UNCONFIGURED" && hasAccount) return false;
+            if (selectedStatus === "AUTO" && !contact.hotspotReactivationEnabled) return false;
+
+            return this.searchMatches(
+              contact,
+              ["name", "phoneNumber", "mikrotikUsername", "mikrotikProfile", "linkedApHost", "hotspotReactivationAt"],
+              this.filters.contactHotspot.search
             );
           });
         },
@@ -768,14 +814,6 @@
               this.filters.monitorAp.search
             );
           });
-        },
-
-        get filteredPaymentAmountContacts() {
-          return this.contacts.filter((contact) => this.searchMatches(
-            contact,
-            ["name", "phoneNumber", "monthlyPaymentAmount"],
-            this.filters.paymentAmount.search
-          ));
         },
 
         get filteredReminders() {
@@ -802,8 +840,12 @@
           return this.paginate(this.filteredContacts, "contacts");
         },
 
-        get paginatedPaymentAmountContacts() {
-          return this.paginate(this.filteredPaymentAmountContacts, "paymentAmount");
+        get paginatedBillingContacts() {
+          return this.paginate(this.filteredBillingContacts, "contactBilling");
+        },
+
+        get paginatedHotspotContacts() {
+          return this.paginate(this.filteredHotspotContacts, "contactHotspot");
         },
 
         get paginatedApMonitors() {
@@ -846,7 +888,8 @@
         setPage(key, page) {
           const totalsByKey = {
             contacts: this.filteredContacts.length,
-            paymentAmount: this.filteredPaymentAmountContacts.length,
+            contactBilling: this.filteredBillingContacts.length,
+            contactHotspot: this.filteredHotspotContacts.length,
             monitorAp: this.filteredApMonitors.length,
             reminders: this.filteredReminders.length,
             sent: this.filteredSent.length,
@@ -931,7 +974,8 @@
         async loadContacts() {
           this.contacts = await this.api("/api/contacts");
           this.clampPage("contacts", this.filteredContacts.length);
-          this.clampPage("paymentAmount", this.filteredPaymentAmountContacts.length);
+          this.clampPage("contactBilling", this.filteredBillingContacts.length);
+          this.clampPage("contactHotspot", this.filteredHotspotContacts.length);
         },
 
         async saveContactPaymentAmount(contact) {

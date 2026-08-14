@@ -248,182 +248,244 @@
           </div>
         </section>
 
-        <section x-show="activeMenu === 'contacts'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
+        <section x-show="activeMenu === 'contacts'" x-transition.opacity class="panel-shell customer-panel rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
+          <div class="mb-5 customer-heading">
             <div>
-              <h2 class="font-display text-2xl"><i class="fa-solid fa-address-book mr-2 text-moss"></i>Daftar pelanggan</h2>
-              <!-- <p class="mt-1 text-sm text-ink/60">Sumber data penerima yang dikelola dari dashboard.</p> -->
+              <h2 class="font-display text-2xl"><i class="fa-solid fa-address-book mr-2 text-moss"></i>Kelola pelanggan</h2>
+              <p class="mt-1 text-sm text-ink/60">Data pelanggan, tagihan, dan layanan hotspot kini dipisahkan agar lebih mudah dibaca.</p>
             </div>
-            <button @click="withProcessing('Memuat kontak...', () => loadContacts())" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
-              <i class="fa-solid fa-rotate mr-2"></i>Muat ulang
+            <div class="customer-heading-actions">
+              <button type="button" @click="openContactCreateModal()" class="bg-moss px-4 py-2 text-sm font-semibold text-white transition hover:bg-ink">
+                <i class="fa-solid fa-user-plus mr-2"></i>Tambah pelanggan
+              </button>
+              <button type="button" @click="withProcessing('Memuat kontak...', () => loadContacts())" class="border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
+                <i class="fa-solid fa-rotate mr-2"></i>Muat ulang
+              </button>
+            </div>
+          </div>
+
+          <div class="customer-tabs" role="tablist" aria-label="Bagian pelanggan">
+            <button id="customer-data-tab" type="button" role="tab" aria-controls="customer-data-panel" :aria-selected="activeContactTab === 'data'" @click="selectContactTab('data')" :class="activeContactTab === 'data' ? 'active' : ''">
+              <span class="customer-tab-icon"><i class="fa-solid fa-address-card"></i></span>
+              <span class="customer-tab-copy"><strong>Data</strong><small>Identitas dan AP terkait</small></span>
+            </button>
+            <button id="customer-billing-tab" type="button" role="tab" aria-controls="customer-billing-panel" :aria-selected="activeContactTab === 'billing'" @click="selectContactTab('billing')" :class="activeContactTab === 'billing' ? 'active' : ''">
+              <span class="customer-tab-icon"><i class="fa-solid fa-file-invoice-dollar"></i></span>
+              <span class="customer-tab-copy"><strong>Tagihan</strong><small>Nominal, jatuh tempo, pembayaran</small></span>
+            </button>
+            <button id="customer-hotspot-tab" type="button" role="tab" aria-controls="customer-hotspot-panel" :aria-selected="activeContactTab === 'hotspot'" @click="selectContactTab('hotspot')" :class="activeContactTab === 'hotspot' ? 'active' : ''">
+              <span class="customer-tab-icon"><i class="fa-solid fa-wifi"></i></span>
+              <span class="customer-tab-copy"><strong>Hotspot</strong><small>Akun dan jadwal reaktivasi</small></span>
             </button>
           </div>
-          <div class="mb-4 flex items-center justify-start gap-2">
-            <button type="button" @click="openContactCreateModal()" class="min-w-0 flex-1 inline-flex items-center justify-center rounded-full bg-moss px-3 py-3 text-xs font-semibold text-white transition hover:bg-ink sm:flex-none sm:px-5 sm:text-sm">
-              <i class="fa-solid fa-user-plus mr-2"></i>Tambah Pelanggan
-            </button>
-            <button type="button" @click="exportPaymentRecap()" class="min-w-0 flex-1 inline-flex items-center justify-center rounded-full border border-moss/20 bg-white px-3 py-3 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white sm:flex-none sm:px-5 sm:text-sm">
-              <i class="fa-solid fa-file-excel mr-2"></i>Rekap Excel
-            </button>
-          </div>
-          <div class="filter-inline mt-5">
-            <input x-model="filters.contacts.search" @input="resetPage('contacts')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama atau nomor WA">
-            <select x-model="filters.contacts.status" @change="resetPage('contacts')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-              <option value="ALL">Semua status bayar</option>
-              <option value="HAS-DEBT">Masih ada hutang</option>
-              <option value="ARREARS-ONLY">Hanya Tunggakan</option>
-              <option value="UNPAID">Belum Bayar</option>
-              <option value="CURRENT-ONLY">Bulan Ini Saja</option>
-               <option value="FULL-PAID">Lunas Semua</option>
-             </select>
-            <select x-model="filters.contacts.dueStatus" @change="resetPage('contacts')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-              <option value="ALL">Semua status jatuh tempo</option>
-              <option value="NOT_SCHEDULED">Belum Dijadwalkan</option>
-              <option value="UPCOMING">Belum Jatuh Tempo</option>
-              <option value="OVERDUE">Jatuh Tempo</option>
-              <option value="PAID">Lunas</option>
-            </select>
-            <select x-model.number="filters.contacts.pageSize" @change="resetPage('contacts')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-              <template x-for="size in pageSizes" :key="'contacts-size-' + size">
-                <option :value="size" x-text="size + ' / page'"></option>
-              </template>
-            </select>
-          </div>
-          <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
-            <div class="table-scroll" tabindex="0" role="region" aria-label="Tabel pelanggan">
-              <table class="contacts-table min-w-full text-sm">
-                <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
-                  <tr>
-                    <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-user mr-2"></i>Nama</th>
-                    <th class="px-4 py-3 whitespace-nowrap"><i class="fa-brands fa-whatsapp mr-2"></i>No. WA</th>
-                    <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-user-shield mr-2"></i>User Hotspot</th>
-                    <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-rotate-right mr-2"></i>Reaktivasi</th>
-                    <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-signal mr-2"></i>Status AP</th>
-                    <th class="px-4 py-3 whitespace-nowrap"><i class="fa-regular fa-calendar mr-2"></i>Tgl Jatuh Tempo</th>
-                    <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-hourglass-half mr-2"></i>Status Jatuh Tempo</th>
-                    <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-receipt mr-2"></i>Status Bayar</th>
-                    <th class="px-4 py-3 whitespace-nowrap"><i class="fa-solid fa-bolt mr-2"></i>Aksi</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-ink/6 bg-white/70">
-                  <template x-if="!filteredContacts.length">
-                    <tr><td colspan="10" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada contact yang cocok.' : 'Belum ada contact.'"></td></tr>
-                  </template>
-                  <template x-for="contact in paginatedContacts" :key="contact.id">
+
+          <div id="customer-data-panel" role="tabpanel" aria-labelledby="customer-data-tab" x-cloak x-show="activeContactTab === 'data'" x-transition.opacity class="customer-tab-panel">
+            <div class="filter-inline">
+              <input x-model="filters.contacts.search" @input="resetPage('contacts')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama, nomor WA, atau IP AP">
+              <select x-model.number="filters.contacts.pageSize" @change="resetPage('contacts')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+                <template x-for="size in pageSizes" :key="'contacts-size-' + size">
+                  <option :value="size" x-text="size + ' / page'"></option>
+                </template>
+              </select>
+            </div>
+            <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
+              <div class="table-scroll" tabindex="0" role="region" aria-label="Data pelanggan">
+                <table class="contacts-table min-w-full text-sm">
+                  <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
                     <tr>
-                      <td class="px-4 py-4 font-medium" data-label="Nama" x-text="contact.name"></td>
-                      <td class="px-4 py-4 text-ink/65 whitespace-nowrap tabular-nums" data-label="No. WA" x-text="contact.phoneNumber"></td>
-                      <td class="px-4 py-4 text-ink/65" data-label="User Hotspot" x-text="getContactHotspotLabel(contact)"></td>
-                      <td class="px-4 py-4 text-ink/65" data-label="Reaktivasi">
-                        <span
-                          class="inline-flex rounded-full px-3 py-1 text-xs font-semibold"
-                          :class="contact.hotspotReactivationEnabled ? 'bg-moss/10 text-moss' : 'bg-slate-200/70 text-slate-700'"
-                          x-text="getReactivationLabel(contact)"
-                        ></span>
-                      </td>
-                      <td class="px-4 py-4" data-label="Status AP">
-                        <div class="flex items-center gap-2">
-                          <template x-if="contact.linkedApHost">
-                            <div class="text-xs text-ink/60">
-                              <span class="font-semibold">IP:</span> <span x-text="contact.linkedApHost"></span>
-                            </div>
-                          </template>
-                          <span
-                            class="inline-flex rounded-full px-3 py-1 text-xs font-semibold"
-                            :class="getContactApStatusClass(contact)"
-                            x-text="getContactApStatusLabel(contact)"
-                          ></span>
-                        </div>
-                      </td>
-                      <td class="px-4 py-4 text-ink/65" data-label="Tgl Jatuh Tempo" x-text="contact.dueDate ? formatDateTime(contact.dueDate) : '-'"></td>
-                      <td class="px-4 py-4" data-label="Status Jatuh Tempo">
-                        <span
-                          class="inline-flex rounded-full px-3 py-1 text-xs font-semibold"
-                          :class="getDueStatusClass(contact.dueStatus)"
-                          x-text="getDueStatusLabel(contact.dueStatus)"
-                        ></span>
-                      </td>
-<td class="px-4 py-4" data-label="Status Bayar">
-                        <span
-                          class="inline-flex rounded-full px-3 py-1 text-xs font-semibold"
-                          :class="{
-                            'bg-moss/10 text-moss': contact.paymentStatus === 'PAID',
-                            'bg-clay/10 text-clay': contact.paymentStatus !== 'PAID'
-                          }"
-                          x-text="contact.paymentType ? getPaymentTypeLabel(contact.paymentType) : (contact.paymentStatus === 'PAID' ? getPaymentTypeLabel(inferPaymentType(contact)) : 'Belum Bayar')"
-                        ></span>
-                        <!-- <template x-if="hasDebt(contact)">
-                          <div class="mt-2 inline-flex max-w-full items-start gap-1.5 rounded-xl border border-clay/20 bg-clay/5 px-2.5 py-1.5 text-xs font-semibold leading-5 text-clay">
-                            <i class="fa-solid fa-circle-info mt-0.5"></i>
-                            <span x-text="getDebtNote(contact)"></span>
-                          </div>
-                        </template> -->
-                      </td>
-                      <td class="px-4 py-4 align-top" data-label="Aksi">
-                        <div class="flex flex-col items-start gap-2">
-                          <template x-if="hasDebt(contact)">
-                            <div class="w-full rounded-xl border border-clay/20 bg-clay/5 px-3 py-2 text-center text-clay">
-                              <div class="text-xs font-bold leading-5">
-                                <i class="fa-solid fa-triangle-exclamation mr-1.5"></i>
-                                <span x-text="getDebtCountLabel(contact)"></span>
-                              </div>
-                              <div class="mt-1 text-xs font-semibold leading-5 text-clay/80" x-text="getDebtNote(contact)"></div>
-                            </div>
-                          </template>
-<template x-if="contact.paymentStatus !== 'PAID'">
-                             <div class="grid w-full gap-2">
-                               <button x-show="hasDebt(contact)" type="button" @click="togglePayment(contact.id, 'UNPAID', 'ARREARS-ONLY')" class="w-full rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:bg-ink hover:text-white">
-                                 <i class="fa-solid fa-circle-check mr-1.5"></i>Bayar tunggakan
-                               </button>
-                               <button type="button" @click="togglePayment(contact.id, 'PAID', 'CURRENT-ONLY')" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white">
-                                 <i class="fa-solid fa-calendar-check mr-1.5"></i>Bulan ini saja
-                               </button>
-                               <button type="button" @click="togglePayment(contact.id, 'PAID', 'FULL-PAID')" class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white">
-                                 <i class="fa-solid fa-sack-dollar mr-1.5"></i>Lunas semua
-                               </button>
-                             </div>
-                           </template>
-                          <template x-if="contact.paymentStatus === 'PAID'">
-                            <div class="grid w-full gap-2">
-                              <button
-                                x-show="hasDebt(contact)"
-                                @click="togglePayment(contact.id, 'PAID', 'FULL-PAID')"
-                                class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"
-                              >
-                                <i class="fa-solid fa-sack-dollar mr-1.5"></i>Lunasi hutang
-                              </button>
-                              <button
-                                @click="togglePayment(contact.id, 'UNPAID')"
-                                class="w-full rounded-full border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:bg-ink hover:text-white"
-                              >
-                                <i class="fa-solid fa-circle-check mr-1.5"></i>Reset ke belum bayar
-                              </button>
-                            </div>
-                          </template>
-                          <button
-                            x-show="contact.mikrotikUsername && contact.mikrotikProfile"
-                            type="button"
-                            @click="reactivateHotspotContact(contact)"
-                            class="w-full rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"
-                          >
-                            <i class="fa-solid fa-rotate-right mr-1.5"></i>Reaktivasi hotspot
-                          </button>
-                          <button @click="openContactEditModal(contact)" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit</button>
-                          <button @click="removeContact(contact)" class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Delete</button>
-                        </div>
-                      </td>
+                      <th class="px-4 py-3"><i class="fa-solid fa-user mr-2"></i>Nama</th>
+                      <th class="px-4 py-3"><i class="fa-brands fa-whatsapp mr-2"></i>No. WA</th>
+                      <th class="px-4 py-3"><i class="fa-solid fa-link mr-2"></i>AP Terkait</th>
+                      <th class="px-4 py-3"><i class="fa-solid fa-signal mr-2"></i>Status AP</th>
+                      <th class="px-4 py-3"><i class="fa-solid fa-bolt mr-2"></i>Aksi</th>
                     </tr>
-                  </template>
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody class="divide-y divide-ink/6 bg-white/70">
+                    <template x-if="!filteredContacts.length">
+                      <tr><td colspan="5" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada pelanggan yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
+                    </template>
+                    <template x-for="contact in paginatedContacts" :key="'data-' + contact.id">
+                      <tr>
+                        <td class="px-4 py-4 font-medium" data-label="Nama" x-text="contact.name"></td>
+                        <td class="px-4 py-4 text-ink/65 whitespace-nowrap tabular-nums" data-label="No. WA" x-text="contact.phoneNumber"></td>
+                        <td class="px-4 py-4 text-ink/65" data-label="AP Terkait" x-text="contact.linkedApHost || '-'"></td>
+                        <td class="px-4 py-4" data-label="Status AP">
+                          <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getContactApStatusClass(contact)" x-text="getContactApStatusLabel(contact)"></span>
+                        </td>
+                        <td class="px-4 py-4" data-label="Aksi">
+                          <div class="customer-action-group">
+                            <button type="button" @click="openContactEditModal(contact)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit</button>
+                            <button type="button" @click="removeContact(contact)" class="border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Hapus</button>
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="customer-pagination">
+              <div x-text="paginationLabel('contacts', filteredContacts.length)"></div>
+              <div class="customer-pagination-controls">
+                <button type="button" @click="setPage('contacts', filters.contacts.page - 1)" :disabled="filters.contacts.page <= 1" class="border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
+                <span x-text="filters.contacts.page + ' / ' + totalPages('contacts', filteredContacts.length)"></span>
+                <button type="button" @click="setPage('contacts', filters.contacts.page + 1)" :disabled="filters.contacts.page >= totalPages('contacts', filteredContacts.length)" class="border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
+              </div>
             </div>
           </div>
-          <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
-            <div class="min-w-0" x-text="paginationLabel('contacts', filteredContacts.length)"></div>
-            <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
-              <button @click="setPage('contacts', filters.contacts.page - 1)" :disabled="filters.contacts.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
-              <span class="px-2" x-text="filters.contacts.page + ' / ' + totalPages('contacts', filteredContacts.length)"></span>
-              <button @click="setPage('contacts', filters.contacts.page + 1)" :disabled="filters.contacts.page >= totalPages('contacts', filteredContacts.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
+
+          <div id="customer-billing-panel" role="tabpanel" aria-labelledby="customer-billing-tab" x-cloak x-show="activeContactTab === 'billing'" x-transition.opacity class="customer-tab-panel">
+            <div class="customer-panel-toolbar">
+              <p>Atur nominal bulanan dan catat pembayaran tanpa bercampur dengan pengaturan hotspot.</p>
+              <button type="button" @click="exportPaymentRecap()" class="border border-moss/20 bg-white px-4 py-2 text-sm font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-file-excel mr-2"></i>Rekap Excel</button>
+            </div>
+            <div class="filter-inline">
+              <input x-model="filters.contactBilling.search" @input="resetPage('contactBilling')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari pelanggan, nomor WA, atau nominal">
+              <select x-model="filters.contactBilling.status" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+                <option value="ALL">Semua status bayar</option>
+                <option value="HAS-DEBT">Masih ada hutang</option>
+                <option value="ARREARS-ONLY">Hanya tunggakan</option>
+                <option value="UNPAID">Belum bayar</option>
+                <option value="CURRENT-ONLY">Bulan ini saja</option>
+                <option value="FULL-PAID">Lunas semua</option>
+              </select>
+              <select x-model="filters.contactBilling.dueStatus" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+                <option value="ALL">Semua jatuh tempo</option>
+                <option value="NOT_SCHEDULED">Belum dijadwalkan</option>
+                <option value="UPCOMING">Belum jatuh tempo</option>
+                <option value="OVERDUE">Jatuh tempo</option>
+                <option value="PAID">Lunas</option>
+              </select>
+              <select x-model.number="filters.contactBilling.pageSize" @change="resetPage('contactBilling')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+                <template x-for="size in pageSizes" :key="'contact-billing-size-' + size">
+                  <option :value="size" x-text="size + ' / page'"></option>
+                </template>
+              </select>
+            </div>
+            <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
+              <div class="table-scroll" tabindex="0" role="region" aria-label="Tagihan pelanggan">
+                <table class="customer-billing-table min-w-full text-sm">
+                  <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
+                    <tr>
+                      <th class="px-4 py-3">Pelanggan</th>
+                      <th class="px-4 py-3">Jatuh Tempo</th>
+                      <th class="px-4 py-3">Status Tempo</th>
+                      <th class="px-4 py-3">Nominal Bulanan</th>
+                      <th class="px-4 py-3">Pembayaran</th>
+                      <th class="px-4 py-3">Aksi Pembayaran</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-ink/6 bg-white/70">
+                    <template x-if="!filteredBillingContacts.length">
+                      <tr><td colspan="6" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada tagihan yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
+                    </template>
+                    <template x-for="contact in paginatedBillingContacts" :key="'billing-' + contact.id">
+                      <tr>
+                        <td class="px-4 py-4" data-label="Pelanggan"><strong class="customer-name" x-text="contact.name"></strong><small class="customer-meta" x-text="contact.phoneNumber"></small></td>
+                        <td class="px-4 py-4 text-ink/65" data-label="Jatuh Tempo" x-text="contact.dueDate ? formatDateTime(contact.dueDate) : '-'"></td>
+                        <td class="px-4 py-4" data-label="Status Tempo"><span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getDueStatusClass(contact.dueStatus)" x-text="getDueStatusLabel(contact.dueStatus)"></span></td>
+                        <td class="px-4 py-4" data-label="Nominal Bulanan">
+                          <div class="customer-amount-editor">
+                            <div class="currency-input-group"><span class="currency-prefix">Rp</span><input x-model.number="contact.monthlyPaymentAmount" type="number" min="0" max="1000000000" step="1000" class="tabular-nums" aria-label="Nominal pembayaran per bulan"></div>
+                            <button type="button" @click="saveContactPaymentAmount(contact)" class="bg-moss px-3 py-2 text-xs font-semibold text-white"><i class="fa-solid fa-floppy-disk"></i><span>Simpan</span></button>
+                          </div>
+                        </td>
+                        <td class="px-4 py-4" data-label="Pembayaran">
+                          <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="contact.paymentStatus === 'PAID' ? 'bg-moss/10 text-moss' : 'bg-clay/10 text-clay'" x-text="contact.paymentType ? getPaymentTypeLabel(contact.paymentType) : (contact.paymentStatus === 'PAID' ? getPaymentTypeLabel(inferPaymentType(contact)) : 'Belum Bayar')"></span>
+                          <template x-if="hasDebt(contact)">
+                            <div class="customer-debt-note"><strong><i class="fa-solid fa-triangle-exclamation"></i><span x-text="getDebtCountLabel(contact)"></span></strong><small x-text="getDebtNote(contact)"></small></div>
+                          </template>
+                        </td>
+                        <td class="px-4 py-4 align-top" data-label="Aksi Pembayaran">
+                          <template x-if="contact.paymentStatus !== 'PAID'">
+                            <div class="customer-payment-actions">
+                              <button x-show="hasDebt(contact)" type="button" @click="togglePayment(contact.id, 'UNPAID', 'ARREARS-ONLY')" class="border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink"><i class="fa-solid fa-circle-check mr-1.5"></i>Bayar tunggakan</button>
+                              <button type="button" @click="togglePayment(contact.id, 'PAID', 'CURRENT-ONLY')" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-calendar-check mr-1.5"></i>Bulan ini</button>
+                              <button type="button" @click="togglePayment(contact.id, 'PAID', 'FULL-PAID')" class="border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay"><i class="fa-solid fa-sack-dollar mr-1.5"></i>Lunas semua</button>
+                            </div>
+                          </template>
+                          <template x-if="contact.paymentStatus === 'PAID'">
+                            <div class="customer-payment-actions">
+                              <button x-show="hasDebt(contact)" type="button" @click="togglePayment(contact.id, 'PAID', 'FULL-PAID')" class="border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay"><i class="fa-solid fa-sack-dollar mr-1.5"></i>Lunasi hutang</button>
+                              <button type="button" @click="togglePayment(contact.id, 'UNPAID')" class="border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink"><i class="fa-solid fa-rotate-left mr-1.5"></i>Reset pembayaran</button>
+                            </div>
+                          </template>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="customer-pagination">
+              <div x-text="paginationLabel('contactBilling', filteredBillingContacts.length)"></div>
+              <div class="customer-pagination-controls">
+                <button type="button" @click="setPage('contactBilling', filters.contactBilling.page - 1)" :disabled="filters.contactBilling.page <= 1" class="border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
+                <span x-text="filters.contactBilling.page + ' / ' + totalPages('contactBilling', filteredBillingContacts.length)"></span>
+                <button type="button" @click="setPage('contactBilling', filters.contactBilling.page + 1)" :disabled="filters.contactBilling.page >= totalPages('contactBilling', filteredBillingContacts.length)" class="border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
+              </div>
+            </div>
+          </div>
+
+          <div id="customer-hotspot-panel" role="tabpanel" aria-labelledby="customer-hotspot-tab" x-cloak x-show="activeContactTab === 'hotspot'" x-transition.opacity class="customer-tab-panel">
+            <div class="filter-inline">
+              <input x-model="filters.contactHotspot.search" @input="resetPage('contactHotspot')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari pelanggan, user, profile, atau IP AP">
+              <select x-model="filters.contactHotspot.status" @change="resetPage('contactHotspot')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+                <option value="ALL">Semua akun hotspot</option>
+                <option value="CONFIGURED">Akun tersedia</option>
+                <option value="UNCONFIGURED">Belum ada akun</option>
+                <option value="AUTO">Auto reaktivasi aktif</option>
+              </select>
+              <select x-model.number="filters.contactHotspot.pageSize" @change="resetPage('contactHotspot')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+                <template x-for="size in pageSizes" :key="'contact-hotspot-size-' + size">
+                  <option :value="size" x-text="size + ' / page'"></option>
+                </template>
+              </select>
+            </div>
+            <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
+              <div class="table-scroll" tabindex="0" role="region" aria-label="Hotspot pelanggan">
+                <table class="customer-hotspot-table min-w-full text-sm">
+                  <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
+                    <tr>
+                      <th class="px-4 py-3">Pelanggan</th>
+                      <th class="px-4 py-3">User / Profile</th>
+                      <th class="px-4 py-3">Reaktivasi</th>
+                      <th class="px-4 py-3">Access Point</th>
+                      <th class="px-4 py-3">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-ink/6 bg-white/70">
+                    <template x-if="!filteredHotspotContacts.length">
+                      <tr><td colspan="5" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada akun hotspot yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
+                    </template>
+                    <template x-for="contact in paginatedHotspotContacts" :key="'hotspot-' + contact.id">
+                      <tr>
+                        <td class="px-4 py-4" data-label="Pelanggan"><strong class="customer-name" x-text="contact.name"></strong><small class="customer-meta" x-text="contact.phoneNumber"></small></td>
+                        <td class="px-4 py-4 text-ink/65" data-label="User / Profile" x-text="getContactHotspotLabel(contact)"></td>
+                        <td class="px-4 py-4" data-label="Reaktivasi"><span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="contact.hotspotReactivationEnabled ? 'bg-moss/10 text-moss' : 'bg-slate-200/70 text-slate-700'" x-text="getReactivationLabel(contact)"></span></td>
+                        <td class="px-4 py-4" data-label="Access Point">
+                          <span class="customer-ap-host" x-text="contact.linkedApHost || 'Belum dipilih'"></span>
+                          <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getContactApStatusClass(contact)" x-text="getContactApStatusLabel(contact)"></span>
+                        </td>
+                        <td class="px-4 py-4" data-label="Aksi">
+                          <div class="customer-action-group">
+                            <button x-show="contact.mikrotikUsername && contact.mikrotikProfile" type="button" @click="reactivateHotspotContact(contact)" class="border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-rotate-right mr-1.5"></i>Reaktivasi</button>
+                            <button type="button" @click="openContactEditModal(contact)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-gear mr-1.5"></i>Atur hotspot</button>
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="customer-pagination">
+              <div x-text="paginationLabel('contactHotspot', filteredHotspotContacts.length)"></div>
+              <div class="customer-pagination-controls">
+                <button type="button" @click="setPage('contactHotspot', filters.contactHotspot.page - 1)" :disabled="filters.contactHotspot.page <= 1" class="border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
+                <span x-text="filters.contactHotspot.page + ' / ' + totalPages('contactHotspot', filteredHotspotContacts.length)"></span>
+                <button type="button" @click="setPage('contactHotspot', filters.contactHotspot.page + 1)" :disabled="filters.contactHotspot.page >= totalPages('contactHotspot', filteredHotspotContacts.length)" class="border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
+              </div>
             </div>
           </div>
         </section>
@@ -647,55 +709,6 @@
                   </template>
                 </tbody>
               </table>
-            </div>
-          </div>
-        </section>
-
-        <section x-show="activeMenu === 'payment-amount'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-5">
-            <h2 class="font-display text-2xl"><i class="fa-solid fa-money-bill-wave mr-2 text-moss"></i>Nominal Bayar</h2>
-            <p class="mt-2 max-w-3xl text-sm leading-6 text-ink/60">
-              Atur nominal pembayaran masing-masing pelanggan. Reminder akan mengambil nominal dari contact tujuan secara otomatis.
-            </p>
-          </div>
-          <div class="filter-inline mt-5">
-            <input x-model="filters.paymentAmount.search" @input="resetPage('paymentAmount')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama, nomor WA, atau nominal">
-            <select x-model.number="filters.paymentAmount.pageSize" @change="resetPage('paymentAmount')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-              <template x-for="size in pageSizes" :key="'payment-amount-size-' + size">
-                <option :value="size" x-text="size + ' / page'"></option>
-              </template>
-            </select>
-          </div>
-          <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
-            <div class="table-scroll" tabindex="0" role="region" aria-label="Daftar nominal pembayaran pelanggan">
-              <table class="dashboard-table min-w-full text-sm">
-                <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
-                  <tr><th class="px-4 py-3">Pelanggan</th><th class="px-4 py-3">No. WA</th><th class="px-4 py-3">Nominal per bulan</th><th class="px-4 py-3">Aksi</th></tr>
-                </thead>
-                <tbody class="divide-y divide-ink/6 bg-white/70">
-                  <template x-if="!filteredPaymentAmountContacts.length">
-                    <tr><td colspan="4" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada pelanggan yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
-                  </template>
-                  <template x-for="contact in paginatedPaymentAmountContacts" :key="'payment-amount-' + contact.id">
-                    <tr>
-                      <td class="px-4 py-4 font-medium" data-label="Pelanggan" x-text="contact.name"></td>
-                      <td class="px-4 py-4 text-ink/65" data-label="No. WA" x-text="contact.phoneNumber"></td>
-                      <td class="px-4 py-4" data-label="Nominal">
-                        <div class="currency-input-group max-w-xs"><span class="currency-prefix">Rp</span><input x-model.number="contact.monthlyPaymentAmount" type="number" min="0" max="1000000000" step="1000" class="tabular-nums" aria-label="Nominal pembayaran per bulan"></div>
-                      </td>
-                      <td class="px-4 py-4" data-label="Aksi"><button type="button" @click="saveContactPaymentAmount(contact)" class="rounded-full bg-moss px-4 py-2 text-xs font-semibold text-white transition hover:bg-moss/90"><i class="fa-solid fa-floppy-disk mr-1.5"></i>Simpan</button></td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
-            <div class="min-w-0" x-text="paginationLabel('paymentAmount', filteredPaymentAmountContacts.length)"></div>
-            <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
-              <button @click="setPage('paymentAmount', filters.paymentAmount.page - 1)" :disabled="filters.paymentAmount.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
-              <span class="px-2" x-text="filters.paymentAmount.page + ' / ' + totalPages('paymentAmount', filteredPaymentAmountContacts.length)"></span>
-              <button @click="setPage('paymentAmount', filters.paymentAmount.page + 1)" :disabled="filters.paymentAmount.page >= totalPages('paymentAmount', filteredPaymentAmountContacts.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
           </div>
         </section>
