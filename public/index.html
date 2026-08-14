@@ -443,6 +443,9 @@
                 <option value="ALL">Semua akun hotspot</option>
                 <option value="CONFIGURED">Akun tersedia</option>
                 <option value="UNCONFIGURED">Belum ada akun</option>
+                <option value="ACTIVE">Aktif di MikroTik</option>
+                <option value="PENDING">Menunggu provisioning</option>
+                <option value="FAILED">Provisioning gagal</option>
                 <option value="AUTO">Auto reaktivasi aktif</option>
               </select>
               <select x-model.number="filters.contactHotspot.pageSize" @change="resetPage('contactHotspot')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
@@ -470,7 +473,11 @@
                     <template x-for="contact in paginatedHotspotContacts" :key="'hotspot-' + contact.id">
                       <tr>
                         <td class="px-4 py-4" data-label="Pelanggan"><strong class="customer-name" x-text="contact.name"></strong><small class="customer-meta" x-text="contact.phoneNumber"></small></td>
-                        <td class="px-4 py-4 text-ink/65" data-label="User / Profile" x-text="getContactHotspotLabel(contact)"></td>
+                        <td class="px-4 py-4 text-ink/65" data-label="User / Profile">
+                          <span class="customer-hotspot-account" x-text="getContactHotspotLabel(contact)"></span>
+                          <span class="customer-hotspot-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getHotspotProvisioningClass(contact)" x-text="getHotspotProvisioningLabel(contact)"></span>
+                          <small x-show="contact.hotspotProvisioningError && canRetryHotspotProvisioning(contact)" class="customer-hotspot-error" x-text="contact.hotspotProvisioningError"></small>
+                        </td>
                         <td class="px-4 py-4" data-label="Reaktivasi"><span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="contact.hotspotReactivationEnabled ? 'bg-moss/10 text-moss' : 'bg-slate-200/70 text-slate-700'" x-text="getReactivationLabel(contact)"></span></td>
                         <td class="px-4 py-4" data-label="Access Point">
                           <span class="customer-ap-host" x-text="contact.linkedApHost || 'Belum dipilih'"></span>
@@ -478,7 +485,8 @@
                         </td>
                         <td class="px-4 py-4" data-label="Aksi">
                           <div class="customer-action-group">
-                            <button x-show="contact.mikrotikUsername && contact.mikrotikProfile" type="button" @click="reactivateHotspotContact(contact)" class="border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-rotate-right mr-1.5"></i>Reaktivasi</button>
+                            <button x-show="canRetryHotspotProvisioning(contact)" type="button" @click="retryHotspotProvisioning(contact)" class="border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"><i class="fa-solid fa-rotate mr-1.5"></i>Coba lagi</button>
+                            <button x-show="contact.mikrotikUsername && contact.mikrotikProfile && isHotspotProvisioningActive(contact)" type="button" @click="reactivateHotspotContact(contact)" class="border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-rotate-right mr-1.5"></i>Reaktivasi</button>
                             <button type="button" @click="openContactEditModal(contact)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-gear mr-1.5"></i>Atur hotspot</button>
                           </div>
                         </td>

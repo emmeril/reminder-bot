@@ -285,6 +285,58 @@ test("registrasi pelanggan MikroTik menyimpan AP dan jadwal reaktivasi dari form
   assert.equal(result.contact.linkedApHost, "10.0.0.20");
   assert.equal(result.contact.hotspotReactivationEnabled, true);
   assert.equal(result.contact.hotspotReactivationAt, reactivationAt);
+  assert.equal(result.contact.hotspotProvisioningStatus, "ACTIVE");
+  assert.equal(result.pelanggan.hotspotProvisioningStatus, "ACTIVE");
+});
+
+test("persiapan akun hotspot menyimpan pelanggan sebagai PENDING", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = {
+    transaction: async (operation) => operation({}),
+  };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+
+  const result = await manager.prepareHotspotRegistration({
+    name: "Pelanggan Pending",
+    phoneNumber: "6281234567803",
+    profile: "50M",
+    sendCredentials: true,
+  });
+
+  assert.equal(result.contact.mikrotikUsername, "pelanggan_pending");
+  assert.equal(result.contact.mikrotikPassword, "67803");
+  assert.equal(result.contact.hotspotProvisioningStatus, "PENDING");
+  assert.equal(result.contact.hotspotSendCredentials, true);
+  assert.equal(result.pelanggan.hotspotProvisioningStatus, "PENDING");
+});
+
+test("status FAILED menyimpan error tanpa menghapus pelanggan", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = {
+    transaction: async (operation) => operation({}),
+  };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+  const prepared = await manager.prepareHotspotRegistration({
+    name: "Pelanggan Tetap Ada",
+    phoneNumber: "6281234567804",
+    profile: "50M",
+  });
+
+  const result = await manager.updateHotspotProvisioningStatus(
+    prepared.contact.id,
+    "FAILED",
+    { error: "MikroTik timeout" }
+  );
+
+  assert.equal(manager.contacts.size, 1);
+  assert.equal(manager.pelanggan.size, 1);
+  assert.equal(result.contact.hotspotProvisioningStatus, "FAILED");
+  assert.equal(result.contact.hotspotProvisioningError, "MikroTik timeout");
+  assert.equal(result.pelanggan.hotspotProvisioningStatus, "FAILED");
 });
 
 test("mengembalikan state in-memory ketika penyimpanan database gagal", async () => {

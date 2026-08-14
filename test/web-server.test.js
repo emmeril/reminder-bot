@@ -16,7 +16,7 @@ afterEach(async () => {
   })));
 });
 
-async function startServer(dataManager = {}, notificationBot = {}) {
+async function startServer(dataManager = {}, notificationBot = {}, mikrotikService = {}) {
   const activityLog = { push() {}, list: () => [] };
   const authManager = new AuthManager(activityLog);
   const server = new WebServer(
@@ -39,7 +39,7 @@ async function startServer(dataManager = {}, notificationBot = {}) {
     activityLog,
     { isProcessing: false, processDueReminders: async () => {} },
     authManager,
-    {},
+    mikrotikService,
     { isProcessing: false }
   ).app.listen(0, "127.0.0.1");
   openServers.push(server);
@@ -200,4 +200,151 @@ test("API menyimpan pelanggan setelah nomor dipastikan terdaftar di WhatsApp", a
   assert.equal(validatedPhone, "6281234567890");
   assert.equal(savedPayload.phoneNumber, "6281234567890");
   assert.equal(payload.data.id, "contact-1");
+});
+
+test("registrasi hotspot menyimpan PENDING sebelum membuat akun MikroTik", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const events = [];
+  const contact = {
+    id: "contact-hotspot-1",
+    name: "Pelanggan Hotspot",
+    phoneNumber: "6281234567890",
+    mikrotikUsername: "pelanggan_hotspot",
+    mikrotikProfile: "100M",
+    mikrotikPassword: "67890",
+    hotspotSendCredentials: false,
+  };
+  const baseUrl = await startServer({
+    prepareHotspotRegistration: async () => {
+      events.push("db:pending");
+      contact.hotspotProvisioningStatus = "PENDING";
+      return { contact };
+    },
+    getContact: () => contact,
+    updateHotspotProvisioningStatus: async (_id, status) => {
+      events.push(`db:${status.toLowerCase()}`);
+      contact.hotspotProvisioningStatus = status;
+      return { contact, pelanggan: { username: contact.mikrotikUsername } };
+    },
+    toPublicContact: (value) => value,
+  }, {}, {
+    createHotspotCustomer: async () => {
+      events.push("mikrotik:create");
+      return {
+        username: contact.mikrotikUsername,
+        password: contact.mikrotikPassword,
+        profile: contact.mikrotikProfile,
+        name: contact.name,
+        phoneNumber: contact.phoneNumber,
+        created: true,
+      };
+    },
+    verifyHotspotCustomer: async (registered) => {
+      events.push("mikrotik:verify");
+      return { username: registered.username };
+    },
+  });
+
+  const response = await fetch(`${baseUrl}/api/mikrotik/customers`, {
+    method: "POST",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({
+      name: contact.name,
+      phoneNumber: contact.phoneNumber,
+      profile: contact.mikrotikProfile,
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(events, [
+    "db:pending",
+    "db:provisioning",
+    "mikrotik:create",
+    "mikrotik:verify",
+    "db:active",
+  ]);
+});
+
+test("kegagalan provisioning mempertahankan pelanggan sebagai FAILED", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const statuses = [];
+  const contact = {
+    id: "contact-hotspot-failed",
+    name: "Pelanggan Gagal",
+    phoneNumber: "6281234567891",
+    mikrotikUsername: "pelanggan_gagal",
+    mikrotikProfile: "100M",
+    mikrotikPassword: "67891",
+  };
+  const baseUrl = await startServer({
+    prepareHotspotRegistration: async () => ({ contact }),
+    getContact: () => contact,
+    updateHotspotProvisioningStatus: async (_id, status, options) => {
+      statuses.push({ status, error: options.error });
+      contact.hotspotProvisioningStatus = status;
+      contact.hotspotProvisioningError = options.error || "";
+      return { contact, pelanggan: { username: contact.mikrotikUsername } };
+    },
+    toPublicContact: (value) => value,
+  }, {}, {
+    createHotspotCustomer: async () => {
+      throw new Error("router tidak terjangkau");
+    },
+  });
+
+  const response = await fetch(`${baseUrl}/api/mikrotik/customers`, {
+    method: "POST",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({
+      name: contact.name,
+      phoneNumber: contact.phoneNumber,
+      profile: contact.mikrotikProfile,
+    }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 502);
+  assert.match(payload.error, /Data pelanggan tersimpan/);
+  assert.equal(contact.hotspotProvisioningStatus, "FAILED");
+  assert.match(contact.hotspotProvisioningError, /router tidak terjangkau/);
+  assert.deepEqual(statuses.map((item) => item.status), ["PROVISIONING", "FAILED"]);
+});
+
+test("endpoint retry provisioning memakai data pelanggan tersimpan secara idempotent", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const statuses = [];
+  const contact = {
+    id: "contact-hotspot-retry",
+    name: "Pelanggan Retry",
+    phoneNumber: "6281234567892",
+    mikrotikUsername: "pelanggan_retry",
+    mikrotikProfile: "100M",
+    mikrotikPassword: "67892",
+    hotspotProvisioningStatus: "FAILED",
+    hotspotSendCredentials: false,
+  };
+  const baseUrl = await startServer({
+    getContact: () => contact,
+    updateHotspotProvisioningStatus: async (_id, status) => {
+      statuses.push(status);
+      contact.hotspotProvisioningStatus = status;
+      return { contact, pelanggan: { username: contact.mikrotikUsername } };
+    },
+    toPublicContact: (value) => value,
+  }, {}, {
+    createHotspotCustomer: async (payload) => ({ ...payload, created: false }),
+    verifyHotspotCustomer: async (registered) => ({ username: registered.username }),
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/hotspot/provision`, {
+    method: "POST",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.created, false);
+  assert.equal(payload.data.contact.hotspotProvisioningStatus, "ACTIVE");
+  assert.deepEqual(statuses, ["PROVISIONING", "ACTIVE"]);
 });

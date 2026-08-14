@@ -62,6 +62,20 @@ const {
 } = require("./utils");
 
 const BILLING_START_PERIOD = { year: 2026, month: 4 };
+const HOTSPOT_PROVISIONING_STATUS = Object.freeze({
+  NONE: "NONE",
+  PENDING: "PENDING",
+  PROVISIONING: "PROVISIONING",
+  ACTIVE: "ACTIVE",
+  FAILED: "FAILED",
+  MISSING: "MISSING",
+  CHANGED: "CHANGED",
+});
+
+function normalizeHotspotProvisioningStatus(value, fallback = HOTSPOT_PROVISIONING_STATUS.NONE) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return Object.values(HOTSPOT_PROVISIONING_STATUS).includes(normalized) ? normalized : fallback;
+}
 
 function compareBillingPeriods(a, b) {
   if (a.year !== b.year) return a.year - b.year;
@@ -382,35 +396,51 @@ class MikrotikService {
     });
   }
 
-  async createHotspotCustomer({ name, phoneNumber, profile }) {
-    const customerName = sanitizeInput(name);
-    const normalizedPhone = normalizePhoneNumber(phoneNumber);
-    const profileName = sanitizeInput(profile);
-    const username = formatUsernameFromName(customerName);
-    const password = normalizedPhone.slice(-5);
-
-    if (!customerName) throw new Error("Nama pelanggan wajib diisi.");
-    if (!isValidPhoneNumber(normalizedPhone)) throw new Error("Nomor pelanggan harus berformat 628xxx.");
-    if (!profileName) throw new Error("Profile hotspot wajib dipilih.");
-    if (!username) throw new Error("Nama pelanggan tidak bisa dijadikan username hotspot.");
+  async createHotspotCustomer({ name, phoneNumber, profile, username, password }) {
+    const registration = this.buildHotspotCustomerRegistration({
+      name,
+      phoneNumber,
+      profile,
+      username,
+      password,
+    });
+    const expectedEmail = buildHotspotEmailFromPhone(registration.phoneNumber);
 
     return this.withConnection(async (conn) => {
-      const users = await conn.menu("/ip/hotspot/user").print();
-      const profiles = await conn.menu("/ip/hotspot/user/profile").print();
+      const userMenu = conn.menu("/ip/hotspot/user");
+      const profileMenu = conn.menu("/ip/hotspot/user/profile");
+      const [users, profiles] = await Promise.all([userMenu.print(), profileMenu.print()]);
 
-      if ((users || []).some((user) => String(user.name || "").toLowerCase() === username.toLowerCase())) {
-        throw new Error(`Username "${username}" sudah ada di MikroTik.`);
+      if (!(profiles || []).some((item) => item.name === registration.profile)) {
+        throw new Error(`Profile "${registration.profile}" tidak ditemukan di MikroTik.`);
       }
 
-      if (!(profiles || []).some((item) => item.name === profileName)) {
-        throw new Error(`Profile "${profileName}" tidak ditemukan di MikroTik.`);
+      const existing = (users || []).find(
+        (user) => String(user.name || "").toLowerCase() === registration.username.toLowerCase()
+      );
+      if (existing) {
+        const sameProfile = String(existing.profile || "") === registration.profile;
+        const sameOwner = String(existing.email || "").toLowerCase() === expectedEmail.toLowerCase();
+        const existingPassword = sanitizeInput(existing.password || "");
+        const samePassword = !existingPassword || existingPassword === registration.password;
+        if (!sameProfile || !sameOwner) {
+          throw new Error(`Username "${registration.username}" sudah dipakai akun MikroTik lain.`);
+        }
+        if (!samePassword) {
+          throw new Error(`Password akun "${registration.username}" berbeda dengan data aplikasi.`);
+        }
+        return {
+          ...registration,
+          id: existing[".id"] || existing.id || existing.numbers || "",
+          created: false,
+        };
       }
 
-      const addResult = await conn.menu("/ip/hotspot/user").add({
-        name: username,
-        password,
-        profile: profileName,
-        email: buildHotspotEmailFromPhone(normalizedPhone),
+      const addResult = await userMenu.add({
+        name: registration.username,
+        password: registration.password,
+        profile: registration.profile,
+        email: expectedEmail,
       });
 
       if (addResult?.["!trap"]) {
@@ -418,14 +448,74 @@ class MikrotikService {
         throw new Error(`Gagal membuat user hotspot: ${message}`);
       }
 
+      const verifiedUsers = await userMenu.print();
+      const verified = (verifiedUsers || []).find(
+        (user) => String(user.name || "").toLowerCase() === registration.username.toLowerCase()
+      );
+      if (!verified || String(verified.profile || "") !== registration.profile) {
+        throw new Error(`Akun "${registration.username}" dibuat tetapi gagal diverifikasi di MikroTik.`);
+      }
+
       return {
-        username,
-        password,
-        name: customerName,
-        phoneNumber: normalizedPhone,
-        profile: profileName,
+        ...registration,
+        id: verified[".id"] || verified.id || verified.numbers || "",
+        created: true,
       };
     });
+  }
+
+  buildHotspotCustomerRegistration({ name, phoneNumber, profile, username, password }) {
+    const customerName = sanitizeInput(name);
+    const normalizedPhone = normalizePhoneNumber(phoneNumber);
+    const profileName = sanitizeInput(profile);
+    const hotspotUsername = sanitizeInput(username) || formatUsernameFromName(customerName);
+    const hotspotPassword = sanitizeInput(password) || normalizedPhone.slice(-5);
+
+    if (!customerName) throw new Error("Nama pelanggan wajib diisi.");
+    if (!isValidPhoneNumber(normalizedPhone)) throw new Error("Nomor pelanggan harus berformat 628xxx.");
+    if (!profileName) throw new Error("Profile hotspot wajib dipilih.");
+    if (!hotspotUsername) throw new Error("Nama pelanggan tidak bisa dijadikan username hotspot.");
+    if (!hotspotPassword) throw new Error("Password hotspot wajib diisi.");
+
+    return {
+      username: hotspotUsername,
+      password: hotspotPassword,
+      name: customerName,
+      phoneNumber: normalizedPhone,
+      profile: profileName,
+    };
+  }
+
+  async verifyHotspotCustomer({ username, phoneNumber, profile }) {
+    const hotspotUsername = sanitizeInput(username);
+    const normalizedPhone = normalizePhoneNumber(phoneNumber);
+    const profileName = sanitizeInput(profile);
+    const expectedEmail = buildHotspotEmailFromPhone(normalizedPhone);
+    const user = await this.withConnection(async (conn) => {
+      const users = await conn.menu("/ip/hotspot/user").print();
+      const match = (users || []).find(
+        (item) => String(item.name || "").toLowerCase() === hotspotUsername.toLowerCase()
+      );
+      if (!match) return null;
+      return {
+        id: match[".id"] || match.id || match.numbers || "",
+        username: sanitizeInput(match.name || ""),
+        profile: match.profile || "",
+        email: match.email || "",
+        disabled: String(match.disabled || "false").toLowerCase() === "true",
+      };
+    });
+
+    if (!user) throw new Error(`Akun "${hotspotUsername}" tidak ditemukan setelah provisioning.`);
+    if (String(user.profile || "") !== profileName) {
+      throw new Error(`Profile akun "${hotspotUsername}" berbeda dengan konfigurasi aplikasi.`);
+    }
+    if (String(user.email || "").toLowerCase() !== expectedEmail.toLowerCase()) {
+      throw new Error(`Akun "${hotspotUsername}" terhubung ke pelanggan yang berbeda.`);
+    }
+    if (user.disabled) throw new Error(`Akun "${hotspotUsername}" ditemukan tetapi dinonaktifkan.`);
+
+    return user;
   }
 
   async generateDailyBackupFile() {
@@ -1055,6 +1145,22 @@ class DataManager {
       contact.mikrotikUsername = sanitizeInput(String(contact.mikrotikUsername || ""));
       contact.mikrotikProfile = sanitizeInput(String(contact.mikrotikProfile || ""));
       contact.mikrotikPassword = sanitizeInput(String(contact.mikrotikPassword || ""));
+      const inferredProvisioningStatus = contact.mikrotikUsername && contact.mikrotikProfile
+        ? HOTSPOT_PROVISIONING_STATUS.ACTIVE
+        : HOTSPOT_PROVISIONING_STATUS.NONE;
+      contact.hotspotProvisioningStatus = normalizeHotspotProvisioningStatus(
+        contact.hotspotProvisioningStatus,
+        inferredProvisioningStatus
+      );
+      contact.hotspotProvisioningError = sanitizeInput(String(contact.hotspotProvisioningError || ""));
+      contact.hotspotLastCheckedAt = this.normalizeOptionalDate(contact.hotspotLastCheckedAt);
+      contact.hotspotLastSyncedAt = this.normalizeOptionalDate(contact.hotspotLastSyncedAt);
+      contact.hotspotSendCredentials = parseBoolean(contact.hotspotSendCredentials, false);
+      if (contact.hotspotProvisioningStatus === HOTSPOT_PROVISIONING_STATUS.PROVISIONING) {
+        contact.hotspotProvisioningStatus = HOTSPOT_PROVISIONING_STATUS.PENDING;
+        contact.hotspotProvisioningError = contact.hotspotProvisioningError
+          || "Provisioning terputus saat aplikasi berhenti. Silakan coba lagi.";
+      }
       contact.hotspotReactivationEnabled = parseBoolean(contact.hotspotReactivationEnabled, false);
       contact.hotspotReactivationAt = this.normalizeOptionalDate(contact.hotspotReactivationAt);
       contact.hotspotLastReactivatedAt = this.normalizeOptionalDate(contact.hotspotLastReactivatedAt);
@@ -1091,6 +1197,29 @@ class DataManager {
           }
         }
       }
+    }
+
+    for (const pelanggan of this.pelanggan.values()) {
+      const contact = pelanggan.contactId ? this.getContact(pelanggan.contactId) : null;
+      const inferredStatus = pelanggan.username && pelanggan.profile
+        ? HOTSPOT_PROVISIONING_STATUS.ACTIVE
+        : HOTSPOT_PROVISIONING_STATUS.NONE;
+      pelanggan.hotspotProvisioningStatus = normalizeHotspotProvisioningStatus(
+        pelanggan.hotspotProvisioningStatus || contact?.hotspotProvisioningStatus,
+        inferredStatus
+      );
+      if (pelanggan.hotspotProvisioningStatus === HOTSPOT_PROVISIONING_STATUS.PROVISIONING) {
+        pelanggan.hotspotProvisioningStatus = HOTSPOT_PROVISIONING_STATUS.PENDING;
+      }
+      pelanggan.hotspotProvisioningError = sanitizeInput(String(
+        pelanggan.hotspotProvisioningError || contact?.hotspotProvisioningError || ""
+      ));
+      pelanggan.hotspotLastCheckedAt = this.normalizeOptionalDate(
+        pelanggan.hotspotLastCheckedAt || contact?.hotspotLastCheckedAt
+      );
+      pelanggan.hotspotLastSyncedAt = this.normalizeOptionalDate(
+        pelanggan.hotspotLastSyncedAt || contact?.hotspotLastSyncedAt
+      );
     }
   }
 
@@ -1579,8 +1708,24 @@ class DataManager {
       if (!profile) throw new Error("Profile hotspot wajib diisi.");
       if (!password) throw new Error("Password hotspot wajib diisi.");
 
+      const provisioningStatus = normalizeHotspotProvisioningStatus(
+        payload.hotspotProvisioningStatus,
+        HOTSPOT_PROVISIONING_STATUS.ACTIVE
+      );
+      const provisioningError = provisioningStatus === HOTSPOT_PROVISIONING_STATUS.ACTIVE
+        ? ""
+        : sanitizeInput(String(payload.hotspotProvisioningError || ""));
+      const hotspotLastCheckedAt = this.normalizeOptionalDate(payload.hotspotLastCheckedAt);
+      const hotspotLastSyncedAt = this.normalizeOptionalDate(payload.hotspotLastSyncedAt);
+
       const now = new Date().toISOString();
       let contact = this.findContactByPhone(phoneNumber);
+      const usernameOwner = this.pelanggan.get(username);
+      if (usernameOwner
+        && String(usernameOwner.contactId || "") !== String(contact?.id || "")
+        && normalizePhoneNumber(usernameOwner.nomer) !== phoneNumber) {
+        throw new Error(`Username hotspot "${username}" sudah terhubung ke pelanggan lain.`);
+      }
       const linkedApHost = payload.linkedApHost !== undefined
         ? sanitizeInput(String(payload.linkedApHost || ""))
         : sanitizeInput(String(contact?.linkedApHost || ""));
@@ -1602,6 +1747,11 @@ class DataManager {
           paymentMonths: {},
           linkedApHost,
           ...hotspotFields,
+          hotspotProvisioningStatus: provisioningStatus,
+          hotspotProvisioningError: provisioningError,
+          hotspotLastCheckedAt,
+          hotspotLastSyncedAt,
+          hotspotSendCredentials: parseBoolean(payload.sendCredentials, false),
           hotspotLastReactivatedAt: null,
           hotspotLastDeactivatedAt: null,
           createdAt: now,
@@ -1620,10 +1770,23 @@ class DataManager {
           );
         }
         Object.assign(contact, hotspotFields);
+        contact.hotspotProvisioningStatus = provisioningStatus;
+        contact.hotspotProvisioningError = provisioningError;
+        contact.hotspotLastCheckedAt = hotspotLastCheckedAt;
+        contact.hotspotLastSyncedAt = hotspotLastSyncedAt;
+        if (payload.sendCredentials !== undefined) {
+          contact.hotspotSendCredentials = parseBoolean(payload.sendCredentials, false);
+        }
         contact.updatedAt = now;
       }
 
       const previous = this.pelanggan.get(username) || {};
+      for (const [storedUsername, storedPelanggan] of this.pelanggan.entries()) {
+        if (storedUsername !== username
+          && String(storedPelanggan.contactId || "") === String(contact.id)) {
+          this.pelanggan.delete(storedUsername);
+        }
+      }
       const pelanggan = {
         ...previous,
         username,
@@ -1632,7 +1795,17 @@ class DataManager {
         profile,
         password,
         contactId: contact.id,
-        status: "verified",
+        status: provisioningStatus === HOTSPOT_PROVISIONING_STATUS.ACTIVE
+          ? "verified"
+          : provisioningStatus.toLowerCase(),
+        hotspotProvisioningStatus: provisioningStatus,
+        hotspotProvisioningError: provisioningError,
+        hotspotLastCheckedAt,
+        hotspotLastSyncedAt,
+        hotspotSendCredentials: parseBoolean(
+          payload.sendCredentials,
+          contact.hotspotSendCredentials
+        ),
         tanggalDaftar: previous.tanggalDaftar || now,
         tanggalUpdate: now,
       };
@@ -1642,6 +1815,85 @@ class DataManager {
         const options = { transaction };
         await this.saveContacts(options);
         await this.savePelanggan(options);
+      }));
+      return { contact, pelanggan };
+    });
+  }
+
+  async prepareHotspotRegistration(payload) {
+    const name = sanitizeInput(payload.name);
+    const phoneNumber = normalizePhoneNumber(payload.phoneNumber);
+    const profile = sanitizeInput(payload.profile);
+    const username = formatUsernameFromName(name);
+    const password = phoneNumber.slice(-5);
+
+    if (!name) throw new Error("Nama pelanggan wajib diisi.");
+    if (!isValidPhoneNumber(phoneNumber)) throw new Error("Nomor pelanggan harus berformat 628xxx.");
+    if (!profile) throw new Error("Profile hotspot wajib dipilih.");
+    if (!username) throw new Error("Nama pelanggan tidak bisa dijadikan username hotspot.");
+
+    return this.upsertPelangganFromRegistration({
+      ...payload,
+      name,
+      phoneNumber,
+      username,
+      password,
+      profile,
+      hotspotProvisioningStatus: HOTSPOT_PROVISIONING_STATUS.PENDING,
+      hotspotProvisioningError: "",
+      hotspotLastCheckedAt: null,
+      hotspotLastSyncedAt: null,
+    });
+  }
+
+  async updateHotspotProvisioningStatus(contactId, status, options = {}) {
+    return this.withDataMutation(async () => {
+      const contact = this.getContact(contactId);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+
+      const normalizedStatus = normalizeHotspotProvisioningStatus(status, "");
+      if (!normalizedStatus) throw new Error("Status provisioning hotspot tidak valid.");
+
+      const now = new Date().toISOString();
+      const errorMessage = normalizedStatus === HOTSPOT_PROVISIONING_STATUS.ACTIVE
+        ? ""
+        : sanitizeInput(String(Object.hasOwn(options, "error")
+          ? options.error
+          : contact.hotspotProvisioningError || ""));
+      const checkedAt = options.checkedAt !== undefined
+        ? this.normalizeOptionalDate(options.checkedAt)
+        : (normalizedStatus === HOTSPOT_PROVISIONING_STATUS.ACTIVE ? now : contact.hotspotLastCheckedAt || null);
+      const syncedAt = options.syncedAt !== undefined
+        ? this.normalizeOptionalDate(options.syncedAt)
+        : (normalizedStatus === HOTSPOT_PROVISIONING_STATUS.ACTIVE ? now : contact.hotspotLastSyncedAt || null);
+
+      contact.hotspotProvisioningStatus = normalizedStatus;
+      contact.hotspotProvisioningError = errorMessage;
+      contact.hotspotLastCheckedAt = checkedAt;
+      contact.hotspotLastSyncedAt = syncedAt;
+      contact.updatedAt = now;
+
+      let pelanggan = this.pelanggan.get(contact.mikrotikUsername) || null;
+      if (!pelanggan) {
+        pelanggan = Array.from(this.pelanggan.values()).find(
+          (item) => String(item.contactId || "") === String(contact.id)
+        ) || null;
+      }
+      if (pelanggan) {
+        pelanggan.status = normalizedStatus === HOTSPOT_PROVISIONING_STATUS.ACTIVE
+          ? "verified"
+          : normalizedStatus.toLowerCase();
+        pelanggan.hotspotProvisioningStatus = normalizedStatus;
+        pelanggan.hotspotProvisioningError = errorMessage;
+        pelanggan.hotspotLastCheckedAt = checkedAt;
+        pelanggan.hotspotLastSyncedAt = syncedAt;
+        pelanggan.tanggalUpdate = now;
+      }
+
+      await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+        const saveOptions = { transaction };
+        await this.saveContacts(saveOptions);
+        await this.savePelanggan(saveOptions);
       }));
       return { contact, pelanggan };
     });
@@ -2850,7 +3102,93 @@ class WebServer {
     this.authManager = authManager;
     this.mikrotikService = mikrotikService;
     this.hotspotReactivationScheduler = hotspotReactivationScheduler;
+    this.hotspotProvisioningLock = new AsyncLock();
     this.setupRoutes();
+  }
+
+  async provisionHotspotContact(contact, options = {}) {
+    return this.hotspotProvisioningLock.runExclusive(String(contact.id), async () => {
+      const current = this.dataManager.getContact(contact.id);
+      if (!current) throw new Error("Kontak tidak ditemukan.");
+      if (!current.mikrotikUsername || !current.mikrotikProfile || !current.mikrotikPassword) {
+        throw new Error("Data akun hotspot pelanggan belum lengkap.");
+      }
+
+      await this.dataManager.updateHotspotProvisioningStatus(
+        current.id,
+        HOTSPOT_PROVISIONING_STATUS.PROVISIONING,
+        { error: "" }
+      );
+
+      let registered;
+      let verified;
+      let persisted;
+      try {
+        registered = await this.mikrotikService.createHotspotCustomer({
+          name: current.name,
+          phoneNumber: current.phoneNumber,
+          profile: current.mikrotikProfile,
+          username: current.mikrotikUsername,
+          password: current.mikrotikPassword,
+        });
+        verified = await this.mikrotikService.verifyHotspotCustomer(registered);
+        persisted = await this.dataManager.updateHotspotProvisioningStatus(
+          current.id,
+          HOTSPOT_PROVISIONING_STATUS.ACTIVE,
+          { checkedAt: new Date().toISOString(), syncedAt: new Date().toISOString() }
+        );
+      } catch (error) {
+        await this.dataManager.updateHotspotProvisioningStatus(
+          current.id,
+          HOTSPOT_PROVISIONING_STATUS.FAILED,
+          { error: error.message, checkedAt: new Date().toISOString() }
+        ).catch((statusError) => {
+          this.activityLog.push("error", "storage", `Gagal menyimpan status provisioning ${current.mikrotikUsername}: ${statusError.message}`);
+        });
+        this.activityLog.push("error", "mikrotik", `Provisioning ${current.mikrotikUsername} gagal: ${error.message}`, {
+          contactId: current.id,
+          phoneNumber: current.phoneNumber,
+        });
+
+        const wrapped = new Error(`Data pelanggan tersimpan, tetapi akun hotspot gagal dibuat: ${error.message}`);
+        wrapped.statusCode = 502;
+        wrapped.cause = error;
+        throw wrapped;
+      }
+
+      let notification = { sent: false };
+      const sendCredentials = options.sendCredentials !== undefined
+        ? parseBoolean(options.sendCredentials, false)
+        : parseBoolean(current.hotspotSendCredentials, false);
+      if (sendCredentials) {
+        try {
+          if (this.notificationBot.getStatus()?.whatsappProviderEnabled) {
+            const message = `Yth. Bapak/Ibu *${registered.name}*,\n\nAkun hotspot Anda sudah berhasil dibuat.\n\nDetail Akun Hotspot:\n*Username:* ${registered.username}\n*Password:* ${registered.password}\n*Profile:* ${registered.profile}\n\nSilakan simpan data ini. Terimakasih.`;
+            await this.notificationBot.sendMessage(registered.phoneNumber, message);
+            notification = { sent: true };
+          } else {
+            notification = { sent: false, error: "Transport notifikasi belum online." };
+          }
+        } catch (error) {
+          notification = { sent: false, error: error.message };
+        }
+      }
+
+      this.activityLog.push("info", "mikrotik", `Pelanggan ${registered.name} aktif sebagai ${registered.username}`, {
+        profile: registered.profile,
+        phoneNumber: registered.phoneNumber,
+        created: registered.created,
+        notification,
+      });
+
+      return {
+        ...registered,
+        verified,
+        contact: this.dataManager.toPublicContact(persisted.contact),
+        pelanggan: persisted.pelanggan,
+        notification,
+      };
+    });
   }
 
   setupRoutes() {
@@ -3195,6 +3533,15 @@ class WebServer {
     this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotProfiles()));
     this.app.get("/api/mikrotik/hotspot-users", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotUsers()));
     this.app.get("/api/mikrotik/netwatch", requireApiAuth, handleApi(async () => this.mikrotikService.getNetwatchStatus()));
+    this.app.post("/api/contacts/:id/hotspot/provision", requireApiAuth, handleApi(async (req) => {
+      const contact = this.dataManager.getContact(req.params.id);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      return this.provisionHotspotContact(contact, {
+        sendCredentials: req.body.sendCredentials !== undefined
+          ? req.body.sendCredentials
+          : contact.hotspotSendCredentials,
+      });
+    }));
     this.app.post("/api/contacts/:id/hotspot/reactivate", requireApiAuth, handleApi(async (req) => {
       const contact = this.dataManager.getContact(req.params.id);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
@@ -3208,52 +3555,10 @@ class WebServer {
     this.app.post("/api/hotspot/reactivations/run", requireApiAuth, handleApi(async () => this.hotspotReactivationScheduler.processDueReactivations()));
     this.app.post("/api/mikrotik/customers", requireApiAuth, handleApi(async (req) => {
       await requireRegisteredWhatsAppNumber(req.body.phoneNumber);
-      const registered = await this.mikrotikService.createHotspotCustomer({
-        name: req.body.name,
-        phoneNumber: req.body.phoneNumber,
-        profile: req.body.profile,
+      const persisted = await this.dataManager.prepareHotspotRegistration(req.body);
+      return this.provisionHotspotContact(persisted.contact, {
+        sendCredentials: req.body.sendCredentials,
       });
-
-      let persisted;
-      try {
-        persisted = await this.dataManager.upsertPelangganFromRegistration({
-          ...registered,
-          linkedApHost: req.body.linkedApHost,
-          hotspotReactivationEnabled: req.body.hotspotReactivationEnabled,
-          hotspotReactivationAt: req.body.hotspotReactivationAt,
-        });
-      } catch (error) {
-        await this.mikrotikService.deleteHotspotUser(registered.username).catch((rollbackError) => {
-          this.activityLog.push("error", "mikrotik", `Rollback user ${registered.username} gagal: ${rollbackError.message}`);
-        });
-        throw error;
-      }
-
-      let notification = { sent: false };
-      if (parseBoolean(req.body.sendCredentials) && this.notificationBot.getStatus().whatsappProviderEnabled) {
-        const message = `Yth. Bapak/Ibu *${registered.name}*,\n\nAkun hotspot Anda sudah berhasil dibuat.\n\nDetail Akun Hotspot:\n*Username:* ${registered.username}\n*Password:* ${registered.password}\n*Profile:* ${registered.profile}\n\nSilakan simpan data ini. Terimakasih.`;
-        try {
-          await this.notificationBot.sendMessage(registered.phoneNumber, message);
-          notification = { sent: true };
-        } catch (error) {
-          notification = { sent: false, error: error.message };
-        }
-      } else if (parseBoolean(req.body.sendCredentials)) {
-        notification = { sent: false, error: "Transport notifikasi belum online." };
-      }
-
-      this.activityLog.push("info", "mikrotik", `Pelanggan ${registered.name} dibuat sebagai ${registered.username}`, {
-        profile: registered.profile,
-        phoneNumber: registered.phoneNumber,
-        notification,
-      });
-
-      return {
-        ...registered,
-        contact: persisted.contact,
-        pelanggan: persisted.pelanggan,
-        notification,
-      };
     }));
     this.app.post("/api/mikrotik/backup/send", requireApiAuth, handleApi(async () => {
       if (!TelegramManager.isConfigured()) {

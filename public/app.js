@@ -523,6 +523,45 @@
           return `${contact.mikrotikUsername}${profile}`;
         },
 
+        getHotspotProvisioningStatus(contact) {
+          const status = String(contact?.hotspotProvisioningStatus || "").trim().toUpperCase();
+          if (status) return status;
+          return contact?.mikrotikUsername && contact?.mikrotikProfile ? "ACTIVE" : "NONE";
+        },
+
+        getHotspotProvisioningLabel(contact) {
+          return {
+            NONE: "Belum diproses",
+            PENDING: "Menunggu provisioning",
+            PROVISIONING: "Sedang diproses",
+            ACTIVE: "Aktif di MikroTik",
+            FAILED: "Provisioning gagal",
+            MISSING: "Akun tidak ditemukan",
+            CHANGED: "Data akun berubah",
+          }[this.getHotspotProvisioningStatus(contact)] || "Status tidak dikenal";
+        },
+
+        getHotspotProvisioningClass(contact) {
+          return {
+            ACTIVE: "bg-moss/10 text-moss",
+            PENDING: "bg-amber-100 text-amber-800",
+            PROVISIONING: "bg-sky-100 text-sky-800",
+            FAILED: "bg-red-100 text-red-700",
+            MISSING: "bg-red-100 text-red-700",
+            CHANGED: "bg-orange-100 text-orange-800",
+          }[this.getHotspotProvisioningStatus(contact)] || "bg-slate-200/70 text-slate-700";
+        },
+
+        canRetryHotspotProvisioning(contact) {
+          return ["PENDING", "FAILED", "MISSING", "CHANGED"].includes(
+            this.getHotspotProvisioningStatus(contact)
+          );
+        },
+
+        isHotspotProvisioningActive(contact) {
+          return this.getHotspotProvisioningStatus(contact) === "ACTIVE";
+        },
+
         getReactivationLabel(contact) {
           if (!contact.hotspotReactivationAt) return contact.hotspotReactivationEnabled ? "Belum dijadwalkan" : "Nonaktif";
           if (!contact.hotspotReactivationEnabled) return `Hapus terjadwal: ${this.formatDateTime(contact.hotspotReactivationAt)}`;
@@ -791,13 +830,16 @@
           return this.contacts.filter((contact) => {
             const selectedStatus = String(this.filters.contactHotspot.status || "ALL").toUpperCase();
             const hasAccount = Boolean(contact.mikrotikUsername);
+            const provisioningStatus = this.getHotspotProvisioningStatus(contact);
             if (selectedStatus === "CONFIGURED" && !hasAccount) return false;
             if (selectedStatus === "UNCONFIGURED" && hasAccount) return false;
             if (selectedStatus === "AUTO" && !contact.hotspotReactivationEnabled) return false;
+            if (["ACTIVE", "PENDING", "FAILED", "MISSING", "CHANGED"].includes(selectedStatus)
+              && provisioningStatus !== selectedStatus) return false;
 
             return this.searchMatches(
               contact,
-              ["name", "phoneNumber", "mikrotikUsername", "mikrotikProfile", "linkedApHost", "hotspotReactivationAt"],
+              ["name", "phoneNumber", "mikrotikUsername", "mikrotikProfile", "linkedApHost", "hotspotReactivationAt", "hotspotProvisioningStatus", "hotspotProvisioningError"],
               this.filters.contactHotspot.search
             );
           });
@@ -1166,6 +1208,7 @@
             });
           } catch (error) {
             this.setFormError("contact", error);
+            await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]).catch(() => {});
           } finally {
             this.contactCreateModal.loading = false;
           }
@@ -1302,6 +1345,24 @@
               this.notify(`Hotspot ${result.username} direaktivasi.${notificationText}`);
             }
             await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
+          });
+        },
+
+        async retryHotspotProvisioning(contact) {
+          if (!contact?.id || !this.canRetryHotspotProvisioning(contact)) return;
+          await this.withProcessing("Mencoba provisioning hotspot...", async () => {
+            try {
+              const result = await this.api(`/api/contacts/${contact.id}/hotspot/provision`, {
+                method: "POST",
+                body: JSON.stringify({}),
+              });
+              const notificationText = result.notification?.sent
+                ? " Kredensial terkirim ke WhatsApp."
+                : (result.notification?.error ? ` WA belum terkirim: ${result.notification.error}` : "");
+              this.notify(`Hotspot ${result.username} berhasil diaktifkan.${notificationText}`);
+            } finally {
+              await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
+            }
           });
         },
 
