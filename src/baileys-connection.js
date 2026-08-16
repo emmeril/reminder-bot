@@ -201,6 +201,11 @@ class BaileysConnection {
       .includes(disconnectCode);
   }
 
+  getDisconnectReason(disconnectCode) {
+    const reason = this.baileys?.DisconnectReason?.[disconnectCode];
+    return typeof reason === "string" ? reason : "unknown";
+  }
+
   async handleConnectionUpdate(update, socket, generation) {
     if (generation !== this.connectionGeneration) return;
 
@@ -246,17 +251,26 @@ class BaileysConnection {
     if (update.connection !== "close") return;
 
     if (this.socket === socket) this.socket = null;
+    this.outboundEnabled = false;
     const disconnectCode = this.getDisconnectCode(update.lastDisconnect);
     const disconnectMessage = update.lastDisconnect?.error?.message || null;
+    const disconnectReason = this.getDisconnectReason(disconnectCode);
     const invalidAuth = this.isInvalidAuthDisconnect(disconnectCode);
     const restartRequired = disconnectCode === this.baileys?.DisconnectReason?.restartRequired;
+    const badSession = disconnectCode === this.baileys?.DisconnectReason?.badSession;
     const canReconnect = !this.shuttingDown
       && this.reconnectAttempts < Math.max(0, CONFIG.MAX_RECONNECT_ATTEMPTS);
 
+    const logMessage = String(disconnectMessage || "tanpa pesan")
+      .replace(/\s+/g, " ")
+      .slice(0, 500);
+    console.warn(
+      `[Baileys:${this.id}] koneksi ditutup; kode=${disconnectCode ?? "unknown"}; alasan=${disconnectReason}; pesan=${logMessage}`
+    );
+
     // Setelah QR dipindai, WhatsApp biasanya meminta socket direstart. Sesi
     // yang baru diterima wajib dipertahankan dan dipakai untuk reconnect,
-    // sama seperti perilaku WhatsApp Web. Auth hanya dihapus bila server
-    // menyatakan sesi benar-benar tidak valid.
+    // sama seperti perilaku WhatsApp Web.
     if (restartRequired && canReconnect) {
       this.pairingQrSeen = false;
       await this.saveCreds?.();
@@ -265,45 +279,61 @@ class BaileysConnection {
         detail: "QR diterima; menyelesaikan koneksi WhatsApp",
         state: "RECONNECTING",
         qr: null,
+        lastDisconnectCode: disconnectCode,
+        lastDisconnectReason: disconnectReason,
+        lastDisconnectAt: Date.now(),
       });
       this.scheduleReconnect();
       return;
     }
 
-    if (invalidAuth && canReconnect) {
+    // Baileys dapat memetakan stream error yang tidak dikenal ke badSession
+    // (500). Pertahankan auth dan coba reconnect agar gangguan sementara tidak
+    // menghapus tautan perangkat yang masih valid.
+    if (badSession && canReconnect) {
       this.pairingQrSeen = false;
-      await this.resetAuthState();
       this.updateConnection({
         connected: false,
-        detail: "Sesi Baileys tidak valid; menyiapkan QR pairing WhatsApp baru",
+        detail: "Sesi Baileys bermasalah (badSession); mencoba reconnect tanpa menghapus auth",
         state: "RECONNECTING",
         qr: null,
-        device: null,
+        lastDisconnectCode: disconnectCode,
+        lastDisconnectReason: disconnectReason,
+        lastDisconnectAt: Date.now(),
       });
       this.scheduleReconnect();
+      return;
+    }
+
+    // Auth tidak pernah dihapus otomatis. Logout atau mismatch harus
+    // dikonfirmasi operator lewat tombol reset pairing agar error protokol
+    // tidak dapat menghilangkan sesi secara destruktif.
+    if (invalidAuth) {
+      this.pairingQrSeen = false;
+      this.updateConnection({
+        connected: false,
+        detail: `Sesi WhatsApp perlu ditautkan ulang (${disconnectReason}, kode ${disconnectCode ?? "unknown"}). Auth dipertahankan sampai reset manual dikonfirmasi.`,
+        state: "AUTH_INVALID",
+        qr: null,
+        device: null,
+        lastDisconnectCode: disconnectCode,
+        lastDisconnectReason: disconnectReason,
+        lastDisconnectAt: Date.now(),
+      });
       return;
     }
 
     this.updateConnection({
       connected: false,
-      detail: invalidAuth
-        ? "Sesi Baileys tidak valid. Hapus sesi lalu hubungkan ulang WhatsApp."
-        : `${canReconnect ? "Koneksi Baileys terputus; menjadwalkan reconnect" : "Koneksi Baileys terputus"}${disconnectMessage ? `: ${disconnectMessage}` : ""}`,
-      state: invalidAuth ? "AUTH_INVALID" : (canReconnect ? "RECONNECTING" : "DISCONNECTED"),
+      detail: `${canReconnect ? "Koneksi Baileys terputus; menjadwalkan reconnect" : "Koneksi Baileys terputus"} (${disconnectReason}, kode ${disconnectCode ?? "unknown"})${disconnectMessage ? `: ${disconnectMessage}` : ""}`,
+      state: canReconnect ? "RECONNECTING" : "DISCONNECTED",
       qr: null,
+      lastDisconnectCode: disconnectCode,
+      lastDisconnectReason: disconnectReason,
+      lastDisconnectAt: Date.now(),
     });
 
     if (canReconnect) this.scheduleReconnect();
-  }
-
-  async resetAuthState() {
-    this.connectionGeneration += 1;
-    this.outboundEnabled = false;
-    this.clearMessageRetryState();
-    await this.authStore.clear();
-    const auth = await this.authStore.initialize(this.baileys);
-    this.authState = auth.state;
-    this.saveCreds = auth.saveCreds;
   }
 
   scheduleReconnect() {

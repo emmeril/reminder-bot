@@ -5,11 +5,16 @@ const AuthManager = require("../src/auth-manager");
 const { WebServer } = require("../src/app");
 const { CONFIG, PAYMENT_STATUS, PAYMENT_TYPES } = require("../src/config");
 
-const originalApiKey = CONFIG.WEB_API_KEY;
+const originalAuthConfig = {
+  WEB_API_KEY: CONFIG.WEB_API_KEY,
+  AUTH_USERNAME: CONFIG.AUTH_USERNAME,
+  AUTH_PASSWORD: CONFIG.AUTH_PASSWORD,
+  SESSION_SECRET: CONFIG.SESSION_SECRET,
+};
 const openServers = [];
 
 afterEach(async () => {
-  CONFIG.WEB_API_KEY = originalApiKey;
+  Object.assign(CONFIG, originalAuthConfig);
   await Promise.all(openServers.splice(0).map((server) => new Promise((resolve, reject) => {
     server.closeAllConnections?.();
     server.close((error) => (error ? reject(error) : resolve()));
@@ -48,6 +53,21 @@ async function startServer(dataManager = {}, notificationBot = {}, mikrotikServi
   return `http://127.0.0.1:${address.port}`;
 }
 
+async function login(baseUrl) {
+  Object.assign(CONFIG, {
+    AUTH_USERNAME: "operator",
+    AUTH_PASSWORD: "test-password",
+    SESSION_SECRET: "test-session-secret",
+  });
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "operator", password: "test-password" }),
+  });
+  assert.equal(response.status, 200);
+  return response.headers.get("set-cookie").split(";", 1)[0];
+}
+
 test("halaman login memakai aset lokal dan mengirim CSP", async () => {
   const baseUrl = await startServer();
   const response = await fetch(`${baseUrl}/login`);
@@ -83,6 +103,55 @@ test("endpoint pairing code nomor WhatsApp tidak tersedia", async () => {
   });
 
   assert.equal(response.status, 404);
+});
+
+test("reset pairing memerlukan konfirmasi eksplisit", async () => {
+  let resetCalls = 0;
+  const baseUrl = await startServer({}, {
+    resetPairing: async () => { resetCalls += 1; },
+    getTransportStatus: async () => ({
+      whatsappProviderEnabled: true,
+      deviceReady: true,
+      outboundEnabled: true,
+      activeInstanceId: "primary",
+      instances: [{
+        id: "primary",
+        role: "primary",
+        connected: true,
+        canSend: true,
+        account: "Reminder Bot",
+        currentQR: false,
+        detail: "Baileys terhubung",
+      }],
+    }),
+  });
+  const cookie = await login(baseUrl);
+
+  const pageResponse = await fetch(`${baseUrl}/transport`, { headers: { cookie } });
+  const html = await pageResponse.text();
+  assert.equal(pageResponse.status, 200);
+  assert.match(html, /name="confirmReset" value="yes" required/);
+  assert.match(html, /Hapus Sesi &amp; Buat QR Baru/);
+
+  const rejected = await fetch(`${baseUrl}/transport/reset-pairing`, {
+    method: "POST",
+    redirect: "manual",
+    headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    body: "instanceId=primary",
+  });
+  assert.equal(rejected.status, 302);
+  assert.match(rejected.headers.get("location"), /error=/);
+  assert.equal(resetCalls, 0);
+
+  const confirmed = await fetch(`${baseUrl}/transport/reset-pairing`, {
+    method: "POST",
+    redirect: "manual",
+    headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    body: "instanceId=primary&confirmReset=yes",
+  });
+  assert.equal(confirmed.status, 302);
+  assert.match(confirmed.headers.get("location"), /pairingReset=1/);
+  assert.equal(resetCalls, 1);
 });
 
 test("riwayat pembayaran bulanan memakai metadata periode yang diminta", async () => {

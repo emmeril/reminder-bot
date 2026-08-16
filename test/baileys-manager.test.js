@@ -27,6 +27,7 @@ beforeEach(() => {
   BaileysManager.pendingQueue = 0;
   BaileysManager.failedQueue = 0;
   BaileysManager.lastSentAt = 0;
+  BaileysManager.reconnectAttempts = 0;
   BaileysManager.pairingQrSeen = false;
   BaileysManager.outboundEnabled = true;
   BaileysManager.connectionCache = {
@@ -396,7 +397,7 @@ test("scan QR yang berhasil langsung mengaktifkan pengiriman", async () => {
   assert.equal(status.account, "Reminder Bot");
 });
 
-test("menganggap sesi rusak sebagai auth invalid agar QR baru dapat dibuat", () => {
+test("mengenali kode disconnect yang berkaitan dengan auth", () => {
   BaileysManager.baileys = {
     DisconnectReason: {
       loggedOut: 401,
@@ -409,6 +410,88 @@ test("menganggap sesi rusak sebagai auth invalid agar QR baru dapat dibuat", () 
   assert.equal(BaileysManager.isInvalidAuthDisconnect(500), true);
   assert.equal(BaileysManager.isInvalidAuthDisconnect(411), true);
   assert.equal(BaileysManager.isInvalidAuthDisconnect(408), false);
+});
+
+test("badSession mencoba reconnect tanpa menghapus auth", async () => {
+  const connection = BaileysManager.getPrimaryConnection();
+  const originalBaileys = connection.baileys;
+  const originalAuthStore = connection.authStore;
+  const originalScheduleReconnect = connection.scheduleReconnect;
+  let authCleared = false;
+  let reconnectScheduled = false;
+
+  connection.baileys = {
+    DisconnectReason: {
+      500: "badSession",
+      badSession: 500,
+      loggedOut: 401,
+      multideviceMismatch: 411,
+      restartRequired: 515,
+    },
+  };
+  connection.authStore = { clear: async () => { authCleared = true; } };
+  connection.scheduleReconnect = () => { reconnectScheduled = true; };
+  connection.socket = {};
+  const socket = connection.socket;
+  const generation = connection.connectionGeneration;
+
+  try {
+    await connection.handleConnectionUpdate({
+      connection: "close",
+      lastDisconnect: { error: { output: { statusCode: 500 }, message: "unknown stream error" } },
+    }, socket, generation);
+  } finally {
+    connection.baileys = originalBaileys;
+    connection.authStore = originalAuthStore;
+    connection.scheduleReconnect = originalScheduleReconnect;
+  }
+
+  assert.equal(authCleared, false);
+  assert.equal(reconnectScheduled, true);
+  assert.equal(connection.connectionCache.state, "RECONNECTING");
+  assert.equal(connection.connectionCache.lastDisconnectCode, 500);
+  assert.match(connection.connectionCache.detail, /tanpa menghapus auth/);
+});
+
+test("loggedOut mempertahankan auth dan menunggu reset manual", async () => {
+  const connection = BaileysManager.getPrimaryConnection();
+  const originalBaileys = connection.baileys;
+  const originalAuthStore = connection.authStore;
+  const originalScheduleReconnect = connection.scheduleReconnect;
+  let authCleared = false;
+  let reconnectScheduled = false;
+
+  connection.baileys = {
+    DisconnectReason: {
+      401: "loggedOut",
+      badSession: 500,
+      loggedOut: 401,
+      multideviceMismatch: 411,
+      restartRequired: 515,
+    },
+  };
+  connection.authStore = { clear: async () => { authCleared = true; } };
+  connection.scheduleReconnect = () => { reconnectScheduled = true; };
+  connection.socket = {};
+  const socket = connection.socket;
+  const generation = connection.connectionGeneration;
+
+  try {
+    await connection.handleConnectionUpdate({
+      connection: "close",
+      lastDisconnect: { error: { output: { statusCode: 401 }, message: "logged out" } },
+    }, socket, generation);
+  } finally {
+    connection.baileys = originalBaileys;
+    connection.authStore = originalAuthStore;
+    connection.scheduleReconnect = originalScheduleReconnect;
+  }
+
+  assert.equal(authCleared, false);
+  assert.equal(reconnectScheduled, false);
+  assert.equal(connection.connectionCache.state, "AUTH_INVALID");
+  assert.equal(connection.connectionCache.lastDisconnectReason, "loggedOut");
+  assert.match(connection.connectionCache.detail, /reset manual/);
 });
 
 test("menormalkan rentang jeda yang tertukar", () => {

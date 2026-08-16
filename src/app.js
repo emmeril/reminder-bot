@@ -4071,6 +4071,9 @@ class WebServer {
     this.app.post("/transport/reset-pairing", requirePageAuth, async (req, res) => {
       try {
         const instanceId = sanitizeInput(req.body.instanceId) || null;
+        if (sanitizeInput(req.body.confirmReset).toLowerCase() !== "yes") {
+          throw new Error("Centang konfirmasi sebelum menghapus sesi dan membuat QR baru.");
+        }
         await this.notificationBot.resetPairing(instanceId);
         this.activityLog.push("info", "notification", `Pairing Baileys ${instanceId || "primary"} direset tanpa restart aplikasi`);
         return res.redirect(`/transport?pairingReset=1${instanceId ? `&instance=${encodeURIComponent(instanceId)}` : ""}`);
@@ -4133,7 +4136,11 @@ class WebServer {
               ${qrDataUrl ? `<div style="margin-top:16px;text-align:center;"><img src="${qrDataUrl}" alt="QR pairing ${escapeHtml(instance.id)}" width="280" height="280" style="max-width:100%;height:auto;border-radius:14px;"><p style="font:13px/1.5 sans-serif;color:#627773;">Pindai sebagai perangkat tertaut yang berbeda.</p></div>` : ""}
               <form method="post" action="/transport/reset-pairing" style="margin-top:16px;">
                 <input type="hidden" name="instanceId" value="${escapeHtml(instance.id)}">
-                <button type="submit" style="padding:10px 15px;border:1px solid #176b5b;border-radius:999px;background:#fff;color:#176b5b;font:700 13px/1 sans-serif;cursor:pointer;">${instance.connected ? "Tautkan Ulang" : "Buat QR Baru"}</button>
+                <label style="display:flex;gap:8px;align-items:flex-start;margin:0 0 12px;font:12px/1.5 sans-serif;color:#7c2d12;text-align:left;">
+                  <input type="checkbox" name="confirmReset" value="yes" required style="margin-top:3px;">
+                  <span>Saya paham sesi ${escapeHtml(instance.id)} akan dihapus dan harus memindai QR lagi.</span>
+                </label>
+                <button type="submit" style="padding:10px 15px;border:1px solid #9a3412;border-radius:999px;background:#fff;color:#9a3412;font:700 13px/1 sans-serif;cursor:pointer;">Hapus Sesi &amp; Buat QR Baru</button>
               </form>
             </section>
           `;

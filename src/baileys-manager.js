@@ -217,6 +217,9 @@ class BaileysManager {
         detail: status.transportError || status.providers?.baileys?.connection?.detail || null,
         reconnectAttempts: status.reconnectAttempts,
         lastActivity: status.lastActivity,
+        lastDisconnectCode: status.providers?.baileys?.connection?.lastDisconnectCode ?? null,
+        lastDisconnectReason: status.providers?.baileys?.connection?.lastDisconnectReason || null,
+        lastDisconnectAt: status.providers?.baileys?.connection?.lastDisconnectAt || null,
       };
     });
     const connected = instances.filter((instance) => instance.connected);
