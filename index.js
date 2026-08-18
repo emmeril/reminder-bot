@@ -1,3 +1,7 @@
+const { installLibsignalConsoleFilter } = require("./src/console-filter");
+
+installLibsignalConsoleFilter();
+
 const { bootstrap } = require("./src/app");
 
 bootstrap().catch((error) => {
