@@ -605,8 +605,10 @@ table tbody tr:hover { background: #fafaff; }
   .sidebar-collapsed .content-wrapper { margin-left: 70px; }
   .sidebar-collapsed .nav-group { gap: 5px; }
   .sidebar-collapsed .sidebar-nav { gap: 9px; }
-  .sidebar-collapsed .sidebar-footer .user-avatar { display: none; }
-  .sidebar-collapsed .sidebar-logout { margin: auto; }
+  .sidebar-collapsed .sidebar-footer { gap: 0; }
+  .sidebar-collapsed .sidebar-footer .user-avatar,
+  .sidebar-collapsed .sidebar-footer .user-info { display: none; }
+  .sidebar-collapsed .sidebar-logout { margin: 0; }
 }
 
 @media (max-width: 1199px) {
