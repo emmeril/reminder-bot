@@ -874,6 +874,9 @@ class DataManager {
 
   async initDirectories() {
     await fs.mkdir(CONFIG.DB_PATH, { recursive: true });
+    if (!process.env.DATABASE_URL) {
+      await fs.mkdir(path.dirname(CONFIG.DB_STORAGE), { recursive: true });
+    }
     await fs.mkdir(CONFIG.TEMPLATE_PATH, { recursive: true });
     await fs.mkdir(CONFIG.PUBLIC_PATH, { recursive: true });
   }
@@ -967,6 +970,34 @@ class DataManager {
     await this.sequelize.query("PRAGMA journal_mode = WAL");
     await this.sequelize.query("PRAGMA synchronous = NORMAL");
     await this.sequelize.query("PRAGMA foreign_keys = ON");
+  }
+
+  async healthCheck() {
+    if (!this.sequelize) {
+      throw new Error("Database belum diinisialisasi.");
+    }
+
+    const timeout = Math.max(250, CONFIG.HEALTHCHECK_TIMEOUT);
+    let timeoutId;
+    try {
+      await Promise.race([
+        this.sequelize.authenticate(),
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error("Database health check timeout.")), timeout);
+          timeoutId.unref?.();
+        }),
+      ]);
+      return true;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  async close() {
+    if (!this.sequelize) return;
+    const sequelize = this.sequelize;
+    await sequelize.close();
+    this.sequelize = null;
   }
 
   async withDatabaseWrite(operation) {
@@ -3773,6 +3804,7 @@ class NotificationBot {
 class WebServer {
   constructor(notificationBot, dataManager, templateManager, activityLog, reminderScheduler, authManager, mikrotikService, hotspotReactivationScheduler) {
     this.app = express();
+    this.app.disable("x-powered-by");
     this.app.set("trust proxy", CONFIG.TRUST_PROXY);
     this.notificationBot = notificationBot;
     this.dataManager = dataManager;
@@ -3783,6 +3815,8 @@ class WebServer {
     this.mikrotikService = mikrotikService;
     this.hotspotReactivationScheduler = hotspotReactivationScheduler;
     this.hotspotProvisioningLock = new AsyncLock();
+    this.server = null;
+    this.ready = true;
     this.setupRoutes();
   }
 
@@ -3892,22 +3926,88 @@ class WebServer {
   }
 
   setupRoutes() {
-    this.app.use(express.json({ limit: "1mb" }));
-    this.app.use(express.urlencoded({ extended: true, limit: "1mb" }));
-
     this.app.use((req, res, next) => {
+      const incomingRequestId = String(req.headers["x-request-id"] || "");
+      req.requestId = /^[a-zA-Z0-9._:-]{1,128}$/.test(incomingRequestId)
+        ? incomingRequestId
+        : crypto.randomUUID();
+      res.setHeader("X-Request-Id", req.requestId);
       res.setHeader(
         "Content-Security-Policy",
         "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
       );
+      res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+      res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+      res.setHeader("X-DNS-Prefetch-Control", "off");
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader("X-Frame-Options", "DENY");
       res.setHeader("Referrer-Policy", "no-referrer");
       res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+      if (CONFIG.NODE_ENV === "production" && req.secure) {
+        res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+      }
+      if (req.path.startsWith("/api/") || ["/login", "/dashboard", "/transport"].includes(req.path)) {
+        res.setHeader("Cache-Control", "no-store");
+      }
       next();
     });
 
-    this.app.use("/public", express.static(CONFIG.PUBLIC_PATH));
+    this.app.use((req, res, next) => {
+      const startedAt = process.hrtime.bigint();
+      res.on("finish", () => {
+        if (res.statusCode < 400) return;
+        const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+        this.activityLog.push(res.statusCode >= 500 ? "error" : "warn", "http", `${req.method} ${req.originalUrl} -> ${res.statusCode}`, {
+          requestId: req.requestId,
+          durationMs: Number(durationMs.toFixed(1)),
+        });
+      });
+      next();
+    });
+
+    this.app.use(express.json({ limit: "1mb" }));
+    this.app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+
+    this.app.use((req, res, next) => {
+      if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
+      const origin = req.headers.origin;
+      if (!origin) return next();
+
+      try {
+        const parsedOrigin = new URL(origin);
+        if (parsedOrigin.protocol === `${req.protocol}:` && parsedOrigin.host === req.get("host")) {
+          return next();
+        }
+      } catch {
+        // Invalid browser origins are rejected below.
+      }
+
+      return res.status(403).json({ success: false, error: "Cross-origin request ditolak." });
+    });
+
+    this.app.get("/healthz", (_req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ status: "ok", uptimeSeconds: Math.floor(process.uptime()) });
+    });
+
+    this.app.get("/readyz", async (_req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      if (!this.ready) {
+        return res.status(503).json({ status: "not_ready" });
+      }
+
+      try {
+        if (typeof this.dataManager.healthCheck === "function") {
+          await this.dataManager.healthCheck();
+        }
+        return res.json({ status: "ready" });
+      } catch (error) {
+        this.activityLog.push("error", "health", `Readiness check gagal: ${error.message}`);
+        return res.status(503).json({ status: "not_ready" });
+      }
+    });
+
+    this.app.use("/public", express.static(CONFIG.PUBLIC_PATH, { etag: true, maxAge: "1h" }));
     this.app.get("/vendor/alpine.min.js", (_req, res) => {
       res.sendFile(require.resolve("alpinejs/dist/cdn.min.js"));
     });
@@ -4020,7 +4120,7 @@ class WebServer {
 
       this.authManager.clearLoginFailures(attemptKey);
       const { token, session } = this.authManager.createSession(username);
-      const secureCookie = req.secure;
+      const secureCookie = CONFIG.SESSION_COOKIE_SECURE || req.secure;
       res.setHeader("Set-Cookie", serializeCookie(CONFIG.SESSION_COOKIE_NAME, token, {
         path: "/",
         httpOnly: true,
@@ -4039,7 +4139,7 @@ class WebServer {
     this.app.post("/api/auth/logout", handleApi(async (req, res) => {
       const { token, session } = readSession(req);
       this.authManager.destroySession(token);
-      const secureCookie = req.secure;
+      const secureCookie = CONFIG.SESSION_COOKIE_SECURE || req.secure;
       res.setHeader("Set-Cookie", serializeCookie(CONFIG.SESSION_COOKIE_NAME, "", {
         path: "/",
         httpOnly: true,
@@ -4572,6 +4672,32 @@ class WebServer {
         };
       });
     }));
+
+    this.app.use((req, res) => {
+      if (req.path.startsWith("/api/")) {
+        return res.status(404).json({ success: false, error: "Endpoint tidak ditemukan." });
+      }
+      return res.status(404).type("text/plain").send("Halaman tidak ditemukan.");
+    });
+
+    this.app.use((error, req, res, _next) => {
+      const requestedStatus = Number(error.statusCode || error.status);
+      const statusCode = requestedStatus >= 400 && requestedStatus <= 599 ? requestedStatus : 500;
+      const publicMessage = statusCode < 500 ? error.message : "Terjadi kesalahan internal.";
+      this.activityLog.push("error", "http", `Request ${req.requestId || "unknown"} gagal: ${error.message}`, {
+        requestId: req.requestId || null,
+        method: req.method,
+        path: req.originalUrl,
+        statusCode,
+      });
+
+      if (res.headersSent) return _next(error);
+      if (req.path.startsWith("/api/")) {
+        res.status(statusCode).json({ success: false, error: publicMessage, requestId: req.requestId });
+        return;
+      }
+      res.status(statusCode).type("text/plain").send(`${publicMessage}\nRequest ID: ${req.requestId}`);
+    });
   }
 
   async renderDashboard() {
@@ -4589,10 +4715,49 @@ class WebServer {
     return html.replace(/__DASHBOARD_TITLE__/g, title);
   }
 
-  start() {
-    this.app.listen(CONFIG.PORT, CONFIG.HOST, () => {
-      this.activityLog.push("info", "web", `Dashboard running at http://${CONFIG.HOST}:${CONFIG.PORT}/dashboard`);
-      this.activityLog.push("info", "web", `WhatsApp provider status page running at http://${CONFIG.HOST}:${CONFIG.PORT}/transport`);
+  async start() {
+    if (this.server) return this.server;
+    this.ready = true;
+
+    return new Promise((resolve, reject) => {
+      const server = this.app.listen(CONFIG.PORT, CONFIG.HOST);
+      this.server = server;
+      const handleError = (error) => {
+        this.server = null;
+        reject(error);
+      };
+      server.once("error", handleError);
+      server.once("listening", () => {
+        server.off("error", handleError);
+        this.activityLog.push("info", "web", `Dashboard running at http://${CONFIG.HOST}:${CONFIG.PORT}/dashboard`);
+        this.activityLog.push("info", "web", `WhatsApp provider status page running at http://${CONFIG.HOST}:${CONFIG.PORT}/transport`);
+        resolve(server);
+      });
+    });
+  }
+
+  async stop(timeoutMs = Math.min(CONFIG.SHUTDOWN_TIMEOUT, 10_000)) {
+    this.ready = false;
+    const server = this.server;
+    if (!server) return;
+
+    await new Promise((resolve) => {
+      let completed = false;
+      const finish = () => {
+        if (completed) return;
+        completed = true;
+        clearTimeout(forceCloseTimer);
+        this.server = null;
+        resolve();
+      };
+      const forceCloseTimer = setTimeout(() => {
+        this.activityLog.push("warn", "shutdown", "HTTP connection dipaksa tutup setelah melewati batas waktu");
+        server.closeAllConnections?.();
+        finish();
+      }, Math.max(250, timeoutMs));
+      forceCloseTimer.unref?.();
+      server.closeIdleConnections?.();
+      server.close(finish);
     });
   }
 }
@@ -4658,6 +4823,10 @@ async function runScheduledTasks(tasks, activityLog) {
 
 async function bootstrap() {
   assertSecureConfiguration();
+  if (!cron.validate(CONFIG.CRON_SCHEDULE) || !cron.validate(CONFIG.SENT_HISTORY_CLEANUP_SCHEDULE)) {
+    throw new Error("Konfigurasi cron tidak valid.");
+  }
+
   const activityLog = new ActivityLog();
   for (const warning of collectSecurityWarnings()) {
     activityLog.push("warn", "config", warning);
@@ -4709,8 +4878,20 @@ async function bootstrap() {
 
   await sendMonthlyResetNotification(notificationBot, dataManager, activityLog);
 
-  cron.schedule(CONFIG.CRON_SCHEDULE, () => {
-    void runScheduledTasks([
+  const scheduledJobs = [];
+  const intervals = [];
+  const backgroundTasks = new Set();
+  const trackBackgroundTask = (promise) => {
+    const task = Promise.resolve(promise);
+    backgroundTasks.add(task);
+    task.then(
+      () => backgroundTasks.delete(task),
+      () => backgroundTasks.delete(task)
+    );
+    return task;
+  };
+  scheduledJobs.push(cron.schedule(CONFIG.CRON_SCHEDULE, () => {
+    void trackBackgroundTask(runScheduledTasks([
       { name: "reminders", run: () => reminderScheduler.processDueReminders() },
       { name: "ap-monitor", run: () => apDownNotifier.processNetwatchChanges() },
       { name: "whatsapp-provider-status", run: () => whatsappProviderStatusNotifier.processStatusChanges() },
@@ -4719,60 +4900,114 @@ async function bootstrap() {
       { name: "hotspot-reactivation", run: () => hotspotReactivationScheduler.processDueReactivations() },
       { name: "hotspot-status-sync", run: () => hotspotStatusSyncScheduler.processStatusSync() },
       { name: "monthly-payment-reset", run: () => sendMonthlyResetNotification(notificationBot, dataManager, activityLog) },
-    ], activityLog);
-  });
+    ], activityLog));
+  }));
 
-  cron.schedule(CONFIG.SENT_HISTORY_CLEANUP_SCHEDULE, () => {
-    dataManager.cleanupSentHistory().catch((error) => {
+  scheduledJobs.push(cron.schedule(CONFIG.SENT_HISTORY_CLEANUP_SCHEDULE, () => {
+    void trackBackgroundTask(dataManager.cleanupSentHistory().catch((error) => {
       activityLog.push("error", "storage", `Sent History auto-clean failed: ${error.message}`);
-    });
-  });
+    }));
+  }));
 
-  setInterval(() => {
-    dataManager.saveAll().catch((error) => {
+  intervals.push(setInterval(() => {
+    void trackBackgroundTask(dataManager.saveAll().catch((error) => {
       activityLog.push("error", "storage", `Auto-save failed: ${error.message}`);
-    });
-  }, CONFIG.AUTO_SAVE_INTERVAL);
+    }));
+  }, CONFIG.AUTO_SAVE_INTERVAL));
 
-  setInterval(() => {
+  intervals.push(setInterval(() => {
     authManager.cleanupExpiredSessions();
-  }, 60 * 60 * 1000);
+  }, 60 * 60 * 1000));
 
-  process.on("SIGINT", async () => {
-    activityLog.push("info", "shutdown", "Saving data before shutdown");
-    await notificationBot.shutdown();
-    await dataManager.saveAll();
-    process.exit(0);
-  });
+  let shutdownPromise = null;
+  const shutdown = (reason = "manual") => {
+    if (shutdownPromise) return shutdownPromise;
 
-  process.on("SIGTERM", async () => {
-    activityLog.push("info", "shutdown", "Saving data before shutdown");
-    await notificationBot.shutdown();
-    await dataManager.saveAll();
-    process.exit(0);
-  });
+    shutdownPromise = (async () => {
+      activityLog.push("info", "shutdown", `Graceful shutdown dimulai: ${reason}`);
+      webServer.ready = false;
+      scheduledJobs.forEach((job) => {
+        job.stop();
+        job.destroy?.();
+      });
+      intervals.forEach((interval) => clearInterval(interval));
 
-  process.on("uncaughtException", async (error) => {
-    activityLog.push("error", "runtime", `Uncaught exception: ${error.message}`);
-    await notificationBot.shutdown();
-    await dataManager.saveAll();
-    process.exit(1);
-  });
+      const shutdownWork = (async () => {
+        await webServer.stop();
+        await Promise.allSettled([...backgroundTasks]);
+        await notificationBot.shutdown().catch((error) => {
+          activityLog.push("error", "shutdown", `Transport gagal dihentikan: ${error.message}`);
+        });
+        await dataManager.saveAll().catch((error) => {
+          activityLog.push("error", "shutdown", `Penyimpanan akhir gagal: ${error.message}`);
+        });
+        await dataManager.close().catch((error) => {
+          activityLog.push("error", "shutdown", `Database gagal ditutup: ${error.message}`);
+        });
+      })();
 
-  process.on("unhandledRejection", async (reason) => {
-    const message = reason instanceof Error ? reason.message : String(reason);
-    activityLog.push("error", "runtime", `Unhandled rejection: ${message}`);
-    await notificationBot.shutdown();
-    await dataManager.saveAll();
-    process.exit(1);
-  });
+      let timeoutId;
+      try {
+        await Promise.race([
+          shutdownWork,
+          new Promise((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error("Graceful shutdown timeout.")), Math.max(1_000, CONFIG.SHUTDOWN_TIMEOUT));
+            timeoutId.unref?.();
+          }),
+        ]);
+        activityLog.push("info", "shutdown", "Graceful shutdown selesai");
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    })();
+    return shutdownPromise;
+  };
 
-  webServer.start();
-  notificationBot.initialize()
+  const terminate = (reason, exitCode) => {
+    shutdown(reason)
+      .catch((error) => {
+        activityLog.push("error", "shutdown", `Graceful shutdown gagal: ${error.message}`);
+      })
+      .finally(() => process.exit(exitCode));
+  };
+  const handleSigint = () => terminate("SIGINT", 0);
+  const handleSigterm = () => terminate("SIGTERM", 0);
+  const handleUncaughtException = (error) => {
+    activityLog.push("error", "runtime", `Uncaught exception: ${error.message}`, { stack: error.stack });
+    terminate("uncaughtException", 1);
+  };
+  const handleUnhandledRejection = (reason) => {
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+    activityLog.push("error", "runtime", `Unhandled rejection: ${error.message}`, { stack: error.stack });
+    terminate("unhandledRejection", 1);
+  };
+
+  process.once("SIGINT", handleSigint);
+  process.once("SIGTERM", handleSigterm);
+  process.once("uncaughtException", handleUncaughtException);
+  process.once("unhandledRejection", handleUnhandledRejection);
+
+  await webServer.start();
+  const notificationInitialization = notificationBot.initialize()
     .then(() => activityLog.push("info", "notification", "Notification transport initialized"))
     .catch((error) => {
       activityLog.push("error", "notification", `Initial notification startup failed: ${error.message}`);
     });
+
+  return {
+    activityLog,
+    dataManager,
+    notificationBot,
+    notificationInitialization,
+    webServer,
+    async shutdown(reason = "manual") {
+      process.removeListener("SIGINT", handleSigint);
+      process.removeListener("SIGTERM", handleSigterm);
+      process.removeListener("uncaughtException", handleUncaughtException);
+      process.removeListener("unhandledRejection", handleUnhandledRejection);
+      return shutdown(reason);
+    },
+  };
 }
 
 module.exports = {

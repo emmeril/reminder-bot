@@ -56,6 +56,7 @@ const BAILEYS_AUTH_STORAGES = Object.fromEntries(
 );
 
 const CONFIG = {
+  NODE_ENV: envString("NODE_ENV", "development"),
   HOST: envString("HOST", "127.0.0.1"),
   TRUST_PROXY: envBoolean("TRUST_PROXY", false),
   PORT: envNumber("PORT", 3025),
@@ -84,6 +85,9 @@ const CONFIG = {
   SESSION_COOKIE_NAME: "reminder_bot_session",
   SESSION_TTL: 24 * 60 * 60 * 1000,
   SESSION_SECRET: envString("SESSION_SECRET"),
+  SESSION_COOKIE_SECURE: envBoolean("SESSION_COOKIE_SECURE", false),
+  HEALTHCHECK_TIMEOUT: envNumber("HEALTHCHECK_TIMEOUT", 2_000),
+  SHUTDOWN_TIMEOUT: envNumber("SHUTDOWN_TIMEOUT", 25_000),
   LOG_LIMIT: 250,
   MIKROTIK_PRIMARY: {
     host: envString("IP_MIKROTIK"),

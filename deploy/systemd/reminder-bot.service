@@ -15,9 +15,22 @@ ExecStart=/usr/bin/node /opt/reminder-bot/index.js
 Restart=always
 RestartSec=5
 TimeoutStopSec=30
+TimeoutStartSec=60
+UMask=0077
+LimitNOFILE=4096
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=full
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ReadWritePaths=/opt/reminder-bot/database /opt/reminder-bot/templates
 
 [Install]

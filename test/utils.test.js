@@ -36,6 +36,7 @@ test("periode tagihan mengikuti batas bulan timezone aplikasi", () => {
 
 test("menolak startup tanpa kredensial dashboard eksplisit", () => {
   const original = {
+    WEB_API_KEY: CONFIG.WEB_API_KEY,
     AUTH_USERNAME: CONFIG.AUTH_USERNAME,
     AUTH_PASSWORD: CONFIG.AUTH_PASSWORD,
     SESSION_SECRET: CONFIG.SESSION_SECRET,
@@ -43,6 +44,26 @@ test("menolak startup tanpa kredensial dashboard eksplisit", () => {
   try {
     Object.assign(CONFIG, { AUTH_USERNAME: "", AUTH_PASSWORD: "", SESSION_SECRET: "" });
     assert.throws(() => assertSecureConfiguration(), /Konfigurasi keamanan tidak valid/);
+  } finally {
+    Object.assign(CONFIG, original);
+  }
+});
+
+test("menolak API key pendek ketika akses API key diaktifkan", () => {
+  const original = {
+    WEB_API_KEY: CONFIG.WEB_API_KEY,
+    AUTH_USERNAME: CONFIG.AUTH_USERNAME,
+    AUTH_PASSWORD: CONFIG.AUTH_PASSWORD,
+    SESSION_SECRET: CONFIG.SESSION_SECRET,
+  };
+  try {
+    Object.assign(CONFIG, {
+      WEB_API_KEY: "short-key",
+      AUTH_USERNAME: "operator",
+      AUTH_PASSWORD: "password-yang-kuat",
+      SESSION_SECRET: "a".repeat(32),
+    });
+    assert.throws(() => assertSecureConfiguration(), /WEB_API_KEY/);
   } finally {
     Object.assign(CONFIG, original);
   }

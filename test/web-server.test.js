@@ -10,6 +10,9 @@ const originalAuthConfig = {
   AUTH_USERNAME: CONFIG.AUTH_USERNAME,
   AUTH_PASSWORD: CONFIG.AUTH_PASSWORD,
   SESSION_SECRET: CONFIG.SESSION_SECRET,
+  SESSION_COOKIE_SECURE: CONFIG.SESSION_COOKIE_SECURE,
+  HOST: CONFIG.HOST,
+  PORT: CONFIG.PORT,
 };
 const openServers = [];
 
@@ -77,6 +80,89 @@ test("halaman login memakai aset lokal dan mengirim CSP", async () => {
   assert.match(response.headers.get("content-security-policy"), /default-src 'self'/);
   assert.doesNotMatch(html, /https:\/\//);
   assert.match(html, /\/vendor\/alpine\.min\.js/);
+});
+
+test("health check publik tidak membocorkan framework dan membawa request ID", async () => {
+  const baseUrl = await startServer();
+  const response = await fetch(`${baseUrl}/healthz`, {
+    headers: { "x-request-id": "probe-123" },
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.status, "ok");
+  assert.equal(response.headers.get("x-request-id"), "probe-123");
+  assert.equal(response.headers.get("x-powered-by"), null);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+});
+
+test("readiness mengembalikan 503 ketika database tidak sehat", async () => {
+  const baseUrl = await startServer({
+    healthCheck: async () => {
+      throw new Error("database unavailable");
+    },
+  });
+  const response = await fetch(`${baseUrl}/readyz`);
+  const payload = await response.json();
+
+  assert.equal(response.status, 503);
+  assert.equal(payload.status, "not_ready");
+});
+
+test("request mutasi dari origin lain ditolak", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const baseUrl = await startServer();
+  const response = await fetch(`${baseUrl}/api/settings`, {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": CONFIG.WEB_API_KEY,
+      origin: "https://attacker.example",
+    },
+    body: JSON.stringify({ dashboardTitle: "Changed" }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 403);
+  assert.match(payload.error, /Cross-origin/);
+});
+
+test("cookie sesi dapat dipaksa Secure saat TLS berakhir di luar aplikasi", async () => {
+  CONFIG.SESSION_COOKIE_SECURE = true;
+  const baseUrl = await startServer();
+  const cookie = await login(baseUrl);
+
+  assert.match(cookie, /^reminder_bot_session=/);
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "operator", password: "test-password" }),
+  });
+  assert.match(response.headers.get("set-cookie"), /; Secure(?:;|$)/);
+});
+
+test("WebServer menutup listener dan menandai readiness saat shutdown", async () => {
+  Object.assign(CONFIG, { HOST: "127.0.0.1", PORT: 0 });
+  const activityLog = { push() {}, list: () => [] };
+  const webServer = new WebServer(
+    { getStatus: () => ({}) },
+    { getSettings: () => ({ dashboardTitle: "Test" }), healthCheck: async () => true },
+    {},
+    activityLog,
+    {},
+    new AuthManager(activityLog),
+    {},
+    {}
+  );
+  const server = await webServer.start();
+  const port = server.address().port;
+
+  const readyResponse = await fetch(`http://127.0.0.1:${port}/readyz`);
+  assert.equal(readyResponse.status, 200);
+
+  await webServer.stop(1_000);
+  assert.equal(webServer.ready, false);
+  assert.equal(webServer.server, null);
 });
 
 test("API key dapat membaca identitas auth tanpa sesi dashboard", async () => {

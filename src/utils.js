@@ -218,6 +218,18 @@ function collectSecurityWarnings() {
     warnings.push("SESSION_SECRET sebaiknya memiliki minimal 32 karakter.");
   }
 
+  if (CONFIG.NODE_ENV === "production" && !CONFIG.SESSION_COOKIE_SECURE) {
+    warnings.push("SESSION_COOKIE_SECURE belum aktif; aktifkan setelah dashboard wajib memakai HTTPS.");
+  }
+
+  if (CONFIG.MIKROTIK_PRIMARY.host && !CONFIG.MIKROTIK_PRIMARY.tls) {
+    warnings.push("Koneksi MikroTik primary belum memakai TLS.");
+  }
+
+  if (CONFIG.MIKROTIK_BACKUP.host && !CONFIG.MIKROTIK_BACKUP.tls) {
+    warnings.push("Koneksi MikroTik backup belum memakai TLS.");
+  }
+
   return warnings;
 }
 
@@ -229,6 +241,9 @@ function assertSecureConfiguration() {
   }
   if (!CONFIG.SESSION_SECRET || CONFIG.SESSION_SECRET.length < 32) {
     errors.push("SESSION_SECRET wajib dikonfigurasi dengan minimal 32 karakter.");
+  }
+  if (CONFIG.WEB_API_KEY && CONFIG.WEB_API_KEY.length < 32) {
+    errors.push("WEB_API_KEY wajib memiliki minimal 32 karakter jika diaktifkan.");
   }
   if (CONFIG.AUTH_USERNAME === "admin" || CONFIG.AUTH_PASSWORD === "admin123") {
     errors.push("Kredensial dashboard default tidak boleh digunakan.");
