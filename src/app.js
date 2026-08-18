@@ -804,45 +804,11 @@ class MikrotikService {
   }
 
   async downloadRouterFile(conn, remoteFileName, destinationPath, config = null) {
-    const files = await conn.menu("/file").print();
-    const row = (files || []).find((item) => String(item.name || "") === remoteFileName);
-    const rowId = row?.[".id"] || row?.id || row?.numbers || remoteFileName;
-    let apiError = null;
-
+    const ftpPort = await this.resolveFtpPort(conn, config);
     try {
-      const response = await conn.menu("/file").exec("get", {
-        number: rowId,
-        "value-name": "contents",
-      });
-      const contents = response?.ret
-        ?? response?.contents
-        ?? response?.[0]?.ret
-        ?? response?.[0]?.contents;
-      if (contents === undefined || contents === null || String(contents).length === 0) {
-        throw new Error("Isi file tidak tersedia melalui properti contents RouterOS.");
-      }
-      await fs.writeFile(destinationPath, String(contents), { mode: 0o600 });
-    } catch (error) {
-      apiError = error;
-    }
-
-    if (apiError) {
-      if (!config) {
-        throw new Error(`Isi file backup MikroTik tidak dapat dibaca melalui API: ${apiError.message}`);
-      }
-
-      const ftpPort = await this.resolveFtpPort(conn, config);
-      this.activityLog.push(
-        "warn",
-        "mikrotik",
-        "Isi backup terlalu besar atau tidak tersedia melalui API; menggunakan fallback FTP RouterOS.",
-        { ftpPort }
-      );
-      try {
-        await this.downloadRouterFileViaFtp(config, ftpPort, remoteFileName, destinationPath);
-      } catch (ftpError) {
-        throw new Error(`Download backup MikroTik gagal melalui API dan FTP: ${ftpError.message}`);
-      }
+      await this.downloadRouterFileViaFtp(config, ftpPort, remoteFileName, destinationPath);
+    } catch (ftpError) {
+      throw new Error(`Download backup MikroTik gagal melalui FTP: ${ftpError.message}`);
     }
 
     const stats = await fs.stat(destinationPath);

@@ -25,10 +25,10 @@ test("membersihkan file export di router dan file lokal saat download gagal", as
   service.downloadRouterFile = async (_connection, _remoteFile, destinationPath) => {
     localDirectory = path.dirname(destinationPath);
     await fs.writeFile(destinationPath, "partial");
-    throw new Error("API gagal");
+    throw new Error("FTP gagal");
   };
 
-  await assert.rejects(() => service.generateDailyBackupFile(), /API gagal/);
+  await assert.rejects(() => service.generateDailyBackupFile(), /FTP gagal/);
   assert.equal(cleanupCalls, 1);
   await assert.rejects(() => fs.stat(localDirectory), { code: "ENOENT" });
 });
@@ -61,45 +61,22 @@ test("mengizinkan export melalui API tanpa TLS dengan peringatan keamanan", asyn
   }
 });
 
-test("membaca isi export melalui perintah file get API", async () => {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "reminder-api-backup-"));
+test("langsung mengunduh export melalui FTP tanpa membaca contents API", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "reminder-ftp-backup-"));
   const destination = path.join(directory, "backup.rsc");
-  let getPayload = null;
+  let ftpCall = null;
+  let apiFileCalls = 0;
   const service = new MikrotikService({ push() {} });
   const connection = {
     menu: () => ({
-      print: async () => [{ ".id": "*1", name: "backup.rsc" }],
-      exec: async (_command, payload) => {
-        getPayload = payload;
-        return { ret: "/system identity set name=router" };
+      print: async () => {
+        apiFileCalls += 1;
+        return [];
       },
-    }),
-  };
-
-  try {
-    await service.downloadRouterFile(connection, "backup.rsc", destination);
-    assert.equal(getPayload.number, "*1");
-    assert.equal(getPayload["value-name"], "contents");
-    assert.match(await fs.readFile(destination, "utf8"), /system identity/);
-  } finally {
-    await fs.rm(directory, { recursive: true, force: true });
-  }
-});
-
-test("menggunakan fallback FTP ketika contents tidak tersedia melalui API", async () => {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "reminder-ftp-backup-"));
-  const destination = path.join(directory, "backup.rsc");
-  const logs = [];
-  let ftpCall = null;
-  const service = new MikrotikService({
-    push(level, source, message, metadata) {
-      logs.push({ level, source, message, metadata });
-    },
-  });
-  const connection = {
-    menu: () => ({
-      print: async () => [{ ".id": "*1", name: "backup.rsc" }],
-      exec: async () => [],
+      exec: async () => {
+        apiFileCalls += 1;
+        return [];
+      },
     }),
   };
   service.resolveFtpPort = async () => 1234;
@@ -113,13 +90,13 @@ test("menggunakan fallback FTP ketika contents tidak tersedia melalui API", asyn
     await service.downloadRouterFile(connection, "backup.rsc", destination, config);
     assert.deepEqual(ftpCall, { config, ftpPort: 1234, remoteFileName: "backup.rsc" });
     assert.match(await fs.readFile(destination, "utf8"), /router-via-ftp/);
-    assert.equal(logs.some((entry) => entry.level === "warn" && /fallback FTP/.test(entry.message)), true);
+    assert.equal(apiFileCalls, 0);
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
 
-test("melaporkan kegagalan jika API dan fallback FTP sama-sama gagal", async () => {
+test("melaporkan kegagalan download FTP", async () => {
   const service = new MikrotikService({ push() {} });
   const connection = {
     menu: () => ({
@@ -138,6 +115,6 @@ test("melaporkan kegagalan jika API dan fallback FTP sama-sama gagal", async () 
       user: "api",
       password: "secret",
     }),
-    /API dan FTP: connection refused/
+    /melalui FTP: connection refused/
   );
 });
