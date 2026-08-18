@@ -194,16 +194,44 @@ class BaileysConnection {
     return error?.output?.statusCode || error?.data?.statusCode || error?.statusCode || null;
   }
 
-  isInvalidAuthDisconnect(disconnectCode) {
+  getDisconnectReason(disconnectCode) {
+    const reason = this.baileys?.DisconnectReason?.[disconnectCode];
+    return typeof reason === "string" ? reason : "unknown";
+  }
+
+  getStreamDisconnectReason(lastDisconnect) {
+    const message = String(lastDisconnect?.error?.message || "");
+    const match = message.match(/Stream Errored \(([^)]+)\)/i);
+    return match ? match[1].trim().toLowerCase() : null;
+  }
+
+  isInvalidAuthDisconnect(disconnectCode, streamReason = null) {
     const reasons = this.baileys?.DisconnectReason || {};
+    if (streamReason === "conflict") return false;
     return [reasons.loggedOut, reasons.badSession, reasons.multideviceMismatch]
       .filter((reason) => reason != null)
       .includes(disconnectCode);
   }
 
-  getDisconnectReason(disconnectCode) {
-    const reason = this.baileys?.DisconnectReason?.[disconnectCode];
-    return typeof reason === "string" ? reason : "unknown";
+  getReconnectDelayMs(disconnectCode, attempt = this.reconnectAttempts, randomValue = Math.random()) {
+    const reasons = this.baileys?.DisconnectReason || {};
+    const standardBase = Math.max(1_000, CONFIG.BAILEYS_RECONNECT_BASE_DELAY);
+    const standardMax = Math.max(standardBase, CONFIG.BAILEYS_RECONNECT_MAX_DELAY);
+    let baseDelay = standardBase;
+    let maxDelay = standardMax;
+
+    if (disconnectCode === reasons.unavailableService) {
+      baseDelay = Math.max(10_000, standardBase);
+      maxDelay = Math.max(baseDelay, CONFIG.BAILEYS_RECONNECT_SERVICE_MAX_DELAY);
+    } else if (disconnectCode === reasons.forbidden) {
+      baseDelay = Math.max(60_000, standardBase);
+      maxDelay = Math.max(baseDelay, CONFIG.BAILEYS_RECONNECT_FORBIDDEN_MAX_DELAY);
+    }
+
+    const exponent = Math.min(Math.max(0, attempt - 1), 20);
+    const exponentialDelay = Math.min(baseDelay * (2 ** exponent), maxDelay);
+    const boundedRandom = Math.min(1, Math.max(0, Number(randomValue) || 0));
+    return Math.max(1_000, Math.round(exponentialDelay * (0.8 + (boundedRandom * 0.4))));
   }
 
   async handleConnectionUpdate(update, socket, generation) {
@@ -230,6 +258,8 @@ class BaileysConnection {
     }
 
     if (update.connection === "open") {
+      if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
       this.pairingQrSeen = false;
       this.outboundEnabled = true;
       this.reconnectAttempts = 0;
@@ -239,6 +269,8 @@ class BaileysConnection {
         detail: "Baileys terhubung ke WhatsApp",
         state: "READY",
         qr: null,
+        reconnectDelayMs: null,
+        nextReconnectAt: null,
         device: socket.user ? {
           account: socket.user.name || socket.user.id || null,
           id: socket.user.id || null,
@@ -254,18 +286,20 @@ class BaileysConnection {
     this.outboundEnabled = false;
     const disconnectCode = this.getDisconnectCode(update.lastDisconnect);
     const disconnectMessage = update.lastDisconnect?.error?.message || null;
-    const disconnectReason = this.getDisconnectReason(disconnectCode);
-    const invalidAuth = this.isInvalidAuthDisconnect(disconnectCode);
+    const streamReason = this.getStreamDisconnectReason(update.lastDisconnect);
+    const enumReason = this.getDisconnectReason(disconnectCode);
+    const disconnectReason = streamReason === "conflict" ? "connectionReplaced" : enumReason;
+    const invalidAuth = this.isInvalidAuthDisconnect(disconnectCode, streamReason);
     const restartRequired = disconnectCode === this.baileys?.DisconnectReason?.restartRequired;
     const badSession = disconnectCode === this.baileys?.DisconnectReason?.badSession;
-    const canReconnect = !this.shuttingDown
-      && this.reconnectAttempts < Math.max(0, CONFIG.MAX_RECONNECT_ATTEMPTS);
+    const canReconnect = !this.shuttingDown;
+    const disconnectedAt = Date.now();
 
     const logMessage = String(disconnectMessage || "tanpa pesan")
       .replace(/\s+/g, " ")
       .slice(0, 500);
     console.warn(
-      `[Baileys:${this.id}] koneksi ditutup; kode=${disconnectCode ?? "unknown"}; alasan=${disconnectReason}; pesan=${logMessage}`
+      `[${new Date(disconnectedAt).toISOString()}] [Baileys:${this.id}] koneksi ditutup; kode=${disconnectCode ?? "unknown"}; alasan=${disconnectReason}; pesan=${logMessage}`
     );
 
     // Setelah QR dipindai, WhatsApp biasanya meminta socket direstart. Sesi
@@ -281,9 +315,9 @@ class BaileysConnection {
         qr: null,
         lastDisconnectCode: disconnectCode,
         lastDisconnectReason: disconnectReason,
-        lastDisconnectAt: Date.now(),
+        lastDisconnectAt: disconnectedAt,
       });
-      this.scheduleReconnect();
+      this.scheduleReconnect(disconnectCode);
       return;
     }
 
@@ -299,9 +333,9 @@ class BaileysConnection {
         qr: null,
         lastDisconnectCode: disconnectCode,
         lastDisconnectReason: disconnectReason,
-        lastDisconnectAt: Date.now(),
+        lastDisconnectAt: disconnectedAt,
       });
-      this.scheduleReconnect();
+      this.scheduleReconnect(disconnectCode);
       return;
     }
 
@@ -318,7 +352,7 @@ class BaileysConnection {
         device: null,
         lastDisconnectCode: disconnectCode,
         lastDisconnectReason: disconnectReason,
-        lastDisconnectAt: Date.now(),
+        lastDisconnectAt: disconnectedAt,
       });
       return;
     }
@@ -330,29 +364,34 @@ class BaileysConnection {
       qr: null,
       lastDisconnectCode: disconnectCode,
       lastDisconnectReason: disconnectReason,
-      lastDisconnectAt: Date.now(),
+      lastDisconnectAt: disconnectedAt,
     });
 
-    if (canReconnect) this.scheduleReconnect();
+    if (canReconnect) this.scheduleReconnect(disconnectCode);
   }
 
-  scheduleReconnect() {
+  scheduleReconnect(disconnectCode = this.connectionCache.lastDisconnectCode) {
     if (this.reconnectTimer || this.shuttingDown) return;
 
     this.reconnectAttempts += 1;
-    const delay = Math.min(
-      Math.max(1_000, CONFIG.MIN_RECONNECT_INTERVAL) * (2 ** (this.reconnectAttempts - 1)),
-      Math.max(CONFIG.MIN_RECONNECT_INTERVAL, CONFIG.BAILEYS_RECONNECT_MAX_DELAY)
+    const delay = this.getReconnectDelayMs(disconnectCode, this.reconnectAttempts);
+    this.updateConnection({
+      reconnectDelayMs: delay,
+      nextReconnectAt: Date.now() + delay,
+    });
+    console.warn(
+      `[${new Date().toISOString()}] [Baileys:${this.id}] reconnect dijadwalkan; percobaan=${this.reconnectAttempts}; jeda_ms=${delay}; kode=${disconnectCode ?? "unknown"}`
     );
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
+      this.updateConnection({ reconnectDelayMs: null, nextReconnectAt: null });
       this.initialize().catch((error) => {
         this.updateConnection({
           connected: false,
           detail: `Reconnect Baileys gagal: ${error.message}`,
           state: "RECONNECTING",
         });
-        this.scheduleReconnect();
+        this.scheduleReconnect(disconnectCode);
       });
     }, delay);
     this.reconnectTimer.unref?.();

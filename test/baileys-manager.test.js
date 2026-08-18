@@ -10,6 +10,10 @@ const originalConfig = {
   BAILEYS_AUTH_STORAGES: CONFIG.BAILEYS_AUTH_STORAGES,
   WA_MESSAGE_DELAY_MIN: CONFIG.WA_MESSAGE_DELAY_MIN,
   WA_MESSAGE_DELAY_MAX: CONFIG.WA_MESSAGE_DELAY_MAX,
+  BAILEYS_RECONNECT_BASE_DELAY: CONFIG.BAILEYS_RECONNECT_BASE_DELAY,
+  BAILEYS_RECONNECT_MAX_DELAY: CONFIG.BAILEYS_RECONNECT_MAX_DELAY,
+  BAILEYS_RECONNECT_SERVICE_MAX_DELAY: CONFIG.BAILEYS_RECONNECT_SERVICE_MAX_DELAY,
+  BAILEYS_RECONNECT_FORBIDDEN_MAX_DELAY: CONFIG.BAILEYS_RECONNECT_FORBIDDEN_MAX_DELAY,
 };
 
 beforeEach(() => {
@@ -19,6 +23,10 @@ beforeEach(() => {
     BAILEYS_AUTH_STORAGES: { primary: CONFIG.BAILEYS_AUTH_STORAGE },
     WA_MESSAGE_DELAY_MIN: 0,
     WA_MESSAGE_DELAY_MAX: 0,
+    BAILEYS_RECONNECT_BASE_DELAY: 5_000,
+    BAILEYS_RECONNECT_MAX_DELAY: 30_000,
+    BAILEYS_RECONNECT_SERVICE_MAX_DELAY: 300_000,
+    BAILEYS_RECONNECT_FORBIDDEN_MAX_DELAY: 900_000,
   });
   BaileysManager.socket = null;
   BaileysManager.initialization = null;
@@ -492,6 +500,99 @@ test("loggedOut mempertahankan auth dan menunggu reset manual", async () => {
   assert.equal(connection.connectionCache.state, "AUTH_INVALID");
   assert.equal(connection.connectionCache.lastDisconnectReason, "loggedOut");
   assert.match(connection.connectionCache.detail, /reset manual/);
+});
+
+test("conflict berkode 401 diperlakukan sebagai connectionReplaced dan direconnect", async () => {
+  const connection = BaileysManager.getPrimaryConnection();
+  const originalBaileys = connection.baileys;
+  const originalScheduleReconnect = connection.scheduleReconnect;
+  let reconnectCode = null;
+
+  connection.baileys = {
+    DisconnectReason: {
+      401: "loggedOut",
+      badSession: 500,
+      loggedOut: 401,
+      multideviceMismatch: 411,
+      restartRequired: 515,
+    },
+  };
+  connection.scheduleReconnect = (code) => { reconnectCode = code; };
+  connection.socket = {};
+  const socket = connection.socket;
+  const generation = connection.connectionGeneration;
+
+  try {
+    await connection.handleConnectionUpdate({
+      connection: "close",
+      lastDisconnect: { error: { output: { statusCode: 401 }, message: "Stream Errored (conflict)" } },
+    }, socket, generation);
+  } finally {
+    connection.baileys = originalBaileys;
+    connection.scheduleReconnect = originalScheduleReconnect;
+  }
+
+  assert.equal(reconnectCode, 401);
+  assert.equal(connection.connectionCache.state, "RECONNECTING");
+  assert.equal(connection.connectionCache.lastDisconnectReason, "connectionReplaced");
+});
+
+test("reconnect tetap dijadwalkan setelah melewati batas percobaan lama", async () => {
+  const connection = BaileysManager.getPrimaryConnection();
+  const originalBaileys = connection.baileys;
+  const originalScheduleReconnect = connection.scheduleReconnect;
+  let reconnectScheduled = false;
+
+  connection.baileys = {
+    DisconnectReason: {
+      503: "unavailableService",
+      unavailableService: 503,
+      badSession: 500,
+      loggedOut: 401,
+      multideviceMismatch: 411,
+      restartRequired: 515,
+    },
+  };
+  connection.reconnectAttempts = 25;
+  connection.scheduleReconnect = () => { reconnectScheduled = true; };
+  connection.socket = {};
+  const socket = connection.socket;
+  const generation = connection.connectionGeneration;
+
+  try {
+    await connection.handleConnectionUpdate({
+      connection: "close",
+      lastDisconnect: { error: { output: { statusCode: 503 }, message: "service unavailable" } },
+    }, socket, generation);
+  } finally {
+    connection.baileys = originalBaileys;
+    connection.scheduleReconnect = originalScheduleReconnect;
+  }
+
+  assert.equal(reconnectScheduled, true);
+  assert.equal(connection.connectionCache.state, "RECONNECTING");
+});
+
+test("backoff membedakan koneksi biasa, unavailable service, dan forbidden", () => {
+  const connection = BaileysManager.getPrimaryConnection();
+  const originalBaileys = connection.baileys;
+  connection.baileys = {
+    DisconnectReason: {
+      unavailableService: 503,
+      forbidden: 403,
+    },
+  };
+
+  try {
+    assert.equal(connection.getReconnectDelayMs(428, 1, 0.5), 5_000);
+    assert.equal(connection.getReconnectDelayMs(503, 1, 0.5), 10_000);
+    assert.equal(connection.getReconnectDelayMs(403, 1, 0.5), 60_000);
+    assert.equal(connection.getReconnectDelayMs(428, 10, 0.5), 30_000);
+    assert.equal(connection.getReconnectDelayMs(503, 10, 0.5), 300_000);
+    assert.equal(connection.getReconnectDelayMs(403, 10, 0.5), 900_000);
+  } finally {
+    connection.baileys = originalBaileys;
+  }
 });
 
 test("menormalkan rentang jeda yang tertukar", () => {
