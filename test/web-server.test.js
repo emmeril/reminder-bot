@@ -244,6 +244,164 @@ test("login pelanggan menolak password hotspot yang salah", async () => {
   assert.equal(response.headers.get("set-cookie"), null);
 });
 
+test("pelanggan dapat mengganti password hotspot dan sesi lain diakhiri", async () => {
+  CONFIG.SESSION_SECRET = "test-session-secret";
+  let password = "67890";
+  const routerPasswords = [];
+  const contact = {
+    id: "contact-customer",
+    name: "Pelanggan Satu",
+    phoneNumber: "6281234567890",
+    mikrotikUsername: "pelanggan_satu",
+    mikrotikProfile: "50M",
+  };
+  const buildPortalData = () => ({
+    customer: { id: contact.id, name: contact.name, phoneNumber: contact.phoneNumber },
+    billing: { totalAmount: 200000, history: [] },
+    hotspot: { username: contact.mikrotikUsername, password, profile: "50M", status: "ACTIVE" },
+    company: { name: "Test ISP" },
+  });
+  const account = () => ({ pelanggan: { username: "pelanggan_satu", password, contactId: contact.id }, contact });
+  const baseUrl = await startServer({
+    findCustomerPortalAccount: (username) => String(username).toLowerCase() === "pelanggan_satu" ? account() : null,
+    getCustomerPortalAccountByContactId: (contactId) => contactId === contact.id ? account() : null,
+    getCustomerPortalData: (contactId) => contactId === contact.id ? buildPortalData() : null,
+    updateCustomerHotspotPassword: async (_contactId, currentPassword, newPassword) => {
+      assert.equal(currentPassword, password);
+      password = newPassword;
+      return buildPortalData();
+    },
+  }, {}, {
+    updateHotspotCustomer: async ({ password: nextPassword }) => {
+      routerPasswords.push(nextPassword);
+      return { username: contact.mikrotikUsername, password: nextPassword, profile: "50M" };
+    },
+  });
+
+  const customerLogin = async () => {
+    const response = await fetch(`${baseUrl}/api/pelanggan/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: "pelanggan_satu", password }),
+    });
+    assert.equal(response.status, 200);
+    return response.headers.get("set-cookie").split(";", 1)[0];
+  };
+  const firstCookie = await customerLogin();
+  const secondCookie = await customerLogin();
+
+  const response = await fetch(`${baseUrl}/api/pelanggan/hotspot/password`, {
+    method: "PUT",
+    headers: { cookie: firstCookie, "content-type": "application/json" },
+    body: JSON.stringify({
+      currentPassword: "67890",
+      newPassword: "baru-67890",
+      confirmPassword: "baru-67890",
+    }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.hotspot.password, "baru-67890");
+  assert.deepEqual(routerPasswords, ["baru-67890"]);
+  assert.equal(password, "baru-67890");
+
+  const currentSession = await fetch(`${baseUrl}/api/pelanggan/account`, { headers: { cookie: firstCookie } });
+  const invalidatedSession = await fetch(`${baseUrl}/api/pelanggan/account`, { headers: { cookie: secondCookie } });
+  assert.equal(currentSession.status, 200);
+  assert.equal(invalidatedSession.status, 401);
+});
+
+test("password lokal tidak berubah ketika sinkronisasi MikroTik gagal", async () => {
+  CONFIG.SESSION_SECRET = "test-session-secret";
+  let persistenceCalls = 0;
+  const contact = {
+    id: "contact-customer",
+    name: "Pelanggan Satu",
+    phoneNumber: "6281234567890",
+    mikrotikUsername: "pelanggan_satu",
+    mikrotikProfile: "50M",
+  };
+  const portalData = {
+    customer: { id: contact.id, name: contact.name },
+    billing: { history: [] },
+    hotspot: { username: "pelanggan_satu", password: "67890", profile: "50M", status: "ACTIVE" },
+    company: { name: "Test ISP" },
+  };
+  const baseUrl = await startServer({
+    findCustomerPortalAccount: () => ({ pelanggan: { username: "pelanggan_satu", password: "67890" }, contact }),
+    getCustomerPortalAccountByContactId: () => ({ pelanggan: { username: "pelanggan_satu", password: "67890" }, contact }),
+    getCustomerPortalData: () => portalData,
+    updateCustomerHotspotPassword: async () => { persistenceCalls += 1; },
+  }, {}, {
+    updateHotspotCustomer: async () => { throw new Error("router offline"); },
+  });
+  const loginResponse = await fetch(`${baseUrl}/api/pelanggan/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "pelanggan_satu", password: "67890" }),
+  });
+  const cookie = loginResponse.headers.get("set-cookie").split(";", 1)[0];
+
+  const response = await fetch(`${baseUrl}/api/pelanggan/hotspot/password`, {
+    method: "PUT",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ currentPassword: "67890", newPassword: "baru-67890", confirmPassword: "baru-67890" }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 502);
+  assert.match(payload.error, /sinkronisasi MikroTik gagal/);
+  assert.equal(persistenceCalls, 0);
+});
+
+test("password MikroTik dikembalikan ketika penyimpanan database gagal", async () => {
+  CONFIG.SESSION_SECRET = "test-session-secret";
+  const routerPasswords = [];
+  const contact = {
+    id: "contact-customer",
+    name: "Pelanggan Satu",
+    phoneNumber: "6281234567890",
+    mikrotikUsername: "pelanggan_satu",
+    mikrotikProfile: "50M",
+  };
+  const portalData = {
+    customer: { id: contact.id, name: contact.name },
+    billing: { history: [] },
+    hotspot: { username: "pelanggan_satu", password: "67890", profile: "50M", status: "ACTIVE" },
+    company: { name: "Test ISP" },
+  };
+  const account = { pelanggan: { username: "pelanggan_satu", password: "67890" }, contact };
+  const baseUrl = await startServer({
+    findCustomerPortalAccount: () => account,
+    getCustomerPortalAccountByContactId: () => account,
+    getCustomerPortalData: () => portalData,
+    updateCustomerHotspotPassword: async () => { throw new Error("database gagal"); },
+  }, {}, {
+    updateHotspotCustomer: async ({ password }) => {
+      routerPasswords.push(password);
+      return { username: "pelanggan_satu", password, profile: "50M" };
+    },
+  });
+  const loginResponse = await fetch(`${baseUrl}/api/pelanggan/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "pelanggan_satu", password: "67890" }),
+  });
+  const cookie = loginResponse.headers.get("set-cookie").split(";", 1)[0];
+
+  const response = await fetch(`${baseUrl}/api/pelanggan/hotspot/password`, {
+    method: "PUT",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ currentPassword: "67890", newPassword: "baru-67890", confirmPassword: "baru-67890" }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 500);
+  assert.match(payload.error, /perubahan MikroTik sudah dibatalkan/);
+  assert.deepEqual(routerPasswords, ["baru-67890", "67890"]);
+});
+
 test("endpoint pairing code nomor WhatsApp tidak tersedia", async () => {
   const baseUrl = await startServer();
   const response = await fetch(`${baseUrl}/transport/pairing-code`, {

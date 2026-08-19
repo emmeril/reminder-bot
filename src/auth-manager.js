@@ -154,6 +154,18 @@ class AuthManager {
     if (!token) return;
     this.customerSessions.delete(token);
   }
+
+  destroyCustomerSessionsForContact(contactId, exceptToken = null) {
+    const normalizedContactId = String(contactId || "");
+    if (!normalizedContactId) return 0;
+    let destroyed = 0;
+    for (const [token, session] of this.customerSessions.entries()) {
+      if (token === exceptToken || String(session.contactId || "") !== normalizedContactId) continue;
+      this.customerSessions.delete(token);
+      destroyed += 1;
+    }
+    return destroyed;
+  }
 }
 
 module.exports = AuthManager;

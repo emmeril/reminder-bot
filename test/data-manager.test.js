@@ -445,6 +445,44 @@ test("kontak baru dengan akun hotspot langsung mendapat akun portal", async () =
   assert.equal(account.pelanggan.password, "67811");
 });
 
+test("perubahan password hotspot memperbarui Contact dan Pelanggan secara atomik", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+  const contact = {
+    id: "contact-change-password",
+    name: "Pelanggan Password",
+    phoneNumber: "6281234567812",
+    mikrotikUsername: "pelanggan_password",
+    mikrotikPassword: "67812",
+    mikrotikProfile: "50M",
+    hotspotProvisioningStatus: "ACTIVE",
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+    createdAt: new Date().toISOString(),
+  };
+  manager.contacts.set(contact.id, contact);
+  manager.pelanggan.set("pelanggan_password", {
+    username: "pelanggan_password",
+    password: "67812",
+    profile: "50M",
+    contactId: contact.id,
+  });
+
+  const portal = await manager.updateCustomerHotspotPassword(contact.id, "67812", "baru-67812");
+
+  assert.equal(contact.mikrotikPassword, "baru-67812");
+  assert.equal(manager.pelanggan.get("pelanggan_password").password, "baru-67812");
+  assert.equal(contact.hotspotProvisioningStatus, "ACTIVE");
+  assert.equal(portal.hotspot.password, "baru-67812");
+  await assert.rejects(
+    () => manager.updateCustomerHotspotPassword(contact.id, "67812", "lain-67812"),
+    /Password hotspot saat ini tidak sesuai/
+  );
+});
+
 test("status FAILED menyimpan error tanpa menghapus pelanggan", async () => {
   const manager = new DataManager({ push() {} });
   manager.sequelize = {

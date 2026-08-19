@@ -6,6 +6,11 @@ function customerPortalApp() {
     error: "",
     showHotspotPassword: false,
     copied: "",
+    passwordModalOpen: false,
+    changingPassword: false,
+    passwordForm: { currentPassword: "", newPassword: "", confirmPassword: "" },
+    passwordMessage: { type: "", text: "" },
+    showPasswordFields: { current: false, new: false, confirm: false },
 
     async request(path, options = {}) {
       const response = await fetch(path, { credentials: "same-origin", ...options });
@@ -38,6 +43,46 @@ function customerPortalApp() {
         // Redirect tetap dilakukan agar sesi lokal tidak dipakai lagi.
       }
       window.location.href = "/pelanggan/login";
+    },
+
+    openPasswordModal() {
+      this.passwordModalOpen = true;
+      this.passwordMessage = { type: "", text: "" };
+      document.body.style.overflow = "hidden";
+      this.$nextTick(() => this.$refs.currentPasswordInput?.focus());
+    },
+
+    closePasswordModal() {
+      if (this.changingPassword) return;
+      this.passwordModalOpen = false;
+      this.passwordForm = { currentPassword: "", newPassword: "", confirmPassword: "" };
+      this.passwordMessage = { type: "", text: "" };
+      this.showPasswordFields = { current: false, new: false, confirm: false };
+      document.body.style.overflow = "";
+    },
+
+    async changePassword() {
+      this.passwordMessage = { type: "", text: "" };
+      if (this.passwordForm.newPassword !== this.passwordForm.confirmPassword) {
+        this.passwordMessage = { type: "error", text: "Konfirmasi password baru tidak sama." };
+        return;
+      }
+      this.changingPassword = true;
+      try {
+        this.data = await this.request("/api/pelanggan/hotspot/password", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(this.passwordForm),
+        });
+        this.passwordForm = { currentPassword: "", newPassword: "", confirmPassword: "" };
+        this.showPasswordFields = { current: false, new: false, confirm: false };
+        this.showHotspotPassword = false;
+        this.passwordMessage = { type: "success", text: "Password hotspot berhasil diubah dan disinkronkan ke MikroTik." };
+      } catch (error) {
+        this.passwordMessage = { type: "error", text: error.message || "Password gagal diubah." };
+      } finally {
+        this.changingPassword = false;
+      }
     },
 
     currency(value) {

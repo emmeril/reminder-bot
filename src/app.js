@@ -1482,8 +1482,16 @@ class DataManager {
     );
     if (!pelanggan?.contactId || !pelanggan.password) return null;
 
-    const contact = this.getContact(pelanggan.contactId);
+    return this.getCustomerPortalAccountByContactId(pelanggan.contactId);
+  }
+
+  getCustomerPortalAccountByContactId(contactId) {
+    const contact = this.getContact(contactId);
     if (!contact) return null;
+    const pelanggan = Array.from(this.pelanggan.values()).find(
+      (item) => String(item.contactId || "") === String(contact.id)
+    );
+    if (!pelanggan?.username || !pelanggan.password) return null;
     return { pelanggan, contact };
   }
 
@@ -1569,6 +1577,43 @@ class DataManager {
         supportSignature: this.getSettings().supportSignature,
       },
     };
+  }
+
+  async updateCustomerHotspotPassword(contactId, currentPassword, newPassword) {
+    return this.withDataMutation(async () => {
+      const account = this.getCustomerPortalAccountByContactId(contactId);
+      if (!account) throw new Error("Akun pelanggan tidak ditemukan.");
+      if (!safeCompareString(currentPassword, account.pelanggan.password)) {
+        const error = new Error("Password hotspot saat ini tidak sesuai.");
+        error.statusCode = 403;
+        throw error;
+      }
+
+      const now = new Date().toISOString();
+      account.contact.mikrotikPassword = newPassword;
+      account.contact.hotspotProvisioningStatus = HOTSPOT_PROVISIONING_STATUS.ACTIVE;
+      account.contact.hotspotProvisioningOperation = HOTSPOT_PROVISIONING_OPERATION.NONE;
+      account.contact.hotspotProvisioningPrevious = null;
+      account.contact.hotspotProvisioningError = "";
+      account.contact.hotspotLastCheckedAt = now;
+      account.contact.hotspotLastSyncedAt = now;
+      account.contact.updatedAt = now;
+
+      account.pelanggan.password = newPassword;
+      account.pelanggan.status = "verified";
+      account.pelanggan.hotspotProvisioningStatus = HOTSPOT_PROVISIONING_STATUS.ACTIVE;
+      account.pelanggan.hotspotProvisioningError = "";
+      account.pelanggan.hotspotLastCheckedAt = now;
+      account.pelanggan.hotspotLastSyncedAt = now;
+      account.pelanggan.tanggalUpdate = now;
+
+      await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+        const options = { transaction };
+        await this.saveContacts(options);
+        await this.savePelanggan(options);
+      }));
+      return this.getCustomerPortalData(contactId);
+    });
   }
 
   normalizeOptionalDate(value) {
@@ -4060,6 +4105,83 @@ class WebServer {
     });
   }
 
+  async changeCustomerHotspotPassword(contactId, currentPassword, requestedPassword) {
+    return this.hotspotProvisioningLock.runExclusive(String(contactId), async () => {
+      const account = this.dataManager.getCustomerPortalAccountByContactId(contactId);
+      if (!account) throw new Error("Akun pelanggan tidak ditemukan.");
+
+      const oldPassword = String(currentPassword || "");
+      const originalPassword = String(account.pelanggan.password || "");
+      const rawNewPassword = String(requestedPassword || "");
+      const newPassword = sanitizeInput(rawNewPassword);
+      if (!safeCompareString(oldPassword, originalPassword)) {
+        const error = new Error("Password hotspot saat ini tidak sesuai.");
+        error.statusCode = 403;
+        throw error;
+      }
+      if (newPassword.length < 5 || newPassword.length > 64) {
+        throw new Error("Password baru harus terdiri dari 5 sampai 64 karakter.");
+      }
+      if (newPassword !== rawNewPassword || !/^[\x21-\x7E]+$/.test(newPassword)) {
+        throw new Error("Password baru tidak boleh mengandung spasi atau karakter khusus non-ASCII.");
+      }
+      if (safeCompareString(newPassword, originalPassword)) {
+        throw new Error("Password baru harus berbeda dari password saat ini.");
+      }
+      if (!account.contact.mikrotikUsername || !account.contact.mikrotikProfile) {
+        throw new Error("Data akun hotspot belum lengkap.");
+      }
+
+      const updateRouterPassword = (password) => this.mikrotikService.updateHotspotCustomer({
+        previousUsername: account.contact.mikrotikUsername,
+        previousPhoneNumber: account.contact.phoneNumber,
+        name: account.contact.name,
+        phoneNumber: account.contact.phoneNumber,
+        profile: account.contact.mikrotikProfile,
+        username: account.contact.mikrotikUsername,
+        password,
+      });
+
+      try {
+        await updateRouterPassword(newPassword);
+      } catch (error) {
+        const wrapped = new Error(`Password belum diubah karena sinkronisasi MikroTik gagal: ${error.message}`);
+        wrapped.statusCode = 502;
+        wrapped.cause = error;
+        throw wrapped;
+      }
+
+      try {
+        const portalData = await this.dataManager.updateCustomerHotspotPassword(
+          contactId,
+          oldPassword,
+          newPassword
+        );
+        this.activityLog.push("info", "customer-hotspot", `Password hotspot diubah oleh pelanggan ${account.contact.mikrotikUsername}`, {
+          contactId: account.contact.id,
+        });
+        return portalData;
+      } catch (error) {
+        try {
+          await updateRouterPassword(originalPassword);
+        } catch (rollbackError) {
+          this.activityLog.push("error", "customer-hotspot", `Rollback password hotspot gagal untuk ${account.contact.mikrotikUsername}: ${rollbackError.message}`, {
+            contactId: account.contact.id,
+          });
+          const wrapped = new Error("Password berubah di MikroTik tetapi database gagal diperbarui. Hubungi administrator segera.");
+          wrapped.statusCode = 502;
+          wrapped.cause = error;
+          throw wrapped;
+        }
+
+        const wrapped = new Error(`Password gagal disimpan dan perubahan MikroTik sudah dibatalkan: ${error.message}`);
+        wrapped.statusCode = 500;
+        wrapped.cause = error;
+        throw wrapped;
+      }
+    });
+  }
+
   setupRoutes() {
     this.app.use((req, res, next) => {
       const incomingRequestId = String(req.headers["x-request-id"] || "");
@@ -4142,7 +4264,12 @@ class WebServer {
       }
     });
 
-    this.app.use("/public", express.static(CONFIG.PUBLIC_PATH, { etag: true, maxAge: "1h" }));
+    this.app.use("/public", (req, res, next) => {
+      if (["/customer.js", "/customer.css", "/customer-login.js"].includes(req.path)) {
+        res.setHeader("Cache-Control", "no-store, max-age=0");
+      }
+      next();
+    }, express.static(CONFIG.PUBLIC_PATH, { etag: true, maxAge: "1h" }));
     this.app.get("/vendor/alpine.min.js", (_req, res) => {
       res.sendFile(require.resolve("alpinejs/dist/cdn.min.js"));
     });
@@ -4196,11 +4323,12 @@ class WebServer {
     };
 
     const requireCustomerApiAuth = (req, res, next) => {
-      const { session } = readCustomerSession(req);
+      const { token, session } = readCustomerSession(req);
       const portalData = session ? this.dataManager.getCustomerPortalData?.(session.contactId) : null;
       if (!session || !portalData || portalData.hotspot.username !== session.username) {
         return res.status(401).json({ success: false, error: "Sesi pelanggan tidak valid. Silakan masuk kembali." });
       }
+      req.customerSessionToken = token;
       req.customerSession = session;
       req.customerPortalData = portalData;
       return next();
@@ -4325,6 +4453,28 @@ class WebServer {
     }));
 
     this.app.get("/api/pelanggan/account", requireCustomerApiAuth, handleApi(async (req) => req.customerPortalData));
+    this.app.put("/api/pelanggan/hotspot/password", requireCustomerApiAuth, handleApi(async (req) => {
+      const currentPassword = String(req.body.currentPassword || "");
+      const newPassword = String(req.body.newPassword || "");
+      const confirmation = String(req.body.confirmPassword || "");
+      if (!currentPassword || !newPassword || !confirmation) {
+        throw new Error("Password saat ini, password baru, dan konfirmasi wajib diisi.");
+      }
+      if (!safeCompareString(newPassword, confirmation)) {
+        throw new Error("Konfirmasi password baru tidak sama.");
+      }
+
+      const portalData = await this.changeCustomerHotspotPassword(
+        req.customerSession.contactId,
+        currentPassword,
+        newPassword
+      );
+      this.authManager.destroyCustomerSessionsForContact(
+        req.customerSession.contactId,
+        req.customerSessionToken
+      );
+      return portalData;
+    }));
     this.app.get("/pelanggan", requireCustomerPageAuth, async (_req, res, next) => {
       try {
         res.send(await this.renderCustomerPortal());

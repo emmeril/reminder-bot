@@ -45,3 +45,15 @@ test("sesi pelanggan terpisah dari sesi administrator", () => {
   manager.destroyCustomerSession(token);
   assert.equal(manager.getCustomerSession(token), null);
 });
+
+test("perubahan password dapat mengakhiri sesi pelanggan lain pada akun yang sama", () => {
+  const manager = new AuthManager({ push() {} });
+  const first = manager.createCustomerSession({ username: "pelanggan_satu", contactId: "contact-1" });
+  const second = manager.createCustomerSession({ username: "pelanggan_satu", contactId: "contact-1" });
+  const other = manager.createCustomerSession({ username: "pelanggan_dua", contactId: "contact-2" });
+
+  assert.equal(manager.destroyCustomerSessionsForContact("contact-1", first.token), 1);
+  assert.ok(manager.getCustomerSession(first.token));
+  assert.equal(manager.getCustomerSession(second.token), null);
+  assert.ok(manager.getCustomerSession(other.token));
+});

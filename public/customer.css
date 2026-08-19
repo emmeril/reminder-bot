@@ -94,6 +94,35 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .portal-credential-list button:hover { color: var(--portal-primary); background: #eaf2ff; }
 .portal-security-note { margin: 14px 0 0; padding: 10px 12px; color: #806014; border-radius: 9px; background: #fff9e9; font-size: 10px; line-height: 1.5; }
 .portal-security-note i { margin-right: 6px; }
+.portal-change-password-button { display: inline-flex; min-height: 43px; align-items: center; justify-content: center; gap: 8px; margin-top: 14px; padding: 9px 14px; color: #fff; border: 1px solid var(--portal-primary); border-radius: 10px; background: var(--portal-primary); box-shadow: 0 8px 18px rgba(37,99,235,.16); font-size: 11px; font-weight: 750; cursor: pointer; }
+.portal-change-password-button:hover { border-color: var(--portal-primary-dark); background: var(--portal-primary-dark); transform: translateY(-1px); }
+.portal-modal-overlay { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; overflow-y: auto; padding: 24px; background: rgba(15,23,42,.58); backdrop-filter: blur(5px); }
+.portal-modal { width: min(480px,100%); overflow: hidden; border: 1px solid rgba(255,255,255,.8); border-radius: 19px; background: #fff; box-shadow: 0 30px 90px rgba(15,23,42,.3); }
+.portal-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 20px 22px; border-bottom: 1px solid #e8ecf2; background: #fbfcff; }
+.portal-modal-header > div { display: flex; min-width: 0; align-items: center; gap: 11px; }
+.portal-modal-header > div > span { display: inline-flex; width: 40px; height: 40px; flex: 0 0 40px; align-items: center; justify-content: center; color: #fff; border-radius: 11px; background: var(--portal-primary); }
+.portal-modal-header h2 { margin: 0; color: #253047; font-size: 16px; }
+.portal-modal-header p { margin: 4px 0 0; color: #7b8494; font-size: 10px; }
+.portal-modal-header p strong { color: #475467; }
+.portal-modal-header > button { display: inline-flex; width: 35px; height: 35px; flex: 0 0 35px; align-items: center; justify-content: center; color: #7b8494; border: 0; border-radius: 9px; background: transparent; cursor: pointer; }
+.portal-modal-header > button:hover { color: #b42318; background: #fff0ef; }
+.portal-modal-header > button:disabled { cursor: wait; opacity: .5; }
+.portal-password-form { padding: 20px 22px 22px; background: #fff; }
+.portal-password-form label { display: block; margin: 12px 0 6px; color: #475467; font-size: 11px; font-weight: 700; }
+.portal-password-form label:first-child { margin-top: 0; }
+.portal-password-form > small { display: block; margin-top: 5px; color: #8993a4; font-size: 9px; }
+.portal-password-input { position: relative; }
+.portal-password-input input { width: 100%; min-height: 42px; padding: 9px 42px 9px 11px; color: #344054; border: 1px solid #d9e0e9; outline: 0; border-radius: 9px; background: #fff; font-size: 14px; }
+.portal-password-input input:focus { border-color: #60a5fa; box-shadow: 0 0 0 3px rgba(37,99,235,.09); }
+.portal-password-input button { position: absolute; top: 50%; right: 5px; display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; color: #7b8494; border: 0; border-radius: 7px; background: transparent; transform: translateY(-50%); cursor: pointer; }
+.portal-password-input button:hover { color: var(--portal-primary); background: #eff6ff; }
+.portal-password-message { min-height: 18px; margin: 10px 0 0; font-size: 10px; font-weight: 650; line-height: 1.5; }
+.portal-password-message.is-error { color: var(--portal-danger); }
+.portal-password-message.is-success { color: var(--portal-success); }
+.portal-password-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 10px; }
+.portal-password-actions button { min-height: 38px; padding: 8px 11px; border: 1px solid #d9e0e9; border-radius: 8px; background: #fff; color: #667085; font-size: 10px; font-weight: 750; cursor: pointer; }
+.portal-password-actions button[type="submit"] { color: #fff; border-color: var(--portal-primary); background: var(--portal-primary); }
+.portal-password-actions button:disabled { cursor: wait; opacity: .65; }
 .portal-bill-details { margin: 9px 0 0; }
 .portal-bill-details > div { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 11px 2px; border-bottom: 1px dashed #e6eaf0; }
 .portal-bill-details dt { color: #697386; font-size: 12px; }
@@ -137,6 +166,11 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .portal-panel-heading { align-items: flex-start; }
   .portal-panel-heading p { display: none; }
   .portal-credential-list small { width: 72px; flex-basis: 72px; }
+  .portal-change-password-button { width: 100%; }
+  .portal-modal-overlay { align-items: flex-end; padding: 12px; }
+  .portal-modal { max-height: calc(100dvh - 24px); overflow-y: auto; border-radius: 18px 18px 13px 13px; }
+  .portal-modal-header { position: sticky; top: 0; z-index: 1; padding: 17px; }
+  .portal-password-form { padding: 17px; }
 }
 
 @media (max-width: 380px) {
