@@ -1,8 +1,9 @@
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const { afterEach, test } = require("node:test");
 
 const AuthManager = require("../src/auth-manager");
-const { WebServer } = require("../src/app");
+const { MidtransService, WebServer } = require("../src/app");
 const { CONFIG, PAYMENT_STATUS, PAYMENT_TYPES } = require("../src/config");
 
 const originalAuthConfig = {
@@ -13,6 +14,10 @@ const originalAuthConfig = {
   SESSION_COOKIE_SECURE: CONFIG.SESSION_COOKIE_SECURE,
   HOST: CONFIG.HOST,
   PORT: CONFIG.PORT,
+  MIDTRANS_ENABLED: CONFIG.MIDTRANS_ENABLED,
+  MIDTRANS_IS_PRODUCTION: CONFIG.MIDTRANS_IS_PRODUCTION,
+  MIDTRANS_SERVER_KEY: CONFIG.MIDTRANS_SERVER_KEY,
+  MIDTRANS_FINISH_URL: CONFIG.MIDTRANS_FINISH_URL,
 };
 const openServers = [];
 
@@ -24,7 +29,7 @@ afterEach(async () => {
   })));
 });
 
-async function startServer(dataManager = {}, notificationBot = {}, mikrotikService = {}, hotspotReactivationScheduler = {}) {
+async function startServer(dataManager = {}, notificationBot = {}, mikrotikService = {}, hotspotReactivationScheduler = {}, midtransService = null) {
   const activityLog = { push() {}, list: () => [] };
   const authManager = new AuthManager(activityLog);
   const server = new WebServer(
@@ -48,7 +53,8 @@ async function startServer(dataManager = {}, notificationBot = {}, mikrotikServi
     { isProcessing: false, processDueReminders: async () => {} },
     authManager,
     mikrotikService,
-    { isProcessing: false, ...hotspotReactivationScheduler }
+    { isProcessing: false, ...hotspotReactivationScheduler },
+    midtransService
   ).app.listen(0, "127.0.0.1");
   openServers.push(server);
   await new Promise((resolve) => server.once("listening", resolve));
@@ -395,6 +401,114 @@ test("pelanggan dapat mengganti password portal tanpa mengubah password hotspot"
   assert.equal((await customerLogin("portal-123")).status, 401);
   assert.equal((await customerLogin("portal-baru")).status, 200);
   assert.equal((await customerLogin(hotspotPassword)).status, 401);
+});
+
+test("signature notifikasi Midtrans diverifikasi dengan server key", () => {
+  Object.assign(CONFIG, { MIDTRANS_ENABLED: true, MIDTRANS_SERVER_KEY: "midtrans-server-key" });
+  const service = new MidtransService({ push() {} });
+  const notification = {
+    order_id: "RB-ORDER-1",
+    status_code: "200",
+    gross_amount: "150000.00",
+  };
+  notification.signature_key = crypto
+    .createHash("sha512")
+    .update(`${notification.order_id}${notification.status_code}${notification.gross_amount}${CONFIG.MIDTRANS_SERVER_KEY}`)
+    .digest("hex");
+
+  assert.equal(service.verifyNotificationSignature(notification), true);
+  assert.equal(service.verifyNotificationSignature({ ...notification, signature_key: "invalid" }), false);
+});
+
+test("pelanggan membuat pembayaran Midtrans dan webhook melunasi tagihan", async () => {
+  Object.assign(CONFIG, {
+    SESSION_SECRET: "test-session-secret",
+    MIDTRANS_ENABLED: true,
+    MIDTRANS_SERVER_KEY: "midtrans-server-key",
+    MIDTRANS_FINISH_URL: "https://billing.example.com/pelanggan?payment=finish",
+  });
+  const contact = { id: "contact-midtrans", name: "Pelanggan Midtrans", phoneNumber: "6281234567890" };
+  const portalData = {
+    customer: contact,
+    billing: {
+      periodLabel: "Agustus 2026",
+      totalAmount: 200000,
+      history: [
+        { period: "2026-08", status: PAYMENT_STATUS.UNPAID },
+        { period: "2026-07", status: PAYMENT_STATUS.UNPAID },
+      ],
+    },
+    hotspot: { username: "pelanggan_midtrans", password: "hotspot-123", profile: "50M", status: "ACTIVE" },
+    account: { username: "akun_midtrans" },
+    paymentGateway: { enabled: true, provider: "midtrans", environment: "sandbox" },
+    company: { name: "Test ISP" },
+  };
+  let transaction = null;
+  let paymentNotifications = 0;
+  const baseUrl = await startServer({
+    findCustomerPortalAccount: () => ({
+      account: { contactId: contact.id, username: "akun_midtrans", password: "portal-123" },
+      contact,
+    }),
+    getCustomerPortalData: (contactId) => contactId === contact.id ? portalData : null,
+    createPaymentGatewayTransaction: async (payload) => {
+      transaction = { ...payload, status: "PENDING" };
+      return transaction;
+    },
+    updatePaymentGatewayTransaction: async (_orderId, changes) => Object.assign(transaction, changes),
+    getPaymentGatewayTransaction: (orderId) => transaction?.orderId === orderId ? transaction : null,
+    completeMidtransPayment: async (orderId, gatewayData) => {
+      assert.equal(orderId, transaction.orderId);
+      assert.equal(gatewayData.transaction_status, "settlement");
+      transaction.status = "PAID";
+      return { transaction, contact: { ...contact, paymentStatus: PAYMENT_STATUS.PAID }, alreadyProcessed: false };
+    },
+  }, {
+    sendPaymentNotification: async () => { paymentNotifications += 1; },
+  }, {}, {}, {
+    isConfigured: () => true,
+    createSnapTransaction: async ({ orderId, amount, finishUrl }) => {
+      assert.match(orderId, /^RB-/);
+      assert.equal(amount, 200000);
+      assert.equal(finishUrl, CONFIG.MIDTRANS_FINISH_URL);
+      return { token: "snap-token", redirect_url: "https://app.sandbox.midtrans.com/snap/v4/redirection/snap-token" };
+    },
+    verifyNotificationSignature: () => true,
+    getTransactionStatus: async (orderId) => ({
+      order_id: orderId,
+      gross_amount: "200000.00",
+      transaction_status: "settlement",
+      transaction_id: "midtrans-transaction",
+      payment_type: "bank_transfer",
+    }),
+  });
+  const loginResponse = await fetch(`${baseUrl}/api/pelanggan/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "akun_midtrans", password: "portal-123" }),
+  });
+  const cookie = loginResponse.headers.get("set-cookie").split(";", 1)[0];
+
+  const createResponse = await fetch(`${baseUrl}/api/pelanggan/payments/midtrans`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/json" },
+  });
+  const created = await createResponse.json();
+  assert.equal(createResponse.status, 200);
+  assert.equal(created.data.amount, 200000);
+  assert.equal(created.data.redirectUrl, "https://app.sandbox.midtrans.com/snap/v4/redirection/snap-token");
+  assert.deepEqual(transaction.periods, ["2026-08", "2026-07"]);
+
+  const webhookResponse = await fetch(`${baseUrl}/api/payments/midtrans/notification`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ order_id: transaction.orderId, signature_key: "verified-by-stub" }),
+  });
+  const webhook = await webhookResponse.json();
+  assert.equal(webhookResponse.status, 200);
+  assert.equal(webhook.data.status, "PAID");
+  assert.equal(transaction.status, "PAID");
+  assert.equal(paymentNotifications, 1);
 });
 
 test("password lokal tidak berubah ketika sinkronisasi MikroTik gagal", async () => {

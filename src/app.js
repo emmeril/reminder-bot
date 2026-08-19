@@ -140,6 +140,28 @@ const PAYMENT_TYPE_LABELS = {
   [PAYMENT_TYPES.FULL_PAID]: "Lunas Semua",
 };
 
+const PAYMENT_GATEWAY_STATUS = Object.freeze({
+  PENDING: "PENDING",
+  PAID: "PAID",
+  FAILED: "FAILED",
+  EXPIRED: "EXPIRED",
+  REFUNDED: "REFUNDED",
+});
+
+function normalizeMidtransPaymentStatus(transactionStatus, fraudStatus = "") {
+  const status = String(transactionStatus || "").toLowerCase();
+  const fraud = String(fraudStatus || "").toLowerCase();
+  if (status === "settlement" || (status === "capture" && fraud === "accept")) {
+    return PAYMENT_GATEWAY_STATUS.PAID;
+  }
+  if (["deny", "cancel"].includes(status) || (status === "capture" && fraud === "deny")) {
+    return PAYMENT_GATEWAY_STATUS.FAILED;
+  }
+  if (status === "expire") return PAYMENT_GATEWAY_STATUS.EXPIRED;
+  if (["refund", "partial_refund"].includes(status)) return PAYMENT_GATEWAY_STATUS.REFUNDED;
+  return PAYMENT_GATEWAY_STATUS.PENDING;
+}
+
 function formatReportDate(value, includeTime = false, timeZone = "Asia/Jakarta") {
   if (!value) return "-";
   const date = new Date(value);
@@ -819,6 +841,117 @@ class MikrotikService {
 }
 
 // ===============================
+// MIDTRANS PAYMENT SERVICE
+// ===============================
+
+class MidtransService {
+  constructor(activityLog) {
+    this.activityLog = activityLog;
+  }
+
+  isConfigured() {
+    return Boolean(CONFIG.MIDTRANS_ENABLED && CONFIG.MIDTRANS_SERVER_KEY);
+  }
+
+  getApiBaseUrl() {
+    return CONFIG.MIDTRANS_IS_PRODUCTION
+      ? "https://app.midtrans.com"
+      : "https://app.sandbox.midtrans.com";
+  }
+
+  getStatusApiBaseUrl() {
+    return CONFIG.MIDTRANS_IS_PRODUCTION
+      ? "https://api.midtrans.com"
+      : "https://api.sandbox.midtrans.com";
+  }
+
+  getAuthorizationHeader() {
+    return `Basic ${Buffer.from(`${CONFIG.MIDTRANS_SERVER_KEY}:`).toString("base64")}`;
+  }
+
+  async request(url, options = {}) {
+    if (!this.isConfigured()) {
+      const error = new Error("Pembayaran Midtrans belum dikonfigurasi oleh administrator.");
+      error.statusCode = 503;
+      throw error;
+    }
+
+    const response = await fetch(url, {
+      ...options,
+      signal: AbortSignal.timeout(Math.max(1_000, CONFIG.MIDTRANS_HTTP_TIMEOUT)),
+      headers: {
+        Accept: "application/json",
+        Authorization: this.getAuthorizationHeader(),
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = payload.error_messages?.join(", ")
+        || payload.status_message
+        || `Midtrans merespons HTTP ${response.status}.`;
+      const error = new Error(message);
+      error.statusCode = 502;
+      error.gatewayStatus = response.status;
+      throw error;
+    }
+    return payload;
+  }
+
+  async createSnapTransaction({ orderId, amount, customer, itemName, finishUrl }) {
+    const payload = {
+      transaction_details: {
+        order_id: orderId,
+        gross_amount: amount,
+      },
+      item_details: [{
+        id: "internet-bill",
+        price: amount,
+        quantity: 1,
+        name: String(itemName || "Tagihan internet").slice(0, 50),
+      }],
+      customer_details: {
+        first_name: String(customer.name || "Pelanggan").slice(0, 50),
+        phone: customer.phoneNumber,
+      },
+      callbacks: finishUrl ? { finish: finishUrl } : undefined,
+    };
+    const response = await this.request(`${this.getApiBaseUrl()}/snap/v1/transactions`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    const redirectUrl = String(response.redirect_url || "");
+    if (!/^https:\/\/[^/]*\.midtrans\.com\//i.test(redirectUrl)) {
+      const error = new Error("Midtrans mengembalikan URL pembayaran yang tidak aman.");
+      error.statusCode = 502;
+      throw error;
+    }
+    return response;
+  }
+
+  verifyNotificationSignature(notification) {
+    if (!this.isConfigured()) return false;
+    const orderId = String(notification.order_id || "");
+    const statusCode = String(notification.status_code || "");
+    const grossAmount = String(notification.gross_amount || "");
+    const signature = String(notification.signature_key || "");
+    if (!orderId || !statusCode || !grossAmount || !signature) return false;
+    const expected = crypto
+      .createHash("sha512")
+      .update(`${orderId}${statusCode}${grossAmount}${CONFIG.MIDTRANS_SERVER_KEY}`)
+      .digest("hex");
+    return safeCompareString(signature.toLowerCase(), expected.toLowerCase());
+  }
+
+  async getTransactionStatus(orderId) {
+    return this.request(`${this.getStatusApiBaseUrl()}/v2/${encodeURIComponent(orderId)}/status`, {
+      method: "GET",
+    });
+  }
+}
+
+// ===============================
 // DATA MANAGER (Sequelize)
 // ===============================
 
@@ -828,6 +961,7 @@ class DataManager {
     this.contacts = new Map();
     this.pelanggan = new Map();
     this.customerAccounts = new Map();
+    this.paymentGatewayTransactions = new Map();
     this.reminders = new Map();
     this.sentReminders = new Map();
     this.roles = new Map();
@@ -891,6 +1025,11 @@ class DataManager {
     this.models.Contact = jsonPayloadModel("Contact", "contacts", "id");
     this.models.Pelanggan = jsonPayloadModel("Pelanggan", "pelanggan", "username");
     this.models.CustomerAccount = jsonPayloadModel("CustomerAccount", "customer_accounts", "contactId");
+    this.models.PaymentGatewayTransaction = jsonPayloadModel(
+      "PaymentGatewayTransaction",
+      "payment_gateway_transactions",
+      "orderId"
+    );
     this.models.Reminder = jsonPayloadModel("Reminder", "reminders", "id");
     this.models.SentReminder = jsonPayloadModel("SentReminder", "sent_reminders", "id");
     this.models.Role = this.sequelize.define("Role", {
@@ -978,6 +1117,7 @@ class DataManager {
         contacts: structuredClone(this.contacts),
         pelanggan: structuredClone(this.pelanggan),
         customerAccounts: structuredClone(this.customerAccounts),
+        paymentGatewayTransactions: structuredClone(this.paymentGatewayTransactions),
         reminders: structuredClone(this.reminders),
         sentReminders: structuredClone(this.sentReminders),
         roles: structuredClone(this.roles),
@@ -990,6 +1130,7 @@ class DataManager {
         this.contacts = snapshot.contacts;
         this.pelanggan = snapshot.pelanggan;
         this.customerAccounts = snapshot.customerAccounts;
+        this.paymentGatewayTransactions = snapshot.paymentGatewayTransactions;
         this.reminders = snapshot.reminders;
         this.sentReminders = snapshot.sentReminders;
         this.roles = snapshot.roles;
@@ -1121,6 +1262,7 @@ class DataManager {
       this.models.Contact.count(),
       this.models.Pelanggan.count(),
       this.models.CustomerAccount.count(),
+      this.models.PaymentGatewayTransaction.count(),
       this.models.Reminder.count(),
       this.models.SentReminder.count(),
       this.models.Role.count(),
@@ -1133,6 +1275,10 @@ class DataManager {
     this.contacts = await this.loadJsonPayloadMap(this.models.Contact, "id");
     this.pelanggan = await this.loadJsonPayloadMap(this.models.Pelanggan, "username");
     this.customerAccounts = await this.loadJsonPayloadMap(this.models.CustomerAccount, "contactId");
+    this.paymentGatewayTransactions = await this.loadJsonPayloadMap(
+      this.models.PaymentGatewayTransaction,
+      "orderId"
+    );
     this.reminders = await this.loadJsonPayloadMap(this.models.Reminder, "id");
     this.sentReminders = await this.loadJsonPayloadMap(this.models.SentReminder, "id");
 
@@ -1151,6 +1297,7 @@ class DataManager {
     this.contacts = await this.loadLegacyMapFromFile(this.getPath("contacts.json"), "id");
     this.pelanggan = await this.loadLegacyMapFromFile(this.getPath("pelanggan.json"), "username");
     this.customerAccounts = new Map();
+    this.paymentGatewayTransactions = new Map();
     this.reminders = await this.loadLegacyMapFromFile(this.getPath("reminders.json"), "id");
     this.sentReminders = await this.loadLegacyMapFromFile(this.getPath("sent_reminders.json"), "id");
     this.roles = await this.loadLegacyRoles();
@@ -1185,6 +1332,7 @@ class DataManager {
       contacts: this.contacts.size,
       pelanggan: this.pelanggan.size,
       customerAccounts: this.customerAccounts.size,
+      paymentGatewayTransactions: this.paymentGatewayTransactions.size,
       reminders: this.reminders.size,
       sentReminders: this.sentReminders.size,
       adminRecipients: this.getAdminRecipients().length,
@@ -1236,6 +1384,19 @@ class DataManager {
         this.models.CustomerAccount,
         "contactId",
         this.customerAccounts.values(),
+        { transaction }
+      ),
+      options
+    );
+  }
+
+  async savePaymentGatewayTransactions(options = {}) {
+    if (!this.models.PaymentGatewayTransaction) return;
+    await this.runSaveOperation(
+      (transaction) => this.replaceJsonPayloadTable(
+        this.models.PaymentGatewayTransaction,
+        "orderId",
+        this.paymentGatewayTransactions.values(),
         { transaction }
       ),
       options
@@ -1600,6 +1761,11 @@ class DataManager {
       account: {
         username: portalAccount.username,
       },
+      paymentGateway: {
+        enabled: Boolean(CONFIG.MIDTRANS_ENABLED && CONFIG.MIDTRANS_SERVER_KEY),
+        provider: "midtrans",
+        environment: CONFIG.MIDTRANS_IS_PRODUCTION ? "production" : "sandbox",
+      },
       company: {
         name: this.getSettings().companyName,
         supportSignature: this.getSettings().supportSignature,
@@ -1678,6 +1844,111 @@ class DataManager {
     });
   }
 
+  getPaymentGatewayTransaction(orderId) {
+    return this.paymentGatewayTransactions.get(String(orderId || "")) || null;
+  }
+
+  async createPaymentGatewayTransaction(payload) {
+    return this.withDataMutation(async () => {
+      const orderId = sanitizeInput(String(payload.orderId || ""));
+      const contactId = String(payload.contactId || "");
+      const amount = Math.floor(Number(payload.amount) || 0);
+      const periods = Array.from(new Set((payload.periods || []).map((period) => String(period))))
+        .filter((period) => /^\d{4}-\d{2}$/.test(period));
+      if (!orderId || orderId.length > 50) throw new Error("ID transaksi pembayaran tidak valid.");
+      if (this.paymentGatewayTransactions.has(orderId)) throw new Error("ID transaksi pembayaran sudah digunakan.");
+      if (!this.getContact(contactId)) throw new Error("Kontak tidak ditemukan.");
+      if (amount <= 0 || periods.length === 0) throw new Error("Tagihan pelanggan sudah lunas atau belum memiliki nominal.");
+
+      const now = new Date().toISOString();
+      const transaction = {
+        orderId,
+        contactId,
+        provider: "midtrans",
+        amount,
+        periods,
+        paymentType: PAYMENT_TYPES.FULL_PAID,
+        status: PAYMENT_GATEWAY_STATUS.PENDING,
+        gatewayStatus: "created",
+        token: null,
+        redirectUrl: null,
+        transactionId: null,
+        paymentMethod: null,
+        paidAt: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      this.paymentGatewayTransactions.set(orderId, transaction);
+      await this.savePaymentGatewayTransactions();
+      return transaction;
+    });
+  }
+
+  async updatePaymentGatewayTransaction(orderId, changes = {}) {
+    return this.withDataMutation(async () => {
+      const transaction = this.getPaymentGatewayTransaction(orderId);
+      if (!transaction) throw new Error("Transaksi pembayaran tidak ditemukan.");
+      Object.assign(transaction, changes, { updatedAt: new Date().toISOString() });
+      await this.savePaymentGatewayTransactions();
+      return transaction;
+    });
+  }
+
+  async completeMidtransPayment(orderId, gatewayData = {}) {
+    return this.withDataMutation(async () => {
+      const transaction = this.getPaymentGatewayTransaction(orderId);
+      if (!transaction) throw new Error("Transaksi pembayaran tidak ditemukan.");
+      const receivedAmount = Number(gatewayData.gross_amount);
+      if (!Number.isFinite(receivedAmount) || Math.round(receivedAmount) !== transaction.amount) {
+        const error = new Error("Nominal notifikasi Midtrans tidak sesuai dengan transaksi.");
+        error.statusCode = 400;
+        throw error;
+      }
+      const contact = this.getContact(transaction.contactId);
+      if (!contact) throw new Error("Kontak transaksi pembayaran tidak ditemukan.");
+      if (transaction.status === PAYMENT_GATEWAY_STATUS.PAID) {
+        return { transaction, contact: this.hydrateContact(contact), alreadyProcessed: true };
+      }
+
+      const now = new Date().toISOString();
+      if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") contact.paymentMonths = {};
+      for (const period of transaction.periods) {
+        contact.paymentMonths[period] = {
+          status: PAYMENT_STATUS.PAID,
+          paidDate: now,
+          paymentType: PAYMENT_TYPES.FULL_PAID,
+          transactionId: transaction.orderId,
+          paymentProvider: "midtrans",
+        };
+      }
+
+      const { year, month } = getBillingPeriodParts(new Date(), this.getTimezone());
+      const currentKey = makeBillingPeriodKey(year, month);
+      if (contact.paymentMonths[currentKey]?.status === PAYMENT_STATUS.PAID) {
+        contact.paymentStatus = PAYMENT_STATUS.PAID;
+        contact.paymentDate = now;
+        contact.paymentType = PAYMENT_TYPES.FULL_PAID;
+      }
+      contact.updatedAt = now;
+
+      transaction.status = PAYMENT_GATEWAY_STATUS.PAID;
+      transaction.gatewayStatus = String(gatewayData.transaction_status || "settlement");
+      transaction.transactionId = sanitizeInput(String(gatewayData.transaction_id || "")) || null;
+      transaction.paymentMethod = sanitizeInput(String(gatewayData.payment_type || "")) || null;
+      transaction.paidAt = gatewayData.settlement_time || gatewayData.transaction_time || now;
+      transaction.updatedAt = now;
+
+      const remindersChanged = this.updateContactReminderMessages(contact);
+      await this.withDatabaseWrite(() => this.sequelize.transaction(async (databaseTransaction) => {
+        const options = { transaction: databaseTransaction };
+        await this.saveContacts(options);
+        await this.savePaymentGatewayTransactions(options);
+        if (remindersChanged) await this.saveReminders(options);
+      }));
+      return { transaction, contact: this.hydrateContact(contact), alreadyProcessed: false };
+    });
+  }
+
   normalizeOptionalDate(value) {
     const raw = sanitizeInput(String(value || ""));
     if (!raw) return null;
@@ -1724,6 +1995,7 @@ class DataManager {
           await this.saveContacts(options);
           await this.savePelanggan(options);
           await this.saveCustomerAccounts(options);
+          await this.savePaymentGatewayTransactions(options);
           await this.saveReminders(options);
           await this.saveSentReminders(options);
           await this.saveRoles(options);
@@ -4058,7 +4330,7 @@ class NotificationBot {
 // ===============================
 
 class WebServer {
-  constructor(notificationBot, dataManager, templateManager, activityLog, reminderScheduler, authManager, mikrotikService, hotspotReactivationScheduler) {
+  constructor(notificationBot, dataManager, templateManager, activityLog, reminderScheduler, authManager, mikrotikService, hotspotReactivationScheduler, midtransService = null) {
     this.app = express();
     this.app.disable("x-powered-by");
     this.app.set("trust proxy", CONFIG.TRUST_PROXY);
@@ -4070,7 +4342,9 @@ class WebServer {
     this.authManager = authManager;
     this.mikrotikService = mikrotikService;
     this.hotspotReactivationScheduler = hotspotReactivationScheduler;
+    this.midtransService = midtransService || new MidtransService(activityLog);
     this.hotspotProvisioningLock = new AsyncLock();
+    this.paymentGatewayLock = new AsyncLock();
     this.server = null;
     this.ready = true;
     this.setupRoutes();
@@ -4531,6 +4805,119 @@ class WebServer {
     }));
 
     this.app.get("/api/pelanggan/account", requireCustomerApiAuth, handleApi(async (req) => req.customerPortalData));
+    this.app.post("/api/pelanggan/payments/midtrans", requireCustomerApiAuth, handleApi(async (req) => {
+      if (!this.midtransService.isConfigured()) {
+        const error = new Error("Pembayaran Midtrans belum diaktifkan oleh administrator.");
+        error.statusCode = 503;
+        throw error;
+      }
+
+      const amount = Math.floor(Number(req.customerPortalData.billing?.totalAmount) || 0);
+      const periods = (req.customerPortalData.billing?.history || [])
+        .filter((payment) => payment.status !== PAYMENT_STATUS.PAID)
+        .map((payment) => payment.period);
+      if (amount <= 0 || periods.length === 0) {
+        throw new Error("Tidak ada tagihan yang perlu dibayar.");
+      }
+
+      const orderId = `RB-${Date.now()}-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
+      const transaction = await this.dataManager.createPaymentGatewayTransaction({
+        orderId,
+        contactId: req.customerSession.contactId,
+        amount,
+        periods,
+      });
+      const fallbackFinishUrl = `${req.protocol}://${req.get("host")}/pelanggan?payment=finish`;
+      const finishUrl = CONFIG.MIDTRANS_FINISH_URL || fallbackFinishUrl;
+
+      try {
+        const snap = await this.midtransService.createSnapTransaction({
+          orderId,
+          amount,
+          customer: req.customerPortalData.customer,
+          itemName: `Tagihan internet ${req.customerPortalData.billing.periodLabel}`,
+          finishUrl,
+        });
+        await this.dataManager.updatePaymentGatewayTransaction(orderId, {
+          token: sanitizeInput(String(snap.token || "")) || null,
+          redirectUrl: String(snap.redirect_url || ""),
+          gatewayStatus: "pending",
+        });
+        if (!snap.redirect_url) throw new Error("Midtrans tidak mengembalikan URL pembayaran.");
+        this.activityLog.push("info", "payment", `Transaksi Midtrans ${orderId} dibuat`, {
+          contactId: transaction.contactId,
+          amount,
+          environment: CONFIG.MIDTRANS_IS_PRODUCTION ? "production" : "sandbox",
+        });
+        return { orderId, redirectUrl: snap.redirect_url, amount };
+      } catch (error) {
+        await this.dataManager.updatePaymentGatewayTransaction(orderId, {
+          status: PAYMENT_GATEWAY_STATUS.FAILED,
+          gatewayStatus: "create_failed",
+          error: sanitizeInput(error.message),
+        }).catch(() => {});
+        throw error;
+      }
+    }));
+
+    this.app.post("/api/payments/midtrans/notification", handleApi(async (req) => {
+      if (!this.midtransService.verifyNotificationSignature(req.body || {})) {
+        const error = new Error("Signature notifikasi Midtrans tidak valid.");
+        error.statusCode = 403;
+        throw error;
+      }
+
+      const orderId = sanitizeInput(String(req.body.order_id || ""));
+      const localTransaction = this.dataManager.getPaymentGatewayTransaction(orderId);
+      if (!localTransaction) {
+        this.activityLog.push("warn", "payment", `Notifikasi Midtrans untuk transaksi tidak dikenal ${orderId}`);
+        return { received: true, ignored: "unknown_order" };
+      }
+
+      const gatewayData = await this.midtransService.getTransactionStatus(orderId);
+      if (String(gatewayData.order_id || "") !== orderId) {
+        const error = new Error("Order ID hasil verifikasi Midtrans tidak sesuai.");
+        error.statusCode = 400;
+        throw error;
+      }
+      const status = normalizeMidtransPaymentStatus(
+        gatewayData.transaction_status,
+        gatewayData.fraud_status
+      );
+
+      if (status === PAYMENT_GATEWAY_STATUS.PAID) {
+        const result = await this.paymentGatewayLock.runExclusive(orderId, () => (
+          this.dataManager.completeMidtransPayment(orderId, gatewayData)
+        ));
+        if (!result.alreadyProcessed && typeof this.notificationBot.sendPaymentNotification === "function") {
+          await this.notificationBot.sendPaymentNotification(
+            result.contact,
+            orderId,
+            PAYMENT_TYPES.FULL_PAID
+          ).catch((error) => {
+            this.activityLog.push("error", "payment", `Pembayaran ${orderId} lunas tetapi notifikasi WhatsApp gagal`, {
+              error: error.message,
+              contactId: result.contact.id,
+            });
+          });
+        }
+        this.activityLog.push("info", "payment", `Pembayaran Midtrans ${orderId} terverifikasi lunas`, {
+          contactId: result.contact.id,
+          amount: localTransaction.amount,
+          alreadyProcessed: result.alreadyProcessed,
+        });
+        return { received: true, status, alreadyProcessed: result.alreadyProcessed };
+      }
+
+      await this.dataManager.updatePaymentGatewayTransaction(orderId, {
+        status,
+        gatewayStatus: sanitizeInput(String(gatewayData.transaction_status || "pending")),
+        transactionId: sanitizeInput(String(gatewayData.transaction_id || "")) || null,
+        paymentMethod: sanitizeInput(String(gatewayData.payment_type || "")) || null,
+      });
+      return { received: true, status };
+    }));
+
     this.app.put("/api/pelanggan/account/password", requireCustomerApiAuth, handleApi(async (req) => {
       const currentPassword = String(req.body.currentPassword || "");
       const newPassword = String(req.body.newPassword || "");
@@ -5527,6 +5914,7 @@ async function bootstrap() {
 
 module.exports = {
   DataManager,
+  MidtransService,
   MikrotikService,
   NotificationBot,
   WebServer,

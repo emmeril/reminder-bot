@@ -137,6 +137,17 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .portal-bill-details .portal-bill-total { margin-top: 6px; padding: 14px 12px; border: 0; border-radius: 10px; background: #eff6ff; }
 .portal-bill-total dt { color: #1d4ed8; font-weight: 750; }
 .portal-bill-total dd { color: #1d4ed8; font-size: 15px; }
+.portal-payment-gateway { margin-top: 15px; padding: 13px; border: 1px solid #bfdbfe; border-radius: 11px; background: linear-gradient(135deg,#f7fbff,#eff6ff); }
+.portal-payment-heading { display: flex; align-items: center; gap: 9px; }
+.portal-payment-heading > span { display: inline-flex; width: 34px; height: 34px; flex: 0 0 34px; align-items: center; justify-content: center; color: #1d4ed8; border-radius: 9px; background: #dbeafe; }
+.portal-payment-heading div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.portal-payment-heading strong { color: #253047; font-size: 12px; }
+.portal-payment-heading small { color: #697386; font-size: 9px; }
+.portal-payment-heading em { margin-left: 3px; padding: 2px 5px; color: #9a4b16; border-radius: 999px; background: #fff4e5; font-size: 8px; font-style: normal; font-weight: 750; }
+.portal-payment-gateway > button { width: 100%; min-height: 43px; margin-top: 11px; color: #fff; border: 0; border-radius: 9px; background: linear-gradient(135deg,#2563eb,#1d4ed8); box-shadow: 0 8px 18px rgba(37,99,235,.18); font-size: 11px; font-weight: 750; cursor: pointer; }
+.portal-payment-gateway > button:hover { filter: brightness(.96); transform: translateY(-1px); }
+.portal-payment-gateway > button:disabled { cursor: not-allowed; filter: none; opacity: .55; transform: none; }
+.portal-payment-message { margin: 10px 2px 0; color: #1d4ed8; font-size: 10px; font-weight: 650; line-height: 1.5; }
 .portal-history-panel { margin-top: 16px; }
 .portal-history-list { margin-top: 7px; }
 .portal-history-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 4px; border-bottom: 1px solid #edf0f4; }

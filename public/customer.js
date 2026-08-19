@@ -3,7 +3,9 @@ function customerPortalApp() {
     data: null,
     loading: true,
     loggingOut: false,
+    paying: false,
     error: "",
+    paymentMessage: "",
     showHotspotPassword: false,
     copied: "",
     passwordModalOpen: false,
@@ -29,10 +31,28 @@ function customerPortalApp() {
       this.error = "";
       try {
         this.data = await this.request("/api/pelanggan/account");
+        if (new URLSearchParams(window.location.search).get("payment") === "finish") {
+          this.paymentMessage = "Pembayaran diterima Midtrans dan sedang diverifikasi. Status tagihan akan diperbarui otomatis.";
+          window.history.replaceState({}, "", window.location.pathname);
+        }
       } catch (error) {
         this.error = error.message;
       } finally {
         this.loading = false;
+      }
+    },
+
+    async payWithMidtrans() {
+      if (this.paying || Number(this.data?.billing?.totalAmount) <= 0) return;
+      this.paying = true;
+      this.paymentMessage = "";
+      try {
+        const transaction = await this.request("/api/pelanggan/payments/midtrans", { method: "POST" });
+        if (!transaction?.redirectUrl) throw new Error("URL pembayaran Midtrans tidak tersedia.");
+        window.location.assign(transaction.redirectUrl);
+      } catch (error) {
+        this.paymentMessage = error.message || "Pembayaran Midtrans belum dapat dibuka.";
+        this.paying = false;
       }
     },
 

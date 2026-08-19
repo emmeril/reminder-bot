@@ -534,6 +534,51 @@ test("perubahan password akun pelanggan tidak mengubah kredensial hotspot", asyn
   );
 });
 
+test("pembayaran Midtrans menandai periode transaksi lunas secara atomik", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.savePaymentGatewayTransactions = async () => {};
+  manager.saveReminders = async () => {};
+  const contact = {
+    id: "contact-midtrans",
+    name: "Pelanggan Midtrans",
+    phoneNumber: "6281234567822",
+    monthlyPaymentAmount: 100000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {
+      "2026-07": { status: PAYMENT_STATUS.UNPAID },
+      "2026-08": { status: PAYMENT_STATUS.UNPAID },
+    },
+    createdAt: "2026-07-01T00:00:00.000Z",
+  };
+  manager.contacts.set(contact.id, contact);
+  manager.paymentGatewayTransactions.set("RB-MIDTRANS-1", {
+    orderId: "RB-MIDTRANS-1",
+    contactId: contact.id,
+    amount: 200000,
+    periods: ["2026-07", "2026-08"],
+    status: "PENDING",
+  });
+
+  const result = await manager.completeMidtransPayment("RB-MIDTRANS-1", {
+    order_id: "RB-MIDTRANS-1",
+    gross_amount: "200000.00",
+    transaction_status: "settlement",
+    transaction_id: "gateway-transaction-1",
+    payment_type: "bank_transfer",
+    settlement_time: "2026-08-19 16:00:00",
+  });
+
+  assert.equal(result.alreadyProcessed, false);
+  assert.equal(contact.paymentMonths["2026-07"].status, PAYMENT_STATUS.PAID);
+  assert.equal(contact.paymentMonths["2026-08"].status, PAYMENT_STATUS.PAID);
+  assert.equal(contact.paymentMonths["2026-08"].transactionId, "RB-MIDTRANS-1");
+  assert.equal(manager.paymentGatewayTransactions.get("RB-MIDTRANS-1").status, "PAID");
+  assert.equal(manager.paymentGatewayTransactions.get("RB-MIDTRANS-1").paymentMethod, "bank_transfer");
+});
+
 test("status FAILED menyimpan error tanpa menghapus pelanggan", async () => {
   const manager = new DataManager({ push() {} });
   manager.sequelize = {
