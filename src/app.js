@@ -1649,6 +1649,35 @@ class DataManager {
     });
   }
 
+  async updateCustomerPortalPassword(contactId, currentPassword, requestedPassword) {
+    return this.withDataMutation(async () => {
+      const account = this.getCustomerPortalAccountByContactId(contactId);
+      if (!account) throw new Error("Akun pelanggan tidak ditemukan.");
+      if (!safeCompareString(currentPassword, account.account.password)) {
+        const error = new Error("Password akun pelanggan saat ini tidak sesuai.");
+        error.statusCode = 403;
+        throw error;
+      }
+
+      const rawNewPassword = String(requestedPassword || "");
+      const newPassword = sanitizeInput(rawNewPassword);
+      if (newPassword.length < 5 || newPassword.length > 64) {
+        throw new Error("Password baru harus terdiri dari 5 sampai 64 karakter.");
+      }
+      if (newPassword !== rawNewPassword || !/^[\x21-\x7E]+$/.test(newPassword)) {
+        throw new Error("Password baru tidak boleh mengandung spasi atau karakter khusus non-ASCII.");
+      }
+      if (safeCompareString(newPassword, account.account.password)) {
+        throw new Error("Password baru harus berbeda dari password saat ini.");
+      }
+
+      account.account.password = newPassword;
+      account.account.updatedAt = new Date().toISOString();
+      await this.saveCustomerAccounts();
+      return this.getCustomerPortalData(contactId);
+    });
+  }
+
   normalizeOptionalDate(value) {
     const raw = sanitizeInput(String(value || ""));
     if (!raw) return null;
@@ -4502,6 +4531,31 @@ class WebServer {
     }));
 
     this.app.get("/api/pelanggan/account", requireCustomerApiAuth, handleApi(async (req) => req.customerPortalData));
+    this.app.put("/api/pelanggan/account/password", requireCustomerApiAuth, handleApi(async (req) => {
+      const currentPassword = String(req.body.currentPassword || "");
+      const newPassword = String(req.body.newPassword || "");
+      const confirmation = String(req.body.confirmPassword || "");
+      if (!currentPassword || !newPassword || !confirmation) {
+        throw new Error("Password saat ini, password baru, dan konfirmasi wajib diisi.");
+      }
+      if (!safeCompareString(newPassword, confirmation)) {
+        throw new Error("Konfirmasi password baru tidak sama.");
+      }
+
+      const portalData = await this.dataManager.updateCustomerPortalPassword(
+        req.customerSession.contactId,
+        currentPassword,
+        newPassword
+      );
+      this.authManager.destroyCustomerSessionsForContact(
+        req.customerSession.contactId,
+        req.customerSessionToken
+      );
+      this.activityLog.push("info", "customer-auth", `Password akun pelanggan diubah untuk ${req.customerSession.username}`, {
+        contactId: req.customerSession.contactId,
+      });
+      return portalData;
+    }));
     this.app.put("/api/pelanggan/hotspot/password", requireCustomerApiAuth, handleApi(async (req) => {
       const currentPassword = String(req.body.currentPassword || "");
       const newPassword = String(req.body.newPassword || "");

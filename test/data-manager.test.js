@@ -491,6 +491,49 @@ test("perubahan password hotspot memperbarui Contact dan Pelanggan secara atomik
   );
 });
 
+test("perubahan password akun pelanggan tidak mengubah kredensial hotspot", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveCustomerAccounts = async () => {};
+  const contact = {
+    id: "contact-change-portal-password",
+    name: "Pelanggan Portal Password",
+    phoneNumber: "6281234567821",
+    mikrotikUsername: "pelanggan_portal_password",
+    mikrotikPassword: "hotspot-67821",
+    mikrotikProfile: "50M",
+    hotspotProvisioningStatus: "ACTIVE",
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+    createdAt: new Date().toISOString(),
+  };
+  manager.contacts.set(contact.id, contact);
+  manager.pelanggan.set(contact.mikrotikUsername, {
+    username: contact.mikrotikUsername,
+    password: contact.mikrotikPassword,
+    profile: contact.mikrotikProfile,
+    contactId: contact.id,
+  });
+  manager.customerAccounts.set(contact.id, {
+    contactId: contact.id,
+    username: "akun_portal_password",
+    password: "portal-lama",
+  });
+
+  const portal = await manager.updateCustomerPortalPassword(contact.id, "portal-lama", "portal-baru");
+
+  assert.equal(manager.customerAccounts.get(contact.id).password, "portal-baru");
+  assert.equal(contact.mikrotikPassword, "hotspot-67821");
+  assert.equal(manager.pelanggan.get(contact.mikrotikUsername).password, "hotspot-67821");
+  assert.equal(portal.account.username, "akun_portal_password");
+  assert.equal(portal.hotspot.password, "hotspot-67821");
+  await assert.rejects(
+    () => manager.updateCustomerPortalPassword(contact.id, "portal-lama", "portal-lain"),
+    /Password akun pelanggan saat ini tidak sesuai/
+  );
+});
+
 test("status FAILED menyimpan error tanpa menghapus pelanggan", async () => {
   const manager = new DataManager({ push() {} });
   manager.sequelize = {

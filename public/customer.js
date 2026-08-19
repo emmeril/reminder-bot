@@ -7,6 +7,7 @@ function customerPortalApp() {
     showHotspotPassword: false,
     copied: "",
     passwordModalOpen: false,
+    passwordModalTarget: "hotspot",
     changingPassword: false,
     passwordForm: { currentPassword: "", newPassword: "", confirmPassword: "" },
     passwordMessage: { type: "", text: "" },
@@ -45,7 +46,8 @@ function customerPortalApp() {
       window.location.href = "/pelanggan/login";
     },
 
-    openPasswordModal() {
+    openPasswordModal(target = "hotspot") {
+      this.passwordModalTarget = target === "portal" ? "portal" : "hotspot";
       this.passwordModalOpen = true;
       this.passwordMessage = { type: "", text: "" };
       document.body.style.overflow = "hidden";
@@ -55,6 +57,7 @@ function customerPortalApp() {
     closePasswordModal() {
       if (this.changingPassword) return;
       this.passwordModalOpen = false;
+      this.passwordModalTarget = "hotspot";
       this.passwordForm = { currentPassword: "", newPassword: "", confirmPassword: "" };
       this.passwordMessage = { type: "", text: "" };
       this.showPasswordFields = { current: false, new: false, confirm: false };
@@ -69,7 +72,11 @@ function customerPortalApp() {
       }
       this.changingPassword = true;
       try {
-        this.data = await this.request("/api/pelanggan/hotspot/password", {
+        const changingPortalPassword = this.passwordModalTarget === "portal";
+        const endpoint = changingPortalPassword
+          ? "/api/pelanggan/account/password"
+          : "/api/pelanggan/hotspot/password";
+        this.data = await this.request(endpoint, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(this.passwordForm),
@@ -77,7 +84,12 @@ function customerPortalApp() {
         this.passwordForm = { currentPassword: "", newPassword: "", confirmPassword: "" };
         this.showPasswordFields = { current: false, new: false, confirm: false };
         this.showHotspotPassword = false;
-        this.passwordMessage = { type: "success", text: "Password hotspot berhasil diubah dan disinkronkan ke MikroTik." };
+        this.passwordMessage = {
+          type: "success",
+          text: changingPortalPassword
+            ? "Password akun pelanggan berhasil diubah. Gunakan password baru saat login berikutnya."
+            : "Password hotspot berhasil diubah dan disinkronkan ke MikroTik.",
+        };
       } catch (error) {
         this.passwordMessage = { type: "error", text: error.message || "Password gagal diubah." };
       } finally {

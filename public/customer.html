@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Akun Saya - __CUSTOMER_PORTAL_TITLE__</title>
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/customer.css?v=20260819-5">
-  <script defer src="/public/customer.js?v=20260819-5"></script>
+  <link rel="stylesheet" href="/public/customer.css?v=20260819-6">
+  <script defer src="/public/customer.js?v=20260819-6"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -34,7 +34,10 @@
           <p class="portal-kicker">Akun Saya</p>
           <h1>Halo, <span x-text="data?.customer?.name"></span></h1>
           <p>Lihat status layanan dan tagihan Anda dalam satu tempat.</p>
-          <span class="portal-account-id"><i class="fa-solid fa-user-shield"></i> Akun pelanggan: <strong x-text="data?.account?.username"></strong></span>
+          <div class="portal-account-actions">
+            <span class="portal-account-id"><i class="fa-solid fa-user-shield"></i> Akun pelanggan: <strong x-text="data?.account?.username"></strong></span>
+            <button type="button" @click="openPasswordModal('portal')"><i class="fa-solid fa-key"></i> Ganti password login</button>
+          </div>
         </div>
         <span class="portal-period"><i class="fa-regular fa-calendar"></i><span x-text="data?.billing?.periodLabel"></span></span>
       </section>
@@ -69,7 +72,7 @@
             <div><small>Password</small><strong x-text="showHotspotPassword ? (data?.hotspot?.password || '-') : maskedPassword()"></strong><button @click="showHotspotPassword = !showHotspotPassword" :title="showHotspotPassword ? 'Sembunyikan password' : 'Tampilkan password'"><i class="fa-regular" :class="showHotspotPassword ? 'fa-eye-slash' : 'fa-eye'"></i></button><button @click="copyText(data?.hotspot?.password, 'password')" title="Salin password"><i class="fa-regular" :class="copied === 'password' ? 'fa-circle-check' : 'fa-copy'"></i></button></div>
             <div><small>Profil layanan</small><strong x-text="data?.hotspot?.profile || '-'"></strong></div>
           </div>
-          <button class="portal-change-password-button" type="button" @click="openPasswordModal()">
+          <button class="portal-change-password-button" type="button" @click="openPasswordModal('hotspot')">
             <i class="fa-solid fa-key"></i> Ganti Password Hotspot
           </button>
           <p class="portal-security-note"><i class="fa-solid fa-shield-halved"></i> Jangan bagikan username dan password kepada orang lain.</p>
@@ -107,30 +110,31 @@
     <div class="portal-modal-overlay" x-cloak x-show="passwordModalOpen" x-transition.opacity @click.self="closePasswordModal()" @keydown.escape.window="closePasswordModal()" role="presentation">
       <section class="portal-modal" x-show="passwordModalOpen" x-transition role="dialog" aria-modal="true" aria-labelledby="password-modal-title">
         <header class="portal-modal-header">
-          <div><span><i class="fa-solid fa-key"></i></span><div><h2 id="password-modal-title">Ganti Password Hotspot</h2><p>Ubah kredensial akun <strong x-text="data?.hotspot?.username"></strong></p></div></div>
+          <div><span><i class="fa-solid fa-key"></i></span><div><h2 id="password-modal-title" x-text="passwordModalTarget === 'portal' ? 'Ganti Password Akun Pelanggan' : 'Ganti Password Hotspot'"></h2><p>Ubah password akun <strong x-text="passwordModalTarget === 'portal' ? data?.account?.username : data?.hotspot?.username"></strong></p></div></div>
           <button type="button" @click="closePasswordModal()" :disabled="changingPassword" aria-label="Tutup modal"><i class="fa-solid fa-xmark"></i></button>
         </header>
         <form class="portal-password-form" @submit.prevent="changePassword()">
-          <label for="current-hotspot-password">Password saat ini</label>
+          <label for="current-customer-password">Password saat ini</label>
           <div class="portal-password-input">
-            <input id="current-hotspot-password" x-ref="currentPasswordInput" x-model="passwordForm.currentPassword" :type="showPasswordFields.current ? 'text' : 'password'" autocomplete="current-password" required>
+            <input id="current-customer-password" x-ref="currentPasswordInput" x-model="passwordForm.currentPassword" :type="showPasswordFields.current ? 'text' : 'password'" autocomplete="current-password" required>
             <button type="button" @click="showPasswordFields.current = !showPasswordFields.current" :aria-label="showPasswordFields.current ? 'Sembunyikan password saat ini' : 'Tampilkan password saat ini'"><i class="fa-regular" :class="showPasswordFields.current ? 'fa-eye-slash' : 'fa-eye'"></i></button>
           </div>
-          <label for="new-hotspot-password">Password baru</label>
+          <label for="new-customer-password">Password baru</label>
           <div class="portal-password-input">
-            <input id="new-hotspot-password" x-model="passwordForm.newPassword" :type="showPasswordFields.new ? 'text' : 'password'" autocomplete="new-password" minlength="5" maxlength="64" required>
+            <input id="new-customer-password" x-model="passwordForm.newPassword" :type="showPasswordFields.new ? 'text' : 'password'" autocomplete="new-password" minlength="5" maxlength="64" required>
             <button type="button" @click="showPasswordFields.new = !showPasswordFields.new" :aria-label="showPasswordFields.new ? 'Sembunyikan password baru' : 'Tampilkan password baru'"><i class="fa-regular" :class="showPasswordFields.new ? 'fa-eye-slash' : 'fa-eye'"></i></button>
           </div>
-          <small>Gunakan 5–64 karakter tanpa spasi. Koneksi hotspot aktif dapat terputus setelah password berubah.</small>
-          <label for="confirm-hotspot-password">Konfirmasi password baru</label>
+          <small x-show="passwordModalTarget === 'hotspot'">Gunakan 5–64 karakter tanpa spasi. Koneksi hotspot aktif dapat terputus setelah password berubah.</small>
+          <small x-show="passwordModalTarget === 'portal'">Gunakan 5–64 karakter tanpa spasi. Password ini hanya digunakan untuk masuk ke portal pelanggan.</small>
+          <label for="confirm-customer-password">Konfirmasi password baru</label>
           <div class="portal-password-input">
-            <input id="confirm-hotspot-password" x-model="passwordForm.confirmPassword" :type="showPasswordFields.confirm ? 'text' : 'password'" autocomplete="new-password" minlength="5" maxlength="64" required>
+            <input id="confirm-customer-password" x-model="passwordForm.confirmPassword" :type="showPasswordFields.confirm ? 'text' : 'password'" autocomplete="new-password" minlength="5" maxlength="64" required>
             <button type="button" @click="showPasswordFields.confirm = !showPasswordFields.confirm" :aria-label="showPasswordFields.confirm ? 'Sembunyikan konfirmasi password' : 'Tampilkan konfirmasi password'"><i class="fa-regular" :class="showPasswordFields.confirm ? 'fa-eye-slash' : 'fa-eye'"></i></button>
           </div>
           <p class="portal-password-message" role="alert" :class="passwordMessage.type === 'success' ? 'is-success' : 'is-error'" x-text="passwordMessage.text"></p>
           <div class="portal-password-actions">
             <button type="button" @click="closePasswordModal()" :disabled="changingPassword">Batal</button>
-            <button type="submit" :disabled="changingPassword"><span x-show="!changingPassword"><i class="fa-solid fa-floppy-disk"></i> Simpan Password</span><span x-cloak x-show="changingPassword"><i class="fa-solid fa-circle-notch fa-spin"></i> Menyinkronkan...</span></button>
+            <button type="submit" :disabled="changingPassword"><span x-show="!changingPassword"><i class="fa-solid fa-floppy-disk"></i> Simpan Password</span><span x-cloak x-show="changingPassword"><i class="fa-solid fa-circle-notch fa-spin"></i> <span x-text="passwordModalTarget === 'hotspot' ? 'Menyinkronkan...' : 'Menyimpan...'"></span></span></button>
           </div>
         </form>
       </section>
