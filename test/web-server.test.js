@@ -88,6 +88,35 @@ test("halaman login memakai aset lokal dan mengirim CSP", async () => {
   assert.match(html, /\/vendor\/alpine\.min\.js/);
 });
 
+test("halaman login membedakan akses administrator dan pelanggan", async () => {
+  const baseUrl = await startServer({
+    getSettings: () => ({ dashboardTitle: "Dashboard Test", companyName: "ISP Test" }),
+  });
+  const [adminResponse, customerResponse] = await Promise.all([
+    fetch(`${baseUrl}/login`),
+    fetch(`${baseUrl}/pelanggan/login`),
+  ]);
+  const [adminHtml, customerHtml] = await Promise.all([
+    adminResponse.text(),
+    customerResponse.text(),
+  ]);
+
+  assert.equal(adminResponse.status, 200);
+  assert.equal(customerResponse.status, 200);
+  assert.match(adminHtml, /Login Administrator/);
+  assert.match(adminHtml, /Masuk ke Dashboard Admin/);
+  assert.match(adminHtml, /username administrator/);
+  assert.match(customerHtml, /Login Pelanggan/);
+  assert.match(customerHtml, /Portal Pelanggan/);
+  assert.match(customerHtml, /placeholder="Masukkan username"/);
+  assert.match(customerHtml, /placeholder="Masukkan password"/);
+  assert.doesNotMatch(customerHtml, /Username akun pelanggan/);
+  assert.doesNotMatch(customerHtml, /Password akun pelanggan/);
+  assert.match(customerHtml, /Akun ini berbeda dari akun hotspot/);
+  assert.doesNotMatch(customerHtml, /Login administrator/);
+  assert.doesNotMatch(adminHtml, /Akun ini berbeda dari akun hotspot/);
+});
+
 test("health check publik tidak membocorkan framework dan membawa request ID", async () => {
   const baseUrl = await startServer();
   const response = await fetch(`${baseUrl}/healthz`, {

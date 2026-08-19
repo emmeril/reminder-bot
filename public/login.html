@@ -6,8 +6,8 @@
   <title>Login - __DASHBOARD_TITLE__</title>
   <link rel="stylesheet" href="/public/tailwind.css">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20260818-1">
-  <script defer src="/public/login.js"></script>
+  <link rel="stylesheet" href="/public/styles.css?v=20260819-4">
+  <script defer src="/public/login.js?v=20260819-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="font-body">
@@ -19,25 +19,25 @@
           <span class="login-brand-copy"><strong>Reminder Bot</strong><small>Customer operations</small></span>
         </div>
         <div class="login-welcome">
-          <span class="login-eyebrow"><i class="fa-solid fa-shield-halved"></i> Administrator area</span>
-          <h1>Selamat datang kembali</h1>
-          <p>Masuk untuk mengelola pelanggan, pembayaran, reminder, dan aktivitas layanan.</p>
+          <span class="login-eyebrow"><i class="fa-solid fa-shield-halved"></i> Login Administrator</span>
+          <h1>Masuk ke Dashboard Admin</h1>
+          <p>Kelola pelanggan, pembayaran, reminder, MikroTik, dan seluruh aktivitas layanan dari dashboard administrator.</p>
         </div>
       </div>
       <div class="login-card">
         <form @submit.prevent="submit()">
           <label>
-            <span>Username</span>
+            <span>Username administrator</span>
             <div class="login-input">
               <i class="fa-solid fa-user"></i>
-              <input x-model="form.username" autocomplete="username" placeholder="Masukkan username" required autofocus>
+              <input x-model="form.username" autocomplete="username" placeholder="Masukkan username administrator" required autofocus>
             </div>
           </label>
           <label>
-            <span>Password</span>
+            <span>Password administrator</span>
             <div class="login-input">
               <i class="fa-solid fa-lock"></i>
-              <input x-model="form.password" type="password" autocomplete="current-password" placeholder="Masukkan password" required>
+              <input x-model="form.password" type="password" autocomplete="current-password" placeholder="Masukkan password administrator" required>
             </div>
           </label>
           <div class="login-error" x-text="error"></div>
@@ -46,7 +46,8 @@
             <span x-cloak x-show="submitting"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memproses...</span>
           </button>
         </form>
-        <p class="login-footnote"><a href="/pelanggan/login"><i class="fa-solid fa-user"></i> Masuk sebagai pelanggan</a></p>
+        <div class="login-role-note"><i class="fa-solid fa-circle-info"></i><span>Gunakan akun administrator untuk mengakses pengaturan dan data seluruh pelanggan.</span></div>
+        <p class="login-footnote"><a href="/pelanggan/login"><i class="fa-solid fa-users"></i> Login sebagai pelanggan</a></p>
       </div>
     </section>
   </main>
