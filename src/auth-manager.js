@@ -6,6 +6,7 @@ class AuthManager {
   constructor(activityLog) {
     this.activityLog = activityLog;
     this.sessions = new Map();
+    this.customerSessions = new Map();
     this.loginAttempts = new Map();
   }
 
@@ -14,6 +15,12 @@ class AuthManager {
     for (const [token, session] of this.sessions.entries()) {
       if (session.expiresAt <= now) {
         this.sessions.delete(token);
+      }
+    }
+
+    for (const [token, session] of this.customerSessions.entries()) {
+      if (session.expiresAt <= now) {
+        this.customerSessions.delete(token);
       }
     }
 
@@ -91,6 +98,27 @@ class AuthManager {
     return { token, session };
   }
 
+  createCustomerSession(customer) {
+    this.cleanupExpiredSessions();
+    const username = String(customer.username || "");
+    const contactId = String(customer.contactId || "");
+    const token = crypto
+      .createHmac("sha256", CONFIG.SESSION_SECRET)
+      .update(`customer:${contactId}:${username}:${Date.now()}:${crypto.randomBytes(16).toString("hex")}`)
+      .digest("hex");
+
+    const session = {
+      type: "customer",
+      username,
+      contactId,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + CONFIG.SESSION_TTL,
+    };
+
+    this.customerSessions.set(token, session);
+    return { token, session };
+  }
+
   getSession(token) {
     if (!token) return null;
     this.cleanupExpiredSessions();
@@ -104,9 +132,27 @@ class AuthManager {
     return session;
   }
 
+  getCustomerSession(token) {
+    if (!token) return null;
+    this.cleanupExpiredSessions();
+    const session = this.customerSessions.get(token);
+    if (!session) return null;
+    if (session.expiresAt <= Date.now()) {
+      this.customerSessions.delete(token);
+      return null;
+    }
+    session.expiresAt = Date.now() + CONFIG.SESSION_TTL;
+    return session;
+  }
+
   destroySession(token) {
     if (!token) return;
     this.sessions.delete(token);
+  }
+
+  destroyCustomerSession(token) {
+    if (!token) return;
+    this.customerSessions.delete(token);
   }
 }
 

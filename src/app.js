@@ -1165,6 +1165,7 @@ class DataManager {
     }
 
     this.normalizeLoadedContacts();
+    const portalAccountsCreated = await this.synchronizeCustomerPortalAccounts();
     await this.normalizeReminderRelations();
     await this.migrateReminderPaymentAmounts();
     await this.migrateReminderVariableTemplates();
@@ -1179,6 +1180,7 @@ class DataManager {
       reminders: this.reminders.size,
       sentReminders: this.sentReminders.size,
       adminRecipients: this.getAdminRecipients().length,
+      portalAccountsCreated,
     });
   }
 
@@ -1409,6 +1411,164 @@ class DataManager {
         pelanggan.hotspotLastSyncedAt || contact?.hotspotLastSyncedAt
       );
     }
+  }
+
+  async synchronizeCustomerPortalAccounts(options = {}) {
+    let created = 0;
+    const now = new Date().toISOString();
+
+    for (const contact of this.contacts.values()) {
+      const username = sanitizeInput(String(contact.mikrotikUsername || ""));
+      const password = sanitizeInput(String(contact.mikrotikPassword || ""));
+      const profile = sanitizeInput(String(contact.mikrotikProfile || ""));
+      if (!username || !password) continue;
+
+      const existingForContact = Array.from(this.pelanggan.values()).find(
+        (item) => String(item.contactId || "") === String(contact.id)
+      );
+      const usernameOwner = this.pelanggan.get(username);
+      if (usernameOwner && String(usernameOwner.contactId || "") !== String(contact.id)) {
+        this.activityLog.push("warn", "storage", `Akun portal ${username} tidak dibuat karena username sudah digunakan pelanggan lain`, {
+          contactId: contact.id,
+        });
+        continue;
+      }
+
+      if (existingForContact && existingForContact.username !== username) {
+        this.pelanggan.delete(existingForContact.username);
+      }
+
+      const previous = usernameOwner || existingForContact || {};
+      const pelanggan = {
+        ...previous,
+        username,
+        nama: contact.name,
+        nomer: contact.phoneNumber,
+        profile,
+        password,
+        contactId: contact.id,
+        status: contact.hotspotProvisioningStatus === HOTSPOT_PROVISIONING_STATUS.ACTIVE
+          ? "verified"
+          : String(contact.hotspotProvisioningStatus || HOTSPOT_PROVISIONING_STATUS.NONE).toLowerCase(),
+        hotspotProvisioningStatus: contact.hotspotProvisioningStatus,
+        hotspotProvisioningError: contact.hotspotProvisioningError || "",
+        hotspotLastCheckedAt: contact.hotspotLastCheckedAt || null,
+        hotspotLastSyncedAt: contact.hotspotLastSyncedAt || null,
+        tanggalDaftar: previous.tanggalDaftar || contact.createdAt || now,
+        tanggalUpdate: previous.tanggalUpdate || contact.updatedAt || now,
+      };
+
+      const changed = !usernameOwner
+        || existingForContact?.username !== username
+        || JSON.stringify(previous) !== JSON.stringify(pelanggan);
+      this.pelanggan.set(username, pelanggan);
+      if (changed) created += 1;
+    }
+
+    if (created > 0 && this.sequelize && options.save !== false) {
+      await this.savePelanggan();
+      this.activityLog.push("info", "storage", `${created} akun portal pelanggan disinkronkan dari data pelanggan lama`);
+    }
+
+    return created;
+  }
+
+  findCustomerPortalAccount(username) {
+    const normalized = sanitizeInput(String(username || "")).toLowerCase();
+    if (!normalized) return null;
+
+    const pelanggan = Array.from(this.pelanggan.values()).find(
+      (item) => String(item.username || "").toLowerCase() === normalized
+    );
+    if (!pelanggan?.contactId || !pelanggan.password) return null;
+
+    const contact = this.getContact(pelanggan.contactId);
+    if (!contact) return null;
+    return { pelanggan, contact };
+  }
+
+  getCustomerPortalData(contactId) {
+    const contact = this.getContact(contactId);
+    if (!contact) return null;
+    const hydrated = this.hydrateContact(contact);
+    const account = Array.from(this.pelanggan.values()).find(
+      (item) => String(item.contactId || "") === String(contact.id)
+    );
+    if (!account) return null;
+
+    const timeZone = this.getTimezone();
+    const { year, month } = getBillingPeriodParts(new Date(), timeZone);
+    const currentKey = makeBillingPeriodKey(year, month);
+    const monthlyAmount = Math.max(0, Number(hydrated.monthlyPaymentAmount) || 0);
+    const currentPaymentStatus = hydrated.currentPaymentStatus || hydrated.paymentStatus || PAYMENT_STATUS.UNPAID;
+    const currentAmount = currentPaymentStatus === PAYMENT_STATUS.PAID ? 0 : monthlyAmount;
+    const debtAmount = hydrated.debtCount * monthlyAmount;
+    const historyByPeriod = new Map(
+      Object.entries(hydrated.paymentMonths || {})
+        .filter(([period]) => /^\d{4}-\d{2}$/.test(period))
+        .map(([period, payment]) => [period, {
+          period,
+          label: formatBillingPeriodLabel(Number(period.slice(0, 4)), Number(period.slice(5, 7))),
+          status: payment?.status || PAYMENT_STATUS.UNPAID,
+          paidDate: payment?.paidDate || null,
+          paymentType: payment?.paymentType || null,
+        }])
+    );
+    for (const debtPeriod of hydrated.debtPeriods || []) {
+      if (!historyByPeriod.has(debtPeriod.key)) {
+        historyByPeriod.set(debtPeriod.key, {
+          period: debtPeriod.key,
+          label: debtPeriod.label,
+          status: PAYMENT_STATUS.UNPAID,
+          paidDate: null,
+          paymentType: null,
+        });
+      }
+    }
+    if (!historyByPeriod.has(currentKey)) {
+      historyByPeriod.set(currentKey, {
+        period: currentKey,
+        label: formatBillingPeriodLabel(year, month),
+        status: currentPaymentStatus,
+        paidDate: hydrated.paymentDate || null,
+        paymentType: hydrated.paymentType || null,
+      });
+    }
+    const paymentHistory = Array.from(historyByPeriod.values())
+      .sort((a, b) => b.period.localeCompare(a.period));
+
+    return {
+      customer: {
+        id: String(contact.id),
+        name: contact.name,
+        phoneNumber: contact.phoneNumber,
+      },
+      billing: {
+        period: currentKey,
+        periodLabel: formatBillingPeriodLabel(year, month),
+        monthlyAmount,
+        currentAmount,
+        debtAmount,
+        totalAmount: currentAmount + debtAmount,
+        currentPaymentStatus,
+        debtCount: hydrated.debtCount,
+        debtPeriods: hydrated.debtPeriods,
+        dueDate: hydrated.dueDate || null,
+        dueStatus: hydrated.dueStatus || null,
+        history: paymentHistory,
+      },
+      hotspot: {
+        username: account.username,
+        password: account.password,
+        profile: account.profile || contact.mikrotikProfile || "",
+        status: account.hotspotProvisioningStatus || contact.hotspotProvisioningStatus || HOTSPOT_PROVISIONING_STATUS.NONE,
+        lastSyncedAt: account.hotspotLastSyncedAt || contact.hotspotLastSyncedAt || null,
+      },
+      company: {
+        name: this.getSettings().companyName,
+        supportSignature: this.getSettings().supportSignature,
+      },
+    };
   }
 
   normalizeOptionalDate(value) {
@@ -1915,7 +2075,16 @@ class DataManager {
       };
 
       this.contacts.set(contact.id, contact);
-      await this.saveContacts();
+      await this.synchronizeCustomerPortalAccounts({ save: false });
+      if (this.sequelize) {
+        await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+          const options = { transaction };
+          await this.saveContacts(options);
+          await this.savePelanggan(options);
+        }));
+      } else {
+        await this.saveContacts();
+      }
       return contact;
     });
   }
@@ -3912,7 +4081,7 @@ class WebServer {
       if (CONFIG.NODE_ENV === "production" && req.secure) {
         res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
       }
-      if (req.path.startsWith("/api/") || ["/login", "/dashboard", "/transport"].includes(req.path)) {
+      if (req.path.startsWith("/api/") || ["/login", "/dashboard", "/transport", "/pelanggan", "/pelanggan/login"].includes(req.path)) {
         res.setHeader("Cache-Control", "no-store");
       }
       next();
@@ -3994,6 +4163,13 @@ class WebServer {
       return { token, session };
     };
 
+    const readCustomerSession = (req) => {
+      const cookies = parseCookies(req.headers.cookie);
+      const token = cookies[CONFIG.CUSTOMER_SESSION_COOKIE_NAME];
+      const session = this.authManager.getCustomerSession(token);
+      return { token, session };
+    };
+
     const requireApiAuth = (req, res, next) => {
       if (hasApiKeyAccess(req)) {
         req.authUsingApiKey = true;
@@ -4016,6 +4192,27 @@ class WebServer {
       }
 
       req.authSession = session;
+      return next();
+    };
+
+    const requireCustomerApiAuth = (req, res, next) => {
+      const { session } = readCustomerSession(req);
+      const portalData = session ? this.dataManager.getCustomerPortalData?.(session.contactId) : null;
+      if (!session || !portalData || portalData.hotspot.username !== session.username) {
+        return res.status(401).json({ success: false, error: "Sesi pelanggan tidak valid. Silakan masuk kembali." });
+      }
+      req.customerSession = session;
+      req.customerPortalData = portalData;
+      return next();
+    };
+
+    const requireCustomerPageAuth = (req, res, next) => {
+      const { session } = readCustomerSession(req);
+      const portalData = session ? this.dataManager.getCustomerPortalData?.(session.contactId) : null;
+      if (!session || !portalData || portalData.hotspot.username !== session.username) {
+        return res.redirect("/pelanggan/login");
+      }
+      req.customerSession = session;
       return next();
     };
 
@@ -4053,6 +4250,89 @@ class WebServer {
     };
 
     this.app.get("/", (req, res) => res.redirect("/dashboard"));
+    this.app.get("/pelanggan/login", async (req, res, next) => {
+      try {
+        const { session } = readCustomerSession(req);
+        const portalData = session ? this.dataManager.getCustomerPortalData?.(session.contactId) : null;
+        if (session && portalData && portalData.hotspot.username === session.username) {
+          return res.redirect("/pelanggan");
+        }
+        res.send(await this.renderCustomerLoginPage());
+      } catch (error) {
+        next(error);
+      }
+    });
+
+    this.app.post("/api/pelanggan/auth/login", handleApi(async (req, res) => {
+      const username = sanitizeInput(req.body.username);
+      const password = String(req.body.password || "");
+      const attemptKey = `customer:${req.ip || req.socket?.remoteAddress || "unknown"}:${username.toLowerCase()}`;
+
+      if (this.authManager.isLoginBlocked(attemptKey)) {
+        const error = new Error("Terlalu banyak percobaan login. Coba lagi beberapa saat.");
+        error.statusCode = 429;
+        throw error;
+      }
+
+      const account = this.dataManager.findCustomerPortalAccount?.(username) || null;
+      const passwordMatches = safeCompareString(password, account?.pelanggan?.password || "invalid-customer-password");
+      if (!account || !passwordMatches) {
+        this.authManager.recordLoginFailure(attemptKey);
+        this.activityLog.push("warn", "customer-auth", `Login portal pelanggan gagal untuk ${username || "(kosong)"}`);
+        const error = new Error("Username atau password salah.");
+        error.statusCode = 401;
+        throw error;
+      }
+
+      this.authManager.clearLoginFailures(attemptKey);
+      const { token, session } = this.authManager.createCustomerSession({
+        username: account.pelanggan.username,
+        contactId: account.contact.id,
+      });
+      const secureCookie = CONFIG.SESSION_COOKIE_SECURE || req.secure;
+      res.setHeader("Set-Cookie", serializeCookie(CONFIG.CUSTOMER_SESSION_COOKIE_NAME, token, {
+        path: "/",
+        httpOnly: true,
+        sameSite: "Lax",
+        secure: secureCookie,
+        maxAge: Math.floor(CONFIG.SESSION_TTL / 1000),
+      }));
+      this.activityLog.push("info", "customer-auth", `Login portal sukses untuk ${account.pelanggan.username}`, {
+        contactId: account.contact.id,
+      });
+      return {
+        username: session.username,
+        name: account.contact.name,
+        expiresAt: new Date(session.expiresAt).toISOString(),
+      };
+    }));
+
+    this.app.post("/api/pelanggan/auth/logout", handleApi(async (req, res) => {
+      const { token, session } = readCustomerSession(req);
+      this.authManager.destroyCustomerSession(token);
+      const secureCookie = CONFIG.SESSION_COOKIE_SECURE || req.secure;
+      res.setHeader("Set-Cookie", serializeCookie(CONFIG.CUSTOMER_SESSION_COOKIE_NAME, "", {
+        path: "/",
+        httpOnly: true,
+        sameSite: "Lax",
+        secure: secureCookie,
+        maxAge: 0,
+      }));
+      if (session) {
+        this.activityLog.push("info", "customer-auth", `Logout portal untuk ${session.username}`);
+      }
+      return { loggedOut: true };
+    }));
+
+    this.app.get("/api/pelanggan/account", requireCustomerApiAuth, handleApi(async (req) => req.customerPortalData));
+    this.app.get("/pelanggan", requireCustomerPageAuth, async (_req, res, next) => {
+      try {
+        res.send(await this.renderCustomerPortal());
+      } catch (error) {
+        next(error);
+      }
+    });
+
     this.app.get("/login", async (req, res, next) => {
       try {
         const { session } = readSession(req);
@@ -4679,6 +4959,22 @@ class WebServer {
     const templatePath = path.join(CONFIG.PUBLIC_PATH, "login.html");
     const html = await fs.readFile(templatePath, "utf-8");
     return html.replace(/__DASHBOARD_TITLE__/g, title);
+  }
+
+  async renderCustomerLoginPage() {
+    const settings = this.dataManager.getSettings();
+    const title = escapeHtml(settings.companyName || settings.dashboardTitle);
+    const templatePath = path.join(CONFIG.PUBLIC_PATH, "customer-login.html");
+    const html = await fs.readFile(templatePath, "utf-8");
+    return html.replace(/__CUSTOMER_PORTAL_TITLE__/g, title);
+  }
+
+  async renderCustomerPortal() {
+    const settings = this.dataManager.getSettings();
+    const title = escapeHtml(settings.companyName || settings.dashboardTitle);
+    const templatePath = path.join(CONFIG.PUBLIC_PATH, "customer.html");
+    const html = await fs.readFile(templatePath, "utf-8");
+    return html.replace(/__CUSTOMER_PORTAL_TITLE__/g, title);
   }
 
   async start() {

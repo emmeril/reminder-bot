@@ -31,3 +31,17 @@ test("memblokir percobaan login berulang dan mereset blokir setelah login sukses
   manager.clearLoginFailures("127.0.0.1");
   assert.equal(manager.isLoginBlocked("127.0.0.1"), false);
 });
+
+test("sesi pelanggan terpisah dari sesi administrator", () => {
+  const manager = new AuthManager({ push() {} });
+  const { token } = manager.createCustomerSession({
+    username: "pelanggan_satu",
+    contactId: "contact-1",
+  });
+
+  assert.equal(manager.getSession(token), null);
+  assert.equal(manager.getCustomerSession(token).contactId, "contact-1");
+
+  manager.destroyCustomerSession(token);
+  assert.equal(manager.getCustomerSession(token), null);
+});

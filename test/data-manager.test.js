@@ -396,6 +396,55 @@ test("persiapan akun hotspot menyimpan pelanggan sebagai PENDING", async () => {
   assert.equal(result.pelanggan.hotspotProvisioningStatus, "PENDING");
 });
 
+test("akun portal dibuat otomatis dari kredensial hotspot pelanggan lama", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.contacts.set("contact-portal", {
+    id: "contact-portal",
+    name: "Pelanggan Portal",
+    phoneNumber: "6281234567810",
+    mikrotikUsername: "pelanggan_portal",
+    mikrotikPassword: "67810",
+    mikrotikProfile: "50M",
+    hotspotProvisioningStatus: "ACTIVE",
+    monthlyPaymentAmount: 150000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+    createdAt: new Date().toISOString(),
+  });
+
+  const count = await manager.synchronizeCustomerPortalAccounts();
+  const account = manager.findCustomerPortalAccount("PELANGGAN_PORTAL");
+  const portal = manager.getCustomerPortalData("contact-portal");
+
+  assert.equal(count, 1);
+  assert.equal(account.pelanggan.password, "67810");
+  assert.equal(account.contact.id, "contact-portal");
+  assert.equal(portal.customer.name, "Pelanggan Portal");
+  assert.equal(portal.hotspot.username, "pelanggan_portal");
+  assert.equal(portal.hotspot.password, "67810");
+  assert.equal(portal.billing.monthlyAmount, 150000);
+});
+
+test("kontak baru dengan akun hotspot langsung mendapat akun portal", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+
+  const contact = await manager.addContact({
+    name: "Pelanggan Langsung",
+    phoneNumber: "6281234567811",
+    mikrotikUsername: "pelanggan_langsung",
+    mikrotikPassword: "67811",
+    mikrotikProfile: "100M",
+  });
+
+  const account = manager.findCustomerPortalAccount("pelanggan_langsung");
+  assert.equal(account.contact.id, contact.id);
+  assert.equal(account.pelanggan.password, "67811");
+});
+
 test("status FAILED menyimpan error tanpa menghapus pelanggan", async () => {
   const manager = new DataManager({ push() {} });
   manager.sequelize = {

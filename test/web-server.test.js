@@ -181,6 +181,69 @@ test("API key dapat membaca identitas auth tanpa sesi dashboard", async () => {
   assert.equal(payload.data.usingApiKey, true);
 });
 
+test("pelanggan login dengan akun hotspot dan hanya membaca data miliknya", async () => {
+  CONFIG.SESSION_SECRET = "test-session-secret";
+  const ownPortalData = {
+    customer: { id: "contact-customer", name: "Pelanggan Satu", phoneNumber: "6281234567890" },
+    billing: { totalAmount: 200000, history: [] },
+    hotspot: { username: "pelanggan_satu", password: "67890", profile: "50M", status: "ACTIVE" },
+    company: { name: "Test ISP" },
+  };
+  const baseUrl = await startServer({
+    findCustomerPortalAccount: (username) => (
+      String(username).toLowerCase() === "pelanggan_satu"
+        ? {
+            pelanggan: { username: "pelanggan_satu", password: "67890" },
+            contact: { id: "contact-customer", name: "Pelanggan Satu" },
+          }
+        : null
+    ),
+    getCustomerPortalData: (contactId) => (
+      contactId === "contact-customer" ? ownPortalData : null
+    ),
+  });
+
+  const loginResponse = await fetch(`${baseUrl}/api/pelanggan/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "pelanggan_satu", password: "67890" }),
+  });
+  const cookie = loginResponse.headers.get("set-cookie").split(";", 1)[0];
+  assert.equal(loginResponse.status, 200);
+  assert.match(cookie, /^reminder_bot_customer_session=/);
+
+  const accountResponse = await fetch(`${baseUrl}/api/pelanggan/account`, { headers: { cookie } });
+  const payload = await accountResponse.json();
+  assert.equal(accountResponse.status, 200);
+  assert.equal(payload.data.customer.id, "contact-customer");
+  assert.equal(payload.data.hotspot.password, "67890");
+
+  const adminCookie = await login(baseUrl);
+  const rejected = await fetch(`${baseUrl}/api/pelanggan/account`, { headers: { cookie: adminCookie } });
+  assert.equal(rejected.status, 401);
+});
+
+test("login pelanggan menolak password hotspot yang salah", async () => {
+  CONFIG.SESSION_SECRET = "test-session-secret";
+  const baseUrl = await startServer({
+    findCustomerPortalAccount: () => ({
+      pelanggan: { username: "pelanggan_satu", password: "67890" },
+      contact: { id: "contact-customer", name: "Pelanggan Satu" },
+    }),
+  });
+
+  const response = await fetch(`${baseUrl}/api/pelanggan/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "pelanggan_satu", password: "salah" }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 401);
+  assert.equal(payload.error, "Username atau password salah.");
+  assert.equal(response.headers.get("set-cookie"), null);
+});
+
 test("endpoint pairing code nomor WhatsApp tidak tersedia", async () => {
   const baseUrl = await startServer();
   const response = await fetch(`${baseUrl}/transport/pairing-code`, {

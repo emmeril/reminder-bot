@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login Pelanggan - __CUSTOMER_PORTAL_TITLE__</title>
+  <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
+  <link rel="stylesheet" href="/public/customer.css?v=20260819-1">
+  <script defer src="/public/customer-login.js?v=20260819-1"></script>
+  <script defer src="/vendor/alpine.min.js"></script>
+</head>
+<body>
+  <main class="portal-login" x-data="customerLoginApp()">
+    <section class="portal-login-card">
+      <div class="portal-login-mark"><i class="fa-solid fa-wifi"></i></div>
+      <p class="portal-kicker">Portal Pelanggan</p>
+      <h1>__CUSTOMER_PORTAL_TITLE__</h1>
+      <p class="portal-login-lead">Masuk untuk melihat tagihan dan detail akun hotspot Anda.</p>
+
+      <form @submit.prevent="submit()">
+        <label for="customer-username">Username hotspot</label>
+        <div class="portal-input">
+          <i class="fa-solid fa-user"></i>
+          <input id="customer-username" x-model="form.username" autocomplete="username" placeholder="Masukkan username hotspot" required autofocus>
+        </div>
+
+        <label for="customer-password">Password hotspot</label>
+        <div class="portal-input">
+          <i class="fa-solid fa-lock"></i>
+          <input id="customer-password" x-model="form.password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="Masukkan password hotspot" required>
+          <button type="button" @click="showPassword = !showPassword" :aria-label="showPassword ? 'Sembunyikan password' : 'Tampilkan password'">
+            <i class="fa-solid" :class="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
+          </button>
+        </div>
+
+        <p class="portal-form-error" role="alert" x-text="error"></p>
+        <button class="portal-primary-button" :disabled="submitting">
+          <span x-show="!submitting"><i class="fa-solid fa-right-to-bracket"></i> Masuk ke Akun Saya</span>
+          <span x-cloak x-show="submitting"><i class="fa-solid fa-circle-notch fa-spin"></i> Memproses...</span>
+        </button>
+      </form>
+
+      <p class="portal-login-help">Gunakan username dan password hotspot yang diberikan oleh admin.</p>
+      <a class="portal-admin-link" href="/login"><i class="fa-solid fa-shield-halved"></i> Login administrator</a>
+    </section>
+  </main>
+</body>
+</html>

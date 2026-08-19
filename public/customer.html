@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Akun Saya - __CUSTOMER_PORTAL_TITLE__</title>
+  <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
+  <link rel="stylesheet" href="/public/customer.css?v=20260819-1">
+  <script defer src="/public/customer.js?v=20260819-1"></script>
+  <script defer src="/vendor/alpine.min.js"></script>
+</head>
+<body>
+  <main class="customer-portal" x-data="customerPortalApp()" x-init="load()">
+    <header class="portal-header">
+      <a href="/pelanggan" class="portal-brand">
+        <span><i class="fa-solid fa-wifi"></i></span>
+        <div><strong x-text="data?.company?.name || '__CUSTOMER_PORTAL_TITLE__'"></strong><small>Portal Pelanggan</small></div>
+      </a>
+      <button class="portal-logout" @click="logout()" :disabled="loggingOut"><i class="fa-solid fa-arrow-right-from-bracket"></i><span>Keluar</span></button>
+    </header>
+
+    <section class="portal-loading" x-show="loading">
+      <i class="fa-solid fa-circle-notch fa-spin"></i><span>Memuat akun Anda...</span>
+    </section>
+
+    <section class="portal-error-card" x-cloak x-show="error && !loading">
+      <i class="fa-solid fa-triangle-exclamation"></i>
+      <div><strong>Data belum dapat dimuat</strong><p x-text="error"></p><button @click="load()">Coba lagi</button></div>
+    </section>
+
+    <div class="portal-content" x-cloak x-show="data && !loading">
+      <section class="portal-welcome">
+        <div>
+          <p class="portal-kicker">Akun Saya</p>
+          <h1>Halo, <span x-text="data?.customer?.name"></span></h1>
+          <p>Lihat status layanan dan tagihan Anda dalam satu tempat.</p>
+        </div>
+        <span class="portal-period"><i class="fa-regular fa-calendar"></i><span x-text="data?.billing?.periodLabel"></span></span>
+      </section>
+
+      <section class="portal-summary-grid">
+        <article class="portal-summary-card portal-summary-total">
+          <span class="portal-card-icon"><i class="fa-solid fa-wallet"></i></span>
+          <div><small>Total tagihan</small><strong x-text="currency(data?.billing?.totalAmount)"></strong><p x-text="billingSummary()"></p></div>
+        </article>
+        <article class="portal-summary-card">
+          <span class="portal-card-icon"><i class="fa-solid fa-file-invoice-dollar"></i></span>
+          <div><small>Tagihan bulan ini</small><strong x-text="currency(data?.billing?.currentAmount)"></strong><p x-text="data?.billing?.periodLabel"></p></div>
+        </article>
+        <article class="portal-summary-card">
+          <span class="portal-card-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
+          <div><small>Tunggakan</small><strong x-text="currency(data?.billing?.debtAmount)"></strong><p x-text="debtLabel()"></p></div>
+        </article>
+        <article class="portal-summary-card">
+          <span class="portal-card-icon"><i class="fa-solid fa-circle-check"></i></span>
+          <div><small>Status bulan ini</small><strong class="portal-status-text" :class="isPaid() ? 'is-paid' : 'is-unpaid'" x-text="isPaid() ? 'Lunas' : 'Belum Lunas'"></strong><p x-text="dueLabel()"></p></div>
+        </article>
+      </section>
+
+      <section class="portal-main-grid">
+        <article class="portal-panel portal-hotspot-panel">
+          <div class="portal-panel-heading">
+            <div><span><i class="fa-solid fa-wifi"></i></span><div><h2>Akun Hotspot</h2><p>Kredensial untuk tersambung ke layanan</p></div></div>
+            <span class="portal-service-badge" :class="hotspotIsActive() ? 'is-active' : 'is-inactive'"><i class="fa-solid fa-circle"></i><span x-text="hotspotStatusLabel()"></span></span>
+          </div>
+          <div class="portal-credential-list">
+            <div><small>Username</small><strong x-text="data?.hotspot?.username || '-' "></strong><button @click="copyText(data?.hotspot?.username, 'username')" title="Salin username"><i class="fa-regular" :class="copied === 'username' ? 'fa-circle-check' : 'fa-copy'"></i></button></div>
+            <div><small>Password</small><strong x-text="showHotspotPassword ? (data?.hotspot?.password || '-') : maskedPassword()"></strong><button @click="showHotspotPassword = !showHotspotPassword" :title="showHotspotPassword ? 'Sembunyikan password' : 'Tampilkan password'"><i class="fa-regular" :class="showHotspotPassword ? 'fa-eye-slash' : 'fa-eye'"></i></button><button @click="copyText(data?.hotspot?.password, 'password')" title="Salin password"><i class="fa-regular" :class="copied === 'password' ? 'fa-circle-check' : 'fa-copy'"></i></button></div>
+            <div><small>Profil layanan</small><strong x-text="data?.hotspot?.profile || '-'"></strong></div>
+          </div>
+          <p class="portal-security-note"><i class="fa-solid fa-shield-halved"></i> Jangan bagikan username dan password kepada orang lain.</p>
+        </article>
+
+        <article class="portal-panel">
+          <div class="portal-panel-heading">
+            <div><span><i class="fa-solid fa-receipt"></i></span><div><h2>Detail Tagihan</h2><p>Rincian periode berjalan</p></div></div>
+          </div>
+          <dl class="portal-bill-details">
+            <div><dt>Biaya bulanan</dt><dd x-text="currency(data?.billing?.monthlyAmount)"></dd></div>
+            <div><dt>Tagihan berjalan</dt><dd x-text="currency(data?.billing?.currentAmount)"></dd></div>
+            <div><dt>Tunggakan</dt><dd x-text="currency(data?.billing?.debtAmount)"></dd></div>
+            <div class="portal-bill-total"><dt>Total perlu dibayar</dt><dd x-text="currency(data?.billing?.totalAmount)"></dd></div>
+          </dl>
+        </article>
+      </section>
+
+      <section class="portal-panel portal-history-panel">
+        <div class="portal-panel-heading">
+          <div><span><i class="fa-solid fa-clock-rotate-left"></i></span><div><h2>Riwayat Pembayaran</h2><p>Status pembayaran per bulan</p></div></div>
+        </div>
+        <div class="portal-history-list">
+          <template x-for="item in data?.billing?.history || []" :key="item.period">
+            <div class="portal-history-row">
+              <div><strong x-text="item.label"></strong><small x-text="item.paidDate ? `Dibayar ${date(item.paidDate)}` : 'Belum ada pembayaran tercatat'"></small></div>
+              <span :class="item.status === 'PAID' ? 'is-paid' : 'is-unpaid'" x-text="item.status === 'PAID' ? 'Lunas' : 'Belum Lunas'"></span>
+            </div>
+          </template>
+          <p class="portal-empty" x-show="!(data?.billing?.history || []).length">Belum ada riwayat pembayaran.</p>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

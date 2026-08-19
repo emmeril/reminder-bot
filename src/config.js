@@ -83,6 +83,7 @@ const CONFIG = {
   AUTH_LOGIN_WINDOW: envNumber("AUTH_LOGIN_WINDOW", 15 * 60 * 1000),
   AUTH_LOGIN_LOCKOUT: envNumber("AUTH_LOGIN_LOCKOUT", 15 * 60 * 1000),
   SESSION_COOKIE_NAME: "reminder_bot_session",
+  CUSTOMER_SESSION_COOKIE_NAME: "reminder_bot_customer_session",
   SESSION_TTL: 24 * 60 * 60 * 1000,
   SESSION_SECRET: envString("SESSION_SECRET"),
   SESSION_COOKIE_SECURE: envBoolean("SESSION_COOKIE_SECURE", false),
