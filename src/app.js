@@ -87,12 +87,23 @@ function normalizeHotspotProvisioningStatus(value, fallback = HOTSPOT_PROVISIONI
   return Object.values(HOTSPOT_PROVISIONING_STATUS).includes(normalized) ? normalized : fallback;
 }
 
-function isHotspotAccountUnavailable(status) {
+function isHotspotAccountUnavailable(status, provisioningError = "") {
+  const normalizedStatus = normalizeHotspotProvisioningStatus(status);
   return [
     HOTSPOT_PROVISIONING_STATUS.NONE,
     HOTSPOT_PROVISIONING_STATUS.DEACTIVATED,
     HOTSPOT_PROVISIONING_STATUS.MISSING,
-  ].includes(normalizeHotspotProvisioningStatus(status));
+  ].includes(normalizedStatus)
+    || (normalizedStatus === HOTSPOT_PROVISIONING_STATUS.CHANGED
+      && /akun dinonaktifkan/i.test(String(provisioningError || "")));
+}
+
+function getHotspotUnavailableMessage(status, provisioningError = "") {
+  if (normalizeHotspotProvisioningStatus(status) === HOTSPOT_PROVISIONING_STATUS.CHANGED
+    && /akun dinonaktifkan/i.test(String(provisioningError || ""))) {
+    return "Akun hotspot dinonaktifkan di MikroTik.";
+  }
+  return "Akun hotspot tidak ditemukan di MikroTik.";
 }
 
 function normalizeHotspotProvisioningOperation(value, fallback = HOTSPOT_PROVISIONING_OPERATION.NONE) {
@@ -1765,7 +1776,10 @@ class DataManager {
         dueStatus: hydrated.dueStatus || null,
         history: paymentHistory,
       },
-      hotspot: isHotspotAccountUnavailable(hotspotStatus) ? null : {
+      hotspot: isHotspotAccountUnavailable(
+        hotspotStatus,
+        contact.hotspotProvisioningError || hotspotAccount?.hotspotProvisioningError
+      ) ? null : {
         username: contact.mikrotikUsername || hotspotAccount?.username || "",
         password: contact.mikrotikPassword || hotspotAccount?.password || "",
         profile: contact.mikrotikProfile || hotspotAccount?.profile || "",
@@ -1797,8 +1811,14 @@ class DataManager {
           ? HOTSPOT_PROVISIONING_STATUS.ACTIVE
           : HOTSPOT_PROVISIONING_STATUS.NONE
       );
-      if (isHotspotAccountUnavailable(hotspotStatus)) {
-        const error = new Error("Akun hotspot tidak ditemukan di MikroTik.");
+      if (isHotspotAccountUnavailable(
+        hotspotStatus,
+        account.contact.hotspotProvisioningError || account.pelanggan?.hotspotProvisioningError
+      )) {
+        const error = new Error(getHotspotUnavailableMessage(
+          hotspotStatus,
+          account.contact.hotspotProvisioningError || account.pelanggan?.hotspotProvisioningError
+        ));
         error.statusCode = 404;
         throw error;
       }
@@ -4498,8 +4518,14 @@ class WebServer {
           ? HOTSPOT_PROVISIONING_STATUS.ACTIVE
           : HOTSPOT_PROVISIONING_STATUS.NONE
       );
-      if (isHotspotAccountUnavailable(hotspotStatus)) {
-        const error = new Error("Akun hotspot tidak ditemukan di MikroTik.");
+      if (isHotspotAccountUnavailable(
+        hotspotStatus,
+        account.contact.hotspotProvisioningError || account.pelanggan?.hotspotProvisioningError
+      )) {
+        const error = new Error(getHotspotUnavailableMessage(
+          hotspotStatus,
+          account.contact.hotspotProvisioningError || account.pelanggan?.hotspotProvisioningError
+        ));
         error.statusCode = 404;
         throw error;
       }

@@ -476,7 +476,12 @@ test("portal menyembunyikan kredensial hotspot yang tidak ada lagi di MikroTik",
 
   assert.equal(manager.getCustomerPortalData(contact.id).hotspot, null);
 
+  contact.hotspotProvisioningStatus = "CHANGED";
+  contact.hotspotProvisioningError = 'Data akun "hotspot_hilang" di MikroTik berubah: akun dinonaktifkan.';
+  assert.equal(manager.getCustomerPortalData(contact.id).hotspot, null);
+
   contact.hotspotProvisioningStatus = "ACTIVE";
+  contact.hotspotProvisioningError = "";
   const restoredPortal = manager.getCustomerPortalData(contact.id);
   assert.equal(restoredPortal.hotspot.username, "hotspot_hilang");
   assert.equal(restoredPortal.hotspot.status, "ACTIVE");

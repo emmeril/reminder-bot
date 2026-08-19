@@ -337,7 +337,7 @@ test("pelanggan dapat mengganti password hotspot dan sesi lain diakhiri", async 
   assert.match(loginAfterHotspotChange, /^reminder_bot_customer_session=/);
 });
 
-test("perubahan password hotspot ditolak jika akun sudah tidak ada di MikroTik", async () => {
+test("perubahan password hotspot ditolak jika akun dinonaktifkan di MikroTik", async () => {
   CONFIG.SESSION_SECRET = "test-session-secret";
   let routerCalls = 0;
   const contact = {
@@ -347,7 +347,8 @@ test("perubahan password hotspot ditolak jika akun sudah tidak ada di MikroTik",
     mikrotikUsername: "hotspot_hilang",
     mikrotikPassword: "67890",
     mikrotikProfile: "50M",
-    hotspotProvisioningStatus: "MISSING",
+    hotspotProvisioningStatus: "CHANGED",
+    hotspotProvisioningError: 'Data akun "hotspot_hilang" di MikroTik berubah: akun dinonaktifkan.',
   };
   const portalData = {
     customer: { id: contact.id, name: contact.name },
@@ -358,7 +359,12 @@ test("perubahan password hotspot ditolak jika akun sudah tidak ada di MikroTik",
   };
   const account = {
     account: { contactId: contact.id, username: portalData.account.username, password: "portal-123" },
-    pelanggan: { username: contact.mikrotikUsername, password: contact.mikrotikPassword, hotspotProvisioningStatus: "MISSING" },
+    pelanggan: {
+      username: contact.mikrotikUsername,
+      password: contact.mikrotikPassword,
+      hotspotProvisioningStatus: "CHANGED",
+      hotspotProvisioningError: contact.hotspotProvisioningError,
+    },
     contact,
   };
   const baseUrl = await startServer({
@@ -383,7 +389,7 @@ test("perubahan password hotspot ditolak jika akun sudah tidak ada di MikroTik",
   const payload = await response.json();
 
   assert.equal(response.status, 404);
-  assert.equal(payload.error, "Akun hotspot tidak ditemukan di MikroTik.");
+  assert.equal(payload.error, "Akun hotspot dinonaktifkan di MikroTik.");
   assert.equal(routerCalls, 0);
 });
 
