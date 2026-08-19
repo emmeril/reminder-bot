@@ -1848,6 +1848,14 @@ class DataManager {
     return this.paymentGatewayTransactions.get(String(orderId || "")) || null;
   }
 
+  getPendingPaymentGatewayTransactions(contactId = null) {
+    return Array.from(this.paymentGatewayTransactions.values()).filter((transaction) => (
+      transaction.provider === "midtrans"
+      && transaction.status === PAYMENT_GATEWAY_STATUS.PENDING
+      && (contactId === null || String(transaction.contactId) === String(contactId))
+    ));
+  }
+
   async createPaymentGatewayTransaction(payload) {
     return this.withDataMutation(async () => {
       const orderId = sanitizeInput(String(payload.orderId || ""));
@@ -4534,6 +4542,89 @@ class WebServer {
     });
   }
 
+  async reconcileMidtransTransaction(orderId) {
+    if (!this.midtransService.isConfigured()) return { status: "DISABLED" };
+    const localTransaction = this.dataManager.getPaymentGatewayTransaction(orderId);
+    if (!localTransaction) return { status: "UNKNOWN_ORDER", orderId };
+    if (localTransaction.status === PAYMENT_GATEWAY_STATUS.PAID) {
+      return { status: PAYMENT_GATEWAY_STATUS.PAID, alreadyProcessed: true, transaction: localTransaction };
+    }
+
+    const gatewayData = await this.midtransService.getTransactionStatus(orderId);
+    if (!gatewayData.transaction_status) {
+      const notFound = String(gatewayData.status_code || "") === "404"
+        || /doesn't exist|not found/i.test(String(gatewayData.status_message || ""));
+      if (notFound) {
+        const transaction = await this.dataManager.updatePaymentGatewayTransaction(orderId, {
+          status: PAYMENT_GATEWAY_STATUS.FAILED,
+          gatewayStatus: "not_found",
+          error: sanitizeInput(String(gatewayData.status_message || "Transaction not found")),
+        });
+        return { status: PAYMENT_GATEWAY_STATUS.FAILED, alreadyProcessed: false, transaction };
+      }
+      throw new Error(`Status transaksi Midtrans tidak tersedia: ${gatewayData.status_message || "unknown"}`);
+    }
+    if (String(gatewayData.order_id || "") !== String(orderId)) {
+      throw new Error("Order ID hasil verifikasi Midtrans tidak sesuai.");
+    }
+    const status = normalizeMidtransPaymentStatus(
+      gatewayData.transaction_status,
+      gatewayData.fraud_status
+    );
+
+    if (status === PAYMENT_GATEWAY_STATUS.PAID) {
+      const result = await this.paymentGatewayLock.runExclusive(String(orderId), () => (
+        this.dataManager.completeMidtransPayment(orderId, gatewayData)
+      ));
+      if (!result.alreadyProcessed && typeof this.notificationBot.sendPaymentNotification === "function") {
+        await this.notificationBot.sendPaymentNotification(
+          result.contact,
+          orderId,
+          PAYMENT_TYPES.FULL_PAID
+        ).catch((error) => {
+          this.activityLog.push("error", "payment", `Pembayaran ${orderId} lunas tetapi notifikasi WhatsApp gagal`, {
+            error: error.message,
+            contactId: result.contact.id,
+          });
+        });
+      }
+      this.activityLog.push("info", "payment", `Pembayaran Midtrans ${orderId} terverifikasi lunas`, {
+        contactId: result.contact.id,
+        amount: localTransaction.amount,
+        alreadyProcessed: result.alreadyProcessed,
+      });
+      return { status, alreadyProcessed: result.alreadyProcessed, transaction: result.transaction };
+    }
+
+    const updated = await this.dataManager.updatePaymentGatewayTransaction(orderId, {
+      status,
+      gatewayStatus: sanitizeInput(String(gatewayData.transaction_status || "pending")),
+      transactionId: sanitizeInput(String(gatewayData.transaction_id || "")) || null,
+      paymentMethod: sanitizeInput(String(gatewayData.payment_type || "")) || null,
+    });
+    return { status, alreadyProcessed: false, transaction: updated };
+  }
+
+  async reconcilePendingMidtransPayments(contactId = null) {
+    if (!this.midtransService.isConfigured()) return { checked: 0, updated: 0, skipped: "disabled" };
+    if (typeof this.dataManager.getPendingPaymentGatewayTransactions !== "function") {
+      return { checked: 0, updated: 0, skipped: "unsupported" };
+    }
+    const pending = this.dataManager.getPendingPaymentGatewayTransactions(contactId);
+    let updated = 0;
+    const errors = [];
+    for (const transaction of pending) {
+      try {
+        const result = await this.reconcileMidtransTransaction(transaction.orderId);
+        if (result.status !== PAYMENT_GATEWAY_STATUS.PENDING) updated += 1;
+      } catch (error) {
+        errors.push({ orderId: transaction.orderId, error: error.message });
+        this.activityLog.push("warn", "payment", `Rekonsiliasi Midtrans ${transaction.orderId} gagal: ${error.message}`);
+      }
+    }
+    return { checked: pending.length, updated, errors };
+  }
+
   setupRoutes() {
     this.app.use((req, res, next) => {
       const incomingRequestId = String(req.headers["x-request-id"] || "");
@@ -4804,7 +4895,10 @@ class WebServer {
       return { loggedOut: true };
     }));
 
-    this.app.get("/api/pelanggan/account", requireCustomerApiAuth, handleApi(async (req) => req.customerPortalData));
+    this.app.get("/api/pelanggan/account", requireCustomerApiAuth, handleApi(async (req) => {
+      await this.reconcilePendingMidtransPayments(req.customerSession.contactId);
+      return this.dataManager.getCustomerPortalData(req.customerSession.contactId);
+    }));
     this.app.post("/api/pelanggan/payments/midtrans", requireCustomerApiAuth, handleApi(async (req) => {
       if (!this.midtransService.isConfigured()) {
         const error = new Error("Pembayaran Midtrans belum diaktifkan oleh administrator.");
@@ -4868,54 +4962,12 @@ class WebServer {
       }
 
       const orderId = sanitizeInput(String(req.body.order_id || ""));
-      const localTransaction = this.dataManager.getPaymentGatewayTransaction(orderId);
-      if (!localTransaction) {
+      if (!this.dataManager.getPaymentGatewayTransaction(orderId)) {
         this.activityLog.push("warn", "payment", `Notifikasi Midtrans untuk transaksi tidak dikenal ${orderId}`);
         return { received: true, ignored: "unknown_order" };
       }
-
-      const gatewayData = await this.midtransService.getTransactionStatus(orderId);
-      if (String(gatewayData.order_id || "") !== orderId) {
-        const error = new Error("Order ID hasil verifikasi Midtrans tidak sesuai.");
-        error.statusCode = 400;
-        throw error;
-      }
-      const status = normalizeMidtransPaymentStatus(
-        gatewayData.transaction_status,
-        gatewayData.fraud_status
-      );
-
-      if (status === PAYMENT_GATEWAY_STATUS.PAID) {
-        const result = await this.paymentGatewayLock.runExclusive(orderId, () => (
-          this.dataManager.completeMidtransPayment(orderId, gatewayData)
-        ));
-        if (!result.alreadyProcessed && typeof this.notificationBot.sendPaymentNotification === "function") {
-          await this.notificationBot.sendPaymentNotification(
-            result.contact,
-            orderId,
-            PAYMENT_TYPES.FULL_PAID
-          ).catch((error) => {
-            this.activityLog.push("error", "payment", `Pembayaran ${orderId} lunas tetapi notifikasi WhatsApp gagal`, {
-              error: error.message,
-              contactId: result.contact.id,
-            });
-          });
-        }
-        this.activityLog.push("info", "payment", `Pembayaran Midtrans ${orderId} terverifikasi lunas`, {
-          contactId: result.contact.id,
-          amount: localTransaction.amount,
-          alreadyProcessed: result.alreadyProcessed,
-        });
-        return { received: true, status, alreadyProcessed: result.alreadyProcessed };
-      }
-
-      await this.dataManager.updatePaymentGatewayTransaction(orderId, {
-        status,
-        gatewayStatus: sanitizeInput(String(gatewayData.transaction_status || "pending")),
-        transactionId: sanitizeInput(String(gatewayData.transaction_id || "")) || null,
-        paymentMethod: sanitizeInput(String(gatewayData.payment_type || "")) || null,
-      });
-      return { received: true, status };
+      const result = await this.reconcileMidtransTransaction(orderId);
+      return { received: true, status: result.status, alreadyProcessed: result.alreadyProcessed };
     }));
 
     this.app.put("/api/pelanggan/account/password", requireCustomerApiAuth, handleApi(async (req) => {
@@ -5801,6 +5853,7 @@ async function bootstrap() {
       { name: "database-backup", run: () => databaseBackupScheduler.processDailyBackup() },
       { name: "hotspot-reactivation", run: () => hotspotReactivationScheduler.processDueReactivations() },
       { name: "hotspot-status-sync", run: () => hotspotStatusSyncScheduler.processStatusSync() },
+      { name: "midtrans-payments", run: () => webServer.reconcilePendingMidtransPayments() },
       { name: "monthly-payment-reset", run: () => sendMonthlyResetNotification(notificationBot, dataManager, activityLog) },
     ], activityLog));
   }));
