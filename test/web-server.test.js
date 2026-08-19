@@ -835,6 +835,88 @@ test("API menyimpan pelanggan setelah nomor dipastikan terdaftar di WhatsApp", a
   assert.equal(payload.data.id, "contact-1");
 });
 
+test("admin dapat mengirim akun portal dan hotspot pelanggan lewat WhatsApp", async () => {
+  const sentMessages = [];
+  const contact = {
+    id: "contact-send-account",
+    name: "Pelanggan Kirim Akun",
+    phoneNumber: "6281234567890",
+  };
+  const baseUrl = await startServer({
+    getContact: (id) => id === contact.id ? contact : null,
+    getCustomerPortalAccountByContactId: (id) => id === contact.id ? {
+      account: { username: "akun_portal", password: "portal-123" },
+      contact,
+    } : null,
+    getCustomerPortalData: (id) => id === contact.id ? {
+      hotspot: { username: "akun_hotspot", password: "hotspot-123", profile: "50M" },
+    } : null,
+    getSettings: () => ({ dashboardTitle: "Test", companyName: "Test ISP", supportSignature: "Admin Test ISP" }),
+  }, {
+    sendMessage: async (phoneNumber, message, options) => {
+      sentMessages.push({ phoneNumber, message, options });
+      return { provider: "baileys", messageId: "message-account-1" };
+    },
+  });
+  const cookie = await login(baseUrl);
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/account-credentials`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ includePortal: true, includeHotspot: true }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(payload.data.accounts, ["portal", "hotspot"]);
+  assert.equal(payload.data.phoneNumber, contact.phoneNumber);
+  assert.equal(payload.data.messageId, "message-account-1");
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].phoneNumber, contact.phoneNumber);
+  assert.match(sentMessages[0].message, /Akun Portal Pelanggan/);
+  assert.match(sentMessages[0].message, /Username: akun_portal/);
+  assert.match(sentMessages[0].message, /Password: portal-123/);
+  assert.match(sentMessages[0].message, /Akun Hotspot/);
+  assert.match(sentMessages[0].message, /Username: akun_hotspot/);
+  assert.match(sentMessages[0].message, /Password: hotspot-123/);
+  assert.match(sentMessages[0].message, new RegExp(`${baseUrl}/pelanggan/login`));
+  assert.equal(sentMessages[0].options.context.type, "customer-account-credentials");
+});
+
+test("pengiriman akun hotspot ditolak ketika akun tidak tersedia di MikroTik", async () => {
+  let sendCalls = 0;
+  const contact = {
+    id: "contact-send-disabled-account",
+    name: "Pelanggan Hotspot Disabled",
+    phoneNumber: "6281234567891",
+  };
+  const baseUrl = await startServer({
+    getContact: (id) => id === contact.id ? contact : null,
+    getCustomerPortalAccountByContactId: () => ({
+      account: { username: "akun_portal_disabled", password: "portal-123" },
+      contact,
+    }),
+    getCustomerPortalData: () => ({ hotspot: null }),
+  }, {
+    sendMessage: async () => {
+      sendCalls += 1;
+      return { provider: "baileys" };
+    },
+  });
+  const cookie = await login(baseUrl);
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/account-credentials`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ includePortal: false, includeHotspot: true }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.error, "Akun hotspot tidak tersedia atau sedang dinonaktifkan di MikroTik.");
+  assert.equal(sendCalls, 0);
+});
+
 test("registrasi hotspot menyimpan PENDING sebelum membuat akun MikroTik", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   const events = [];

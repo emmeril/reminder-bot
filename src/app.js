@@ -5341,6 +5341,78 @@ class WebServer {
       return this.dataManager.toPublicContact(prepared.contact);
     }));
     this.app.delete("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.dataManager.deleteContact(req.params.id)));
+    this.app.post("/api/contacts/:id/account-credentials", requireApiAuth, handleApi(async (req) => {
+      const contact = this.dataManager.getContact(req.params.id);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+
+      const includePortal = parseBoolean(req.body.includePortal, false);
+      const includeHotspot = parseBoolean(req.body.includeHotspot, false);
+      if (!includePortal && !includeHotspot) {
+        throw new Error("Pilih minimal satu akun yang akan dikirim.");
+      }
+
+      const customerAccount = this.dataManager.getCustomerPortalAccountByContactId(contact.id);
+      if (includePortal && (!customerAccount?.account?.username || !customerAccount.account.password)) {
+        const error = new Error("Akun portal pelanggan belum tersedia.");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      const portalData = this.dataManager.getCustomerPortalData(contact.id);
+      if (includeHotspot && !portalData?.hotspot) {
+        const error = new Error("Akun hotspot tidak tersedia atau sedang dinonaktifkan di MikroTik.");
+        error.statusCode = 409;
+        throw error;
+      }
+
+      const phone = await requireRegisteredWhatsAppNumber(contact.phoneNumber);
+      const blocks = [];
+      const sentAccounts = [];
+      if (includePortal) {
+        const portalLoginUrl = `${req.protocol}://${req.get("host")}/pelanggan/login`;
+        blocks.push([
+          "*Akun Portal Pelanggan*",
+          `Alamat: ${portalLoginUrl}`,
+          `Username: ${customerAccount.account.username}`,
+          `Password: ${customerAccount.account.password}`,
+        ].join("\n"));
+        sentAccounts.push("portal");
+      }
+      if (includeHotspot) {
+        blocks.push([
+          "*Akun Hotspot*",
+          `Username: ${portalData.hotspot.username}`,
+          `Password: ${portalData.hotspot.password}`,
+          `Profile: ${portalData.hotspot.profile || "-"}`,
+        ].join("\n"));
+        sentAccounts.push("hotspot");
+      }
+
+      const settings = this.dataManager.getSettings();
+      const footer = settings.supportSignature || settings.companyName || "";
+      const message = [
+        `Yth. Bapak/Ibu *${contact.name}*,`,
+        "Berikut informasi akun layanan Anda:",
+        ...blocks,
+        "Mohon simpan informasi ini dan jangan membagikan password kepada orang lain.",
+        footer,
+      ].filter(Boolean).join("\n\n");
+      const delivery = await this.notificationBot.sendMessage(phone.phoneNumber, message, {
+        maxAttempts: 1,
+        context: { type: "customer-account-credentials", contactId: String(contact.id) },
+      });
+      this.activityLog.push("info", "customer-account", `Akun pelanggan dikirim ke ${contact.phoneNumber}`, {
+        contactId: String(contact.id),
+        accounts: sentAccounts,
+        provider: delivery.provider || null,
+      });
+      return {
+        phoneNumber: phone.phoneNumber,
+        accounts: sentAccounts,
+        provider: delivery.provider || null,
+        messageId: delivery.messageId || null,
+      };
+    }));
 
     this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotProfiles()));
     this.app.get("/api/mikrotik/hotspot-users", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotUsers()));

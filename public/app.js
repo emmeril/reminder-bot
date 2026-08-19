@@ -35,6 +35,7 @@
           recipients: "",
           contact: "",
           contactEdit: "",
+          accountDelivery: "",
           reminder: "",
           reminderEdit: "",
           template: "",
@@ -48,6 +49,13 @@
         contactCreateModal: {
           open: false,
           loading: false,
+        },
+        accountDeliveryModal: {
+          open: false,
+          loading: false,
+          contact: null,
+          includePortal: true,
+          includeHotspot: false,
         },
         reminderEditModal: {
           open: false,
@@ -567,6 +575,12 @@
 
         canReactivateHotspot(contact) {
           return ["ACTIVE", "DEACTIVATED"].includes(this.getHotspotProvisioningStatus(contact));
+        },
+
+        canSendHotspotAccount(contact) {
+          const status = this.getHotspotProvisioningStatus(contact);
+          if (["NONE", "MISSING", "DEACTIVATED"].includes(status)) return false;
+          return !(status === "CHANGED" && /akun dinonaktifkan/i.test(String(contact?.hotspotProvisioningError || "")));
         },
 
         getReactivationLabel(contact) {
@@ -1344,6 +1358,62 @@
             this.notify(`Pengingat tagihan terkirim ke ${result.phoneNumber}.`);
             await this.loadLogs({ silent: true });
           });
+        },
+
+        openAccountDeliveryModal(contact) {
+          if (!contact?.id) return;
+          this.accountDeliveryModal = {
+            open: true,
+            loading: false,
+            contact,
+            includePortal: true,
+            includeHotspot: this.canSendHotspotAccount(contact),
+          };
+          this.clearFormError("accountDelivery");
+          document.body.classList.add("overflow-hidden");
+        },
+
+        closeAccountDeliveryModal() {
+          if (this.accountDeliveryModal.loading) return;
+          this.accountDeliveryModal = {
+            open: false,
+            loading: false,
+            contact: null,
+            includePortal: true,
+            includeHotspot: false,
+          };
+          this.clearFormError("accountDelivery");
+          document.body.classList.remove("overflow-hidden");
+        },
+
+        async sendCustomerAccounts() {
+          const modal = this.accountDeliveryModal;
+          if (!modal.contact?.id || modal.loading) return;
+          if (!modal.includePortal && !modal.includeHotspot) {
+            this.setFormError("accountDelivery", "Pilih minimal satu akun yang akan dikirim.");
+            return;
+          }
+
+          modal.loading = true;
+          this.clearFormError("accountDelivery");
+          try {
+            const result = await this.api(`/api/contacts/${modal.contact.id}/account-credentials`, {
+              method: "POST",
+              body: JSON.stringify({
+                includePortal: modal.includePortal,
+                includeHotspot: modal.includeHotspot,
+              }),
+            });
+            const labels = result.accounts.map((account) => account === "portal" ? "portal" : "hotspot").join(" dan ");
+            modal.loading = false;
+            this.closeAccountDeliveryModal();
+            this.notify(`Akun ${labels} terkirim ke ${result.phoneNumber}.`);
+            await this.loadLogs({ silent: true });
+          } catch (error) {
+            this.setFormError("accountDelivery", error);
+          } finally {
+            modal.loading = false;
+          }
         },
 
         async reactivateHotspotContact(contact) {

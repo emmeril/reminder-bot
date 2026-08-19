@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>__DASHBOARD_TITLE__</title>
-  <link rel="stylesheet" href="/public/tailwind.css">
+  <link rel="stylesheet" href="/public/tailwind.css?v=20260819-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20260818-1">
-  <script defer src="/public/app.js"></script>
+  <link rel="stylesheet" href="/public/styles.css?v=20260819-3">
+  <script defer src="/public/app.js?v=20260819-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -314,6 +314,7 @@
                         </td>
                         <td class="px-4 py-4" data-label="Aksi">
                           <div class="customer-action-group">
+                            <button type="button" @click="openAccountDeliveryModal(contact)" class="customer-account-send-button border border-emerald-600 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"><i class="fa-brands fa-whatsapp mr-1.5"></i>Kirim Akun</button>
                             <button type="button" @click="openContactEditModal(contact)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit</button>
                             <button type="button" @click="removeContact(contact)" class="border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Hapus</button>
                           </div>
@@ -489,6 +490,7 @@
                         </td>
                         <td class="px-4 py-4" data-label="Aksi">
                           <div class="customer-action-group">
+                            <button type="button" @click="openAccountDeliveryModal(contact)" class="customer-account-send-button border border-emerald-600 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"><i class="fa-brands fa-whatsapp mr-1.5"></i>Kirim Akun</button>
                             <button x-show="canRetryHotspotProvisioning(contact)" type="button" @click="retryHotspotProvisioning(contact)" class="border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"><i class="fa-solid fa-rotate mr-1.5"></i>Coba lagi</button>
                             <button x-show="contact.mikrotikUsername && contact.mikrotikProfile && canReactivateHotspot(contact)" type="button" @click="reactivateHotspotContact(contact)" class="border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-rotate-right mr-1.5"></i>Reaktivasi</button>
                             <button type="button" @click="openContactEditModal(contact)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-gear mr-1.5"></i>Atur hotspot</button>
@@ -1351,6 +1353,56 @@
           </div>
           <p x-cloak x-show="formErrors.reminderEdit" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.reminderEdit"></p>
         </form>
+      </div>
+    </div>
+
+    <div
+      x-cloak
+      x-show="accountDeliveryModal.open"
+      x-transition.opacity
+      @keydown.escape.window="closeAccountDeliveryModal()"
+      @click.self="closeAccountDeliveryModal()"
+      class="dashboard-modal-overlay fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+    >
+      <div
+        x-show="accountDeliveryModal.open"
+        x-transition.scale.origin.center
+        class="w-full max-w-lg rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="account-delivery-title"
+      >
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex min-w-0 items-start gap-3">
+            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600"><i class="fa-brands fa-whatsapp text-xl"></i></div>
+            <div class="min-w-0">
+              <h3 id="account-delivery-title" class="text-lg font-semibold text-ink">Kirim Akun Pelanggan</h3>
+              <p class="mt-1 text-sm text-ink/60"><strong x-text="accountDeliveryModal.contact?.name"></strong> &middot; <span x-text="accountDeliveryModal.contact?.phoneNumber"></span></p>
+            </div>
+          </div>
+          <button type="button" @click="closeAccountDeliveryModal()" :disabled="accountDeliveryModal.loading" class="rounded-full border border-ink/10 px-3 py-1 text-sm font-semibold text-ink hover:bg-haze disabled:opacity-50"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <p class="mt-5 text-sm leading-6 text-ink/65">Pilih kredensial yang akan dikirim melalui WhatsApp. Password tidak ditampilkan di layar admin dan hanya dimasukkan oleh server ke pesan tujuan.</p>
+        <div class="mt-4 grid gap-3">
+          <label class="flex cursor-pointer items-start gap-3 rounded-2xl border border-ink/10 bg-haze/50 p-4">
+            <input type="checkbox" x-model="accountDeliveryModal.includePortal" class="mt-1 h-4 w-4 accent-moss">
+            <span><strong class="block text-sm text-ink">Akun Portal Pelanggan</strong><small class="mt-1 block text-xs leading-5 text-ink/55">Mengirim alamat login, username, dan password akun portal.</small></span>
+          </label>
+          <label class="flex items-start gap-3 rounded-2xl border p-4" :class="canSendHotspotAccount(accountDeliveryModal.contact) ? 'cursor-pointer border-ink/10 bg-haze/50' : 'cursor-not-allowed border-ink/5 bg-slate-100/80 opacity-60'">
+            <input type="checkbox" x-model="accountDeliveryModal.includeHotspot" :disabled="!canSendHotspotAccount(accountDeliveryModal.contact)" class="mt-1 h-4 w-4 accent-moss">
+            <span><strong class="block text-sm text-ink">Akun Hotspot</strong><small class="mt-1 block text-xs leading-5 text-ink/55" x-text="canSendHotspotAccount(accountDeliveryModal.contact) ? 'Mengirim username, password, dan profile hotspot.' : 'Tidak tersedia karena akun hotspot hilang atau dinonaktifkan di MikroTik.'"></small></span>
+          </label>
+        </div>
+
+        <p x-cloak x-show="formErrors.accountDelivery" x-transition class="mt-4 rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.accountDelivery"></p>
+        <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" @click="closeAccountDeliveryModal()" :disabled="accountDeliveryModal.loading" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze disabled:opacity-50">Batal</button>
+          <button type="button" @click="sendCustomerAccounts()" :disabled="accountDeliveryModal.loading || (!accountDeliveryModal.includePortal && !accountDeliveryModal.includeHotspot)" class="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">
+            <span x-show="!accountDeliveryModal.loading"><i class="fa-brands fa-whatsapp mr-2"></i>Kirim Sekarang</span>
+            <span x-show="accountDeliveryModal.loading" class="inline-flex items-center gap-2"><i class="fa-solid fa-circle-notch fa-spin"></i>Mengirim...</span>
+          </button>
+        </div>
       </div>
     </div>
 

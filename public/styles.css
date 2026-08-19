@@ -731,6 +731,9 @@ table tbody tr:hover { background: #fafaff; }
 .customer-panel-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 10px; padding: 10px 12px; border: 1px solid #eceef3; border-radius: 11px; background: #fbfcfd; }
 .customer-panel-toolbar p { margin: 0; color: #7b8494; font-size: 12px; line-height: 1.5; }
 .customer-action-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.customer-action-group .customer-account-send-button { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; border-color: #059669 !important; border-radius: 9px !important; background: #059669 !important; }
+.panel-shell .customer-action-group .customer-account-send-button { border-radius: 9px !important; }
+.customer-action-group .customer-account-send-button:hover { border-color: #047857 !important; background: #047857 !important; }
 .customer-name, .customer-meta { display: block; }
 .customer-name { color: #344054; font-size: 13px; font-weight: 700; }
 .customer-meta { margin-top: 3px; color: #8a94a5; font-size: 11px; }
