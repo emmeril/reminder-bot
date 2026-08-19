@@ -94,7 +94,7 @@
               <div><strong>Pembayaran online</strong><small>Diproses aman melalui Midtrans <em x-show="data?.paymentGateway?.environment === 'sandbox'">Sandbox</em></small></div>
             </div>
             <button type="button" @click="payWithMidtrans()" :disabled="paying || Number(data?.billing?.totalAmount) <= 0">
-              <span x-show="!paying"><i class="fa-solid fa-credit-card"></i> Bayar Sekarang via Midtrans</span>
+              <span x-show="!paying"><i class="fa-solid fa-credit-card"></i> Bayar Sekarang</span>
               <span x-cloak x-show="paying"><i class="fa-solid fa-circle-notch fa-spin"></i> Membuka pembayaran...</span>
             </button>
           </div>
