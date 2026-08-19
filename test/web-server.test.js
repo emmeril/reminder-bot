@@ -337,6 +337,56 @@ test("pelanggan dapat mengganti password hotspot dan sesi lain diakhiri", async 
   assert.match(loginAfterHotspotChange, /^reminder_bot_customer_session=/);
 });
 
+test("perubahan password hotspot ditolak jika akun sudah tidak ada di MikroTik", async () => {
+  CONFIG.SESSION_SECRET = "test-session-secret";
+  let routerCalls = 0;
+  const contact = {
+    id: "contact-hotspot-missing",
+    name: "Pelanggan Tanpa Hotspot",
+    phoneNumber: "6281234567890",
+    mikrotikUsername: "hotspot_hilang",
+    mikrotikPassword: "67890",
+    mikrotikProfile: "50M",
+    hotspotProvisioningStatus: "MISSING",
+  };
+  const portalData = {
+    customer: { id: contact.id, name: contact.name },
+    billing: { history: [] },
+    hotspot: null,
+    account: { username: "akun_tanpa_hotspot" },
+    company: { name: "Test ISP" },
+  };
+  const account = {
+    account: { contactId: contact.id, username: portalData.account.username, password: "portal-123" },
+    pelanggan: { username: contact.mikrotikUsername, password: contact.mikrotikPassword, hotspotProvisioningStatus: "MISSING" },
+    contact,
+  };
+  const baseUrl = await startServer({
+    findCustomerPortalAccount: () => account,
+    getCustomerPortalAccountByContactId: () => account,
+    getCustomerPortalData: () => portalData,
+  }, {}, {
+    updateHotspotCustomer: async () => { routerCalls += 1; },
+  });
+  const loginResponse = await fetch(`${baseUrl}/api/pelanggan/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: portalData.account.username, password: "portal-123" }),
+  });
+  const cookie = loginResponse.headers.get("set-cookie").split(";", 1)[0];
+
+  const response = await fetch(`${baseUrl}/api/pelanggan/hotspot/password`, {
+    method: "PUT",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ currentPassword: "67890", newPassword: "baru-67890", confirmPassword: "baru-67890" }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 404);
+  assert.equal(payload.error, "Akun hotspot tidak ditemukan di MikroTik.");
+  assert.equal(routerCalls, 0);
+});
+
 test("pelanggan dapat mengganti password portal tanpa mengubah password hotspot", async () => {
   CONFIG.SESSION_SECRET = "test-session-secret";
   let portalPassword = "portal-123";

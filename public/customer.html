@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Akun Saya - __CUSTOMER_PORTAL_TITLE__</title>
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/customer.css?v=20260819-7">
-  <script defer src="/public/customer.js?v=20260819-7"></script>
+  <link rel="stylesheet" href="/public/customer.css?v=20260819-8">
+  <script defer src="/public/customer.js?v=20260819-8"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -61,8 +61,8 @@
         </article>
       </section>
 
-      <section class="portal-main-grid">
-        <article class="portal-panel portal-hotspot-panel">
+      <section class="portal-main-grid" :class="{ 'portal-main-grid-single': !data?.hotspot }">
+        <article class="portal-panel portal-hotspot-panel" x-show="data?.hotspot">
           <div class="portal-panel-heading">
             <div><span><i class="fa-solid fa-wifi"></i></span><div><h2>Akun Hotspot</h2><p>Kredensial untuk tersambung ke layanan</p></div></div>
             <span class="portal-service-badge" :class="hotspotIsActive() ? 'is-active' : 'is-inactive'"><i class="fa-solid fa-circle"></i><span x-text="hotspotStatusLabel()"></span></span>

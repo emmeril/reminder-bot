@@ -83,6 +83,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .portal-status-text.is-paid { color: var(--portal-success); }
 .portal-status-text.is-unpaid { color: var(--portal-danger); }
 .portal-main-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 16px; margin-top: 16px; }
+.portal-main-grid-single { grid-template-columns: 1fr; }
 .portal-panel { min-width: 0; padding: 22px; border: 1px solid var(--portal-border); border-radius: 17px; background: #fff; box-shadow: 0 5px 18px rgba(23,32,51,.035); }
 .portal-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid #edf0f4; }
 .portal-panel-heading > div { display: flex; min-width: 0; align-items: center; gap: 11px; }

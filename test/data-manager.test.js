@@ -446,6 +446,42 @@ test("kontak baru dengan akun hotspot langsung mendapat akun portal", async () =
   assert.equal(account.account.password, "67811");
 });
 
+test("portal menyembunyikan kredensial hotspot yang tidak ada lagi di MikroTik", () => {
+  const manager = new DataManager({ push() {} });
+  const contact = {
+    id: "contact-hotspot-missing",
+    name: "Pelanggan Tanpa Hotspot",
+    phoneNumber: "6281234567820",
+    mikrotikUsername: "hotspot_hilang",
+    mikrotikPassword: "67820",
+    mikrotikProfile: "50M",
+    hotspotProvisioningStatus: "MISSING",
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+    createdAt: new Date().toISOString(),
+  };
+  manager.contacts.set(contact.id, contact);
+  manager.pelanggan.set(contact.mikrotikUsername, {
+    username: contact.mikrotikUsername,
+    password: contact.mikrotikPassword,
+    profile: contact.mikrotikProfile,
+    contactId: contact.id,
+    hotspotProvisioningStatus: "MISSING",
+  });
+  manager.customerAccounts.set(contact.id, {
+    contactId: contact.id,
+    username: "akun_tanpa_hotspot",
+    password: "portal-67820",
+  });
+
+  assert.equal(manager.getCustomerPortalData(contact.id).hotspot, null);
+
+  contact.hotspotProvisioningStatus = "ACTIVE";
+  const restoredPortal = manager.getCustomerPortalData(contact.id);
+  assert.equal(restoredPortal.hotspot.username, "hotspot_hilang");
+  assert.equal(restoredPortal.hotspot.status, "ACTIVE");
+});
+
 test("perubahan password hotspot memperbarui Contact dan Pelanggan secara atomik", async () => {
   const manager = new DataManager({ push() {} });
   manager.sequelize = { transaction: async (operation) => operation({}) };

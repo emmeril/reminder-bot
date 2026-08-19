@@ -87,6 +87,14 @@ function normalizeHotspotProvisioningStatus(value, fallback = HOTSPOT_PROVISIONI
   return Object.values(HOTSPOT_PROVISIONING_STATUS).includes(normalized) ? normalized : fallback;
 }
 
+function isHotspotAccountUnavailable(status) {
+  return [
+    HOTSPOT_PROVISIONING_STATUS.NONE,
+    HOTSPOT_PROVISIONING_STATUS.DEACTIVATED,
+    HOTSPOT_PROVISIONING_STATUS.MISSING,
+  ].includes(normalizeHotspotProvisioningStatus(status));
+}
+
 function normalizeHotspotProvisioningOperation(value, fallback = HOTSPOT_PROVISIONING_OPERATION.NONE) {
   const normalized = String(value || "").trim().toUpperCase();
   return Object.values(HOTSPOT_PROVISIONING_OPERATION).includes(normalized) ? normalized : fallback;
@@ -1689,6 +1697,12 @@ class DataManager {
     const hotspotAccount = Array.from(this.pelanggan.values()).find(
       (item) => String(item.contactId || "") === String(contact.id)
     );
+    const hotspotStatus = normalizeHotspotProvisioningStatus(
+      contact.hotspotProvisioningStatus || hotspotAccount?.hotspotProvisioningStatus,
+      contact.mikrotikUsername || hotspotAccount?.username
+        ? HOTSPOT_PROVISIONING_STATUS.ACTIVE
+        : HOTSPOT_PROVISIONING_STATUS.NONE
+    );
 
     const timeZone = this.getTimezone();
     const { year, month } = getBillingPeriodParts(new Date(), timeZone);
@@ -1751,11 +1765,11 @@ class DataManager {
         dueStatus: hydrated.dueStatus || null,
         history: paymentHistory,
       },
-      hotspot: {
+      hotspot: isHotspotAccountUnavailable(hotspotStatus) ? null : {
         username: contact.mikrotikUsername || hotspotAccount?.username || "",
         password: contact.mikrotikPassword || hotspotAccount?.password || "",
         profile: contact.mikrotikProfile || hotspotAccount?.profile || "",
-        status: contact.hotspotProvisioningStatus || hotspotAccount?.hotspotProvisioningStatus || HOTSPOT_PROVISIONING_STATUS.NONE,
+        status: hotspotStatus,
         lastSyncedAt: contact.hotspotLastSyncedAt || hotspotAccount?.hotspotLastSyncedAt || null,
       },
       account: {
@@ -1777,6 +1791,17 @@ class DataManager {
     return this.withDataMutation(async () => {
       const account = this.getCustomerPortalAccountByContactId(contactId);
       if (!account) throw new Error("Akun pelanggan tidak ditemukan.");
+      const hotspotStatus = normalizeHotspotProvisioningStatus(
+        account.contact.hotspotProvisioningStatus || account.pelanggan?.hotspotProvisioningStatus,
+        account.contact.mikrotikUsername || account.pelanggan?.username
+          ? HOTSPOT_PROVISIONING_STATUS.ACTIVE
+          : HOTSPOT_PROVISIONING_STATUS.NONE
+      );
+      if (isHotspotAccountUnavailable(hotspotStatus)) {
+        const error = new Error("Akun hotspot tidak ditemukan di MikroTik.");
+        error.statusCode = 404;
+        throw error;
+      }
       const currentHotspotPassword = String(
         account.contact.mikrotikPassword || account.pelanggan?.password || ""
       );
@@ -4467,6 +4492,17 @@ class WebServer {
     return this.hotspotProvisioningLock.runExclusive(String(contactId), async () => {
       const account = this.dataManager.getCustomerPortalAccountByContactId(contactId);
       if (!account) throw new Error("Akun pelanggan tidak ditemukan.");
+      const hotspotStatus = normalizeHotspotProvisioningStatus(
+        account.contact.hotspotProvisioningStatus || account.pelanggan?.hotspotProvisioningStatus,
+        account.contact.mikrotikUsername || account.pelanggan?.username
+          ? HOTSPOT_PROVISIONING_STATUS.ACTIVE
+          : HOTSPOT_PROVISIONING_STATUS.NONE
+      );
+      if (isHotspotAccountUnavailable(hotspotStatus)) {
+        const error = new Error("Akun hotspot tidak ditemukan di MikroTik.");
+        error.statusCode = 404;
+        throw error;
+      }
 
       const oldPassword = String(currentPassword || "");
       const originalPassword = String(
