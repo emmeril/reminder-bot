@@ -302,6 +302,20 @@ test("menyimpan template pengingat tagihan dari menu pengaturan", async () => {
   );
 });
 
+test("menyimpan template pengiriman akun pelanggan dari menu pengaturan", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.saveSettings = async () => {};
+
+  const settings = await manager.updateSettings({
+    customerAccountMessageTemplate: "Halo {{name}}.\n\n{{portalAccountDetails}}\n\n{{portalAccessGuide}}",
+  });
+
+  assert.equal(
+    settings.customerAccountMessageTemplate,
+    "Halo {{name}}.\n\n{{portalAccountDetails}}\n\n{{portalAccessGuide}}"
+  );
+});
+
 test("migration mengganti reminder Penagihan existing dengan template variabel satu kali", async () => {
   const contact = {
     id: "contact-reminder-migration",

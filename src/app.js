@@ -3569,6 +3569,9 @@ class DataManager {
         hotspotReactivationMessageTemplate: payload.hotspotReactivationMessageTemplate !== undefined
           ? sanitizeMultilineText(payload.hotspotReactivationMessageTemplate) || current.hotspotReactivationMessageTemplate
           : current.hotspotReactivationMessageTemplate,
+        customerAccountMessageTemplate: payload.customerAccountMessageTemplate !== undefined
+          ? sanitizeMultilineText(payload.customerAccountMessageTemplate) || current.customerAccountMessageTemplate
+          : current.customerAccountMessageTemplate,
         paymentMessageTemplateArrearsOnly: payload.paymentMessageTemplateArrearsOnly !== undefined
           ? sanitizeMultilineText(payload.paymentMessageTemplateArrearsOnly) || current.paymentMessageTemplateArrearsOnly
           : current.paymentMessageTemplateArrearsOnly,
@@ -5366,37 +5369,54 @@ class WebServer {
       }
 
       const phone = await requireRegisteredWhatsAppNumber(contact.phoneNumber);
-      const blocks = [];
       const sentAccounts = [];
+      const portalLoginUrl = `${req.protocol}://${req.get("host")}/pelanggan/login`;
+      let portalAccountDetails = "";
+      let hotspotAccountDetails = "";
       if (includePortal) {
-        const portalLoginUrl = `${req.protocol}://${req.get("host")}/pelanggan/login`;
-        blocks.push([
+        portalAccountDetails = [
           "*Akun Portal Pelanggan*",
           `Alamat: ${portalLoginUrl}`,
           `Username: ${customerAccount.account.username}`,
           `Password: ${customerAccount.account.password}`,
-        ].join("\n"));
+        ].join("\n");
         sentAccounts.push("portal");
       }
       if (includeHotspot) {
-        blocks.push([
+        hotspotAccountDetails = [
           "*Akun Hotspot*",
           `Username: ${portalData.hotspot.username}`,
           `Password: ${portalData.hotspot.password}`,
           `Profile: ${portalData.hotspot.profile || "-"}`,
-        ].join("\n"));
+        ].join("\n");
         sentAccounts.push("hotspot");
       }
 
       const settings = this.dataManager.getSettings();
-      const footer = settings.supportSignature || settings.companyName || "";
-      const message = [
-        `Yth. Bapak/Ibu *${contact.name}*,`,
-        "Berikut informasi akun layanan Anda:",
-        ...blocks,
-        "Mohon simpan informasi ini dan jangan membagikan password kepada orang lain.",
-        footer,
-      ].filter(Boolean).join("\n\n");
+      const companyName = sanitizeInput(settings.companyName) || "Emmeril Hotspot";
+      const supportSignature = sanitizeInput(settings.supportSignature) || companyName;
+      const portalAccessGuide = includePortal
+        ? "Silakan masuk ke portal pelanggan melalui tautan di atas. Di portal tersebut, Anda dapat memeriksa tagihan, melihat informasi akun hotspot yang aktif, serta mengganti password hotspot secara mandiri."
+        : "";
+      const messageTemplate = sanitizeMultilineText(settings.customerAccountMessageTemplate)
+        || DEFAULT_SETTINGS.customerAccountMessageTemplate;
+      const message = messageTemplate
+        .replace(/{{\s*name\s*}}/gi, contact.name || "-")
+        .replace(/{{\s*phoneNumber\s*}}/gi, contact.phoneNumber || "-")
+        .replace(/{{\s*companyName\s*}}/gi, companyName)
+        .replace(/{{\s*companyNameUpper\s*}}/gi, companyName.toUpperCase())
+        .replace(/{{\s*supportSignature\s*}}/gi, supportSignature)
+        .replace(/{{\s*portalAccountDetails\s*}}/gi, portalAccountDetails)
+        .replace(/{{\s*hotspotAccountDetails\s*}}/gi, hotspotAccountDetails)
+        .replace(/{{\s*portalAccessGuide\s*}}/gi, portalAccessGuide)
+        .replace(/{{\s*portalLoginUrl\s*}}/gi, includePortal ? portalLoginUrl : "-")
+        .replace(/{{\s*portalUsername\s*}}/gi, includePortal ? customerAccount.account.username : "-")
+        .replace(/{{\s*portalPassword\s*}}/gi, includePortal ? customerAccount.account.password : "-")
+        .replace(/{{\s*hotspotUsername\s*}}/gi, includeHotspot ? portalData.hotspot.username : "-")
+        .replace(/{{\s*hotspotPassword\s*}}/gi, includeHotspot ? portalData.hotspot.password : "-")
+        .replace(/{{\s*hotspotProfile\s*}}/gi, includeHotspot ? portalData.hotspot.profile || "-" : "-")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
       const delivery = await this.notificationBot.sendMessage(phone.phoneNumber, message, {
         maxAttempts: 1,
         context: { type: "customer-account-credentials", contactId: String(contact.id) },

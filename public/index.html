@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/public/tailwind.css?v=20260819-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20260819-3">
-  <script defer src="/public/app.js?v=20260819-1"></script>
+  <script defer src="/public/app.js?v=20260819-2"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -804,6 +804,15 @@
                   </span>
                   <textarea x-model="forms.settings.hotspotReactivationMessageTemplate" placeholder="Tulis pesan reaktivasi akun hotspot..."></textarea>
                   <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{phoneNumber}}</code><code>{{username}}</code><code>{{password}}</code><code>{{profile}}</code><code>{{reactivatedAt}}</code><code>{{nextReactivationAt}}</code><code>{{supportSignature}}</code><code>{{companyName}}</code></span></span>
+                </label>
+                <label class="notification-template-card tone-success">
+                  <span class="notification-template-header">
+                    <span class="notification-template-icon"><i class="fa-brands fa-whatsapp"></i></span>
+                    <span class="notification-template-copy"><strong>Pengiriman akun pelanggan</strong><small>Dikirim manual melalui tombol Kirim Akun pada data pelanggan.</small></span>
+                    <span class="notification-template-badge">Akun pelanggan</span>
+                  </span>
+                  <textarea x-model="forms.settings.customerAccountMessageTemplate" placeholder="Tulis pesan pengiriman akun pelanggan..."></textarea>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{phoneNumber}}</code><code>{{portalAccountDetails}}</code><code>{{hotspotAccountDetails}}</code><code>{{portalAccessGuide}}</code><code>{{portalLoginUrl}}</code><code>{{portalUsername}}</code><code>{{portalPassword}}</code><code>{{hotspotUsername}}</code><code>{{hotspotPassword}}</code><code>{{hotspotProfile}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-amber">
                   <span class="notification-template-header">

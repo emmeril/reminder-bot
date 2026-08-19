@@ -837,6 +837,14 @@ test("API menyimpan pelanggan setelah nomor dipastikan terdaftar di WhatsApp", a
 
 test("admin dapat mengirim akun portal dan hotspot pelanggan lewat WhatsApp", async () => {
   const sentMessages = [];
+  const accountMessageTemplate = [
+    "PESAN AKUN CUSTOM {{companyNameUpper}}",
+    "Pelanggan: {{name}}",
+    "{{portalAccountDetails}}",
+    "{{hotspotAccountDetails}}",
+    "{{portalAccessGuide}}",
+    "Salam, {{supportSignature}}",
+  ].join("\n\n");
   const contact = {
     id: "contact-send-account",
     name: "Pelanggan Kirim Akun",
@@ -851,7 +859,12 @@ test("admin dapat mengirim akun portal dan hotspot pelanggan lewat WhatsApp", as
     getCustomerPortalData: (id) => id === contact.id ? {
       hotspot: { username: "akun_hotspot", password: "hotspot-123", profile: "50M" },
     } : null,
-    getSettings: () => ({ dashboardTitle: "Test", companyName: "Test ISP", supportSignature: "Admin Test ISP" }),
+    getSettings: () => ({
+      dashboardTitle: "Test",
+      companyName: "Test ISP",
+      supportSignature: "Admin Test ISP",
+      customerAccountMessageTemplate: accountMessageTemplate,
+    }),
   }, {
     sendMessage: async (phoneNumber, message, options) => {
       sentMessages.push({ phoneNumber, message, options });
@@ -873,6 +886,8 @@ test("admin dapat mengirim akun portal dan hotspot pelanggan lewat WhatsApp", as
   assert.equal(payload.data.messageId, "message-account-1");
   assert.equal(sentMessages.length, 1);
   assert.equal(sentMessages[0].phoneNumber, contact.phoneNumber);
+  assert.match(sentMessages[0].message, /PESAN AKUN CUSTOM TEST ISP/);
+  assert.match(sentMessages[0].message, /Pelanggan: Pelanggan Kirim Akun/);
   assert.match(sentMessages[0].message, /Akun Portal Pelanggan/);
   assert.match(sentMessages[0].message, /Username: akun_portal/);
   assert.match(sentMessages[0].message, /Password: portal-123/);
@@ -880,6 +895,9 @@ test("admin dapat mengirim akun portal dan hotspot pelanggan lewat WhatsApp", as
   assert.match(sentMessages[0].message, /Username: akun_hotspot/);
   assert.match(sentMessages[0].message, /Password: hotspot-123/);
   assert.match(sentMessages[0].message, new RegExp(`${baseUrl}/pelanggan/login`));
+  assert.match(sentMessages[0].message, /memeriksa tagihan/);
+  assert.match(sentMessages[0].message, /mengganti password hotspot secara mandiri/);
+  assert.match(sentMessages[0].message, /Salam, Admin Test ISP/);
   assert.equal(sentMessages[0].options.context.type, "customer-account-credentials");
 });
 
