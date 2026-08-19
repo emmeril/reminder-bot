@@ -417,11 +417,12 @@ test("akun portal dibuat otomatis dari kredensial hotspot pelanggan lama", async
   const portal = manager.getCustomerPortalData("contact-portal");
 
   assert.equal(count, 1);
-  assert.equal(account.pelanggan.password, "67810");
+  assert.equal(account.account.password, "67810");
   assert.equal(account.contact.id, "contact-portal");
   assert.equal(portal.customer.name, "Pelanggan Portal");
   assert.equal(portal.hotspot.username, "pelanggan_portal");
   assert.equal(portal.hotspot.password, "67810");
+  assert.equal(portal.account.username, "pelanggan_portal");
   assert.equal(portal.billing.monthlyAmount, 150000);
 });
 
@@ -442,7 +443,7 @@ test("kontak baru dengan akun hotspot langsung mendapat akun portal", async () =
 
   const account = manager.findCustomerPortalAccount("pelanggan_langsung");
   assert.equal(account.contact.id, contact.id);
-  assert.equal(account.pelanggan.password, "67811");
+  assert.equal(account.account.password, "67811");
 });
 
 test("perubahan password hotspot memperbarui Contact dan Pelanggan secara atomik", async () => {
@@ -470,13 +471,20 @@ test("perubahan password hotspot memperbarui Contact dan Pelanggan secara atomik
     profile: "50M",
     contactId: contact.id,
   });
+  manager.customerAccounts.set(contact.id, {
+    contactId: contact.id,
+    username: "akun_pelanggan_password",
+    password: "login-67812",
+  });
 
   const portal = await manager.updateCustomerHotspotPassword(contact.id, "67812", "baru-67812");
 
   assert.equal(contact.mikrotikPassword, "baru-67812");
   assert.equal(manager.pelanggan.get("pelanggan_password").password, "baru-67812");
+  assert.equal(manager.customerAccounts.get(contact.id).password, "login-67812");
   assert.equal(contact.hotspotProvisioningStatus, "ACTIVE");
   assert.equal(portal.hotspot.password, "baru-67812");
+  assert.equal(portal.account.username, "akun_pelanggan_password");
   await assert.rejects(
     () => manager.updateCustomerHotspotPassword(contact.id, "67812", "lain-67812"),
     /Password hotspot saat ini tidak sesuai/
@@ -537,6 +545,11 @@ test("edit akun hotspot menyimpan snapshot lama sebagai PENDING UPDATE", async (
     password: contact.mikrotikPassword,
     contactId: contact.id,
   });
+  manager.customerAccounts.set(contact.id, {
+    contactId: contact.id,
+    username: "akun_pelanggan_lama",
+    password: "portal-67805",
+  });
 
   const result = await manager.prepareContactUpdate(contact.id, {
     name: "Pelanggan Baru",
@@ -557,6 +570,8 @@ test("edit akun hotspot menyimpan snapshot lama sebagai PENDING UPDATE", async (
   });
   assert.equal(manager.pelanggan.has("pelanggan_lama"), false);
   assert.equal(manager.pelanggan.get("pelanggan_baru").status, "pending");
+  assert.equal(manager.customerAccounts.get(contact.id).username, "akun_pelanggan_lama");
+  assert.equal(manager.customerAccounts.get(contact.id).password, "portal-67805");
 
   const failed = await manager.updateHotspotProvisioningStatus(
     contact.id,
@@ -565,6 +580,44 @@ test("edit akun hotspot menyimpan snapshot lama sebagai PENDING UPDATE", async (
   );
   assert.equal(failed.contact.hotspotProvisioningOperation, "UPDATE");
   assert.equal(failed.contact.hotspotProvisioningPrevious.username, "pelanggan_lama");
+});
+
+test("edit kontak yang baru diberi hotspot membuat akun pelanggan terpisah", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+  manager.saveReminders = async () => {};
+  const contact = {
+    id: "contact-new-hotspot",
+    name: "Pelanggan Baru Hotspot",
+    phoneNumber: "6281234567820",
+    mikrotikUsername: "",
+    mikrotikProfile: "",
+    mikrotikPassword: "",
+    hotspotProvisioningStatus: "NONE",
+    hotspotProvisioningOperation: "NONE",
+    paymentMonths: {},
+    createdAt: "2026-08-19T00:00:00.000Z",
+    updatedAt: "2026-08-19T00:00:00.000Z",
+  };
+  manager.contacts.set(contact.id, contact);
+
+  await manager.prepareContactUpdate(contact.id, {
+    mikrotikUsername: "pelanggan_baru_hotspot",
+    mikrotikProfile: "50M",
+    mikrotikPassword: "67820",
+  });
+
+  assert.deepEqual(manager.customerAccounts.get(contact.id), {
+    contactId: contact.id,
+    username: "pelanggan_baru_hotspot",
+    password: "67820",
+    createdAt: contact.createdAt,
+    updatedAt: contact.updatedAt,
+  });
+  assert.equal(manager.pelanggan.get("pelanggan_baru_hotspot").password, "67820");
 });
 
 test("edit data umum tidak memicu sinkronisasi ulang hotspot", async () => {

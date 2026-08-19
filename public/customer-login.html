@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login Pelanggan - __CUSTOMER_PORTAL_TITLE__</title>
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/customer.css?v=20260819-4">
+  <link rel="stylesheet" href="/public/customer.css?v=20260819-5">
   <script defer src="/public/customer-login.js?v=20260819-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
@@ -18,16 +18,16 @@
       <p class="portal-login-lead">Masuk untuk melihat tagihan dan detail akun hotspot Anda.</p>
 
       <form @submit.prevent="submit()">
-        <label for="customer-username">Username hotspot</label>
+        <label for="customer-username">Username akun pelanggan</label>
         <div class="portal-input">
           <i class="fa-solid fa-user"></i>
-          <input id="customer-username" x-model="form.username" autocomplete="username" placeholder="Masukkan username hotspot" required autofocus>
+          <input id="customer-username" x-model="form.username" autocomplete="username" placeholder="Masukkan username akun pelanggan" required autofocus>
         </div>
 
-        <label for="customer-password">Password hotspot</label>
+        <label for="customer-password">Password akun pelanggan</label>
         <div class="portal-input">
           <i class="fa-solid fa-lock"></i>
-          <input id="customer-password" x-model="form.password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="Masukkan password hotspot" required>
+          <input id="customer-password" x-model="form.password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="Masukkan password akun pelanggan" required>
           <button type="button" @click="showPassword = !showPassword" :aria-label="showPassword ? 'Sembunyikan password' : 'Tampilkan password'">
             <i class="fa-solid" :class="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
           </button>
@@ -40,7 +40,7 @@
         </button>
       </form>
 
-      <p class="portal-login-help">Gunakan username dan password hotspot yang diberikan oleh admin.</p>
+      <p class="portal-login-help">Gunakan akun pelanggan yang diberikan admin. Akun ini terpisah dari akun hotspot.</p>
       <a class="portal-admin-link" href="/login"><i class="fa-solid fa-shield-halved"></i> Login administrator</a>
     </section>
   </main>

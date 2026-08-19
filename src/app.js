@@ -827,6 +827,7 @@ class DataManager {
     this.activityLog = activityLog;
     this.contacts = new Map();
     this.pelanggan = new Map();
+    this.customerAccounts = new Map();
     this.reminders = new Map();
     this.sentReminders = new Map();
     this.roles = new Map();
@@ -889,6 +890,7 @@ class DataManager {
 
     this.models.Contact = jsonPayloadModel("Contact", "contacts", "id");
     this.models.Pelanggan = jsonPayloadModel("Pelanggan", "pelanggan", "username");
+    this.models.CustomerAccount = jsonPayloadModel("CustomerAccount", "customer_accounts", "contactId");
     this.models.Reminder = jsonPayloadModel("Reminder", "reminders", "id");
     this.models.SentReminder = jsonPayloadModel("SentReminder", "sent_reminders", "id");
     this.models.Role = this.sequelize.define("Role", {
@@ -975,6 +977,7 @@ class DataManager {
       const snapshot = {
         contacts: structuredClone(this.contacts),
         pelanggan: structuredClone(this.pelanggan),
+        customerAccounts: structuredClone(this.customerAccounts),
         reminders: structuredClone(this.reminders),
         sentReminders: structuredClone(this.sentReminders),
         roles: structuredClone(this.roles),
@@ -986,6 +989,7 @@ class DataManager {
       } catch (error) {
         this.contacts = snapshot.contacts;
         this.pelanggan = snapshot.pelanggan;
+        this.customerAccounts = snapshot.customerAccounts;
         this.reminders = snapshot.reminders;
         this.sentReminders = snapshot.sentReminders;
         this.roles = snapshot.roles;
@@ -1116,6 +1120,7 @@ class DataManager {
     const counts = await Promise.all([
       this.models.Contact.count(),
       this.models.Pelanggan.count(),
+      this.models.CustomerAccount.count(),
       this.models.Reminder.count(),
       this.models.SentReminder.count(),
       this.models.Role.count(),
@@ -1127,6 +1132,7 @@ class DataManager {
   async loadFromDatabase() {
     this.contacts = await this.loadJsonPayloadMap(this.models.Contact, "id");
     this.pelanggan = await this.loadJsonPayloadMap(this.models.Pelanggan, "username");
+    this.customerAccounts = await this.loadJsonPayloadMap(this.models.CustomerAccount, "contactId");
     this.reminders = await this.loadJsonPayloadMap(this.models.Reminder, "id");
     this.sentReminders = await this.loadJsonPayloadMap(this.models.SentReminder, "id");
 
@@ -1144,6 +1150,7 @@ class DataManager {
   async loadFromLegacyJson() {
     this.contacts = await this.loadLegacyMapFromFile(this.getPath("contacts.json"), "id");
     this.pelanggan = await this.loadLegacyMapFromFile(this.getPath("pelanggan.json"), "username");
+    this.customerAccounts = new Map();
     this.reminders = await this.loadLegacyMapFromFile(this.getPath("reminders.json"), "id");
     this.sentReminders = await this.loadLegacyMapFromFile(this.getPath("sent_reminders.json"), "id");
     this.roles = await this.loadLegacyRoles();
@@ -1177,6 +1184,7 @@ class DataManager {
     this.activityLog.push("info", "boot", "Data load complete", {
       contacts: this.contacts.size,
       pelanggan: this.pelanggan.size,
+      customerAccounts: this.customerAccounts.size,
       reminders: this.reminders.size,
       sentReminders: this.sentReminders.size,
       adminRecipients: this.getAdminRecipients().length,
@@ -1217,6 +1225,19 @@ class DataManager {
   async savePelanggan(options = {}) {
     await this.runSaveOperation(
       (transaction) => this.replaceJsonPayloadTable(this.models.Pelanggan, "username", this.pelanggan.values(), { transaction }),
+      options
+    );
+  }
+
+  async saveCustomerAccounts(options = {}) {
+    if (!this.models.CustomerAccount) return;
+    await this.runSaveOperation(
+      (transaction) => this.replaceJsonPayloadTable(
+        this.models.CustomerAccount,
+        "contactId",
+        this.customerAccounts.values(),
+        { transaction }
+      ),
       options
     );
   }
@@ -1418,91 +1439,95 @@ class DataManager {
     const now = new Date().toISOString();
 
     for (const contact of this.contacts.values()) {
-      const username = sanitizeInput(String(contact.mikrotikUsername || ""));
-      const password = sanitizeInput(String(contact.mikrotikPassword || ""));
-      const profile = sanitizeInput(String(contact.mikrotikProfile || ""));
-      if (!username || !password) continue;
-
-      const existingForContact = Array.from(this.pelanggan.values()).find(
+      const hotspotRecord = Array.from(this.pelanggan.values()).find(
         (item) => String(item.contactId || "") === String(contact.id)
       );
-      const usernameOwner = this.pelanggan.get(username);
-      if (usernameOwner && String(usernameOwner.contactId || "") !== String(contact.id)) {
-        this.activityLog.push("warn", "storage", `Akun portal ${username} tidak dibuat karena username sudah digunakan pelanggan lain`, {
-          contactId: contact.id,
-        });
-        continue;
-      }
+      const hotspotUsername = sanitizeInput(String(contact.mikrotikUsername || hotspotRecord?.username || ""));
+      const hotspotPassword = sanitizeInput(String(contact.mikrotikPassword || hotspotRecord?.password || ""));
+      const existing = this.customerAccounts.get(String(contact.id)) || null;
+      if (!existing && (!hotspotUsername || !hotspotPassword)) continue;
 
-      if (existingForContact && existingForContact.username !== username) {
-        this.pelanggan.delete(existingForContact.username);
-      }
+      const preferredPortalUsername = sanitizeInput(String(existing?.username || hotspotUsername));
+      const portalUsername = this.getUniqueCustomerPortalUsername(preferredPortalUsername, contact.id);
+      const portalPassword = sanitizeInput(String(existing?.password || hotspotPassword));
+      if (!portalUsername || !portalPassword) continue;
 
-      const previous = usernameOwner || existingForContact || {};
-      const pelanggan = {
-        ...previous,
-        username,
-        nama: contact.name,
-        nomer: contact.phoneNumber,
-        profile,
-        password,
-        contactId: contact.id,
-        status: contact.hotspotProvisioningStatus === HOTSPOT_PROVISIONING_STATUS.ACTIVE
-          ? "verified"
-          : String(contact.hotspotProvisioningStatus || HOTSPOT_PROVISIONING_STATUS.NONE).toLowerCase(),
-        hotspotProvisioningStatus: contact.hotspotProvisioningStatus,
-        hotspotProvisioningError: contact.hotspotProvisioningError || "",
-        hotspotLastCheckedAt: contact.hotspotLastCheckedAt || null,
-        hotspotLastSyncedAt: contact.hotspotLastSyncedAt || null,
-        tanggalDaftar: previous.tanggalDaftar || contact.createdAt || now,
-        tanggalUpdate: previous.tanggalUpdate || contact.updatedAt || now,
+      const customerAccount = {
+        ...(existing || {}),
+        contactId: String(contact.id),
+        username: portalUsername,
+        password: portalPassword,
+        createdAt: existing?.createdAt || contact.createdAt || now,
+        updatedAt: existing?.updatedAt || contact.updatedAt || now,
       };
-
-      const changed = !usernameOwner
-        || existingForContact?.username !== username
-        || JSON.stringify(previous) !== JSON.stringify(pelanggan);
-      this.pelanggan.set(username, pelanggan);
+      const changed = !existing || JSON.stringify(existing) !== JSON.stringify(customerAccount);
+      this.customerAccounts.set(String(contact.id), customerAccount);
       if (changed) created += 1;
     }
 
     if (created > 0 && this.sequelize && options.save !== false) {
-      await this.savePelanggan();
+      await this.saveCustomerAccounts();
       this.activityLog.push("info", "storage", `${created} akun portal pelanggan disinkronkan dari data pelanggan lama`);
     }
 
     return created;
   }
 
+  getUniqueCustomerPortalUsername(preferred, contactId) {
+    const base = sanitizeInput(preferred) || `pelanggan_${String(contactId || "").slice(-6)}`;
+    const normalized = base.toLowerCase();
+    const owner = Array.from(this.customerAccounts.values()).find(
+      (item) => String(item.username || "").toLowerCase() === normalized
+        && String(item.contactId || "") !== String(contactId || "")
+    );
+    if (!owner) return base;
+
+    const contact = this.getContact(contactId);
+    const suffix = normalizePhoneNumber(contact?.phoneNumber || "").slice(-4) || "akun";
+    let candidate = `${base}_${suffix}`;
+    let counter = 2;
+    while (Array.from(this.customerAccounts.values()).some(
+      (item) => String(item.username || "").toLowerCase() === candidate.toLowerCase()
+        && String(item.contactId || "") !== String(contactId || "")
+    )) {
+      candidate = `${base}_${suffix}_${counter}`;
+      counter += 1;
+    }
+    return candidate;
+  }
+
   findCustomerPortalAccount(username) {
     const normalized = sanitizeInput(String(username || "")).toLowerCase();
     if (!normalized) return null;
 
-    const pelanggan = Array.from(this.pelanggan.values()).find(
+    const account = Array.from(this.customerAccounts.values()).find(
       (item) => String(item.username || "").toLowerCase() === normalized
     );
-    if (!pelanggan?.contactId || !pelanggan.password) return null;
+    if (!account?.contactId || !account.password) return null;
 
-    return this.getCustomerPortalAccountByContactId(pelanggan.contactId);
+    return this.getCustomerPortalAccountByContactId(account.contactId);
   }
 
   getCustomerPortalAccountByContactId(contactId) {
     const contact = this.getContact(contactId);
     if (!contact) return null;
+    const account = this.customerAccounts.get(String(contact.id));
+    if (!account?.username || !account.password) return null;
     const pelanggan = Array.from(this.pelanggan.values()).find(
       (item) => String(item.contactId || "") === String(contact.id)
     );
-    if (!pelanggan?.username || !pelanggan.password) return null;
-    return { pelanggan, contact };
+    return { account, pelanggan, contact };
   }
 
   getCustomerPortalData(contactId) {
     const contact = this.getContact(contactId);
     if (!contact) return null;
     const hydrated = this.hydrateContact(contact);
-    const account = Array.from(this.pelanggan.values()).find(
+    const portalAccount = this.customerAccounts.get(String(contact.id));
+    if (!portalAccount) return null;
+    const hotspotAccount = Array.from(this.pelanggan.values()).find(
       (item) => String(item.contactId || "") === String(contact.id)
     );
-    if (!account) return null;
 
     const timeZone = this.getTimezone();
     const { year, month } = getBillingPeriodParts(new Date(), timeZone);
@@ -1566,11 +1591,14 @@ class DataManager {
         history: paymentHistory,
       },
       hotspot: {
-        username: account.username,
-        password: account.password,
-        profile: account.profile || contact.mikrotikProfile || "",
-        status: account.hotspotProvisioningStatus || contact.hotspotProvisioningStatus || HOTSPOT_PROVISIONING_STATUS.NONE,
-        lastSyncedAt: account.hotspotLastSyncedAt || contact.hotspotLastSyncedAt || null,
+        username: contact.mikrotikUsername || hotspotAccount?.username || "",
+        password: contact.mikrotikPassword || hotspotAccount?.password || "",
+        profile: contact.mikrotikProfile || hotspotAccount?.profile || "",
+        status: contact.hotspotProvisioningStatus || hotspotAccount?.hotspotProvisioningStatus || HOTSPOT_PROVISIONING_STATUS.NONE,
+        lastSyncedAt: contact.hotspotLastSyncedAt || hotspotAccount?.hotspotLastSyncedAt || null,
+      },
+      account: {
+        username: portalAccount.username,
       },
       company: {
         name: this.getSettings().companyName,
@@ -1583,7 +1611,10 @@ class DataManager {
     return this.withDataMutation(async () => {
       const account = this.getCustomerPortalAccountByContactId(contactId);
       if (!account) throw new Error("Akun pelanggan tidak ditemukan.");
-      if (!safeCompareString(currentPassword, account.pelanggan.password)) {
+      const currentHotspotPassword = String(
+        account.contact.mikrotikPassword || account.pelanggan?.password || ""
+      );
+      if (!safeCompareString(currentPassword, currentHotspotPassword)) {
         const error = new Error("Password hotspot saat ini tidak sesuai.");
         error.statusCode = 403;
         throw error;
@@ -1599,13 +1630,15 @@ class DataManager {
       account.contact.hotspotLastSyncedAt = now;
       account.contact.updatedAt = now;
 
-      account.pelanggan.password = newPassword;
-      account.pelanggan.status = "verified";
-      account.pelanggan.hotspotProvisioningStatus = HOTSPOT_PROVISIONING_STATUS.ACTIVE;
-      account.pelanggan.hotspotProvisioningError = "";
-      account.pelanggan.hotspotLastCheckedAt = now;
-      account.pelanggan.hotspotLastSyncedAt = now;
-      account.pelanggan.tanggalUpdate = now;
+      if (account.pelanggan) {
+        account.pelanggan.password = newPassword;
+        account.pelanggan.status = "verified";
+        account.pelanggan.hotspotProvisioningStatus = HOTSPOT_PROVISIONING_STATUS.ACTIVE;
+        account.pelanggan.hotspotProvisioningError = "";
+        account.pelanggan.hotspotLastCheckedAt = now;
+        account.pelanggan.hotspotLastSyncedAt = now;
+        account.pelanggan.tanggalUpdate = now;
+      }
 
       await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
         const options = { transaction };
@@ -1661,6 +1694,7 @@ class DataManager {
           const options = { transaction };
           await this.saveContacts(options);
           await this.savePelanggan(options);
+          await this.saveCustomerAccounts(options);
           await this.saveReminders(options);
           await this.saveSentReminders(options);
           await this.saveRoles(options);
@@ -2126,6 +2160,7 @@ class DataManager {
           const options = { transaction };
           await this.saveContacts(options);
           await this.savePelanggan(options);
+          await this.saveCustomerAccounts(options);
         }));
       } else {
         await this.saveContacts();
@@ -2261,10 +2296,12 @@ class DataManager {
       };
 
       this.pelanggan.set(username, pelanggan);
+      await this.synchronizeCustomerPortalAccounts({ save: false });
       await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
         const options = { transaction };
         await this.saveContacts(options);
         await this.savePelanggan(options);
+        await this.saveCustomerAccounts(options);
       }));
       return { contact, pelanggan };
     });
@@ -2491,10 +2528,12 @@ class DataManager {
         pelanggan = null;
       }
 
+      await this.synchronizeCustomerPortalAccounts({ save: false });
       await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
         const options = { transaction };
         await this.saveContacts(options);
         await this.savePelanggan(options);
+        await this.saveCustomerAccounts(options);
         await this.saveReminders(options);
       }));
       return { contact, pelanggan, hotspotSyncRequired };
@@ -2936,6 +2975,12 @@ class DataManager {
       if (!contact) throw new Error("Kontak tidak ditemukan.");
 
       this.contacts.delete(String(id));
+      this.customerAccounts.delete(String(id));
+      for (const [username, pelanggan] of this.pelanggan.entries()) {
+        if (String(pelanggan.contactId || "") === String(id)) {
+          this.pelanggan.delete(username);
+        }
+      }
 
       const relatedReminderIds = Array.from(this.reminders.values())
         .filter((reminder) => String(reminder.contactId) === String(contact.id) || reminder.phoneNumber === contact.phoneNumber)
@@ -2948,6 +2993,8 @@ class DataManager {
       await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
         const options = { transaction };
         await this.saveContacts(options);
+        await this.savePelanggan(options);
+        await this.saveCustomerAccounts(options);
         await this.saveReminders(options);
       }));
       return { deletedContact: contact, deletedReminders: relatedReminderIds.length };
@@ -4111,7 +4158,9 @@ class WebServer {
       if (!account) throw new Error("Akun pelanggan tidak ditemukan.");
 
       const oldPassword = String(currentPassword || "");
-      const originalPassword = String(account.pelanggan.password || "");
+      const originalPassword = String(
+        account.contact.mikrotikPassword || account.pelanggan?.password || ""
+      );
       const rawNewPassword = String(requestedPassword || "");
       const newPassword = sanitizeInput(rawNewPassword);
       if (!safeCompareString(oldPassword, originalPassword)) {
@@ -4325,7 +4374,7 @@ class WebServer {
     const requireCustomerApiAuth = (req, res, next) => {
       const { token, session } = readCustomerSession(req);
       const portalData = session ? this.dataManager.getCustomerPortalData?.(session.contactId) : null;
-      if (!session || !portalData || portalData.hotspot.username !== session.username) {
+      if (!session || !portalData || portalData.account.username !== session.username) {
         return res.status(401).json({ success: false, error: "Sesi pelanggan tidak valid. Silakan masuk kembali." });
       }
       req.customerSessionToken = token;
@@ -4337,7 +4386,7 @@ class WebServer {
     const requireCustomerPageAuth = (req, res, next) => {
       const { session } = readCustomerSession(req);
       const portalData = session ? this.dataManager.getCustomerPortalData?.(session.contactId) : null;
-      if (!session || !portalData || portalData.hotspot.username !== session.username) {
+      if (!session || !portalData || portalData.account.username !== session.username) {
         return res.redirect("/pelanggan/login");
       }
       req.customerSession = session;
@@ -4382,7 +4431,7 @@ class WebServer {
       try {
         const { session } = readCustomerSession(req);
         const portalData = session ? this.dataManager.getCustomerPortalData?.(session.contactId) : null;
-        if (session && portalData && portalData.hotspot.username === session.username) {
+        if (session && portalData && portalData.account.username === session.username) {
           return res.redirect("/pelanggan");
         }
         res.send(await this.renderCustomerLoginPage());
@@ -4403,7 +4452,7 @@ class WebServer {
       }
 
       const account = this.dataManager.findCustomerPortalAccount?.(username) || null;
-      const passwordMatches = safeCompareString(password, account?.pelanggan?.password || "invalid-customer-password");
+      const passwordMatches = safeCompareString(password, account?.account?.password || "invalid-customer-password");
       if (!account || !passwordMatches) {
         this.authManager.recordLoginFailure(attemptKey);
         this.activityLog.push("warn", "customer-auth", `Login portal pelanggan gagal untuk ${username || "(kosong)"}`);
@@ -4414,7 +4463,7 @@ class WebServer {
 
       this.authManager.clearLoginFailures(attemptKey);
       const { token, session } = this.authManager.createCustomerSession({
-        username: account.pelanggan.username,
+        username: account.account.username,
         contactId: account.contact.id,
       });
       const secureCookie = CONFIG.SESSION_COOKIE_SECURE || req.secure;
@@ -4425,7 +4474,7 @@ class WebServer {
         secure: secureCookie,
         maxAge: Math.floor(CONFIG.SESSION_TTL / 1000),
       }));
-      this.activityLog.push("info", "customer-auth", `Login portal sukses untuk ${account.pelanggan.username}`, {
+      this.activityLog.push("info", "customer-auth", `Login portal sukses untuk ${account.account.username}`, {
         contactId: account.contact.id,
       });
       return {

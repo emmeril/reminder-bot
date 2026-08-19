@@ -59,7 +59,10 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .portal-welcome { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 42px 0 27px; }
 .portal-welcome .portal-kicker { margin: 0 0 8px; }
 .portal-welcome h1 { margin: 0; font-size: clamp(26px,4vw,36px); letter-spacing: -.025em; }
-.portal-welcome > div > p:last-child { margin: 9px 0 0; color: var(--portal-muted); font-size: 14px; }
+.portal-welcome > div > p:not(.portal-kicker) { margin: 9px 0 0; color: var(--portal-muted); font-size: 14px; }
+.portal-account-id { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; padding: 6px 9px; color: #475467; border: 1px solid #dfe5ed; border-radius: 8px; background: #fff; font-size: 10px; }
+.portal-account-id i { color: var(--portal-primary); }
+.portal-account-id strong { color: #253047; }
 .portal-period { display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; color: #475467; border: 1px solid var(--portal-border); border-radius: 10px; background: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .portal-period i { color: var(--portal-primary); }
 .portal-summary-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; }

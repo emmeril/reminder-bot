@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Akun Saya - __CUSTOMER_PORTAL_TITLE__</title>
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/customer.css?v=20260819-4">
-  <script defer src="/public/customer.js?v=20260819-4"></script>
+  <link rel="stylesheet" href="/public/customer.css?v=20260819-5">
+  <script defer src="/public/customer.js?v=20260819-5"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -34,6 +34,7 @@
           <p class="portal-kicker">Akun Saya</p>
           <h1>Halo, <span x-text="data?.customer?.name"></span></h1>
           <p>Lihat status layanan dan tagihan Anda dalam satu tempat.</p>
+          <span class="portal-account-id"><i class="fa-solid fa-user-shield"></i> Akun pelanggan: <strong x-text="data?.account?.username"></strong></span>
         </div>
         <span class="portal-period"><i class="fa-regular fa-calendar"></i><span x-text="data?.billing?.periodLabel"></span></span>
       </section>

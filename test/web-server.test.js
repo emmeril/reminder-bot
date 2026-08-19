@@ -181,18 +181,20 @@ test("API key dapat membaca identitas auth tanpa sesi dashboard", async () => {
   assert.equal(payload.data.usingApiKey, true);
 });
 
-test("pelanggan login dengan akun hotspot dan hanya membaca data miliknya", async () => {
+test("pelanggan login dengan akun portal terpisah dan hanya membaca data miliknya", async () => {
   CONFIG.SESSION_SECRET = "test-session-secret";
   const ownPortalData = {
     customer: { id: "contact-customer", name: "Pelanggan Satu", phoneNumber: "6281234567890" },
     billing: { totalAmount: 200000, history: [] },
     hotspot: { username: "pelanggan_satu", password: "67890", profile: "50M", status: "ACTIVE" },
+    account: { username: "akun_pelanggan_satu" },
     company: { name: "Test ISP" },
   };
   const baseUrl = await startServer({
     findCustomerPortalAccount: (username) => (
-      String(username).toLowerCase() === "pelanggan_satu"
+      String(username).toLowerCase() === "akun_pelanggan_satu"
         ? {
+            account: { contactId: "contact-customer", username: "akun_pelanggan_satu", password: "portal-123" },
             pelanggan: { username: "pelanggan_satu", password: "67890" },
             contact: { id: "contact-customer", name: "Pelanggan Satu" },
           }
@@ -206,7 +208,7 @@ test("pelanggan login dengan akun hotspot dan hanya membaca data miliknya", asyn
   const loginResponse = await fetch(`${baseUrl}/api/pelanggan/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username: "pelanggan_satu", password: "67890" }),
+    body: JSON.stringify({ username: "akun_pelanggan_satu", password: "portal-123" }),
   });
   const cookie = loginResponse.headers.get("set-cookie").split(";", 1)[0];
   assert.equal(loginResponse.status, 200);
@@ -223,10 +225,11 @@ test("pelanggan login dengan akun hotspot dan hanya membaca data miliknya", asyn
   assert.equal(rejected.status, 401);
 });
 
-test("login pelanggan menolak password hotspot yang salah", async () => {
+test("login pelanggan menolak password akun portal yang salah", async () => {
   CONFIG.SESSION_SECRET = "test-session-secret";
   const baseUrl = await startServer({
     findCustomerPortalAccount: () => ({
+      account: { contactId: "contact-customer", username: "akun_pelanggan_satu", password: "portal-123" },
       pelanggan: { username: "pelanggan_satu", password: "67890" },
       contact: { id: "contact-customer", name: "Pelanggan Satu" },
     }),
@@ -235,7 +238,7 @@ test("login pelanggan menolak password hotspot yang salah", async () => {
   const response = await fetch(`${baseUrl}/api/pelanggan/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username: "pelanggan_satu", password: "salah" }),
+    body: JSON.stringify({ username: "akun_pelanggan_satu", password: "salah" }),
   });
   const payload = await response.json();
 
@@ -246,7 +249,8 @@ test("login pelanggan menolak password hotspot yang salah", async () => {
 
 test("pelanggan dapat mengganti password hotspot dan sesi lain diakhiri", async () => {
   CONFIG.SESSION_SECRET = "test-session-secret";
-  let password = "67890";
+  let hotspotPassword = "67890";
+  const portalPassword = "portal-123";
   const routerPasswords = [];
   const contact = {
     id: "contact-customer",
@@ -258,17 +262,22 @@ test("pelanggan dapat mengganti password hotspot dan sesi lain diakhiri", async 
   const buildPortalData = () => ({
     customer: { id: contact.id, name: contact.name, phoneNumber: contact.phoneNumber },
     billing: { totalAmount: 200000, history: [] },
-    hotspot: { username: contact.mikrotikUsername, password, profile: "50M", status: "ACTIVE" },
+    hotspot: { username: contact.mikrotikUsername, password: hotspotPassword, profile: "50M", status: "ACTIVE" },
+    account: { username: "akun_pelanggan_satu" },
     company: { name: "Test ISP" },
   });
-  const account = () => ({ pelanggan: { username: "pelanggan_satu", password, contactId: contact.id }, contact });
+  const account = () => ({
+    account: { contactId: contact.id, username: "akun_pelanggan_satu", password: portalPassword },
+    pelanggan: { username: "pelanggan_satu", password: hotspotPassword, contactId: contact.id },
+    contact: { ...contact, mikrotikPassword: hotspotPassword },
+  });
   const baseUrl = await startServer({
-    findCustomerPortalAccount: (username) => String(username).toLowerCase() === "pelanggan_satu" ? account() : null,
+    findCustomerPortalAccount: (username) => String(username).toLowerCase() === "akun_pelanggan_satu" ? account() : null,
     getCustomerPortalAccountByContactId: (contactId) => contactId === contact.id ? account() : null,
     getCustomerPortalData: (contactId) => contactId === contact.id ? buildPortalData() : null,
     updateCustomerHotspotPassword: async (_contactId, currentPassword, newPassword) => {
-      assert.equal(currentPassword, password);
-      password = newPassword;
+      assert.equal(currentPassword, hotspotPassword);
+      hotspotPassword = newPassword;
       return buildPortalData();
     },
   }, {}, {
@@ -282,7 +291,7 @@ test("pelanggan dapat mengganti password hotspot dan sesi lain diakhiri", async 
     const response = await fetch(`${baseUrl}/api/pelanggan/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username: "pelanggan_satu", password }),
+      body: JSON.stringify({ username: "akun_pelanggan_satu", password: portalPassword }),
     });
     assert.equal(response.status, 200);
     return response.headers.get("set-cookie").split(";", 1)[0];
@@ -304,12 +313,22 @@ test("pelanggan dapat mengganti password hotspot dan sesi lain diakhiri", async 
   assert.equal(response.status, 200);
   assert.equal(payload.data.hotspot.password, "baru-67890");
   assert.deepEqual(routerPasswords, ["baru-67890"]);
-  assert.equal(password, "baru-67890");
+  assert.equal(hotspotPassword, "baru-67890");
 
   const currentSession = await fetch(`${baseUrl}/api/pelanggan/account`, { headers: { cookie: firstCookie } });
   const invalidatedSession = await fetch(`${baseUrl}/api/pelanggan/account`, { headers: { cookie: secondCookie } });
   assert.equal(currentSession.status, 200);
   assert.equal(invalidatedSession.status, 401);
+
+  const hotspotCredentialLogin = await fetch(`${baseUrl}/api/pelanggan/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "akun_pelanggan_satu", password: hotspotPassword }),
+  });
+  assert.equal(hotspotCredentialLogin.status, 401);
+
+  const loginAfterHotspotChange = await customerLogin();
+  assert.match(loginAfterHotspotChange, /^reminder_bot_customer_session=/);
 });
 
 test("password lokal tidak berubah ketika sinkronisasi MikroTik gagal", async () => {
@@ -326,11 +345,12 @@ test("password lokal tidak berubah ketika sinkronisasi MikroTik gagal", async ()
     customer: { id: contact.id, name: contact.name },
     billing: { history: [] },
     hotspot: { username: "pelanggan_satu", password: "67890", profile: "50M", status: "ACTIVE" },
+    account: { username: "akun_pelanggan_satu" },
     company: { name: "Test ISP" },
   };
   const baseUrl = await startServer({
-    findCustomerPortalAccount: () => ({ pelanggan: { username: "pelanggan_satu", password: "67890" }, contact }),
-    getCustomerPortalAccountByContactId: () => ({ pelanggan: { username: "pelanggan_satu", password: "67890" }, contact }),
+    findCustomerPortalAccount: () => ({ account: { username: "akun_pelanggan_satu", password: "portal-123" }, pelanggan: { username: "pelanggan_satu", password: "67890" }, contact: { ...contact, mikrotikPassword: "67890" } }),
+    getCustomerPortalAccountByContactId: () => ({ account: { username: "akun_pelanggan_satu", password: "portal-123" }, pelanggan: { username: "pelanggan_satu", password: "67890" }, contact: { ...contact, mikrotikPassword: "67890" } }),
     getCustomerPortalData: () => portalData,
     updateCustomerHotspotPassword: async () => { persistenceCalls += 1; },
   }, {}, {
@@ -339,7 +359,7 @@ test("password lokal tidak berubah ketika sinkronisasi MikroTik gagal", async ()
   const loginResponse = await fetch(`${baseUrl}/api/pelanggan/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username: "pelanggan_satu", password: "67890" }),
+    body: JSON.stringify({ username: "akun_pelanggan_satu", password: "portal-123" }),
   });
   const cookie = loginResponse.headers.get("set-cookie").split(";", 1)[0];
 
@@ -369,9 +389,10 @@ test("password MikroTik dikembalikan ketika penyimpanan database gagal", async (
     customer: { id: contact.id, name: contact.name },
     billing: { history: [] },
     hotspot: { username: "pelanggan_satu", password: "67890", profile: "50M", status: "ACTIVE" },
+    account: { username: "akun_pelanggan_satu" },
     company: { name: "Test ISP" },
   };
-  const account = { pelanggan: { username: "pelanggan_satu", password: "67890" }, contact };
+  const account = { account: { username: "akun_pelanggan_satu", password: "portal-123" }, pelanggan: { username: "pelanggan_satu", password: "67890" }, contact: { ...contact, mikrotikPassword: "67890" } };
   const baseUrl = await startServer({
     findCustomerPortalAccount: () => account,
     getCustomerPortalAccountByContactId: () => account,
@@ -386,7 +407,7 @@ test("password MikroTik dikembalikan ketika penyimpanan database gagal", async (
   const loginResponse = await fetch(`${baseUrl}/api/pelanggan/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username: "pelanggan_satu", password: "67890" }),
+    body: JSON.stringify({ username: "akun_pelanggan_satu", password: "portal-123" }),
   });
   const cookie = loginResponse.headers.get("set-cookie").split(";", 1)[0];
 
