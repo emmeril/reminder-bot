@@ -226,6 +226,7 @@ class BaileysManager {
         lastDisconnectCode: status.providers?.baileys?.connection?.lastDisconnectCode ?? null,
         lastDisconnectReason: status.providers?.baileys?.connection?.lastDisconnectReason || null,
         lastDisconnectAt: status.providers?.baileys?.connection?.lastDisconnectAt || null,
+        autoSafety: status.transport?.autoSafety || null,
       };
     });
     const connected = instances.filter((instance) => instance.connected);
@@ -282,6 +283,13 @@ class BaileysManager {
         activeInstanceId: active?.id || null,
         randomDelayMinMs: this.getPrimaryConnection().normalizeDelayRange().minDelayMs,
         randomDelayMaxMs: this.getPrimaryConnection().normalizeDelayRange().maxDelayMs,
+        autoSafety: {
+          enabled: true,
+          paused: instances.some((instance) => instance.autoSafety?.paused === true),
+          instances: Object.fromEntries(
+            instances.map((instance) => [instance.id, instance.autoSafety])
+          ),
+        },
       },
     };
   }

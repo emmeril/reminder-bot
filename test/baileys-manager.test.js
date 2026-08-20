@@ -3,6 +3,7 @@ const { afterEach, beforeEach, test } = require("node:test");
 
 const BaileysManager = require("../src/baileys-manager");
 const { CONFIG } = require("../src/config");
+const { DEFAULTS: AUTO_SAFETY_DEFAULTS } = require("../src/whatsapp/auto-safety-guard");
 
 const originalConfig = {
   BAILEYS_ENABLED: CONFIG.BAILEYS_ENABLED,
@@ -47,7 +48,16 @@ beforeEach(() => {
     device: null,
   };
   BaileysManager.activeInstanceId = null;
-  BaileysManager.getPrimaryConnection().clearMessageRetryState();
+  const connection = BaileysManager.getPrimaryConnection();
+  connection.clearMessageRetryState();
+  connection.autoSafetyGuard.reset();
+  connection.autoSafetyGuard.setLimits({
+    minGlobalGapMs: 0,
+    recipientCooldownMs: 0,
+    maxPerMinute: 1000,
+    maxPerHour: 1000,
+    reachoutPauseMs: 60_000,
+  });
 });
 
 afterEach(() => {
@@ -59,6 +69,9 @@ afterEach(() => {
   BaileysManager.authState = null;
   BaileysManager.outboundEnabled = false;
   BaileysManager.pairingQrSeen = false;
+  const connection = BaileysManager.getPrimaryConnection();
+  connection.autoSafetyGuard.reset();
+  connection.autoSafetyGuard.setLimits(AUTO_SAFETY_DEFAULTS);
 });
 
 test("memblokir pengiriman sampai operator mengaktifkannya manual", async () => {
@@ -208,6 +221,16 @@ test("melaporkan penolakan 463 walaupun sendMessage sempat mengembalikan ID", as
       assert.equal(error.code, "WHATSAPP_REACHOUT_RESTRICTED");
       assert.equal(error.statusCode, 429);
       assert.match(error.message, /pelanggan sudah membalas/);
+      return true;
+    }
+  );
+
+  assert.equal(connection.autoSafetyGuard.getStatus().paused, true);
+  await assert.rejects(
+    () => BaileysManager.sendMessage("6289999999999", "Pesan berikutnya"),
+    (error) => {
+      assert.equal(error.code, "WHATSAPP_AUTOMATIC_SAFETY_PAUSE");
+      assert.equal(error.retryable, false);
       return true;
     }
   );

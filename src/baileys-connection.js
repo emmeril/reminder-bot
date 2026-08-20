@@ -1,5 +1,6 @@
 const { CONFIG } = require("./config");
 const BaileysAuthStore = require("./baileys-auth-store");
+const AutoSafetyGuard = require("./whatsapp/auto-safety-guard");
 const { isValidPhoneNumber, normalizePhoneNumber } = require("./utils");
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -87,6 +88,9 @@ class BaileysConnection {
   messageStoreLimit = 1000;
 
   msgRetryCounterCache = new BoundedCache(1000);
+
+  // Automatic guard against burst sends and repeated reachout failures.
+  autoSafetyGuard = new AutoSafetyGuard();
 
   messageAckFailures = new Map();
 
@@ -438,6 +442,7 @@ class BaileysConnection {
         this.authStore = new BaileysAuthStore(this.authStorage);
       }
       this.clearMessageRetryState();
+      this.autoSafetyGuard.reset();
       await this.authStore.clear();
       const auth = await this.authStore.initialize(baileys);
       this.authState = auth.state;
@@ -482,8 +487,13 @@ class BaileysConnection {
   normalizeDelayRange(options = {}) {
     const configuredMin = Number(options.minDelayMs ?? CONFIG.WA_MESSAGE_DELAY_MIN);
     const configuredMax = Number(options.maxDelayMs ?? CONFIG.WA_MESSAGE_DELAY_MAX);
-    const first = Number.isFinite(configuredMin) ? Math.max(0, Math.floor(configuredMin)) : 0;
-    const second = Number.isFinite(configuredMax) ? Math.max(0, Math.floor(configuredMax)) : first;
+    const automaticMinimum = this.autoSafetyGuard?.limits?.minGlobalGapMs || 0;
+    const first = Number.isFinite(configuredMin)
+      ? Math.max(automaticMinimum, Math.floor(configuredMin))
+      : automaticMinimum;
+    const second = Number.isFinite(configuredMax)
+      ? Math.max(automaticMinimum, Math.floor(configuredMax))
+      : first;
     return {
       minDelayMs: Math.min(first, second),
       maxDelayMs: Math.max(first, second),
@@ -535,8 +545,22 @@ class BaileysConnection {
       // mengirim. sendRequest() tetap memeriksa ulang setelah jeda untuk
       // menangani koneksi yang berubah ketika pesan sedang menunggu.
       this.assertOutboundReady();
+      const pauseRemaining = this.autoSafetyGuard.getPauseRemaining();
+      if (pauseRemaining > 0) {
+        const error = new Error(
+          `Pengiriman otomatis dijeda setelah penolakan WhatsApp; coba lagi dalam ${Math.ceil(pauseRemaining / 1000)} detik.`
+        );
+        error.code = "WHATSAPP_AUTOMATIC_SAFETY_PAUSE";
+        error.retryable = false;
+        error.statusCode = 429;
+        throw error;
+      }
+      const safetyDelay = this.autoSafetyGuard.getDelayMs(number);
       const selectedDelay = this.getRandomDelayMs(options);
-      const remainingDelay = Math.max(0, selectedDelay - (Date.now() - this.lastSentAt));
+      const remainingDelay = Math.max(
+        safetyDelay,
+        selectedDelay - (Date.now() - this.lastSentAt)
+      );
       if (remainingDelay > 0) await sleep(remainingDelay);
 
       const result = await this.sendRequest(number, message);
@@ -745,6 +769,9 @@ class BaileysConnection {
 
     try {
       const jid = await this.resolveRecipientJid(normalized);
+      // Count attempts, including failed attempts, to prevent rapid retries
+      // from repeatedly contacting the same WhatsApp recipient.
+      this.autoSafetyGuard.markAttempt(normalized);
       const result = await this.socket.sendMessage(jid, { text: String(message || "") });
       this.rememberMessage(result);
       await this.authStore?.saveMessage?.(result?.key, result?.message).catch(() => {});
@@ -770,6 +797,9 @@ class BaileysConnection {
         deliveryConfirmed: deliveryStatus === "delivered" || deliveryStatus === "read",
       };
     } catch (cause) {
+      if (cause?.code === "WHATSAPP_REACHOUT_RESTRICTED") {
+        this.autoSafetyGuard.pauseForReachout();
+      }
       const error = new Error(`Baileys gagal mengirim pesan: ${cause.message}`, { cause });
       error.code = cause.code;
       error.retryable = cause.retryable;
@@ -803,6 +833,7 @@ class BaileysConnection {
       reconnectAttempts: this.reconnectAttempts,
       pendingQueue: this.pendingQueue,
       failedQueue: this.failedQueue,
+      autoSafetyPaused: this.autoSafetyGuard.getPauseRemaining() > 0,
       currentQR: this.connectionCache.qr || false,
       lastActivity: this.lastActivity ? new Date(this.lastActivity).toISOString() : null,
       whatsappProviderEnabled: this.isConfigured(),
@@ -816,6 +847,7 @@ class BaileysConnection {
         connectedProviders,
         randomDelayMinMs: this.normalizeDelayRange().minDelayMs,
         randomDelayMaxMs: this.normalizeDelayRange().maxDelayMs,
+        autoSafety: this.autoSafetyGuard.getStatus(),
       },
     };
   }
