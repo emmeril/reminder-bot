@@ -90,6 +90,8 @@ class BaileysConnection {
 
   messageAckFailures = new Map();
 
+  messageAckStatuses = new Map();
+
   messageAckWaiters = new Map();
 
   // Pengiriman aktif otomatis setelah koneksi WhatsApp benar-benar terbuka.
@@ -623,16 +625,38 @@ class BaileysConnection {
 
   handleMessageUpdates(updates, messageStatus = {}) {
     const errorStatus = messageStatus?.ERROR ?? 0;
+    const serverAckStatus = messageStatus?.SERVER_ACK ?? 2;
+    const deliveryAckStatus = messageStatus?.DELIVERY_ACK ?? 3;
+    const readStatus = messageStatus?.READ ?? 4;
     for (const update of Array.isArray(updates) ? updates : []) {
       const messageId = String(update?.key?.id || "");
-      if (!messageId || update?.key?.fromMe !== true || update?.update?.status !== errorStatus) continue;
+      const status = update?.update?.status;
+      const numericStatus = Number(status);
+      if (!messageId || update?.key?.fromMe !== true) continue;
+
+      if (numericStatus !== Number(errorStatus) && !(numericStatus >= serverAckStatus)) continue;
+
+      if (numericStatus >= serverAckStatus && numericStatus !== Number(errorStatus)) {
+        const deliveryStatus = numericStatus >= readStatus
+          ? "read"
+          : (numericStatus >= deliveryAckStatus ? "delivered" : "accepted");
+        const waiter = this.messageAckWaiters.get(messageId);
+        if (waiter) {
+          this.messageAckWaiters.delete(messageId);
+          clearTimeout(waiter.timer);
+          waiter.resolve({ type: "status", deliveryStatus });
+        } else {
+          this.messageAckStatuses.set(messageId, { deliveryStatus, recordedAt: Date.now() });
+        }
+        continue;
+      }
 
       const error = this.createMessageAckError(update);
       const waiter = this.messageAckWaiters.get(messageId);
       if (waiter) {
         this.messageAckWaiters.delete(messageId);
         clearTimeout(waiter.timer);
-        waiter.resolve(error);
+        waiter.resolve({ type: "error", error });
       } else {
         this.messageAckFailures.set(messageId, { error, recordedAt: Date.now() });
       }
@@ -643,24 +667,33 @@ class BaileysConnection {
     for (const [messageId, failure] of this.messageAckFailures) {
       if (failure.recordedAt < cutoff) this.messageAckFailures.delete(messageId);
     }
+    for (const [messageId, status] of this.messageAckStatuses) {
+      if (status.recordedAt < cutoff) this.messageAckStatuses.delete(messageId);
+    }
   }
 
   async waitForImmediateMessageFailure(messageId, timeoutMs = 2_000) {
-    if (!messageId) return;
+    if (!messageId) return "accepted";
     const existing = this.messageAckFailures.get(messageId);
     if (existing) {
       this.messageAckFailures.delete(messageId);
       throw existing.error;
     }
+    const existingStatus = this.messageAckStatuses.get(messageId);
+    if (existingStatus) {
+      this.messageAckStatuses.delete(messageId);
+      return existingStatus.deliveryStatus;
+    }
 
-    const failure = await new Promise((resolve) => {
+    const outcome = await new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.messageAckWaiters.delete(messageId);
-        resolve(null);
+        resolve({ type: "timeout" });
       }, timeoutMs);
       this.messageAckWaiters.set(messageId, { resolve, timer });
     });
-    if (failure) throw failure;
+    if (outcome?.type === "error") throw outcome.error;
+    return outcome?.deliveryStatus || "accepted";
   }
 
   async checkPhoneNumber(number) {
@@ -715,7 +748,7 @@ class BaileysConnection {
       const result = await this.socket.sendMessage(jid, { text: String(message || "") });
       this.rememberMessage(result);
       await this.authStore?.saveMessage?.(result?.key, result?.message).catch(() => {});
-      await this.waitForImmediateMessageFailure(result?.key?.id);
+      const deliveryStatus = await this.waitForImmediateMessageFailure(result?.key?.id);
       this.lastActivity = Date.now();
       this.updateConnection({
         connected: true,
@@ -725,12 +758,16 @@ class BaileysConnection {
       return {
         status: "success",
         provider: "baileys",
-        message: "Pesan berhasil dikirim via Baileys",
+        message: deliveryStatus === "accepted"
+          ? "Pesan diterima server WhatsApp; pengiriman ke perangkat tujuan masih menunggu."
+          : "Pesan berhasil dikirim via Baileys",
         messageId: result?.key?.id || null,
         target: normalized,
         targetJid: result?.key?.remoteJid || jid,
         timestamp: result?.messageTimestamp || null,
         type: "chat",
+        deliveryStatus,
+        deliveryConfirmed: deliveryStatus === "delivered" || deliveryStatus === "read",
       };
     } catch (cause) {
       const error = new Error(`Baileys gagal mengirim pesan: ${cause.message}`, { cause });
@@ -795,6 +832,7 @@ class BaileysConnection {
     }
     this.messageAckWaiters.clear();
     this.messageAckFailures.clear();
+    this.messageAckStatuses.clear();
     const socket = this.socket;
     this.socket = null;
     if (socket?.end) {

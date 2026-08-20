@@ -4182,9 +4182,14 @@ class NotificationBot {
       maxDelayMs: Math.max(0, Number(settings.waRandomDelayMaxSeconds) || 0) * 1000,
       ...options,
     });
-    this.activityLog.push("info", "notification", `Pesan terkirim via ${result.provider} ke ${normalizePhoneNumber(phoneNumber)}`, {
+    const deliveryConfirmed = result.deliveryStatus === "delivered" || result.deliveryStatus === "read";
+    this.activityLog.push(deliveryConfirmed ? "info" : "warn", deliveryConfirmed ? "notification" : "notification.pending", deliveryConfirmed
+      ? `Pesan terkirim via ${result.provider} ke ${normalizePhoneNumber(phoneNumber)}`
+      : `Pesan diterima WhatsApp tetapi belum masuk ke perangkat tujuan ke ${normalizePhoneNumber(phoneNumber)}`, {
       phoneNumber: normalizePhoneNumber(phoneNumber),
       provider: result.provider,
+      deliveryStatus: result.deliveryStatus || "accepted",
+      messageId: result.messageId || null,
     });
     return result;
   }
@@ -4212,8 +4217,8 @@ class NotificationBot {
 
     for (const phoneNumber of recipients) {
       try {
-        await this.sendMessage(phoneNumber, message, options.messageOptions || {});
-        results.push({ phoneNumber, status: "sent" });
+        const delivery = await this.sendMessage(phoneNumber, message, options.messageOptions || {});
+        results.push({ phoneNumber, status: delivery.deliveryStatus || "accepted", deliveryStatus: delivery.deliveryStatus || "accepted" });
       } catch (error) {
         results.push({ phoneNumber, status: "failed", error: error.message });
       }
@@ -4238,8 +4243,8 @@ class NotificationBot {
             ? options.renderMessage(contact, body)
             : body;
         const message = `*${title}*\n\n${renderedBody}`;
-        await this.sendMessage(contact.phoneNumber, message);
-        results.push({ phoneNumber: contact.phoneNumber, name: contact.name, status: "sent" });
+        const delivery = await this.sendMessage(contact.phoneNumber, message);
+        results.push({ phoneNumber: contact.phoneNumber, name: contact.name, status: delivery.deliveryStatus || "accepted", deliveryStatus: delivery.deliveryStatus || "accepted" });
       } catch (error) {
         results.push({ phoneNumber: contact.phoneNumber, name: contact.name, status: "failed", error: error.message });
       }
@@ -5631,9 +5636,13 @@ class WebServer {
           maxAttempts: 1,
           context: { type: "test" },
         });
-        this.activityLog.push("info", "manual", `WhatsApp test message sent to ${phoneNumber}`, {
+        const deliveryConfirmed = result.deliveryStatus === "delivered" || result.deliveryStatus === "read";
+        this.activityLog.push(deliveryConfirmed ? "info" : "warn", "manual", deliveryConfirmed
+          ? `WhatsApp test message delivered to ${phoneNumber}`
+          : `WhatsApp test message accepted; delivery pending for ${phoneNumber}`, {
           event: "whatsapp.message.sent",
           provider: result.provider,
+          deliveryStatus: result.deliveryStatus || "accepted",
         });
         return { type: "message", phoneNumber, ...result };
       }
@@ -5749,6 +5758,7 @@ class WebServer {
         accounts: sentAccounts,
         provider: delivery.provider || null,
         messageId: delivery.messageId || null,
+        deliveryStatus: delivery.deliveryStatus || "accepted",
       };
     }));
 
@@ -6009,13 +6019,19 @@ class WebServer {
       if (!isValidPhoneNumber(phoneNumber)) throw new Error("Nomor tujuan tidak valid.");
       if (!message) throw new Error("Pesan notifikasi wajib diisi.");
 
-      await this.notificationBot.sendMessage(phoneNumber, message);
-      this.activityLog.push("info", "manual", `Manual notification sent to ${phoneNumber}`);
+      const delivery = await this.notificationBot.sendMessage(phoneNumber, message);
+      const deliveryStatus = delivery.deliveryStatus || "accepted";
+      const deliveryConfirmed = deliveryStatus === "delivered" || deliveryStatus === "read";
+      this.activityLog.push(deliveryConfirmed ? "info" : "warn", "manual", deliveryConfirmed
+        ? `Manual notification delivered to ${phoneNumber}`
+        : `Manual notification accepted by WhatsApp; delivery pending for ${phoneNumber}`, { deliveryStatus });
       return {
         phoneNumber,
         contactId: selectedContact?.id || null,
         contactName: selectedContact?.name || null,
-        status: "sent",
+        status: deliveryStatus,
+        deliveryStatus,
+        messageId: delivery.messageId || null,
       };
     }));
 

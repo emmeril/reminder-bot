@@ -213,6 +213,21 @@ test("melaporkan penolakan 463 walaupun sendMessage sempat mengembalikan ID", as
   );
 });
 
+test("mengembalikan accepted ketika belum ada delivery ACK", async () => {
+  BaileysManager.socket = {
+    onWhatsApp: async () => [{ exists: true, jid: "6281234567890@s.whatsapp.net" }],
+    sendMessage: async (jid) => ({
+      key: { id: "message-accepted", remoteJid: jid, fromMe: true },
+      message: { conversation: "Halo" },
+    }),
+  };
+
+  const result = await BaileysManager.sendMessage("6281234567890", "Halo");
+
+  assert.equal(result.deliveryStatus, "accepted");
+  assert.equal(result.deliveryConfirmed, false);
+});
+
 test("socket memakai sync bawaan Baileys dan menyediakan message retry store", async () => {
   const connection = BaileysManager.getPrimaryConnection();
   const originalBaileys = connection.baileys;

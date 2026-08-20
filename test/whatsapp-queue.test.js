@@ -48,6 +48,20 @@ test("WhatsApp queue tidak mengubah respons unconfirmed menjadi sent", async () 
   assert.equal(queue.getStatus().counts.failed, 1);
 });
 
+test("WhatsApp queue membedakan pesan diterima server dari pesan delivered", async () => {
+  const queue = new WhatsAppQueue({ concurrency: 1, retryLimit: 1, retryDelayMs: 0 });
+  const result = await queue.enqueue(async () => ({
+    provider: "baileys",
+    messageId: "accepted-1",
+    deliveryStatus: "accepted",
+  }), { phone: "6281234567890", provider: "baileys" });
+
+  assert.equal(result.deliveryStatus, "accepted");
+  assert.equal(queue.getStatus().counts.accepted, 1);
+  assert.equal(queue.getStatus().counts.sent, 0);
+  assert.equal(queue.getStatus().items[0].deliveryStatus, "accepted");
+});
+
 test("WhatsApp queue membatalkan item pending saat shutdown", async () => {
   const queue = new WhatsAppQueue({ concurrency: 1, retryLimit: 1, retryDelayMs: 0 });
   let release;

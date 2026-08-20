@@ -1,6 +1,6 @@
 const { generateId } = require("../utils");
 
-const TERMINAL_STATUSES = new Set(["sent", "failed", "cancelled"]);
+const TERMINAL_STATUSES = new Set(["sent", "accepted", "failed", "cancelled"]);
 
 class WhatsAppQueue {
   constructor(options = {}) {
@@ -73,14 +73,22 @@ class WhatsAppQueue {
           error.code = "WHATSAPP_SEND_UNCONFIRMED";
           throw error;
         }
-        item.status = "sent";
+        const deliveryStatus = String(result?.deliveryStatus || "").toLowerCase();
+        const deliveryConfirmed = deliveryStatus === "delivered" || deliveryStatus === "read";
+        item.status = result?.deliveryStatus
+          ? (deliveryConfirmed ? "sent" : "accepted")
+          : "sent";
+        item.deliveryStatus = deliveryStatus || (item.status === "sent" ? "delivered" : "accepted");
         item.result = result;
         item.updatedAt = new Date().toISOString();
-        this.log("info", "whatsapp.message.sent", `Message sent: ${item.phone || "unknown"}`, {
+        this.log(item.status === "sent" ? "info" : "warn", item.status === "sent" ? "whatsapp.message.sent" : "whatsapp.message.accepted", item.status === "sent"
+          ? `Message delivered: ${item.phone || "unknown"}`
+          : `Message accepted by WhatsApp; delivery pending: ${item.phone || "unknown"}`, {
           queueId: item.id,
           phoneNumber: item.phone,
           provider: result?.provider || item.provider,
           providerMessageId: result?.providerMessageId || result?.messageId || null,
+          deliveryStatus: item.deliveryStatus,
         });
         item.resolve(result);
         return;
@@ -132,7 +140,7 @@ class WhatsAppQueue {
   }
 
   getStatus() {
-    const counts = { pending: 0, processing: 0, sent: 0, failed: 0, retry: 0, cancelled: 0 };
+    const counts = { pending: 0, processing: 0, accepted: 0, sent: 0, failed: 0, retry: 0, cancelled: 0 };
     for (const item of this.items.values()) {
       if (counts[item.status] !== undefined) counts[item.status] += 1;
     }

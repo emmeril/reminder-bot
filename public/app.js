@@ -1757,7 +1757,7 @@
                 body: JSON.stringify(this.forms.manual),
               });
               this.forms.manual = { contactId: "", phoneNumber: "", templateName: "", message: "" };
-              this.notify("Notifikasi manual terkirim.");
+              this.notify("Notifikasi diterima WhatsApp; status pengiriman sedang dipantau.");
               await this.loadLogs();
             });
           } catch (error) {
