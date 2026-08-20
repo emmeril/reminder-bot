@@ -59,6 +59,7 @@ const CONFIG = {
   NODE_ENV: envString("NODE_ENV", "development"),
   HOST: envString("HOST", "127.0.0.1"),
   TRUST_PROXY: envBoolean("TRUST_PROXY", false),
+  PUBLIC_ORIGIN: envString("PUBLIC_ORIGIN"),
   PORT: envNumber("PORT", 3025),
   DB_PATH: path.join(ROOT_DIR, "database"),
   DB_STORAGE: resolveFromRoot(

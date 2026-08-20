@@ -12,6 +12,7 @@ const originalAuthConfig = {
   AUTH_PASSWORD: CONFIG.AUTH_PASSWORD,
   SESSION_SECRET: CONFIG.SESSION_SECRET,
   SESSION_COOKIE_SECURE: CONFIG.SESSION_COOKIE_SECURE,
+  PUBLIC_ORIGIN: CONFIG.PUBLIC_ORIGIN,
   HOST: CONFIG.HOST,
   PORT: CONFIG.PORT,
   MIDTRANS_ENABLED: CONFIG.MIDTRANS_ENABLED,
@@ -160,6 +161,26 @@ test("request mutasi dari origin lain ditolak", async () => {
 
   assert.equal(response.status, 403);
   assert.match(payload.error, /Cross-origin/);
+});
+
+test("origin publik resmi diterima ketika aplikasi berada di balik reverse proxy", async () => {
+  CONFIG.PUBLIC_ORIGIN = "https://wifi.emmeril-hotspot.online";
+  const baseUrl = await startServer();
+  Object.assign(CONFIG, {
+    AUTH_USERNAME: "operator",
+    AUTH_PASSWORD: "test-password",
+    SESSION_SECRET: "test-session-secret",
+  });
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: CONFIG.PUBLIC_ORIGIN,
+    },
+    body: JSON.stringify({ username: "operator", password: "test-password" }),
+  });
+
+  assert.equal(response.status, 200);
 });
 
 test("cookie sesi dapat dipaksa Secure saat TLS berakhir di luar aplikasi", async () => {

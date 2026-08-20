@@ -5076,7 +5076,9 @@ class WebServer {
 
       try {
         const parsedOrigin = new URL(origin);
-        if (parsedOrigin.protocol === `${req.protocol}:` && parsedOrigin.host === req.get("host")) {
+        const requestOrigin = new URL(`${req.protocol}://${req.get("host")}`).origin;
+        const publicOrigin = CONFIG.PUBLIC_ORIGIN ? new URL(CONFIG.PUBLIC_ORIGIN).origin : "";
+        if (parsedOrigin.origin === requestOrigin || (publicOrigin && parsedOrigin.origin === publicOrigin)) {
           return next();
         }
       } catch {
