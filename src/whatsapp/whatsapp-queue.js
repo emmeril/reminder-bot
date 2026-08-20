@@ -13,6 +13,8 @@ class WhatsAppQueue {
     this.active = 0;
     this.stopped = false;
     this.historyLimit = Math.max(20, Number(options.historyLimit) || 250);
+    this.messageItems = new Map();
+    this.lateDeliveryStatuses = new Map();
   }
 
   log(level, event, message, meta = {}) {
@@ -90,6 +92,9 @@ class WhatsAppQueue {
           providerMessageId: result?.providerMessageId || result?.messageId || null,
           deliveryStatus: item.deliveryStatus,
         });
+        // Register after the initial queue event so a late ACK produces a
+        // correctly ordered follow-up event instead of preceding "accepted".
+        this.registerProviderMessage(item, result);
         item.resolve(result);
         return;
       } catch (error) {
@@ -134,6 +139,78 @@ class WhatsAppQueue {
     }
   }
 
+  getProviderMessageId(result) {
+    return String(result?.providerMessageId || result?.messageId || "");
+  }
+
+  registerProviderMessage(item, result) {
+    const messageId = this.getProviderMessageId(result);
+    if (!messageId) return;
+    this.messageItems.set(messageId, item);
+    const lateStatus = this.lateDeliveryStatuses.get(messageId);
+    if (lateStatus) {
+      this.lateDeliveryStatuses.delete(messageId);
+      this.applyDeliveryStatus(item, lateStatus);
+    }
+  }
+
+  handleDeliveryStatus(update = {}) {
+    const messageId = String(update.messageId || "");
+    if (!messageId) return;
+    const cutoff = Date.now() - 60_000;
+    for (const [pendingId, pending] of this.lateDeliveryStatuses) {
+      if ((pending.recordedAt || 0) < cutoff) this.lateDeliveryStatuses.delete(pendingId);
+    }
+    const item = this.messageItems.get(messageId);
+    if (!item) {
+      this.lateDeliveryStatuses.set(messageId, { ...update, recordedAt: Date.now() });
+      return;
+    }
+    this.applyDeliveryStatus(item, update);
+  }
+
+  applyDeliveryStatus(item, update = {}) {
+    const nextStatus = String(update.deliveryStatus || "").toLowerCase();
+    if (!nextStatus) return;
+    if (nextStatus === "failed") {
+      if (item.status === "failed") return;
+      item.status = "failed";
+      item.deliveryStatus = "failed";
+      item.error = update.error?.message || "WhatsApp menolak pesan setelah pengiriman awal";
+      item.updatedAt = new Date().toISOString();
+      if (item.result) item.result.deliveryStatus = "failed";
+      this.log("error", "whatsapp.message.failed", `Message failed after acceptance: ${item.phone || "unknown"}`, {
+        queueId: item.id,
+        phoneNumber: item.phone,
+        provider: item.provider,
+        providerMessageId: this.getProviderMessageId(item.result),
+        deliveryStatus: "failed",
+        error: item.error,
+        code: update.error?.code || null,
+      });
+      return;
+    }
+
+    const rank = { accepted: 1, delivered: 2, read: 3 };
+    const currentStatus = String(item.deliveryStatus || "accepted").toLowerCase();
+    if ((rank[nextStatus] || 0) <= (rank[currentStatus] || 0)) return;
+
+    item.deliveryStatus = nextStatus;
+    item.status = "sent";
+    item.updatedAt = new Date().toISOString();
+    if (item.result) {
+      item.result.deliveryStatus = nextStatus;
+      item.result.deliveryConfirmed = true;
+    }
+    this.log("info", `whatsapp.message.${nextStatus}`, `Message ${nextStatus} after acceptance: ${item.phone || "unknown"}`, {
+      queueId: item.id,
+      phoneNumber: item.phone,
+      provider: item.provider,
+      providerMessageId: this.getProviderMessageId(item.result),
+      deliveryStatus: nextStatus,
+    });
+  }
+
   toPublicItem(item) {
     const { task, resolve, reject, ...publicItem } = item;
     return publicItem;
@@ -158,12 +235,16 @@ class WhatsAppQueue {
     for (const [id, item] of this.items) {
       if (!TERMINAL_STATUSES.has(item.status)) continue;
       this.items.delete(id);
+      const messageId = this.getProviderMessageId(item.result);
+      if (messageId) this.messageItems.delete(messageId);
       if (this.items.size <= this.historyLimit) break;
     }
   }
 
   shutdown() {
     this.stopped = true;
+    this.messageItems.clear();
+    this.lateDeliveryStatuses.clear();
     for (const item of this.pending.splice(0)) {
       item.status = "cancelled";
       item.updatedAt = new Date().toISOString();

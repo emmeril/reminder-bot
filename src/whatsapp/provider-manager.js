@@ -13,6 +13,7 @@ class WhatsAppProviderManager {
       retryDelayMs: CONFIG.WHATSAPP_RETRY_DELAY * 1000,
       activityLog: this.activityLog,
     });
+    this.provider.setDeliveryStatusHandler?.((update) => this.queue.handleDeliveryStatus(update));
   }
 
   async initialize() {

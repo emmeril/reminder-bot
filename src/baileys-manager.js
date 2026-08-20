@@ -6,6 +6,8 @@ class BaileysManager {
 
   static activeInstanceId = null;
 
+  static deliveryStatusHandler = null;
+
   // Alias berikut mempertahankan kontrak manager lama untuk instalasi dan
   // integrasi yang masih mengakses koneksi pertama secara langsung.
   static get baileys() { return this.getPrimaryConnection().baileys; }
@@ -74,6 +76,7 @@ class BaileysManager {
         id,
         authStorage,
         browserName: CONFIG.BAILEYS_BROWSER_NAME,
+        onDeliveryStatus: (update) => this.deliveryStatusHandler?.(update),
       }));
     }
     return this.connections.get(id);
@@ -81,6 +84,13 @@ class BaileysManager {
 
   static getPrimaryConnection() {
     return this.getConnection(this.getInstanceIds()[0]);
+  }
+
+  static setDeliveryStatusHandler(handler) {
+    this.deliveryStatusHandler = typeof handler === "function" ? handler : null;
+    for (const connection of this.connections.values()) {
+      connection.setDeliveryStatusHandler((update) => this.deliveryStatusHandler?.(update));
+    }
   }
 
   static async initialize() {

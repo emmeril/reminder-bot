@@ -47,6 +47,7 @@ class BaileysConnection {
     this.id = options.id || "primary";
     this.authStorage = options.authStorage || CONFIG.BAILEYS_AUTH_STORAGE;
     this.browserName = options.browserName || CONFIG.BAILEYS_BROWSER_NAME;
+    this.deliveryStatusHandler = options.onDeliveryStatus || null;
   }
 
   baileys = null;
@@ -92,6 +93,8 @@ class BaileysConnection {
   // Automatic guard against burst sends and repeated reachout failures.
   autoSafetyGuard = new AutoSafetyGuard();
 
+  deliveryStatusHandler = null;
+
   messageAckFailures = new Map();
 
   messageAckStatuses = new Map();
@@ -126,6 +129,18 @@ class BaileysConnection {
       ...patch,
       checkedAt: Date.now(),
     };
+  }
+
+  setDeliveryStatusHandler(handler) {
+    this.deliveryStatusHandler = typeof handler === "function" ? handler : null;
+  }
+
+  notifyDeliveryStatus(update) {
+    try {
+      this.deliveryStatusHandler?.(update);
+    } catch {
+      // Status observers must never interrupt Baileys acknowledgement handling.
+    }
   }
 
   async initialize() {
@@ -664,6 +679,13 @@ class BaileysConnection {
         const deliveryStatus = numericStatus >= readStatus
           ? "read"
           : (numericStatus >= deliveryAckStatus ? "delivered" : "accepted");
+        this.notifyDeliveryStatus({
+          instanceId: this.id,
+          messageId,
+          deliveryStatus,
+          status: numericStatus,
+          remoteJid: update?.key?.remoteJid || null,
+        });
         const waiter = this.messageAckWaiters.get(messageId);
         if (waiter) {
           this.messageAckWaiters.delete(messageId);
@@ -676,6 +698,14 @@ class BaileysConnection {
       }
 
       const error = this.createMessageAckError(update);
+      this.notifyDeliveryStatus({
+        instanceId: this.id,
+        messageId,
+        deliveryStatus: "failed",
+        status: numericStatus,
+        remoteJid: update?.key?.remoteJid || null,
+        error,
+      });
       const waiter = this.messageAckWaiters.get(messageId);
       if (waiter) {
         this.messageAckWaiters.delete(messageId);

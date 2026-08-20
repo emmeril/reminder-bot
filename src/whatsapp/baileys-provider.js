@@ -58,6 +58,10 @@ class BaileysProvider extends WhatsAppProvider {
     return this.manager.disableOutbound();
   }
 
+  setDeliveryStatusHandler(handler) {
+    return this.manager.setDeliveryStatusHandler?.(handler);
+  }
+
   resetPairing(instanceId = null) {
     return this.manager.resetPairing(instanceId);
   }

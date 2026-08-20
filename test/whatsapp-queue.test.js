@@ -62,6 +62,38 @@ test("WhatsApp queue membedakan pesan diterima server dari pesan delivered", asy
   assert.equal(queue.getStatus().items[0].deliveryStatus, "accepted");
 });
 
+test("WhatsApp queue memperbarui accepted menjadi delivered saat ACK datang terlambat", async () => {
+  const queue = new WhatsAppQueue({ concurrency: 1, retryLimit: 1, retryDelayMs: 0 });
+  const result = await queue.enqueue(async () => ({
+    provider: "baileys",
+    messageId: "late-ack-1",
+    deliveryStatus: "accepted",
+  }), { phone: "6281234567890", provider: "baileys" });
+
+  assert.equal(queue.getStatus().counts.accepted, 1);
+  queue.handleDeliveryStatus({ messageId: "late-ack-1", deliveryStatus: "delivered" });
+
+  const status = queue.getStatus();
+  assert.equal(status.counts.accepted, 0);
+  assert.equal(status.counts.sent, 1);
+  assert.equal(status.items[0].deliveryStatus, "delivered");
+  assert.equal(result.deliveryConfirmed, true);
+});
+
+test("WhatsApp queue menyimpan ACK yang datang sebelum hasil provider didaftarkan", async () => {
+  const queue = new WhatsAppQueue({ concurrency: 1, retryLimit: 1, retryDelayMs: 0 });
+  queue.handleDeliveryStatus({ messageId: "early-ack-1", deliveryStatus: "delivered" });
+
+  const result = await queue.enqueue(async () => ({
+    provider: "baileys",
+    messageId: "early-ack-1",
+    deliveryStatus: "accepted",
+  }), { phone: "6281234567890", provider: "baileys" });
+
+  assert.equal(result.deliveryStatus, "delivered");
+  assert.equal(queue.getStatus().counts.sent, 1);
+});
+
 test("WhatsApp queue membatalkan item pending saat shutdown", async () => {
   const queue = new WhatsAppQueue({ concurrency: 1, retryLimit: 1, retryDelayMs: 0 });
   let release;
