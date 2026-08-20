@@ -5071,6 +5071,15 @@ class WebServer {
 
     this.app.use((req, res, next) => {
       if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
+      const transportFormPaths = new Set([
+        "/transport/reset-pairing",
+        "/transport/enable-sending",
+        "/transport/disable-sending",
+        "/transport/reconnect",
+      ]);
+      // Transport forms use a session-bound CSRF token because some reverse
+      // proxies rewrite Origin on regular HTML form submissions.
+      if (transportFormPaths.has(req.path)) return next();
       const origin = req.headers.origin;
       if (!origin) return next();
 
@@ -5159,11 +5168,30 @@ class WebServer {
     };
 
     const requirePageAuth = (req, res, next) => {
-      const { session } = readSession(req);
+      const { token, session } = readSession(req);
       if (!session) {
         return res.redirect("/login");
       }
 
+      req.authSessionToken = token;
+      req.authSession = session;
+      return next();
+    };
+
+    const getTransportCsrfToken = (sessionToken) => crypto
+      .createHmac("sha256", CONFIG.SESSION_SECRET)
+      .update(`transport:${sessionToken}`)
+      .digest("hex");
+
+    const requireTransportFormAuth = (req, res, next) => {
+      const { token, session } = readSession(req);
+      if (!session) return res.redirect("/login");
+      const submittedToken = sanitizeInput(String(req.body.csrfToken || ""));
+      const expectedToken = getTransportCsrfToken(token);
+      if (!submittedToken || !safeCompareString(submittedToken, expectedToken)) {
+        return res.redirect(`/transport?error=${encodeURIComponent("Form sudah kedaluwarsa. Muat ulang halaman transport lalu coba lagi.")}`);
+      }
+      req.authSessionToken = token;
       req.authSession = session;
       return next();
     };
@@ -5529,7 +5557,7 @@ class WebServer {
         next(error);
       }
     });
-    this.app.post("/transport/reset-pairing", requirePageAuth, async (req, res) => {
+    this.app.post("/transport/reset-pairing", requireTransportFormAuth, async (req, res) => {
       try {
         const instanceId = sanitizeInput(req.body.instanceId) || null;
         if (sanitizeInput(req.body.confirmReset).toLowerCase() !== "yes") {
@@ -5543,7 +5571,7 @@ class WebServer {
         return res.redirect(`/transport?error=${encodeURIComponent(error.message)}`);
       }
     });
-    this.app.post("/transport/enable-sending", requirePageAuth, async (req, res) => {
+    this.app.post("/transport/enable-sending", requireTransportFormAuth, async (req, res) => {
       try {
         this.notificationBot.enableOutbound();
         this.activityLog.push("info", "notification", "Pengiriman WhatsApp diaktifkan manual dari halaman transport");
@@ -5553,12 +5581,12 @@ class WebServer {
         return res.redirect(`/transport?error=${encodeURIComponent(error.message)}`);
       }
     });
-    this.app.post("/transport/disable-sending", requirePageAuth, (req, res) => {
+    this.app.post("/transport/disable-sending", requireTransportFormAuth, (req, res) => {
       this.notificationBot.disableOutbound();
       this.activityLog.push("info", "notification", "Pengiriman WhatsApp dijeda manual dari halaman transport");
       return res.redirect("/transport?sendingDisabled=1");
     });
-    this.app.post("/transport/reconnect", requirePageAuth, async (_req, res) => {
+    this.app.post("/transport/reconnect", requireTransportFormAuth, async (_req, res) => {
       try {
         await this.notificationBot.reconnect();
         return res.redirect("/transport");
@@ -5567,6 +5595,7 @@ class WebServer {
       }
     });
     this.app.get("/transport", requirePageAuth, async (req, res) => {
+      const csrfToken = getTransportCsrfToken(req.authSessionToken);
       const status = await this.notificationBot.getTransportStatus();
       if (status.whatsappProviderEnabled) {
         const instances = Array.isArray(status.instances) && status.instances.length > 0
@@ -5596,6 +5625,7 @@ class WebServer {
               ${instance.detail ? `<p style="margin:12px 0 0;font:14px/1.5 sans-serif;color:#627773;">${escapeHtml(instance.detail)}</p>` : ""}
               ${qrDataUrl ? `<div style="margin-top:16px;text-align:center;"><img src="${qrDataUrl}" alt="QR pairing ${escapeHtml(instance.id)}" width="280" height="280" style="max-width:100%;height:auto;border-radius:14px;"><p style="font:13px/1.5 sans-serif;color:#627773;">Pindai sebagai perangkat tertaut yang berbeda.</p></div>` : ""}
               <form method="post" action="/transport/reset-pairing" style="margin-top:16px;">
+                <input type="hidden" name="csrfToken" value="${csrfToken}">
                 <input type="hidden" name="instanceId" value="${escapeHtml(instance.id)}">
                 <label style="display:flex;gap:8px;align-items:flex-start;margin:0 0 12px;font:12px/1.5 sans-serif;color:#7c2d12;text-align:left;">
                   <input type="checkbox" name="confirmReset" value="yes" required style="margin-top:3px;">
@@ -5624,11 +5654,13 @@ class WebServer {
               <p style="margin:0 0 18px;line-height:1.6;">Status pengiriman: <strong>${status.outboundEnabled ? "AKTIF" : "DIJEDA"}</strong>.</p>
               ${status.outboundEnabled ? `
                 <form method="post" action="/transport/disable-sending">
+                  <input type="hidden" name="csrfToken" value="${csrfToken}">
                   <button type="submit" style="padding:13px 20px;border:0;border-radius:999px;background:#9a3412;color:#fff;font-weight:700;cursor:pointer;">Jeda Pengiriman</button>
                 </form>
               ` : `
                 <p style="font:14px/1.6 sans-serif;color:#627773;">Pairing saja tidak akan mengirim pesan. Periksa antrean reminder sebelum mengaktifkan pengiriman.</p>
                 <form method="post" action="/transport/enable-sending">
+                  <input type="hidden" name="csrfToken" value="${csrfToken}">
                   <button type="submit" style="padding:13px 20px;border:0;border-radius:999px;background:#176b5b;color:#fff;font-weight:700;cursor:pointer;">Aktifkan Pengiriman</button>
                 </form>
               `}

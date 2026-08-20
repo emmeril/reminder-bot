@@ -882,12 +882,14 @@ test("reset pairing memerlukan konfirmasi eksplisit", async () => {
   assert.equal(pageResponse.status, 200);
   assert.match(html, /name="confirmReset" value="yes" required/);
   assert.match(html, /Hapus Sesi &amp; Buat QR Baru/);
+  const csrfToken = html.match(/name="csrfToken" value="([a-f0-9]+)"/)?.[1];
+  assert.match(csrfToken || "", /^[a-f0-9]{64}$/);
 
   const rejected = await fetch(`${baseUrl}/transport/reset-pairing`, {
     method: "POST",
     redirect: "manual",
     headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    body: "instanceId=primary",
+    body: `csrfToken=${csrfToken}&instanceId=primary`,
   });
   assert.equal(rejected.status, 302);
   assert.match(rejected.headers.get("location"), /error=/);
@@ -897,7 +899,7 @@ test("reset pairing memerlukan konfirmasi eksplisit", async () => {
     method: "POST",
     redirect: "manual",
     headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-    body: "instanceId=primary&confirmReset=yes",
+    body: `csrfToken=${csrfToken}&instanceId=primary&confirmReset=yes`,
   });
   assert.equal(confirmed.status, 302);
   assert.match(confirmed.headers.get("location"), /pairingReset=1/);
