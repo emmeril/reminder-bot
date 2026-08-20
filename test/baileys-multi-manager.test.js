@@ -82,6 +82,36 @@ test("memilih primary saat sehat lalu berpindah ke backup saat primary putus", a
   assert.equal(backup.sent.length, 1);
 });
 
+test("kembali ke primary otomatis setelah primary pulih", async () => {
+  const primary = fakeConnection("primary");
+  const backup = fakeConnection("backup");
+  BaileysManager.connections.set("primary", primary);
+  BaileysManager.connections.set("backup", backup);
+
+  await BaileysManager.sendMessage("6281234567890", "Pertama");
+  primary.getStatus = () => ({
+    state: "DISCONNECTED",
+    deviceReady: false,
+    outboundEnabled: false,
+    canSend: false,
+    providers: { baileys: { connection: { detail: "down" } } },
+  });
+  await BaileysManager.sendMessage("6281234567890", "Backup");
+  assert.equal(BaileysManager.activeInstanceId, "backup");
+
+  primary.getStatus = () => ({
+    state: "READY",
+    deviceReady: true,
+    outboundEnabled: true,
+    canSend: true,
+    providers: { baileys: { connection: { detail: "ready" } } },
+  });
+  const recovered = await BaileysManager.sendMessage("6281234567890", "Kembali primary");
+
+  assert.equal(recovered.instanceId, "primary");
+  assert.equal(BaileysManager.activeInstanceId, "primary");
+});
+
 test("melaporkan setiap instance dan storage auth-nya dibuat terpisah", () => {
   const primary = BaileysManager.getConnection("primary");
   const backup = BaileysManager.getConnection("backup");

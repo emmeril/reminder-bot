@@ -96,12 +96,16 @@ class BaileysManager {
   }
 
   static selectConnection() {
-    const ready = this.getInstanceIds()
+    const instanceIds = this.getInstanceIds();
+    const ready = instanceIds
       .map((id) => this.getConnection(id))
       .filter((connection) => connection.getStatus().canSend === true);
     if (ready.length === 0) return null;
 
-    const active = ready.find((connection) => connection.id === this.activeInstanceId);
+    // Primary selalu menjadi koneksi pilihan ketika sudah pulih. Backup hanya
+    // dipakai selama primary belum siap mengirim.
+    const primary = ready.find((connection) => connection.id === instanceIds[0]);
+    const active = primary || ready.find((connection) => connection.id === this.activeInstanceId);
     const selected = active || ready[0];
     this.activeInstanceId = selected.id;
     return selected;
