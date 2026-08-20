@@ -596,6 +596,102 @@ test("pelanggan membuat pembayaran Midtrans dan webhook melunasi tagihan", async
   assert.equal(paymentNotifications, 1);
 });
 
+test("pembayaran Midtrans memulihkan akun hotspot yang disabled di MikroTik", async () => {
+  Object.assign(CONFIG, {
+    MIDTRANS_ENABLED: true,
+    MIDTRANS_SERVER_KEY: "midtrans-server-key",
+  });
+  const contact = {
+    id: "contact-midtrans-recover",
+    name: "Pelanggan Pulih",
+    phoneNumber: "6281234567891",
+    mikrotikUsername: "pelanggan_pulih",
+    mikrotikProfile: "50M",
+    mikrotikPassword: "67891",
+    hotspotProvisioningStatus: "DISABLED",
+  };
+  const transaction = {
+    orderId: "RB-RECOVER-1",
+    contactId: contact.id,
+    amount: 100000,
+    periods: ["2026-08"],
+    status: "PENDING",
+    provider: "midtrans",
+  };
+  const calls = [];
+  let routerUsers = [{ username: contact.mikrotikUsername, profile: contact.mikrotikProfile, disabled: true }];
+  const baseUrl = await startServer({
+    getContact: (id) => id === contact.id ? contact : null,
+    getPaymentGatewayTransaction: (orderId) => orderId === transaction.orderId ? transaction : null,
+    completeMidtransPayment: async () => {
+      transaction.status = "PAID";
+      return { transaction, contact, alreadyProcessed: false };
+    },
+    prepareHotspotLifecycleOperation: async (_id, operation) => {
+      calls.push(`prepare:${operation}`);
+      return contact;
+    },
+    updateHotspotProvisioningStatus: async (_id, status) => {
+      calls.push(`status:${status}`);
+      return { contact };
+    },
+    markHotspotEnabled: async () => {
+      calls.push("mark:enabled");
+      contact.hotspotProvisioningStatus = "ACTIVE";
+      return contact;
+    },
+  }, {}, {
+    getHotspotUsers: async () => routerUsers,
+    setHotspotUserDisabled: async (username, phoneNumber, disabled) => {
+      calls.push(`router:${username}:${phoneNumber}:${disabled}`);
+      return { username, password: contact.mikrotikPassword, profile: contact.mikrotikProfile, disabled };
+    },
+    reactivateHotspotUser: async (payload) => {
+      calls.push("router:reactivate");
+      return { ...payload, created: true };
+    },
+    verifyHotspotCustomer: async () => {
+      calls.push("router:verify");
+      return { username: contact.mikrotikUsername };
+    },
+  }, {}, {
+    isConfigured: () => true,
+    verifyNotificationSignature: () => true,
+    getTransactionStatus: async () => ({
+      order_id: transaction.orderId,
+      gross_amount: "100000.00",
+      transaction_status: "settlement",
+      transaction_id: "midtrans-recover-payment",
+    }),
+  });
+
+  const response = await fetch(`${baseUrl}/api/payments/midtrans/notification`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ order_id: transaction.orderId, signature_key: "verified-by-stub" }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.status, "PAID");
+  assert.deepEqual(calls, [
+    "prepare:ENABLE",
+    "status:PROVISIONING",
+    `router:${contact.mikrotikUsername}:${contact.phoneNumber}:false`,
+    "mark:enabled",
+  ]);
+  assert.equal(contact.hotspotProvisioningStatus, "ACTIVE");
+
+  routerUsers = [];
+  const secondResponse = await fetch(`${baseUrl}/api/payments/midtrans/notification`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ order_id: transaction.orderId, signature_key: "verified-by-stub" }),
+  });
+  assert.equal(secondResponse.status, 200);
+  assert.deepEqual(calls.slice(-3), ["router:reactivate", "router:verify", "mark:enabled"]);
+});
+
 test("password lokal tidak berubah ketika sinkronisasi MikroTik gagal", async () => {
   CONFIG.SESSION_SECRET = "test-session-secret";
   let persistenceCalls = 0;

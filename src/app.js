@@ -4732,6 +4732,64 @@ class WebServer {
     });
   }
 
+  async recoverHotspotAfterPayment(contact) {
+    const password = sanitizeInput(contact?.mikrotikPassword || "")
+      || String(contact?.phoneNumber || "").slice(-5);
+    if (!contact?.id || !contact.mikrotikUsername || !contact.mikrotikProfile || !password) {
+      return { attempted: false, reason: "incomplete_account" };
+    }
+    if (typeof this.mikrotikService.getHotspotUsers !== "function") {
+      return { attempted: false, reason: "unsupported" };
+    }
+
+    const users = await this.mikrotikService.getHotspotUsers();
+    const username = String(contact.mikrotikUsername).toLowerCase();
+    const matchedUser = (users || []).find((user) => String(user.username || "").toLowerCase() === username) || null;
+    const routerUser = matchedUser?.source === "active" ? null : matchedUser;
+    if (routerUser && routerUser.disabled) {
+      const result = await this.setHotspotContactDisabled(contact, false);
+      return { attempted: true, action: "enabled", contact: result.contact, result };
+    }
+    if (routerUser) {
+      const current = this.dataManager.getContact(contact.id) || contact;
+      if (normalizeHotspotProvisioningStatus(current.hotspotProvisioningStatus) === HOTSPOT_PROVISIONING_STATUS.ACTIVE) {
+        return { attempted: true, action: "already_active", contact: current };
+      }
+      const persisted = await this.dataManager.markHotspotEnabled(current.id, {
+        password: current.mikrotikPassword,
+        profile: current.mikrotikProfile,
+      });
+      return { attempted: true, action: "already_active", contact: persisted };
+    }
+
+    return this.hotspotProvisioningLock.runExclusive(String(contact.id), async () => {
+      const current = this.dataManager.getContact(contact.id) || contact;
+      await this.dataManager.prepareHotspotLifecycleOperation(current.id, HOTSPOT_PROVISIONING_OPERATION.ENABLE);
+      await this.dataManager.updateHotspotProvisioningStatus(
+        current.id,
+        HOTSPOT_PROVISIONING_STATUS.PROVISIONING,
+        { error: "" }
+      );
+      try {
+        const registered = await this.mikrotikService.reactivateHotspotUser({
+          username: current.mikrotikUsername,
+          password,
+          profile: current.mikrotikProfile,
+          phoneNumber: current.phoneNumber,
+        });
+        await this.mikrotikService.verifyHotspotCustomer(registered);
+        const persisted = await this.dataManager.markHotspotEnabled(current.id, registered);
+        return { attempted: true, action: "created", contact: persisted, result: registered };
+      } catch (error) {
+        await this.dataManager.updateHotspotProvisioningStatus(current.id, HOTSPOT_PROVISIONING_STATUS.FAILED, {
+          error: error.message,
+          checkedAt: new Date().toISOString(),
+        }).catch(() => {});
+        throw error;
+      }
+    });
+  }
+
   async changeCustomerHotspotPassword(contactId, currentPassword, requestedPassword) {
     return this.hotspotProvisioningLock.runExclusive(String(contactId), async () => {
       const account = this.dataManager.getCustomerPortalAccountByContactId(contactId);
@@ -4833,7 +4891,20 @@ class WebServer {
     const localTransaction = this.dataManager.getPaymentGatewayTransaction(orderId);
     if (!localTransaction) return { status: "UNKNOWN_ORDER", orderId };
     if (localTransaction.status === PAYMENT_GATEWAY_STATUS.PAID) {
-      return { status: PAYMENT_GATEWAY_STATUS.PAID, alreadyProcessed: true, transaction: localTransaction };
+      let hotspotRecovery = { attempted: false, reason: "already_paid" };
+      const contact = this.dataManager.getContact(localTransaction.contactId);
+      if (contact) {
+        try {
+          hotspotRecovery = await this.recoverHotspotAfterPayment(contact);
+        } catch (error) {
+          hotspotRecovery = { attempted: true, action: "failed", error: error.message };
+          this.activityLog.push("error", "payment", `Pembayaran ${orderId} lunas tetapi pemulihan hotspot gagal`, {
+            contactId: contact.id,
+            error: error.message,
+          });
+        }
+      }
+      return { status: PAYMENT_GATEWAY_STATUS.PAID, alreadyProcessed: true, transaction: localTransaction, hotspotRecovery };
     }
 
     const gatewayData = await this.midtransService.getTransactionStatus(orderId);
@@ -4874,12 +4945,28 @@ class WebServer {
           });
         });
       }
+      let hotspotRecovery = { attempted: false, reason: "incomplete_account" };
+      try {
+        hotspotRecovery = await this.recoverHotspotAfterPayment(result.contact);
+        if (hotspotRecovery.attempted && hotspotRecovery.action !== "already_active") {
+          this.activityLog.push("info", "payment", `Hotspot pelanggan dipulihkan setelah pembayaran ${orderId}`, {
+            contactId: result.contact.id,
+            action: hotspotRecovery.action,
+          });
+        }
+      } catch (error) {
+        hotspotRecovery = { attempted: true, action: "failed", error: error.message };
+        this.activityLog.push("error", "payment", `Pembayaran ${orderId} lunas tetapi pemulihan hotspot gagal`, {
+          contactId: result.contact.id,
+          error: error.message,
+        });
+      }
       this.activityLog.push("info", "payment", `Pembayaran Midtrans ${orderId} terverifikasi lunas`, {
         contactId: result.contact.id,
         amount: localTransaction.amount,
         alreadyProcessed: result.alreadyProcessed,
       });
-      return { status, alreadyProcessed: result.alreadyProcessed, transaction: result.transaction };
+      return { status, alreadyProcessed: result.alreadyProcessed, transaction: result.transaction, hotspotRecovery };
     }
 
     const updated = await this.dataManager.updatePaymentGatewayTransaction(orderId, {
@@ -5183,6 +5270,26 @@ class WebServer {
 
     this.app.get("/api/pelanggan/account", requireCustomerApiAuth, handleApi(async (req) => {
       await this.reconcilePendingMidtransPayments(req.customerSession.contactId);
+      const contact = typeof this.dataManager.getContact === "function"
+        ? this.dataManager.getContact(req.customerSession.contactId)
+        : null;
+      if (contact) {
+        const hydrated = typeof this.dataManager.hydrateContact === "function"
+          ? this.dataManager.hydrateContact(contact)
+          : contact;
+        const hotspotStatus = normalizeHotspotProvisioningStatus(contact.hotspotProvisioningStatus);
+        const recoveryFailed = hotspotStatus === HOTSPOT_PROVISIONING_STATUS.FAILED
+          && contact.hotspotProvisioningOperation === HOTSPOT_PROVISIONING_OPERATION.ENABLE;
+        if (hydrated.currentPaymentStatus === PAYMENT_STATUS.PAID
+          && (isHotspotAccountUnavailable(hotspotStatus, contact.hotspotProvisioningError) || recoveryFailed)) {
+          await this.recoverHotspotAfterPayment(contact).catch((error) => {
+            this.activityLog.push("error", "payment", `Retry pemulihan hotspot pelanggan ${contact.id} gagal`, {
+              contactId: contact.id,
+              error: error.message,
+            });
+          });
+        }
+      }
       return this.dataManager.getCustomerPortalData(req.customerSession.contactId);
     }));
     this.app.post("/api/pelanggan/payments/midtrans", requireCustomerApiAuth, handleApi(async (req) => {
