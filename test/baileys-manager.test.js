@@ -153,6 +153,66 @@ test("mengirim pesan ke LID ketika mapping PN tersedia", async () => {
   }), { conversation: "Halo" });
 });
 
+test("menggunakan LID dari hasil pemeriksaan nomor sebelum mapping lokal", async () => {
+  let request;
+  BaileysManager.socket = {
+    onWhatsApp: async () => [{
+      exists: true,
+      jid: "6281234567890@s.whatsapp.net",
+      lid: "987654321@lid",
+    }],
+    signalRepository: {
+      lidMapping: {
+        getLIDForPN: async () => "stale@lid",
+      },
+    },
+    sendMessage: async (jid, content) => {
+      request = { jid, content };
+      return {
+        key: { id: "message-lid", remoteJid: jid },
+        message: { conversation: "Halo" },
+      };
+    },
+  };
+
+  const result = await BaileysManager.sendMessage("6281234567890", "Halo");
+
+  assert.deepEqual(request, { jid: "987654321@lid", content: { text: "Halo" } });
+  assert.equal(result.targetJid, "987654321@lid");
+});
+
+test("melaporkan penolakan 463 walaupun sendMessage sempat mengembalikan ID", async () => {
+  const connection = BaileysManager.getPrimaryConnection();
+  BaileysManager.socket = {
+    onWhatsApp: async () => [{
+      exists: true,
+      jid: "6281234567890@s.whatsapp.net",
+      lid: "987654321@lid",
+    }],
+    sendMessage: async (jid) => {
+      const result = {
+        key: { id: "message-rejected", remoteJid: jid, fromMe: true },
+        message: { conversation: "Halo" },
+      };
+      setImmediate(() => connection.handleMessageUpdates([{
+        key: result.key,
+        update: { status: 0, messageStubParameters: ["463"] },
+      }], { ERROR: 0 }));
+      return result;
+    },
+  };
+
+  await assert.rejects(
+    () => BaileysManager.sendMessage("6281234567890", "Halo"),
+    (error) => {
+      assert.equal(error.code, "WHATSAPP_REACHOUT_RESTRICTED");
+      assert.equal(error.statusCode, 429);
+      assert.match(error.message, /pelanggan sudah membalas/);
+      return true;
+    }
+  );
+});
+
 test("socket memakai sync bawaan Baileys dan menyediakan message retry store", async () => {
   const connection = BaileysManager.getPrimaryConnection();
   const originalBaileys = connection.baileys;

@@ -88,6 +88,10 @@ class BaileysConnection {
 
   msgRetryCounterCache = new BoundedCache(1000);
 
+  messageAckFailures = new Map();
+
+  messageAckWaiters = new Map();
+
   // Pengiriman aktif otomatis setelah koneksi WhatsApp benar-benar terbuka.
   // Selama pairing/reconnect belum selesai nilainya tetap false.
   outboundEnabled = false;
@@ -175,6 +179,10 @@ class BaileysConnection {
       this.saveCreds().catch((error) => {
         this.updateConnection({ detail: `Gagal menyimpan sesi Baileys: ${error.message}` });
       });
+    });
+    socket.ev.on("messages.update", (updates) => {
+      if (generation !== this.connectionGeneration) return;
+      this.handleMessageUpdates(updates, baileys.WAMessageStatus);
     });
     socket.ev.on("connection.update", (update) => {
       this.handleConnectionUpdate(update, socket, generation).catch((error) => {
@@ -553,6 +561,10 @@ class BaileysConnection {
       throw error;
     }
 
+    // USync sudah mengembalikan LID terbaru untuk nomor ini. Gunakan nilai
+    // tersebut sebelum membaca mapping lokal yang mungkin belum tersinkron.
+    if (result.lid) return result.lid;
+
     try {
       const lid = await this.socket.signalRepository?.lidMapping?.getLIDForPN?.(result.jid);
       return lid || result.jid;
@@ -594,6 +606,63 @@ class BaileysConnection {
     this.msgRetryCounterCache.flushAll();
   }
 
+  createMessageAckError(update) {
+    const parameters = Array.isArray(update?.update?.messageStubParameters)
+      ? update.update.messageStubParameters.map(String)
+      : [];
+    const serverCode = parameters[0] || null;
+    const isReachoutRestricted = serverCode === "463";
+    const error = new Error(isReachoutRestricted
+      ? "WhatsApp menolak pengiriman dari perangkat tertaut (kode 463). Pastikan pelanggan sudah membalas chat dari perangkat utama, lalu coba kirim kembali beberapa saat lagi."
+      : `WhatsApp menolak pesan${serverCode ? ` (kode ${serverCode})` : ""}.`);
+    error.code = isReachoutRestricted ? "WHATSAPP_REACHOUT_RESTRICTED" : "WHATSAPP_MESSAGE_REJECTED";
+    error.retryable = false;
+    error.statusCode = isReachoutRestricted ? 429 : 502;
+    return error;
+  }
+
+  handleMessageUpdates(updates, messageStatus = {}) {
+    const errorStatus = messageStatus?.ERROR ?? 0;
+    for (const update of Array.isArray(updates) ? updates : []) {
+      const messageId = String(update?.key?.id || "");
+      if (!messageId || update?.key?.fromMe !== true || update?.update?.status !== errorStatus) continue;
+
+      const error = this.createMessageAckError(update);
+      const waiter = this.messageAckWaiters.get(messageId);
+      if (waiter) {
+        this.messageAckWaiters.delete(messageId);
+        clearTimeout(waiter.timer);
+        waiter.resolve(error);
+      } else {
+        this.messageAckFailures.set(messageId, { error, recordedAt: Date.now() });
+      }
+      console.warn(`[Baileys:${this.id}] pesan ditolak WhatsApp; id=${messageId}; kode=${error.code}`);
+    }
+
+    const cutoff = Date.now() - 60_000;
+    for (const [messageId, failure] of this.messageAckFailures) {
+      if (failure.recordedAt < cutoff) this.messageAckFailures.delete(messageId);
+    }
+  }
+
+  async waitForImmediateMessageFailure(messageId, timeoutMs = 2_000) {
+    if (!messageId) return;
+    const existing = this.messageAckFailures.get(messageId);
+    if (existing) {
+      this.messageAckFailures.delete(messageId);
+      throw existing.error;
+    }
+
+    const failure = await new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.messageAckWaiters.delete(messageId);
+        resolve(null);
+      }, timeoutMs);
+      this.messageAckWaiters.set(messageId, { resolve, timer });
+    });
+    if (failure) throw failure;
+  }
+
   async checkPhoneNumber(number) {
     const normalized = normalizePhoneNumber(number);
     if (!isValidPhoneNumber(normalized)) {
@@ -628,6 +697,7 @@ class BaileysConnection {
       phoneNumber: normalized,
       registered: Boolean(match),
       jid: match?.jid || null,
+      lid: match?.lid || null,
     };
   }
 
@@ -645,6 +715,7 @@ class BaileysConnection {
       const result = await this.socket.sendMessage(jid, { text: String(message || "") });
       this.rememberMessage(result);
       await this.authStore?.saveMessage?.(result?.key, result?.message).catch(() => {});
+      await this.waitForImmediateMessageFailure(result?.key?.id);
       this.lastActivity = Date.now();
       this.updateConnection({
         connected: true,
@@ -718,6 +789,12 @@ class BaileysConnection {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     this.connectionGeneration += 1;
+    for (const waiter of this.messageAckWaiters.values()) {
+      clearTimeout(waiter.timer);
+      waiter.resolve(null);
+    }
+    this.messageAckWaiters.clear();
+    this.messageAckFailures.clear();
     const socket = this.socket;
     this.socket = null;
     if (socket?.end) {
