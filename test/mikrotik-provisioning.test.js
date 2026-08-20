@@ -280,3 +280,28 @@ test("deaktivasi menolak menghapus akun yang dimiliki pelanggan lain", async () 
   assert.equal(getRemoveCalls(), 0);
   assert.equal(getKilledSessions(), 0);
 });
+
+test("menonaktifkan dan mengaktifkan akun hotspot tanpa menghapus user", async () => {
+  const { service, users, getUpdateCalls, getRemoveCalls, getKilledSessions } = createServiceWithUsers([{
+    ".id": "*1",
+    name: "pelanggan_toggle",
+    profile: "100M",
+    password: "67898",
+    email: "6281234567898@localhost.local",
+    active: true,
+    disabled: "false",
+  }]);
+
+  const disabled = await service.setHotspotUserDisabled("pelanggan_toggle", "6281234567898", true);
+  assert.equal(disabled.disabled, true);
+  assert.equal(users.length, 1);
+  assert.equal(users[0].disabled, "yes");
+  assert.equal(disabled.activeSessionsKilled, 1);
+
+  const enabled = await service.setHotspotUserDisabled("pelanggan_toggle", "6281234567898", false);
+  assert.equal(enabled.disabled, false);
+  assert.equal(users[0].disabled, "no");
+  assert.equal(getUpdateCalls(), 2);
+  assert.equal(getRemoveCalls(), 0);
+  assert.equal(getKilledSessions(), 1);
+});

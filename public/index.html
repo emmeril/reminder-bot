@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/public/tailwind.css?v=20260819-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20260819-3">
-  <script defer src="/public/app.js?v=20260819-2"></script>
+  <script defer src="/public/app.js?v=20260820-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -451,6 +451,7 @@
                 <option value="PENDING">Menunggu provisioning</option>
                 <option value="FAILED">Sinkronisasi gagal</option>
                 <option value="DEACTIVATED">Dinonaktifkan terjadwal</option>
+                <option value="DISABLED">Dinonaktifkan admin</option>
                 <option value="AUTO">Auto reaktivasi aktif</option>
               </select>
               <select x-model.number="filters.contactHotspot.pageSize" @change="resetPage('contactHotspot')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
@@ -493,6 +494,8 @@
                             <button type="button" @click="openAccountDeliveryModal(contact)" class="customer-account-send-button border border-emerald-600 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"><i class="fa-brands fa-whatsapp mr-1.5"></i>Kirim Akun</button>
                             <button x-show="canRetryHotspotProvisioning(contact)" type="button" @click="retryHotspotProvisioning(contact)" class="border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"><i class="fa-solid fa-rotate mr-1.5"></i>Coba lagi</button>
                             <button x-show="contact.mikrotikUsername && contact.mikrotikProfile && canReactivateHotspot(contact)" type="button" @click="reactivateHotspotContact(contact)" class="border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-rotate-right mr-1.5"></i>Reaktivasi</button>
+                            <button x-show="canDisableHotspot(contact)" type="button" @click="setHotspotDisabled(contact, true)" class="border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"><i class="fa-solid fa-ban mr-1.5"></i>Nonaktifkan</button>
+                            <button x-show="canEnableHotspot(contact)" type="button" @click="setHotspotDisabled(contact, false)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-power-off mr-1.5"></i>Aktifkan</button>
                             <button type="button" @click="openContactEditModal(contact)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-gear mr-1.5"></i>Atur hotspot</button>
                           </div>
                         </td>
@@ -1484,9 +1487,9 @@
             class="rounded-2xl bg-clay px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 transition hover:bg-clay/90 disabled:cursor-not-allowed disabled:opacity-60"
             :disabled="deleteConfirm.loading"
           >
-            <span x-show="!deleteConfirm.loading">Hapus</span>
+            <span x-show="!deleteConfirm.loading" x-text="deleteConfirm.confirmLabel"></span>
             <span x-show="deleteConfirm.loading" class="inline-flex items-center gap-2">
-              <i class="fa-solid fa-circle-notch fa-spin"></i>Menghapus...
+              <i class="fa-solid fa-circle-notch fa-spin"></i>Memproses...
             </span>
           </button>
         </div>

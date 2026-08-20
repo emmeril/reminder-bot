@@ -1285,6 +1285,63 @@ test("retry lifecycle reaktivasi diteruskan ke scheduler, bukan provisioning cre
   assert.equal(createCalls, 0);
 });
 
+test("admin dapat menonaktifkan akun hotspot di MikroTik tanpa menghapus data", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const contact = {
+    id: "contact-disable-hotspot",
+    name: "Pelanggan Disable",
+    phoneNumber: "6281234567898",
+    mikrotikUsername: "pelanggan_disable",
+    mikrotikProfile: "100M",
+    mikrotikPassword: "67898",
+    hotspotProvisioningStatus: "ACTIVE",
+    hotspotProvisioningOperation: "NONE",
+  };
+  const calls = [];
+  const baseUrl = await startServer({
+    getContact: () => contact,
+    prepareHotspotLifecycleOperation: async (_id, operation) => {
+      calls.push(`prepare:${operation}`);
+      contact.hotspotProvisioningOperation = operation;
+      return contact;
+    },
+    updateHotspotProvisioningStatus: async (_id, status) => {
+      calls.push(`status:${status}`);
+      contact.hotspotProvisioningStatus = status;
+      return { contact };
+    },
+    markHotspotDisabled: async () => {
+      calls.push("mark:disabled");
+      contact.hotspotProvisioningStatus = "DISABLED";
+      contact.hotspotProvisioningOperation = "NONE";
+      return contact;
+    },
+    toPublicContact: (value) => value,
+  }, {}, {
+    setHotspotUserDisabled: async (username, phoneNumber, disabled) => {
+      calls.push(`router:${username}:${phoneNumber}:${disabled}`);
+      return { username, disabled, activeSessionsKilled: 1 };
+    },
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/hotspot/disable`, {
+    method: "POST",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.operation, "DISABLE");
+  assert.equal(payload.data.disabled, true);
+  assert.deepEqual(calls, [
+    "prepare:DISABLE",
+    "status:PROVISIONING",
+    "router:pelanggan_disable:6281234567898:true",
+    "mark:disabled",
+  ]);
+});
+
 test("endpoint pengingat tagihan mengirim untuk pelanggan belum bayar yang memiliki tunggakan", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   let sentContact = null;

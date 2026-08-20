@@ -71,6 +71,7 @@ const HOTSPOT_PROVISIONING_STATUS = Object.freeze({
   ACTIVE: "ACTIVE",
   FAILED: "FAILED",
   DEACTIVATED: "DEACTIVATED",
+  DISABLED: "DISABLED",
   MISSING: "MISSING",
   CHANGED: "CHANGED",
 });
@@ -80,6 +81,8 @@ const HOTSPOT_PROVISIONING_OPERATION = Object.freeze({
   UPDATE: "UPDATE",
   REACTIVATE: "REACTIVATE",
   DEACTIVATE: "DEACTIVATE",
+  ENABLE: "ENABLE",
+  DISABLE: "DISABLE",
 });
 
 function normalizeHotspotProvisioningStatus(value, fallback = HOTSPOT_PROVISIONING_STATUS.NONE) {
@@ -92,6 +95,7 @@ function isHotspotAccountUnavailable(status, provisioningError = "") {
   return [
     HOTSPOT_PROVISIONING_STATUS.NONE,
     HOTSPOT_PROVISIONING_STATUS.DEACTIVATED,
+    HOTSPOT_PROVISIONING_STATUS.DISABLED,
     HOTSPOT_PROVISIONING_STATUS.MISSING,
   ].includes(normalizedStatus)
     || (normalizedStatus === HOTSPOT_PROVISIONING_STATUS.CHANGED
@@ -102,6 +106,9 @@ function getHotspotUnavailableMessage(status, provisioningError = "") {
   if (normalizeHotspotProvisioningStatus(status) === HOTSPOT_PROVISIONING_STATUS.CHANGED
     && /akun dinonaktifkan/i.test(String(provisioningError || ""))) {
     return "Akun hotspot dinonaktifkan di MikroTik.";
+  }
+  if (normalizeHotspotProvisioningStatus(status) === HOTSPOT_PROVISIONING_STATUS.DISABLED) {
+    return "Akun hotspot sedang dinonaktifkan oleh administrator.";
   }
   return "Akun hotspot tidak ditemukan di MikroTik.";
 }
@@ -422,6 +429,58 @@ class MikrotikService {
         username: hotspotUsername,
         activeSessionsKilled: activeResult.killed,
         removedUsers: removeResult.removed,
+      };
+    });
+  }
+
+  async setHotspotUserDisabled(username, phoneNumber = "", disabled = true) {
+    const hotspotUsername = sanitizeInput(username);
+    const normalizedPhone = normalizePhoneNumber(phoneNumber);
+    if (!hotspotUsername) throw new Error("Username hotspot wajib diisi.");
+
+    return this.withConnection(async (conn) => {
+      const userMenu = conn.menu("/ip/hotspot/user");
+      const users = await userMenu.print();
+      const expectedEmail = buildHotspotEmailFromPhone(normalizedPhone);
+      const matches = (users || []).filter(
+        (user) => String(user.name || "").toLowerCase() === hotspotUsername.toLowerCase()
+      );
+      if (expectedEmail && matches.some(
+        (user) => user.email && String(user.email).toLowerCase() !== expectedEmail.toLowerCase()
+      )) {
+        throw new Error(`Akun "${hotspotUsername}" terhubung ke pelanggan yang berbeda.`);
+      }
+      const existing = matches[0];
+      if (!existing) throw new Error(`Akun "${hotspotUsername}" tidak ditemukan di MikroTik.`);
+      const existingId = existing[".id"] || existing.id || existing.numbers || existing.number;
+      if (!existingId) throw new Error(`ID akun "${hotspotUsername}" tidak ditemukan di MikroTik.`);
+
+      let activeSessionsKilled = 0;
+      if (disabled) {
+        const activeResult = await this.removeActiveHotspotSessionsByName(conn, hotspotUsername);
+        activeSessionsKilled = activeResult.killed;
+      }
+      const updateResult = await userMenu.update({ disabled: disabled ? "yes" : "no" }, String(existingId));
+      if (updateResult?.["!trap"]) {
+        const message = updateResult["!trap"]?.[0]?.message || "Error tidak diketahui dari MikroTik.";
+        throw new Error(`Gagal ${disabled ? "menonaktifkan" : "mengaktifkan"} user hotspot: ${message}`);
+      }
+      const verifiedUsers = await userMenu.print();
+      const verified = (verifiedUsers || []).find(
+        (user) => String(user.name || "").toLowerCase() === hotspotUsername.toLowerCase()
+      );
+      const actualDisabled = String(verified?.disabled || "false").toLowerCase() === "true"
+        || ["yes", "on"].includes(String(verified?.disabled || "").toLowerCase());
+      if (!verified || actualDisabled !== Boolean(disabled)) {
+        throw new Error(`Akun "${hotspotUsername}" gagal diverifikasi setelah ${disabled ? "dinonaktifkan" : "diaktifkan"}.`);
+      }
+      return {
+        username: hotspotUsername,
+        password: sanitizeInput(verified.password || existing.password || ""),
+        profile: sanitizeInput(verified.profile || existing.profile || ""),
+        id: verified[".id"] || verified.id || verified.numbers || "",
+        disabled: Boolean(disabled),
+        activeSessionsKilled,
       };
     });
   }
@@ -2713,7 +2772,7 @@ class DataManager {
       contact.hotspotProvisioningError = errorMessage;
       contact.hotspotLastCheckedAt = checkedAt;
       contact.hotspotLastSyncedAt = syncedAt;
-      if ([HOTSPOT_PROVISIONING_STATUS.ACTIVE, HOTSPOT_PROVISIONING_STATUS.DEACTIVATED]
+      if ([HOTSPOT_PROVISIONING_STATUS.ACTIVE, HOTSPOT_PROVISIONING_STATUS.DEACTIVATED, HOTSPOT_PROVISIONING_STATUS.DISABLED]
         .includes(normalizedStatus)) {
         contact.hotspotProvisioningOperation = HOTSPOT_PROVISIONING_OPERATION.NONE;
         contact.hotspotProvisioningPrevious = null;
@@ -2954,8 +3013,9 @@ class DataManager {
         checked: 0,
         active: 0,
         missing: 0,
-        changed: 0,
-        deactivated: 0,
+      changed: 0,
+      deactivated: 0,
+      disabled: 0,
         skipped: 0,
         updated: 0,
       };
@@ -3015,8 +3075,12 @@ class DataManager {
           if (disabled) differences.push("akun dinonaktifkan");
 
           if (differences.length > 0) {
-            nextStatus = HOTSPOT_PROVISIONING_STATUS.CHANGED;
-            nextError = `Data akun "${username}" di MikroTik berubah: ${differences.join(", ")}.`;
+            nextStatus = disabled && differences.length === 1
+              ? HOTSPOT_PROVISIONING_STATUS.DISABLED
+              : HOTSPOT_PROVISIONING_STATUS.CHANGED;
+            nextError = nextStatus === HOTSPOT_PROVISIONING_STATUS.DISABLED
+              ? "Akun hotspot dinonaktifkan di MikroTik."
+              : `Data akun "${username}" di MikroTik berubah: ${differences.join(", ")}.`;
           } else {
             nextStatus = HOTSPOT_PROVISIONING_STATUS.ACTIVE;
           }
@@ -3071,6 +3135,7 @@ class DataManager {
         if (nextStatus === HOTSPOT_PROVISIONING_STATUS.MISSING) summary.missing += 1;
         if (nextStatus === HOTSPOT_PROVISIONING_STATUS.CHANGED) summary.changed += 1;
         if (nextStatus === HOTSPOT_PROVISIONING_STATUS.DEACTIVATED) summary.deactivated += 1;
+        if (nextStatus === HOTSPOT_PROVISIONING_STATUS.DISABLED) summary.disabled += 1;
       }
 
       if (summary.updated > 0) {
@@ -3090,12 +3155,12 @@ class DataManager {
       const contact = this.getContact(contactId);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
       const normalizedOperation = normalizeHotspotProvisioningOperation(operation, "");
-      if (![HOTSPOT_PROVISIONING_OPERATION.REACTIVATE, HOTSPOT_PROVISIONING_OPERATION.DEACTIVATE]
+      if (![HOTSPOT_PROVISIONING_OPERATION.REACTIVATE, HOTSPOT_PROVISIONING_OPERATION.DEACTIVATE, HOTSPOT_PROVISIONING_OPERATION.ENABLE, HOTSPOT_PROVISIONING_OPERATION.DISABLE]
         .includes(normalizedOperation)) {
         throw new Error("Operasi lifecycle hotspot tidak valid.");
       }
       if (!contact.mikrotikUsername) throw new Error("Username hotspot wajib diisi.");
-      if (normalizedOperation === HOTSPOT_PROVISIONING_OPERATION.REACTIVATE
+      if ([HOTSPOT_PROVISIONING_OPERATION.REACTIVATE, HOTSPOT_PROVISIONING_OPERATION.ENABLE].includes(normalizedOperation)
         && !contact.mikrotikProfile) {
         throw new Error("Profile hotspot wajib diisi untuk reaktivasi.");
       }
@@ -3156,6 +3221,84 @@ class DataManager {
         pelanggan.tanggalUpdate = contact.updatedAt;
       }
 
+      if (options.transaction) {
+        await this.saveContacts(options);
+        await this.savePelanggan(options);
+      } else {
+        await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+          const saveOptions = { transaction };
+          await this.saveContacts(saveOptions);
+          await this.savePelanggan(saveOptions);
+        }));
+      }
+      return this.hydrateContact(contact);
+    });
+  }
+
+  async markHotspotDisabled(contactId, result, options = {}) {
+    return this.withDataMutation(async () => {
+      const contact = this.getContact(contactId);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      const now = new Date().toISOString();
+      contact.hotspotProvisioningStatus = HOTSPOT_PROVISIONING_STATUS.DISABLED;
+      contact.hotspotProvisioningOperation = HOTSPOT_PROVISIONING_OPERATION.NONE;
+      contact.hotspotProvisioningPrevious = null;
+      contact.hotspotProvisioningError = "Akun hotspot dinonaktifkan di MikroTik oleh administrator.";
+      contact.hotspotLastCheckedAt = now;
+      contact.hotspotLastSyncedAt = now;
+      contact.updatedAt = now;
+      const pelanggan = this.pelanggan.get(contact.mikrotikUsername) || Array.from(this.pelanggan.values()).find(
+        (item) => String(item.contactId || "") === String(contact.id)
+      ) || null;
+      if (pelanggan) {
+        pelanggan.status = "disabled";
+        pelanggan.hotspotProvisioningStatus = HOTSPOT_PROVISIONING_STATUS.DISABLED;
+        pelanggan.hotspotProvisioningError = contact.hotspotProvisioningError;
+        pelanggan.hotspotLastCheckedAt = now;
+        pelanggan.hotspotLastSyncedAt = now;
+        pelanggan.tanggalUpdate = now;
+      }
+      if (options.transaction) {
+        await this.saveContacts(options);
+        await this.savePelanggan(options);
+      } else {
+        await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+          const saveOptions = { transaction };
+          await this.saveContacts(saveOptions);
+          await this.savePelanggan(saveOptions);
+        }));
+      }
+      return this.hydrateContact(contact);
+    });
+  }
+
+  async markHotspotEnabled(contactId, result, options = {}) {
+    return this.withDataMutation(async () => {
+      const contact = this.getContact(contactId);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      const now = new Date().toISOString();
+      contact.hotspotProvisioningStatus = HOTSPOT_PROVISIONING_STATUS.ACTIVE;
+      contact.hotspotProvisioningOperation = HOTSPOT_PROVISIONING_OPERATION.NONE;
+      contact.hotspotProvisioningPrevious = null;
+      contact.hotspotProvisioningError = "";
+      contact.hotspotLastCheckedAt = now;
+      contact.hotspotLastSyncedAt = now;
+      contact.mikrotikPassword = sanitizeInput(result?.password || contact.mikrotikPassword || "");
+      contact.mikrotikProfile = sanitizeInput(result?.profile || contact.mikrotikProfile || "");
+      contact.updatedAt = now;
+      const pelanggan = this.pelanggan.get(contact.mikrotikUsername) || Array.from(this.pelanggan.values()).find(
+        (item) => String(item.contactId || "") === String(contact.id)
+      ) || null;
+      if (pelanggan) {
+        pelanggan.status = "verified";
+        pelanggan.hotspotProvisioningStatus = HOTSPOT_PROVISIONING_STATUS.ACTIVE;
+        pelanggan.hotspotProvisioningError = "";
+        pelanggan.hotspotLastCheckedAt = now;
+        pelanggan.hotspotLastSyncedAt = now;
+        pelanggan.password = contact.mikrotikPassword || pelanggan.password;
+        pelanggan.profile = contact.mikrotikProfile || pelanggan.profile;
+        pelanggan.tanggalUpdate = now;
+      }
       if (options.transaction) {
         await this.saveContacts(options);
         await this.savePelanggan(options);
@@ -4511,6 +4654,84 @@ class WebServer {
     });
   }
 
+  async setHotspotContactDisabled(contact, disabled) {
+    return this.hotspotProvisioningLock.runExclusive(String(contact.id), async () => {
+      const current = this.dataManager.getContact(contact.id);
+      if (!current) throw new Error("Kontak tidak ditemukan.");
+      if (!current.mikrotikUsername || !current.mikrotikProfile) {
+        throw new Error("Data akun hotspot pelanggan belum lengkap.");
+      }
+      const operation = disabled
+        ? HOTSPOT_PROVISIONING_OPERATION.DISABLE
+        : HOTSPOT_PROVISIONING_OPERATION.ENABLE;
+      await this.dataManager.prepareHotspotLifecycleOperation(current.id, operation);
+      await this.dataManager.updateHotspotProvisioningStatus(current.id, HOTSPOT_PROVISIONING_STATUS.PROVISIONING, { error: "" });
+      let result;
+      try {
+        result = await this.mikrotikService.setHotspotUserDisabled(
+          current.mikrotikUsername,
+          current.phoneNumber,
+          disabled
+        );
+      } catch (error) {
+        await this.dataManager.updateHotspotProvisioningStatus(current.id, HOTSPOT_PROVISIONING_STATUS.FAILED, {
+          error: error.message,
+          checkedAt: new Date().toISOString(),
+        }).catch((statusError) => {
+          this.activityLog.push("error", "storage", `Gagal menyimpan status ${disabled ? "deaktivasi" : "aktivasi"} ${current.mikrotikUsername}: ${statusError.message}`);
+        });
+        const wrapped = new Error(`Akun hotspot gagal ${disabled ? "dinonaktifkan" : "diaktifkan"}: ${error.message}`);
+        wrapped.statusCode = 502;
+        wrapped.cause = error;
+        throw wrapped;
+      }
+
+      let persisted;
+      try {
+        persisted = disabled
+          ? await this.dataManager.markHotspotDisabled(current.id, result)
+          : await this.dataManager.markHotspotEnabled(current.id, result);
+      } catch (error) {
+        try {
+          await this.mikrotikService.setHotspotUserDisabled(
+            current.mikrotikUsername,
+            current.phoneNumber,
+            !disabled
+          );
+        } catch (rollbackError) {
+          this.activityLog.push("error", "mikrotik", `Rollback status akun hotspot ${current.mikrotikUsername} gagal: ${rollbackError.message}`, {
+            contactId: current.id,
+          });
+          const wrapped = new Error("Status akun berubah di MikroTik tetapi database gagal diperbarui. Periksa akun secara manual.");
+          wrapped.statusCode = 502;
+          wrapped.cause = error;
+          throw wrapped;
+        }
+        await this.dataManager.updateHotspotProvisioningStatus(current.id, HOTSPOT_PROVISIONING_STATUS.FAILED, {
+          error: error.message,
+          checkedAt: new Date().toISOString(),
+        }).catch(() => {});
+        const wrapped = new Error(`Status akun gagal disimpan dan perubahan MikroTik sudah dibatalkan: ${error.message}`);
+        wrapped.statusCode = 500;
+        wrapped.cause = error;
+        throw wrapped;
+      }
+
+      this.activityLog.push("info", "mikrotik", `User hotspot ${current.mikrotikUsername} ${disabled ? "dinonaktifkan" : "diaktifkan"} oleh administrator`, {
+        contactId: current.id,
+        username: current.mikrotikUsername,
+        activeSessionsKilled: result.activeSessionsKilled || 0,
+      });
+      return {
+        operation: disabled ? "DISABLE" : "ENABLE",
+        contact: persisted,
+        username: result.username,
+        disabled: Boolean(disabled),
+        activeSessionsKilled: result.activeSessionsKilled || 0,
+      };
+    });
+  }
+
   async changeCustomerHotspotPassword(contactId, currentPassword, requestedPassword) {
     return this.hotspotProvisioningLock.runExclusive(String(contactId), async () => {
       const account = this.dataManager.getCustomerPortalAccountByContactId(contactId);
@@ -5440,6 +5661,17 @@ class WebServer {
     this.app.post("/api/contacts/:id/hotspot/provision", requireApiAuth, handleApi(async (req) => {
       const contact = this.dataManager.getContact(req.params.id);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
+      if (contact.hotspotProvisioningOperation === HOTSPOT_PROVISIONING_OPERATION.ENABLE
+        || contact.hotspotProvisioningOperation === HOTSPOT_PROVISIONING_OPERATION.DISABLE) {
+        const toggleResult = await this.setHotspotContactDisabled(
+          contact,
+          contact.hotspotProvisioningOperation === HOTSPOT_PROVISIONING_OPERATION.DISABLE
+        );
+        return {
+          ...toggleResult,
+          contact: this.dataManager.toPublicContact(toggleResult.contact),
+        };
+      }
       if (contact.hotspotProvisioningOperation === HOTSPOT_PROVISIONING_OPERATION.REACTIVATE
         || contact.hotspotProvisioningOperation === HOTSPOT_PROVISIONING_OPERATION.DEACTIVATE) {
         const lifecycleResult = contact.hotspotProvisioningOperation === HOTSPOT_PROVISIONING_OPERATION.REACTIVATE
@@ -5467,6 +5699,24 @@ class WebServer {
         ...result,
         contact: this.dataManager.toPublicContact(result.contact),
         password: undefined,
+      };
+    }));
+    this.app.post("/api/contacts/:id/hotspot/disable", requireApiAuth, handleApi(async (req) => {
+      const contact = this.dataManager.getContact(req.params.id);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      const result = await this.setHotspotContactDisabled(contact, true);
+      return {
+        ...result,
+        contact: this.dataManager.toPublicContact(result.contact),
+      };
+    }));
+    this.app.post("/api/contacts/:id/hotspot/enable", requireApiAuth, handleApi(async (req) => {
+      const contact = this.dataManager.getContact(req.params.id);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      const result = await this.setHotspotContactDisabled(contact, false);
+      return {
+        ...result,
+        contact: this.dataManager.toPublicContact(result.contact),
       };
     }));
     this.app.post("/api/hotspot/reactivations/run", requireApiAuth, handleApi(async () => this.hotspotReactivationScheduler.processDueReactivations()));

@@ -86,6 +86,23 @@ test("sinkronisasi otomatis menandai profile, pemilik, atau disabled yang beruba
   assert.match(contact.hotspotProvisioningError, /akun dinonaktifkan/);
 });
 
+test("sinkronisasi otomatis membedakan akun hotspot yang disabled", async () => {
+  const contact = createContact();
+  const manager = createManager([contact]);
+
+  const result = await manager.reconcileHotspotStatuses([{
+    username: contact.mikrotikUsername,
+    profile: contact.mikrotikProfile,
+    email: "6281234567890@localhost.local",
+    disabled: true,
+  }], syncOptions);
+
+  assert.equal(result.disabled, 1);
+  assert.equal(contact.hotspotProvisioningStatus, "DISABLED");
+  assert.match(contact.hotspotProvisioningError, /dinonaktifkan/);
+  assert.equal(manager.pelanggan.get(contact.mikrotikUsername).status, "disabled");
+});
+
 test("akun yang kembali cocok dipulihkan otomatis menjadi ACTIVE", async () => {
   const contact = createContact({
     hotspotProvisioningStatus: "MISSING",

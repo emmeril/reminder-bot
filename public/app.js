@@ -27,6 +27,7 @@
           loading: false,
           title: "",
           description: "",
+          confirmLabel: "Hapus",
           action: null,
         },
         formErrors: {
@@ -421,12 +422,13 @@
           }
         },
 
-        openDeleteConfirm({ title, description, action }) {
+        openDeleteConfirm({ title, description, confirmLabel = "Hapus", action }) {
           this.deleteConfirm = {
             open: true,
             loading: false,
             title,
             description,
+            confirmLabel,
             action,
           };
           this.clearFormError("deleteConfirm");
@@ -438,6 +440,7 @@
           this.deleteConfirm.loading = false;
           this.deleteConfirm.title = "";
           this.deleteConfirm.description = "";
+          this.deleteConfirm.confirmLabel = "Hapus";
           this.deleteConfirm.action = null;
           this.clearFormError("deleteConfirm");
           document.body.classList.remove("overflow-hidden");
@@ -551,6 +554,7 @@
             ACTIVE: "Aktif di MikroTik",
             FAILED: "Sinkronisasi gagal",
             DEACTIVATED: "Dinonaktifkan terjadwal",
+            DISABLED: "Dinonaktifkan admin",
             MISSING: "Akun tidak ditemukan",
             CHANGED: "Data akun berubah",
           }[this.getHotspotProvisioningStatus(contact)] || "Status tidak dikenal";
@@ -563,6 +567,7 @@
             PROVISIONING: "bg-sky-100 text-sky-800",
             FAILED: "bg-red-100 text-red-700",
             DEACTIVATED: "bg-slate-200/70 text-slate-700",
+            DISABLED: "bg-red-100 text-red-700",
             MISSING: "bg-red-100 text-red-700",
             CHANGED: "bg-orange-100 text-orange-800",
           }[this.getHotspotProvisioningStatus(contact)] || "bg-slate-200/70 text-slate-700";
@@ -578,9 +583,19 @@
           return ["ACTIVE", "DEACTIVATED"].includes(this.getHotspotProvisioningStatus(contact));
         },
 
+        canDisableHotspot(contact) {
+          return this.getHotspotProvisioningStatus(contact) === "ACTIVE";
+        },
+
+        canEnableHotspot(contact) {
+          const status = this.getHotspotProvisioningStatus(contact);
+          return status === "DISABLED"
+            || (status === "CHANGED" && /akun dinonaktifkan/i.test(String(contact?.hotspotProvisioningError || "")));
+        },
+
         canSendHotspotAccount(contact) {
           const status = this.getHotspotProvisioningStatus(contact);
-          if (["NONE", "MISSING", "DEACTIVATED"].includes(status)) return false;
+          if (["NONE", "MISSING", "DEACTIVATED", "DISABLED"].includes(status)) return false;
           return !(status === "CHANGED" && /akun dinonaktifkan/i.test(String(contact?.hotspotProvisioningError || "")));
         },
 
@@ -849,7 +864,7 @@
             if (selectedStatus === "CONFIGURED" && !hasAccount) return false;
             if (selectedStatus === "UNCONFIGURED" && hasAccount) return false;
             if (selectedStatus === "AUTO" && !contact.hotspotReactivationEnabled) return false;
-            if (["ACTIVE", "PENDING", "FAILED", "DEACTIVATED", "MISSING", "CHANGED"].includes(selectedStatus)
+            if (["ACTIVE", "PENDING", "FAILED", "DEACTIVATED", "DISABLED", "MISSING", "CHANGED"].includes(selectedStatus)
               && provisioningStatus !== selectedStatus) return false;
 
             return this.searchMatches(
@@ -1436,6 +1451,26 @@
             } finally {
               await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
             }
+          });
+        },
+
+        setHotspotDisabled(contact, disabled) {
+          if (!contact?.id) return;
+          const action = disabled ? "menonaktifkan" : "mengaktifkan";
+          this.openDeleteConfirm({
+            title: `${disabled ? "Nonaktifkan" : "Aktifkan"} akun hotspot?`,
+            description: disabled
+              ? `Akun hotspot ${contact.mikrotikUsername || "ini"} akan dinonaktifkan di MikroTik dan sesi aktifnya akan diputus. Data akun tetap tersimpan.`
+              : `Akun hotspot ${contact.mikrotikUsername || "ini"} akan diaktifkan kembali di MikroTik.`,
+            confirmLabel: disabled ? "Nonaktifkan" : "Aktifkan",
+            action: async () => {
+              await this.api(`/api/contacts/${contact.id}/hotspot/${disabled ? "disable" : "enable"}`, {
+                method: "POST",
+                body: JSON.stringify({}),
+              });
+              this.notify(`Akun hotspot berhasil ${action}.`);
+              await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
+            },
           });
         },
 
