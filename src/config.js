@@ -94,6 +94,9 @@ const CONFIG = {
   MIDTRANS_SERVER_KEY: envString("MIDTRANS_SERVER_KEY"),
   MIDTRANS_FINISH_URL: envString("MIDTRANS_FINISH_URL"),
   MIDTRANS_HTTP_TIMEOUT: envNumber("MIDTRANS_HTTP_TIMEOUT", 15_000),
+  // Status API Midtrans kadang belum mengenali transaksi tepat setelah Snap
+  // dibuat. Beri waktu untuk rekonsiliasi ulang sebelum menganggapnya gagal.
+  MIDTRANS_NOT_FOUND_RETRY_WINDOW: envNumber("MIDTRANS_NOT_FOUND_RETRY_WINDOW", 30 * 60 * 1000),
   LOG_LIMIT: 250,
   MIKROTIK_PRIMARY: {
     host: envString("IP_MIKROTIK"),

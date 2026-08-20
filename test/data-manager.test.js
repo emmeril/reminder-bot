@@ -3,6 +3,7 @@ const test = require("node:test");
 
 const { DataManager } = require("../src/app");
 const {
+  CONFIG,
   DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   PAYMENT_STATUS,
   PAYMENT_TYPES,
@@ -24,6 +25,24 @@ function createManager(contact) {
   };
   return manager;
 }
+
+test("transaksi Midtrans not_found yang masih baru tetap masuk antrean rekonsiliasi", () => {
+  CONFIG.MIDTRANS_NOT_FOUND_RETRY_WINDOW = 30 * 60 * 1000;
+  const manager = createManager({ id: "contact-midtrans-retry" });
+  manager.paymentGatewayTransactions.set("RB-RETRY-NOT-FOUND", {
+    orderId: "RB-RETRY-NOT-FOUND",
+    contactId: "contact-midtrans-retry",
+    provider: "midtrans",
+    status: "FAILED",
+    gatewayStatus: "not_found",
+    createdAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+  });
+
+  assert.deepEqual(
+    manager.getPendingPaymentGatewayTransactions("contact-midtrans-retry").map(({ orderId }) => orderId),
+    ["RB-RETRY-NOT-FOUND"]
+  );
+});
 
 test("pembayaran tunggakan saja tidak menandai bulan berjalan lunas", async () => {
   const { year, month } = getBillingPeriodParts();

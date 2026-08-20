@@ -1953,9 +1953,21 @@ class DataManager {
   }
 
   getPendingPaymentGatewayTransactions(contactId = null) {
+    const now = Date.now();
     return Array.from(this.paymentGatewayTransactions.values()).filter((transaction) => (
       transaction.provider === "midtrans"
-      && transaction.status === PAYMENT_GATEWAY_STATUS.PENDING
+      && (
+        transaction.status === PAYMENT_GATEWAY_STATUS.PENDING
+        // Respons 404/"Transaction doesn't exist" dapat terjadi beberapa
+        // detik setelah transaksi dibuat. Transaksi seperti ini harus tetap
+        // dicoba ulang oleh scheduler, bukan berhenti di status FAILED.
+        || (
+          transaction.status === PAYMENT_GATEWAY_STATUS.FAILED
+          && transaction.gatewayStatus === "not_found"
+          && now - new Date(transaction.createdAt || 0).getTime()
+            <= Math.max(60_000, Number(CONFIG.MIDTRANS_NOT_FOUND_RETRY_WINDOW) || 0)
+        )
+      )
       && (contactId === null || String(transaction.contactId) === String(contactId))
     ));
   }
@@ -2048,6 +2060,7 @@ class DataManager {
       transaction.transactionId = sanitizeInput(String(gatewayData.transaction_id || "")) || null;
       transaction.paymentMethod = sanitizeInput(String(gatewayData.payment_type || "")) || null;
       transaction.paidAt = gatewayData.settlement_time || gatewayData.transaction_time || now;
+      transaction.error = null;
       transaction.updatedAt = now;
 
       const remindersChanged = this.updateContactReminderMessages(contact);
@@ -4888,9 +4901,12 @@ class WebServer {
 
   async reconcileMidtransTransaction(orderId) {
     if (!this.midtransService.isConfigured()) return { status: "DISABLED" };
-    const localTransaction = this.dataManager.getPaymentGatewayTransaction(orderId);
+    let localTransaction = this.dataManager.getPaymentGatewayTransaction(orderId);
     if (!localTransaction) return { status: "UNKNOWN_ORDER", orderId };
     if (localTransaction.status === PAYMENT_GATEWAY_STATUS.PAID) {
+      if (localTransaction.error) {
+        localTransaction = await this.dataManager.updatePaymentGatewayTransaction(orderId, { error: null });
+      }
       let hotspotRecovery = { attempted: false, reason: "already_paid" };
       const contact = this.dataManager.getContact(localTransaction.contactId);
       if (contact) {
@@ -4912,12 +4928,18 @@ class WebServer {
       const notFound = String(gatewayData.status_code || "") === "404"
         || /doesn't exist|not found/i.test(String(gatewayData.status_message || ""));
       if (notFound) {
+        const createdAt = new Date(localTransaction.createdAt || 0).getTime();
+        const withinRetryWindow = Number.isFinite(createdAt)
+          && Date.now() - createdAt <= Math.max(60_000, Number(CONFIG.MIDTRANS_NOT_FOUND_RETRY_WINDOW) || 0);
         const transaction = await this.dataManager.updatePaymentGatewayTransaction(orderId, {
-          status: PAYMENT_GATEWAY_STATUS.FAILED,
+          // Keep it pending while Midtrans is still propagating the order.
+          // This allows the minute scheduler and the next portal refresh to
+          // verify it again automatically.
+          status: withinRetryWindow ? PAYMENT_GATEWAY_STATUS.PENDING : PAYMENT_GATEWAY_STATUS.FAILED,
           gatewayStatus: "not_found",
           error: sanitizeInput(String(gatewayData.status_message || "Transaction not found")),
         });
-        return { status: PAYMENT_GATEWAY_STATUS.FAILED, alreadyProcessed: false, transaction };
+        return { status: transaction.status, alreadyProcessed: false, transaction };
       }
       throw new Error(`Status transaksi Midtrans tidak tersedia: ${gatewayData.status_message || "unknown"}`);
     }

@@ -596,6 +596,46 @@ test("pelanggan membuat pembayaran Midtrans dan webhook melunasi tagihan", async
   assert.equal(paymentNotifications, 1);
 });
 
+test("status Midtrans yang belum ditemukan tetap pending agar dicoba ulang", async () => {
+  Object.assign(CONFIG, {
+    MIDTRANS_ENABLED: true,
+    MIDTRANS_SERVER_KEY: "midtrans-server-key",
+    MIDTRANS_NOT_FOUND_RETRY_WINDOW: 30 * 60 * 1000,
+  });
+  const transaction = {
+    orderId: "RB-NOT-FOUND-RETRY",
+    contactId: "contact-not-found-retry",
+    amount: 1000,
+    periods: ["2026-08"],
+    status: "PENDING",
+    provider: "midtrans",
+    createdAt: new Date().toISOString(),
+  };
+  const baseUrl = await startServer({
+    getPaymentGatewayTransaction: (orderId) => orderId === transaction.orderId ? transaction : null,
+    updatePaymentGatewayTransaction: async (_orderId, changes) => Object.assign(transaction, changes),
+  }, {}, {}, {}, {
+    isConfigured: () => true,
+    verifyNotificationSignature: () => true,
+    getTransactionStatus: async () => ({
+      status_code: "404",
+      status_message: "Transaction doesn't exist.",
+    }),
+  });
+
+  const response = await fetch(`${baseUrl}/api/payments/midtrans/notification`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ order_id: transaction.orderId, signature_key: "verified-by-stub" }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.status, "PENDING");
+  assert.equal(transaction.status, "PENDING");
+  assert.equal(transaction.gatewayStatus, "not_found");
+});
+
 test("pembayaran Midtrans memulihkan akun hotspot yang disabled di MikroTik", async () => {
   Object.assign(CONFIG, {
     MIDTRANS_ENABLED: true,
