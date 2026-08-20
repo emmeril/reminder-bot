@@ -550,11 +550,10 @@ class HotspotStatusSyncScheduler {
 }
 
 class HotspotReactivationScheduler {
-  constructor(mikrotikService, dataManager, activityLog, notificationBot = null) {
+  constructor(mikrotikService, dataManager, activityLog) {
     this.mikrotikService = mikrotikService;
     this.dataManager = dataManager;
     this.activityLog = activityLog;
-    this.notificationBot = notificationBot;
     this.isProcessing = false;
   }
 
@@ -562,89 +561,6 @@ class HotspotReactivationScheduler {
     const savedPassword = sanitizeInput(contact.mikrotikPassword || "");
     if (savedPassword) return savedPassword;
     return String(contact.phoneNumber || "").slice(-5);
-  }
-
-  renderReactivationMessage(template, context) {
-    return String(template || "")
-      .replace(/{{\s*name\s*}}/gi, context.name || "")
-      .replace(/{{\s*phoneNumber\s*}}/gi, context.phoneNumber || "")
-      .replace(/{{\s*username\s*}}/gi, context.username || "")
-      .replace(/{{\s*password\s*}}/gi, context.password || "")
-      .replace(/{{\s*profile\s*}}/gi, context.profile || "")
-      .replace(/{{\s*reactivatedAt\s*}}/gi, context.reactivatedAt || "")
-      .replace(/{{\s*nextReactivationAt\s*}}/gi, context.nextReactivationAt || "")
-      .replace(/{{\s*supportSignature\s*}}/gi, context.supportSignature || "CS Emmeril Hotspot")
-      .replace(/{{\s*companyName\s*}}/gi, context.companyName || "");
-  }
-
-  buildReactivationNotification(contact, reactivationResult, updatedContact) {
-    const settings = this.dataManager.getSettings();
-    const template = sanitizeInput(settings.hotspotReactivationMessageTemplate)
-      ? settings.hotspotReactivationMessageTemplate
-      : DEFAULT_SETTINGS.hotspotReactivationMessageTemplate;
-    return {
-      phoneNumber: updatedContact.phoneNumber || contact.phoneNumber,
-      message: this.renderReactivationMessage(template, {
-        name: updatedContact.name || contact.name,
-        phoneNumber: updatedContact.phoneNumber || contact.phoneNumber,
-        username: reactivationResult.username,
-        password: reactivationResult.password,
-        profile: reactivationResult.profile,
-        reactivatedAt: formatDateTime(updatedContact.hotspotLastReactivatedAt || new Date(), this.dataManager.getTimezone()),
-        nextReactivationAt: updatedContact.hotspotReactivationAt
-          ? formatDateTime(updatedContact.hotspotReactivationAt, this.dataManager.getTimezone())
-          : "",
-        supportSignature: settings.supportSignature || "CS Emmeril Hotspot",
-        companyName: settings.companyName || "",
-      }),
-    };
-  }
-
-  async sendReactivationNotification(contact) {
-    const pending = contact.hotspotNotificationPending;
-    if (!pending?.message || !pending?.phoneNumber) {
-      return { sent: true, skipped: true, contact };
-    }
-
-    const claim = await this.dataManager.claimHotspotNotificationAttempt(contact.id, pending.id);
-    if (!claim) {
-      return { sent: true, skipped: true, contact: this.dataManager.getContact(contact.id) || contact };
-    }
-    const notification = claim.notification;
-
-    if (!this.notificationBot) {
-      const error = "Transport notifikasi belum tersedia.";
-      const updatedContact = await this.dataManager.completeHotspotNotificationAttempt(contact.id, {
-        sent: false,
-        error,
-      });
-      return { sent: false, error, contact: updatedContact };
-    }
-
-    try {
-      await this.notificationBot.sendMessage(notification.phoneNumber, notification.message);
-      const updatedContact = await this.dataManager.completeHotspotNotificationAttempt(contact.id, { sent: true });
-      this.activityLog.push("info", "hotspot-reactivation", `Notifikasi akun hotspot terkirim ke ${notification.phoneNumber}`, {
-        contactId: contact.id,
-        notificationId: notification.id,
-      });
-      return { sent: true, contact: updatedContact };
-    } catch (error) {
-      const updatedContact = await this.dataManager.completeHotspotNotificationAttempt(contact.id, {
-        sent: false,
-        error: error.message,
-      });
-      this.activityLog.push("error", "hotspot-reactivation", `Gagal kirim notifikasi akun hotspot ke ${notification.phoneNumber}`, {
-        contactId: contact.id,
-        notificationId: notification.id,
-        error: error.message,
-      });
-      return {
-        sent: false,
-        error: error.message,
-        contact: updatedContact,
-      };
-    }
   }
 
   async deactivateContact(contact, options = {}) {
@@ -695,7 +611,6 @@ class HotspotReactivationScheduler {
   }
 
   async reactivateContact(contact, options = {}) {
-    const { deferNotification = false, ...persistenceOptions } = options;
     let operationPrepared = false;
     let prepared;
     let result;
@@ -720,10 +635,7 @@ class HotspotReactivationScheduler {
         phoneNumber: prepared.phoneNumber,
         profile: result.profile,
       });
-      updatedContact = await this.dataManager.markHotspotReactivated(contact.id, result, {
-        ...persistenceOptions,
-        pendingNotificationBuilder: (updated) => this.buildReactivationNotification(contact, result, updated),
-      });
+      updatedContact = await this.dataManager.markHotspotReactivated(contact.id, result, options);
     } catch (error) {
       if (operationPrepared) {
         await this.dataManager.updateHotspotProvisioningStatus(contact.id, "FAILED", {
@@ -744,14 +656,9 @@ class HotspotReactivationScheduler {
       nextSchedule: updatedContact.hotspotReactivationAt,
     });
 
-    const notification = deferNotification
-      ? { sent: false, pending: true }
-      : await this.sendReactivationNotification(updatedContact);
-
     return {
       operation: "REACTIVATE",
-      contact: notification.contact || updatedContact,
-      notification,
+      contact: updatedContact,
       ...result,
     };
   }
@@ -763,8 +670,7 @@ class HotspotReactivationScheduler {
     }
 
     const dueContacts = this.dataManager.getDueHotspotReactivationContacts();
-    const hasPendingNotifications = this.dataManager.getPendingHotspotNotificationContacts().length > 0;
-    if (dueContacts.length === 0 && !hasPendingNotifications) {
+    if (dueContacts.length === 0) {
       return [];
     }
 
@@ -777,7 +683,7 @@ class HotspotReactivationScheduler {
         const autoReactivation = Boolean(contact.hotspotReactivationEnabled);
         try {
           const result = autoReactivation
-            ? await this.reactivateContact(contact, { deferNotification: true })
+            ? await this.reactivateContact(contact)
             : await this.deactivateContact(contact);
           results.push({
             contactId: contact.id,
@@ -802,33 +708,6 @@ class HotspotReactivationScheduler {
         }
       }
 
-      // Pekerjaan router selalu diselesaikan lebih dulu. Gangguan WhatsApp hanya
-      // memengaruhi tahap notifikasi dan tidak menahan reaktivasi kontak lain.
-      const pendingNotificationContacts = this.dataManager.getPendingHotspotNotificationContacts();
-      for (const contact of pendingNotificationContacts) {
-        try {
-          const notification = await this.sendReactivationNotification(contact);
-          results.push({
-            contactId: contact.id,
-            username: contact.mikrotikUsername,
-            action: "notify",
-            status: notification.sent ? "success" : "failed",
-            notification,
-          });
-        } catch (error) {
-          this.activityLog.push("error", "hotspot-reactivation", `Pengiriman notifikasi hotspot gagal untuk ${contact.phoneNumber}`, {
-            contactId: contact.id,
-            error: error.message,
-          });
-          results.push({
-            contactId: contact.id,
-            username: contact.mikrotikUsername,
-            action: "notify",
-            status: "failed",
-            error: error.message,
-          });
-        }
-      }
     } finally {
       this.isProcessing = false;
     }

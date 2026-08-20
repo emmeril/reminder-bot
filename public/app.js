@@ -151,7 +151,6 @@
             companyName: "",
             supportSignature: "",
             apDownMessageTemplate: "",
-            hotspotReactivationMessageTemplate: "",
             customerAccountMessageTemplate: "",
             paymentMessageTemplateArrearsOnly: "",
             paymentMessageTemplateCurrentOnly: "",
@@ -1021,7 +1020,6 @@
                 companyName: data.settings.companyName || "",
                 supportSignature: data.settings.supportSignature || "",
                 apDownMessageTemplate: data.settings.apDownMessageTemplate || "",
-                hotspotReactivationMessageTemplate: data.settings.hotspotReactivationMessageTemplate || "",
                 customerAccountMessageTemplate: data.settings.customerAccountMessageTemplate || "",
                 paymentMessageTemplateArrearsOnly: data.settings.paymentMessageTemplateArrearsOnly || "",
                 paymentMessageTemplateCurrentOnly: data.settings.paymentMessageTemplateCurrentOnly || "",
@@ -1442,11 +1440,9 @@
                 body: JSON.stringify({}),
               });
               if (result.contact.hotspotReactivationEnabled && result.contact.hotspotReactivationAt) {
-                const notificationText = result.notification?.sent ? " Akun terkirim ke WhatsApp." : (result.notification?.error ? ` WA gagal: ${result.notification.error}` : "");
-                this.notify(`Hotspot ${result.username} direaktivasi. Jadwal berikutnya ${this.formatDateTime(result.contact.hotspotReactivationAt)}.${notificationText}`);
+                this.notify(`Hotspot ${result.username} direaktivasi. Jadwal berikutnya ${this.formatDateTime(result.contact.hotspotReactivationAt)}.`);
               } else {
-                const notificationText = result.notification?.sent ? " Akun terkirim ke WhatsApp." : (result.notification?.error ? ` WA gagal: ${result.notification.error}` : "");
-                this.notify(`Hotspot ${result.username} direaktivasi.${notificationText}`);
+                this.notify(`Hotspot ${result.username} direaktivasi.`);
               }
             } finally {
               await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);

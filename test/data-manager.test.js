@@ -335,6 +335,19 @@ test("menyimpan template pengiriman akun pelanggan dari menu pengaturan", async 
   );
 });
 
+test("pengaturan tidak lagi menyimpan template notifikasi reaktivasi hotspot", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.saveSettings = async () => {};
+  manager.settings.hotspotReactivationMessageTemplate = "Template lama";
+
+  const settings = await manager.updateSettings({
+    hotspotReactivationMessageTemplate: "Template baru",
+  });
+
+  assert.equal("hotspotReactivationMessageTemplate" in settings, false);
+  assert.equal("hotspotReactivationMessageTemplate" in manager.settings, false);
+});
+
 test("migration mengganti reminder Penagihan existing dengan template variabel satu kali", async () => {
   const contact = {
     id: "contact-reminder-migration",

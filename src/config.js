@@ -195,7 +195,6 @@ const DEFAULT_SETTINGS = {
   companyName: "Emmeril Hotspot",
   supportSignature: "CS Emmeril Hotspot",
   apDownMessageTemplate: "Halo {{name}},\n\nKami mendeteksi perangkat AP *{{host}}* sedang *DOWN*.\nTim kami sedang melakukan pengecekan.\n\nMohon maaf atas ketidaknyamanannya.\n\n{{supportSignature}}",
-  hotspotReactivationMessageTemplate: "Halo {{name}},\n\nAkun hotspot Anda sudah direaktivasi.\n\nDetail Akun Hotspot:\n*Username:* {{username}}\n*Password:* {{password}}\n*Profile:* {{profile}}\n\nSilakan login kembali menggunakan akun di atas.\n\n{{supportSignature}}",
   customerAccountMessageTemplate: "*INFORMASI AKUN {{companyNameUpper}}*\n\nYth. Bapak/Ibu *{{name}}*,\n\nBerikut kami sampaikan informasi akun layanan Anda.\n\n{{portalAccountDetails}}\n\n{{hotspotAccountDetails}}\n\n{{portalAccessGuide}}\n\nMohon simpan informasi akun ini dengan baik dan jangan membagikan password kepada pihak lain.\n\nHormat kami,\n{{supportSignature}}",
   apDownMinimumDownMinutes: 5,
   paymentMessageTemplateArrearsOnly: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nTerima kasih. Pembayaran tunggakan bulan sebelumnya telah kami terima.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",

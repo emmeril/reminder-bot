@@ -1310,6 +1310,7 @@ class DataManager {
       if (!raw.trim()) return { ...DEFAULT_SETTINGS };
       const settings = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
       delete settings.whatsappProvider;
+      delete settings.hotspotReactivationMessageTemplate;
       return settings;
     } catch (error) {
       if (error.code === "ENOENT") return { ...DEFAULT_SETTINGS };
@@ -1367,6 +1368,10 @@ class DataManager {
     this.settings = { ...DEFAULT_SETTINGS, ...this.parseStoredJson(settingsRow?.value, {}) };
     if (Object.hasOwn(this.settings, "whatsappProvider")) {
       delete this.settings.whatsappProvider;
+      await this.saveSettings();
+    }
+    if (Object.hasOwn(this.settings, "hotspotReactivationMessageTemplate")) {
+      delete this.settings.hotspotReactivationMessageTemplate;
       await this.saveSettings();
     }
   }
@@ -1615,21 +1620,8 @@ class DataManager {
       contact.hotspotReactivationAt = this.normalizeOptionalDate(contact.hotspotReactivationAt);
       contact.hotspotLastReactivatedAt = this.normalizeOptionalDate(contact.hotspotLastReactivatedAt);
       contact.hotspotLastDeactivatedAt = this.normalizeOptionalDate(contact.hotspotLastDeactivatedAt);
-      const pendingNotification = contact.hotspotNotificationPending;
-      if (!pendingNotification
-        || typeof pendingNotification !== "object"
-        || !sanitizeInput(pendingNotification.message || "")) {
-        contact.hotspotNotificationPending = null;
-      } else if (Math.max(0, Number(pendingNotification.attempts) || 0) > 0) {
-        contact.hotspotNotificationLastStatus = "FAILED";
-        contact.hotspotNotificationLastError = sanitizeInput(
-          pendingNotification.lastError || "Pengiriman notifikasi sebelumnya gagal"
-        );
-        contact.hotspotNotificationLastAttemptAt = this.normalizeOptionalDate(
-          pendingNotification.lastAttemptAt
-        );
-        contact.hotspotNotificationPending = null;
-      }
+      // Notifikasi WhatsApp setelah reaktivasi sudah tidak digunakan.
+      contact.hotspotNotificationPending = null;
       if (!contact.paymentMonths || typeof contact.paymentMonths !== "object" || Array.isArray(contact.paymentMonths)) {
         contact.paymentMonths = {};
       }
@@ -2999,17 +2991,6 @@ class DataManager {
     });
   }
 
-  getPendingHotspotNotificationContacts(now = new Date()) {
-    const nowTime = now.getTime();
-    return this.getSortedContacts().filter((contact) => {
-      const pending = contact.hotspotNotificationPending;
-      if (!pending?.message || !pending?.phoneNumber) return false;
-      if (Math.max(0, Number(pending.attempts) || 0) > 0) return false;
-      const nextAttemptTime = pending.nextAttemptAt ? new Date(pending.nextAttemptAt).getTime() : 0;
-      return !Number.isFinite(nextAttemptTime) || nextAttemptTime <= nowTime;
-    });
-  }
-
   async reconcileHotspotStatuses(routerUsers, options = {}) {
     return this.withDataMutation(async () => {
       const observedAt = this.normalizeOptionalDate(options.observedAt) || new Date().toISOString();
@@ -3354,20 +3335,7 @@ class DataManager {
       contact.hotspotLastCheckedAt = now.toISOString();
       contact.hotspotLastSyncedAt = now.toISOString();
       contact.updatedAt = now.toISOString();
-      if (typeof options.pendingNotificationBuilder === "function") {
-        const pending = options.pendingNotificationBuilder(this.hydrateContact(contact));
-        contact.hotspotNotificationPending = {
-          id: generateId(),
-          phoneNumber: normalizePhoneNumber(pending?.phoneNumber || contact.phoneNumber),
-          message: sanitizeMultilineText(pending?.message),
-          attempts: 0,
-          createdAt: now.toISOString(),
-          nextAttemptAt: now.toISOString(),
-          lastError: null,
-        };
-        contact.hotspotNotificationLastStatus = "PENDING";
-        contact.hotspotNotificationLastError = null;
-      }
+      contact.hotspotNotificationPending = null;
 
       const pelanggan = this.pelanggan.get(contact.mikrotikUsername) || Array.from(this.pelanggan.values()).find(
         (item) => String(item.contactId || "") === String(contact.id)
@@ -3393,44 +3361,6 @@ class DataManager {
           await this.savePelanggan(saveOptions);
         }));
       }
-      return this.hydrateContact(contact);
-    });
-  }
-
-  async claimHotspotNotificationAttempt(contactId, notificationId) {
-    return this.withDataMutation(async () => {
-      const contact = this.getContact(contactId);
-      if (!contact) throw new Error("Kontak tidak ditemukan.");
-      const pending = contact.hotspotNotificationPending;
-      if (!pending || (notificationId && String(pending.id) !== String(notificationId))) return null;
-
-      const now = new Date().toISOString();
-      contact.hotspotNotificationPending = null;
-      contact.hotspotNotificationLastStatus = "SENDING";
-      contact.hotspotNotificationLastError = null;
-      contact.hotspotNotificationLastAttemptAt = now;
-      contact.updatedAt = now;
-      await this.saveContacts();
-      return {
-        contact: this.hydrateContact(contact),
-        notification: { ...pending },
-      };
-    });
-  }
-
-  async completeHotspotNotificationAttempt(contactId, result = {}) {
-    return this.withDataMutation(async () => {
-      const contact = this.getContact(contactId);
-      if (!contact) throw new Error("Kontak tidak ditemukan.");
-
-      const now = new Date().toISOString();
-      contact.hotspotNotificationLastStatus = result.sent ? "SENT" : "FAILED";
-      contact.hotspotNotificationLastError = result.sent
-        ? null
-        : sanitizeInput(result.error || "Pengiriman notifikasi gagal");
-      contact.hotspotNotificationLastAttemptAt = now;
-      contact.updatedAt = now;
-      await this.saveContacts();
       return this.hydrateContact(contact);
     });
   }
@@ -3696,6 +3626,7 @@ class DataManager {
   getSettings() {
     const settings = { ...DEFAULT_SETTINGS, ...this.settings };
     delete settings.monthlyPaymentAmount;
+    delete settings.hotspotReactivationMessageTemplate;
     return settings;
   }
 
@@ -3728,9 +3659,6 @@ class DataManager {
         apDownMessageTemplate: payload.apDownMessageTemplate !== undefined
           ? sanitizeMultilineText(payload.apDownMessageTemplate) || current.apDownMessageTemplate
           : current.apDownMessageTemplate,
-        hotspotReactivationMessageTemplate: payload.hotspotReactivationMessageTemplate !== undefined
-          ? sanitizeMultilineText(payload.hotspotReactivationMessageTemplate) || current.hotspotReactivationMessageTemplate
-          : current.hotspotReactivationMessageTemplate,
         customerAccountMessageTemplate: payload.customerAccountMessageTemplate !== undefined
           ? sanitizeMultilineText(payload.customerAccountMessageTemplate) || current.customerAccountMessageTemplate
           : current.customerAccountMessageTemplate,
@@ -6380,8 +6308,7 @@ async function bootstrap() {
   const hotspotReactivationScheduler = new HotspotReactivationScheduler(
     mikrotikService,
     dataManager,
-    activityLog,
-    notificationBot
+    activityLog
   );
   const hotspotStatusSyncScheduler = new HotspotStatusSyncScheduler(
     mikrotikService,
