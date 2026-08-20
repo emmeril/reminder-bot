@@ -12,23 +12,25 @@ class AuthManager {
 
   cleanupExpiredSessions() {
     const now = Date.now();
-    for (const [token, session] of this.sessions.entries()) {
-      if (session.expiresAt <= now) {
-        this.sessions.delete(token);
-      }
-    }
-
-    for (const [token, session] of this.customerSessions.entries()) {
-      if (session.expiresAt <= now) {
-        this.customerSessions.delete(token);
-      }
-    }
+    this.cleanupSessionStore(this.sessions, now);
+    this.cleanupSessionStore(this.customerSessions, now);
 
     for (const [key, attempt] of this.loginAttempts.entries()) {
-      if (attempt.blockedUntil <= now && now - attempt.firstAttemptAt > CONFIG.AUTH_LOGIN_WINDOW) {
+      if (this.isLoginAttemptExpired(attempt, now)) {
         this.loginAttempts.delete(key);
       }
     }
+  }
+
+  cleanupSessionStore(store, now) {
+    for (const [token, session] of store.entries()) {
+      if (session.expiresAt <= now) store.delete(token);
+    }
+  }
+
+  isLoginAttemptExpired(attempt, now = Date.now()) {
+    return attempt.blockedUntil <= now
+      && now - attempt.firstAttemptAt > CONFIG.AUTH_LOGIN_WINDOW;
   }
 
   getLoginAttemptKey(identifier) {
@@ -40,7 +42,7 @@ class AuthManager {
     const now = Date.now();
     const current = this.loginAttempts.get(key);
 
-    if (!current || (current.blockedUntil <= now && now - current.firstAttemptAt > CONFIG.AUTH_LOGIN_WINDOW)) {
+    if (!current || this.isLoginAttemptExpired(current, now)) {
       this.loginAttempts.delete(key);
       return null;
     }
@@ -81,68 +83,63 @@ class AuthManager {
       && safeCompareString(password, CONFIG.AUTH_PASSWORD);
   }
 
-  createSession(username) {
+  createStoredSession(store, identity, sessionData) {
     this.cleanupExpiredSessions();
+    const now = Date.now();
     const token = crypto
       .createHmac("sha256", CONFIG.SESSION_SECRET)
-      .update(`${username}:${Date.now()}:${crypto.randomBytes(16).toString("hex")}`)
+      .update(`${identity}:${now}:${crypto.randomBytes(16).toString("hex")}`)
       .digest("hex");
 
     const session = {
-      username,
-      createdAt: Date.now(),
-      expiresAt: Date.now() + CONFIG.SESSION_TTL,
+      ...sessionData,
+      createdAt: now,
+      expiresAt: now + CONFIG.SESSION_TTL,
     };
 
-    this.sessions.set(token, session);
+    store.set(token, session);
     return { token, session };
+  }
+
+  createSession(username) {
+    return this.createStoredSession(this.sessions, username, { username });
   }
 
   createCustomerSession(customer) {
-    this.cleanupExpiredSessions();
     const username = String(customer.username || "");
     const contactId = String(customer.contactId || "");
-    const token = crypto
-      .createHmac("sha256", CONFIG.SESSION_SECRET)
-      .update(`customer:${contactId}:${username}:${Date.now()}:${crypto.randomBytes(16).toString("hex")}`)
-      .digest("hex");
+    return this.createStoredSession(
+      this.customerSessions,
+      `customer:${contactId}:${username}`,
+      {
+        type: "customer",
+        username,
+        contactId,
+      }
+    );
+  }
 
-    const session = {
-      type: "customer",
-      username,
-      contactId,
-      createdAt: Date.now(),
-      expiresAt: Date.now() + CONFIG.SESSION_TTL,
-    };
+  getStoredSession(store, token) {
+    if (!token) return null;
+    this.cleanupExpiredSessions();
+    const session = store.get(token);
+    const now = Date.now();
 
-    this.customerSessions.set(token, session);
-    return { token, session };
+    if (!session || session.expiresAt <= now) {
+      if (session) store.delete(token);
+      return null;
+    }
+
+    session.expiresAt = now + CONFIG.SESSION_TTL;
+    return session;
   }
 
   getSession(token) {
-    if (!token) return null;
-    this.cleanupExpiredSessions();
-    const session = this.sessions.get(token);
-    if (!session) return null;
-    if (session.expiresAt <= Date.now()) {
-      this.sessions.delete(token);
-      return null;
-    }
-    session.expiresAt = Date.now() + CONFIG.SESSION_TTL;
-    return session;
+    return this.getStoredSession(this.sessions, token);
   }
 
   getCustomerSession(token) {
-    if (!token) return null;
-    this.cleanupExpiredSessions();
-    const session = this.customerSessions.get(token);
-    if (!session) return null;
-    if (session.expiresAt <= Date.now()) {
-      this.customerSessions.delete(token);
-      return null;
-    }
-    session.expiresAt = Date.now() + CONFIG.SESSION_TTL;
-    return session;
+    return this.getStoredSession(this.customerSessions, token);
   }
 
   destroySession(token) {
