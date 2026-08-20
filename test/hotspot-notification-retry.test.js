@@ -154,3 +154,43 @@ test("kegagalan reaktivasi disimpan sebagai FAILED tanpa memajukan jadwal", asyn
   assert.equal(failed.hotspotReactivationAt, originalSchedule);
   assert.match(failed.hotspotProvisioningError, /router timeout/);
 });
+
+test("jadwal nonaktif mempertahankan akun MikroTik dan hanya menonaktifkannya", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  const contact = {
+    id: "contact-scheduled-disable",
+    name: "Pelanggan Jadwal",
+    phoneNumber: "6281234567899",
+    mikrotikUsername: "pelanggan_jadwal",
+    mikrotikPassword: "67899",
+    mikrotikProfile: "100M",
+    hotspotReactivationEnabled: false,
+    hotspotReactivationAt: new Date(Date.now() - 60_000).toISOString(),
+    hotspotProvisioningStatus: "ACTIVE",
+    paymentMonths: {},
+  };
+  manager.contacts.set(contact.id, contact);
+  const calls = [];
+  const scheduler = new HotspotReactivationScheduler(
+    {
+      async setHotspotUserDisabled(username, phoneNumber, disabled) {
+        calls.push([username, phoneNumber, disabled]);
+        return { username, password: contact.mikrotikPassword, profile: contact.mikrotikProfile, disabled };
+      },
+    },
+    manager,
+    { push() {} }
+  );
+
+  const result = await scheduler.deactivateContact(manager.hydrateContact(contact));
+
+  assert.equal(result.operation, "DEACTIVATE");
+  assert.deepEqual(calls, [[contact.mikrotikUsername, contact.phoneNumber, true]]);
+  assert.equal(manager.getContact(contact.id).hotspotProvisioningStatus, "DISABLED");
+  assert.equal(manager.getContact(contact.id).hotspotReactivationAt, null);
+  assert.equal(manager.getContact(contact.id).hotspotReactivationEnabled, false);
+});

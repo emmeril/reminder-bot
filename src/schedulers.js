@@ -649,7 +649,7 @@ class HotspotReactivationScheduler {
 
   async deactivateContact(contact, options = {}) {
     if (!sanitizeInput(contact.mikrotikUsername || "")) {
-      throw new Error("Username hotspot wajib diisi untuk menghapus user hotspot.");
+      throw new Error("Username hotspot wajib diisi untuk menonaktifkan user hotspot.");
     }
 
     let operationPrepared = false;
@@ -659,11 +659,16 @@ class HotspotReactivationScheduler {
       const prepared = await this.dataManager.prepareHotspotLifecycleOperation(contact.id, "DEACTIVATE");
       operationPrepared = true;
       await this.dataManager.updateHotspotProvisioningStatus(contact.id, "PROVISIONING", { error: "" });
-      result = await this.mikrotikService.deleteHotspotUser(
+      result = await this.mikrotikService.setHotspotUserDisabled(
         prepared.mikrotikUsername,
-        prepared.phoneNumber
+        prepared.phoneNumber,
+        true
       );
-      updatedContact = await this.dataManager.markHotspotDeactivated(contact.id, result, options);
+      updatedContact = await this.dataManager.markHotspotDisabled(contact.id, result, {
+        ...options,
+        scheduled: true,
+        clearSchedule: true,
+      });
     } catch (error) {
       if (operationPrepared) {
         await this.dataManager.updateHotspotProvisioningStatus(contact.id, "FAILED", {
@@ -675,17 +680,16 @@ class HotspotReactivationScheduler {
       }
       throw new Error(`Deaktivasi hotspot gagal: ${error.message}`, { cause: error });
     }
-    this.activityLog.push("info", "hotspot-reactivation", `User hotspot ${result.username} dihapus sesuai jadwal non-auto reaktivasi`, {
+    this.activityLog.push("info", "hotspot-reactivation", `User hotspot ${result.username} dinonaktifkan sesuai jadwal`, {
       contactId: contact.id,
       username: result.username,
       activeSessionsKilled: result.activeSessionsKilled,
-      removedUsers: result.removedUsers,
     });
 
     return {
       operation: "DEACTIVATE",
       contact: updatedContact,
-      notification: { sent: false, error: "Jadwal non-auto reaktivasi hanya menghapus user hotspot." },
+      notification: { sent: false, error: "Jadwal ini menonaktifkan user hotspot tanpa menghapus akun MikroTik." },
       ...result,
     };
   }
@@ -778,12 +782,12 @@ class HotspotReactivationScheduler {
           results.push({
             contactId: contact.id,
             username: contact.mikrotikUsername,
-            action: autoReactivation ? "reactivate" : "delete",
+            action: autoReactivation ? "reactivate" : "disable",
             status: "success",
             result,
           });
         } catch (error) {
-          const actionText = autoReactivation ? "reaktivasi" : "hapus user";
+          const actionText = autoReactivation ? "reaktivasi" : "menonaktifkan user";
           this.activityLog.push("error", "hotspot-reactivation", `Gagal ${actionText} hotspot ${contact.mikrotikUsername || contact.name}`, {
             contactId: contact.id,
             error: error.message,
@@ -791,7 +795,7 @@ class HotspotReactivationScheduler {
           results.push({
             contactId: contact.id,
             username: contact.mikrotikUsername,
-            action: autoReactivation ? "reactivate" : "delete",
+            action: autoReactivation ? "reactivate" : "disable",
             status: "failed",
             error: error.message,
           });

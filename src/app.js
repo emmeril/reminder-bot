@@ -2101,7 +2101,7 @@ class DataManager {
     if (enabled && !username) throw new Error("Username hotspot wajib diisi untuk reaktivasi.");
     if (enabled && !profile) throw new Error("Profile hotspot wajib diisi untuk reaktivasi.");
     if (enabled && !reactivationAt) throw new Error("Jadwal reaktivasi wajib diisi.");
-    if (!enabled && reactivationAt && !username) throw new Error("Username hotspot wajib diisi untuk jadwal hapus hotspot.");
+    if (!enabled && reactivationAt && !username) throw new Error("Username hotspot wajib diisi untuk jadwal nonaktif hotspot.");
 
     return {
       mikrotikUsername: username,
@@ -3256,9 +3256,15 @@ class DataManager {
       contact.hotspotProvisioningStatus = HOTSPOT_PROVISIONING_STATUS.DISABLED;
       contact.hotspotProvisioningOperation = HOTSPOT_PROVISIONING_OPERATION.NONE;
       contact.hotspotProvisioningPrevious = null;
-      contact.hotspotProvisioningError = "Akun hotspot dinonaktifkan di MikroTik oleh administrator.";
+      contact.hotspotProvisioningError = options.scheduled
+        ? "Akun hotspot dinonaktifkan di MikroTik sesuai jadwal."
+        : "Akun hotspot dinonaktifkan di MikroTik oleh administrator.";
       contact.hotspotLastCheckedAt = now;
       contact.hotspotLastSyncedAt = now;
+      if (options.clearSchedule) {
+        contact.hotspotReactivationEnabled = false;
+        contact.hotspotReactivationAt = null;
+      }
       contact.updatedAt = now;
       const pelanggan = this.pelanggan.get(contact.mikrotikUsername) || Array.from(this.pelanggan.values()).find(
         (item) => String(item.contactId || "") === String(contact.id)

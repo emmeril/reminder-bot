@@ -554,7 +554,7 @@
             ACTIVE: "Aktif di MikroTik",
             FAILED: "Sinkronisasi gagal",
             DEACTIVATED: "Dinonaktifkan terjadwal",
-            DISABLED: "Dinonaktifkan admin",
+            DISABLED: "Dinonaktifkan di MikroTik",
             MISSING: "Akun tidak ditemukan",
             CHANGED: "Data akun berubah",
           }[this.getHotspotProvisioningStatus(contact)] || "Status tidak dikenal";
@@ -601,7 +601,7 @@
 
         getReactivationLabel(contact) {
           if (!contact.hotspotReactivationAt) return contact.hotspotReactivationEnabled ? "Belum dijadwalkan" : "Nonaktif";
-          if (!contact.hotspotReactivationEnabled) return `Hapus terjadwal: ${this.formatDateTime(contact.hotspotReactivationAt)}`;
+          if (!contact.hotspotReactivationEnabled) return `Nonaktif terjadwal: ${this.formatDateTime(contact.hotspotReactivationAt)}`;
           return this.formatDateTime(contact.hotspotReactivationAt);
         },
 
