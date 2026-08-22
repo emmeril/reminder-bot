@@ -146,6 +146,33 @@ test("memperbarui akun hotspot lama dan memverifikasi username baru", async () =
   assert.equal(getKilledSessions(), 1);
 });
 
+test("edit semua data tetap memperbarui akun walau email MikroTik lama sudah berbeda", async () => {
+  const { service, users, getUpdateCalls } = createServiceWithUsers([{
+    ".id": "*1",
+    name: "pelanggan_lama",
+    profile: "50M",
+    password: "67805",
+    // Simulates a manual number change or a partially completed retry.
+    email: "6281399999999@localhost.local",
+  }]);
+
+  const result = await service.updateHotspotCustomer({
+    previousUsername: "pelanggan_lama",
+    name: "Pelanggan Baru",
+    username: "pelanggan_baru",
+    phoneNumber: "6281234567806",
+    password: "password-baru",
+    profile: "100M",
+  });
+
+  assert.equal(result.updated, true);
+  assert.equal(users[0].name, "pelanggan_baru");
+  assert.equal(users[0].password, "password-baru");
+  assert.equal(users[0].profile, "100M");
+  assert.equal(users[0].email, "6281234567806@localhost.local");
+  assert.equal(getUpdateCalls(), 1);
+});
+
 test("retry edit idempotent menerima akun baru ketika akun lama sudah berganti nama", async () => {
   const { service, getUpdateCalls } = createServiceWithUsers([{
     ".id": "*1",

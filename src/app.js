@@ -658,10 +658,11 @@ class MikrotikService {
     };
   }
 
-  async verifyHotspotCustomer({ username, phoneNumber, profile }) {
+  async verifyHotspotCustomer({ username, phoneNumber, profile, password }) {
     const hotspotUsername = sanitizeInput(username);
     const normalizedPhone = normalizePhoneNumber(phoneNumber);
     const profileName = sanitizeInput(profile);
+    const expectedPassword = sanitizeInput(password);
     const expectedEmail = buildHotspotEmailFromPhone(normalizedPhone);
     const user = await this.withConnection(async (conn) => {
       const users = await conn.menu("/ip/hotspot/user").print();
@@ -673,6 +674,7 @@ class MikrotikService {
         id: match[".id"] || match.id || match.numbers || "",
         username: sanitizeInput(match.name || ""),
         profile: match.profile || "",
+        password: sanitizeInput(match.password || ""),
         email: match.email || "",
         disabled: String(match.disabled || "false").toLowerCase() === "true",
       };
@@ -685,6 +687,11 @@ class MikrotikService {
     if (String(user.email || "").toLowerCase() !== expectedEmail.toLowerCase()) {
       throw new Error(`Akun "${hotspotUsername}" terhubung ke pelanggan yang berbeda.`);
     }
+    // RouterOS may hide passwords from read results depending on permissions;
+    // verify it whenever the API returns the value.
+    if (expectedPassword && user.password && user.password !== expectedPassword) {
+      throw new Error(`Password akun "${hotspotUsername}" berbeda setelah sinkronisasi.`);
+    }
     if (user.disabled) throw new Error(`Akun "${hotspotUsername}" ditemukan tetapi dinonaktifkan.`);
 
     return user;
@@ -692,7 +699,6 @@ class MikrotikService {
 
   async updateHotspotCustomer({
     previousUsername,
-    previousPhoneNumber,
     username,
     phoneNumber,
     password,
@@ -707,8 +713,6 @@ class MikrotikService {
       password,
     });
     const oldUsername = sanitizeInput(previousUsername) || registration.username;
-    const oldPhoneNumber = normalizePhoneNumber(previousPhoneNumber);
-    const expectedOldEmail = buildHotspotEmailFromPhone(oldPhoneNumber);
     const expectedEmail = buildHotspotEmailFromPhone(registration.phoneNumber);
 
     return this.withConnection(async (conn) => {
@@ -748,11 +752,11 @@ class MikrotikService {
       if (target && String(targetId || "") !== String(previousId || "")) {
         throw new Error(`Username baru "${registration.username}" sudah dipakai akun MikroTik lain.`);
       }
-      if (expectedOldEmail
-        && previous.email
-        && String(previous.email).toLowerCase() !== expectedOldEmail.toLowerCase()) {
-        throw new Error(`Akun lama "${oldUsername}" terhubung ke pelanggan yang berbeda.`);
-      }
+      // The username snapshot is the application's ownership link for an edit.
+      // MikroTik email metadata may be stale/empty after a manual change or a
+      // partially completed retry, so do not block updating the linked user on
+      // the old email value. The target-username collision check above still
+      // prevents overwriting a different MikroTik account.
       if (!previousId) {
         throw new Error(`ID akun lama "${oldUsername}" tidak ditemukan di MikroTik.`);
       }
