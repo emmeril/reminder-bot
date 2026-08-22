@@ -36,6 +36,7 @@
           recipients: "",
           contact: "",
           contactEdit: "",
+          hotspotAccount: "",
           accountDelivery: "",
           reminder: "",
           reminderEdit: "",
@@ -48,6 +49,10 @@
           loading: false,
         },
         contactCreateModal: {
+          open: false,
+          loading: false,
+        },
+        hotspotAccountModal: {
           open: false,
           loading: false,
         },
@@ -143,6 +148,16 @@
             hotspotReactivationEnabled: false,
             hotspotReactivationDate: "",
             hotspotReactivationTime: "",
+          },
+          hotspotAccount: {
+            contactId: "",
+            username: "",
+            profile: "",
+            password: "",
+            sendCredentials: true,
+            reactivationEnabled: false,
+            reactivationDate: "",
+            reactivationTime: "",
           },
           reminderEdit: { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
           template: { name: "", content: "" },
@@ -517,20 +532,46 @@
             name: "",
             phoneNumber: "",
             linkedApHost: "",
-            mikrotikUsername: "",
-            mikrotikProfile: "",
-            mikrotikPassword: "",
-            createHotspotAccount: true,
-            sendCredentials: true,
-            hotspotReactivationEnabled: false,
-            hotspotReactivationDate: "",
-            hotspotReactivationTime: "",
           };
         },
 
+        blankHotspotAccountForm() {
+          return {
+            contactId: "",
+            username: "",
+            profile: "",
+            password: "",
+            sendCredentials: true,
+            reactivationEnabled: false,
+            reactivationDate: "",
+            reactivationTime: "",
+          };
+        },
+
+        getContactsWithoutHotspot() {
+          return this.contacts.filter((contact) => !contact.mikrotikUsername);
+        },
+
+        getHotspotAccountCandidates() {
+          const selectedId = String(this.forms.hotspotAccount.contactId || "");
+          return this.contacts.filter(
+            (contact) => !contact.mikrotikUsername || String(contact.id) === selectedId
+          );
+        },
+
+        suggestHotspotUsername(name) {
+          return String(name || "")
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, "_")
+            .replace(/[^a-z0-9_]/g, "");
+        },
+
         buildHotspotReactivationAt(form) {
-          if (!form.hotspotReactivationDate) return "";
-          return `${form.hotspotReactivationDate} ${form.hotspotReactivationTime || "00:00"}`;
+          const date = form.hotspotReactivationDate || form.reactivationDate;
+          const time = form.hotspotReactivationTime || form.reactivationTime;
+          if (!date) return "";
+          return `${date} ${time || "00:00"}`;
         },
 
         getContactHotspotLabel(contact) {
@@ -613,14 +654,17 @@
         syncHotspotUserToForm(formKey) {
           const form = this.forms[formKey];
           if (!form) return;
-          const username = String(form.mikrotikUsername || "").trim().toLowerCase();
+          const usernameField = formKey === "hotspotAccount" ? "username" : "mikrotikUsername";
+          const profileField = formKey === "hotspotAccount" ? "profile" : "mikrotikProfile";
+          const passwordField = formKey === "hotspotAccount" ? "password" : "mikrotikPassword";
+          const username = String(form[usernameField] || "").trim().toLowerCase();
           if (!username) return;
           const selected = this.hotspotUsers.find((user) => String(user.username || "").trim().toLowerCase() === username);
           if (selected?.profile) {
-            form.mikrotikProfile = selected.profile;
+            form[profileField] = selected.profile;
           }
           if (selected?.password) {
-            form.mikrotikPassword = selected.password;
+            form[passwordField] = selected.password;
           }
         },
 
@@ -1169,34 +1213,18 @@
             name: this.forms.contact.name,
             phoneNumber: this.forms.contact.phoneNumber,
             linkedApHost: this.forms.contact.linkedApHost,
-            mikrotikUsername: this.forms.contact.mikrotikUsername,
-            mikrotikProfile: this.forms.contact.mikrotikProfile,
-            mikrotikPassword: this.forms.contact.mikrotikPassword,
-            hotspotReactivationEnabled: this.forms.contact.hotspotReactivationEnabled,
-            hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contact),
-          };
-        },
-
-        getMikrotikCustomerPayload() {
-          return {
-            name: this.forms.contact.name,
-            phoneNumber: this.forms.contact.phoneNumber,
-            profile: this.forms.contact.mikrotikProfile,
-            sendCredentials: this.forms.contact.sendCredentials,
-            linkedApHost: this.forms.contact.linkedApHost,
-            hotspotReactivationEnabled: this.forms.contact.hotspotReactivationEnabled,
-            hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contact),
           };
         },
 
         async createContact() {
           const payload = this.getContactCreatePayload();
-          await this.api("/api/contacts", {
+          const result = await this.api("/api/contacts", {
             method: "POST",
             body: JSON.stringify(payload),
           });
           this.forms.contact = this.blankContactForm();
-          await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
+          this.notify(`Pelanggan ${result.name || payload.name} berhasil disimpan. Akun hotspot dapat dibuat dari tab Hotspot.`);
+          return result;
         },
 
         openContactCreateModal() {
@@ -1220,19 +1248,7 @@
           this.clearFormError("contact");
           try {
             await this.withProcessing("Mendaftarkan pelanggan...", async () => {
-              const result = await this.registerMikrotikCustomer(this.getMikrotikCustomerPayload(), { reload: false, resetForm: false });
-              const hotspotReactivationAt = this.buildHotspotReactivationAt(this.forms.contact);
-              if (result?.contact?.id && (this.forms.contact.linkedApHost || this.forms.contact.hotspotReactivationEnabled || hotspotReactivationAt)) {
-                await this.api(`/api/contacts/${result.contact.id}`, {
-                  method: "PUT",
-                  body: JSON.stringify({
-                    ...result.contact,
-                    linkedApHost: this.forms.contact.linkedApHost,
-                    hotspotReactivationEnabled: this.forms.contact.hotspotReactivationEnabled,
-                    hotspotReactivationAt,
-                  }),
-                });
-              }
+              await this.createContact();
               await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus(), this.loadLogs()]);
               this.closeContactCreateModal();
             });
@@ -1250,17 +1266,10 @@
             name: contact.name || "",
             phoneNumber: contact.phoneNumber || "",
             linkedApHost: contact.linkedApHost || "",
-            mikrotikUsername: contact.mikrotikUsername || "",
-            mikrotikProfile: contact.mikrotikProfile || "",
-            mikrotikPassword: contact.mikrotikPassword || "",
-            hotspotReactivationEnabled: Boolean(contact.hotspotReactivationEnabled),
-            hotspotReactivationDate: this.formatDateInput(contact.hotspotReactivationAt),
-            hotspotReactivationTime: this.formatTimeInput(contact.hotspotReactivationAt) || "00:00",
           };
           this.clearFormError("contactEdit");
           this.contactEditModal.open = true;
           document.body.classList.add("overflow-hidden");
-          await this.loadHotspotOptions("contactEdit", { silent: true });
         },
 
         closeContactEditModal() {
@@ -1283,13 +1292,6 @@
                   name: this.forms.contactEdit.name,
                   phoneNumber: this.forms.contactEdit.phoneNumber,
                   linkedApHost: this.forms.contactEdit.linkedApHost,
-                  mikrotikUsername: this.forms.contactEdit.mikrotikUsername,
-                  mikrotikProfile: this.forms.contactEdit.mikrotikProfile,
-                  ...(this.forms.contactEdit.mikrotikPassword
-                    ? { mikrotikPassword: this.forms.contactEdit.mikrotikPassword }
-                    : {}),
-                  hotspotReactivationEnabled: this.forms.contactEdit.hotspotReactivationEnabled,
-                  hotspotReactivationAt: this.buildHotspotReactivationAt(this.forms.contactEdit),
                 }),
               });
               this.notify(result.hotspotSynced
@@ -1306,27 +1308,77 @@
           }
         },
 
-        async registerMikrotikCustomer(payload = null, options = {}) {
-          const result = await this.api("/api/mikrotik/customers", {
-            method: "POST",
-            body: JSON.stringify(payload || this.getMikrotikCustomerPayload()),
-          });
-          if (options.resetForm !== false) {
-            this.forms.contact = this.blankContactForm();
+        async openHotspotAccountModal(contact = null) {
+          const selected = contact || null;
+          this.forms.hotspotAccount = this.blankHotspotAccountForm();
+          if (selected) {
+            this.forms.hotspotAccount.contactId = String(selected.id);
+            this.forms.hotspotAccount.username = selected.mikrotikUsername || this.suggestHotspotUsername(selected.name);
+            this.forms.hotspotAccount.profile = selected.mikrotikProfile || "";
+            this.forms.hotspotAccount.password = selected.mikrotikUsername ? "" : String(selected.phoneNumber || "").slice(-5);
+            this.forms.hotspotAccount.sendCredentials = !selected.mikrotikUsername;
+            this.forms.hotspotAccount.reactivationEnabled = Boolean(selected.hotspotReactivationEnabled);
+            this.forms.hotspotAccount.reactivationDate = this.formatDateInput(selected.hotspotReactivationAt);
+            this.forms.hotspotAccount.reactivationTime = this.formatTimeInput(selected.hotspotReactivationAt) || "00:00";
           }
+          this.clearFormError("hotspotAccount");
+          this.hotspotAccountModal.open = true;
+          document.body.classList.add("overflow-hidden");
+          await this.loadHotspotOptions("hotspotAccount", { silent: true });
+        },
 
-          if (result.notification?.sent) {
-            this.notify(`Pelanggan dibuat: ${result.username}. Akun terkirim ke WhatsApp.`);
-          } else if (result.notification?.error) {
-            this.notify(`Pelanggan dibuat: ${result.username}. WA belum terkirim: ${result.notification.error}`);
-          } else {
-            this.notify(`Pelanggan dibuat: ${result.username}.`);
-          }
+        closeHotspotAccountModal() {
+          this.hotspotAccountModal.open = false;
+          this.hotspotAccountModal.loading = false;
+          this.forms.hotspotAccount = this.blankHotspotAccountForm();
+          this.clearFormError("hotspotAccount");
+          document.body.classList.remove("overflow-hidden");
+        },
 
-          if (options.reload !== false) {
-            await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
+        onHotspotAccountContactChange() {
+          const selected = this.contacts.find(
+            (contact) => String(contact.id) === String(this.forms.hotspotAccount.contactId)
+          );
+          if (!selected) return;
+          this.forms.hotspotAccount.username = selected.mikrotikUsername || this.suggestHotspotUsername(selected.name);
+          this.forms.hotspotAccount.profile = selected.mikrotikProfile || "";
+          this.forms.hotspotAccount.password = selected.mikrotikUsername ? "" : String(selected.phoneNumber || "").slice(-5);
+          this.forms.hotspotAccount.sendCredentials = !selected.mikrotikUsername;
+          this.forms.hotspotAccount.reactivationEnabled = Boolean(selected.hotspotReactivationEnabled);
+          this.forms.hotspotAccount.reactivationDate = this.formatDateInput(selected.hotspotReactivationAt);
+          this.forms.hotspotAccount.reactivationTime = this.formatTimeInput(selected.hotspotReactivationAt) || "00:00";
+        },
+
+        async saveHotspotAccount() {
+          if (this.hotspotAccountModal.loading) return;
+          const form = this.forms.hotspotAccount;
+          if (!form.contactId) return;
+          this.hotspotAccountModal.loading = true;
+          this.clearFormError("hotspotAccount");
+          try {
+            await this.withProcessing("Menyimpan akun hotspot...", async () => {
+              const payload = {
+                mikrotikUsername: form.username,
+                mikrotikProfile: form.profile,
+                sendCredentials: form.sendCredentials,
+                hotspotReactivationEnabled: form.reactivationEnabled,
+                hotspotReactivationAt: this.buildHotspotReactivationAt(form),
+              };
+              if (form.password) payload.mikrotikPassword = form.password;
+              const result = await this.api(`/api/contacts/${form.contactId}/hotspot`, {
+                method: "POST",
+                body: JSON.stringify(payload),
+              });
+              this.notify(result.hotspotSynced ? "Akun hotspot berhasil disinkronkan ke MikroTik." : "Akun hotspot sudah tersimpan.");
+              this.closeHotspotAccountModal();
+              await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
+            });
+          } catch (error) {
+            this.setFormError("hotspotAccount", error);
+            await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]).catch(() => {});
+          } finally {
+            this.hotspotAccountModal.loading = false;
           }
-          return result;
         },
 
         async togglePayment(id, status, paymentType = "") {

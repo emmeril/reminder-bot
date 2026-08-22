@@ -2229,6 +2229,15 @@ class DataManager {
     );
   }
 
+  hasContactHotspotUsername(username, excludeId = null) {
+    const normalized = sanitizeInput(String(username || "")).toLowerCase();
+    if (!normalized) return false;
+    return Array.from(this.contacts.values()).some((contact) => (
+      sanitizeInput(String(contact.mikrotikUsername || "")).toLowerCase() === normalized
+      && String(contact.id) !== String(excludeId)
+    ));
+  }
+
   getContact(id) {
     return this.contacts.get(String(id)) || null;
   }
@@ -2845,6 +2854,9 @@ class DataManager {
       if (!nextName) throw new Error("Nama kontak wajib diisi.");
       if (!isValidPhoneNumber(nextPhone)) throw new Error("Nomor kontak harus berformat 628xxx.");
       if (this.hasContactPhone(nextPhone, id)) throw new Error("Nomor kontak sudah digunakan.");
+      if (nextUsername && this.hasContactHotspotUsername(nextUsername, id)) {
+        throw new Error(`Username hotspot "${nextUsername}" sudah terhubung ke pelanggan lain.`);
+      }
       if (Boolean(nextUsername) !== Boolean(nextProfile)) {
         throw new Error("Username dan profile hotspot harus diisi bersamaan.");
       }
@@ -5673,6 +5685,37 @@ class WebServer {
         return { ...result.contact, hotspotSynced: true };
       }
       return this.dataManager.toPublicContact(prepared.contact);
+    }));
+    this.app.post("/api/contacts/:id/hotspot", requireApiAuth, handleApi(async (req) => {
+      const current = this.dataManager.getContact(req.params.id);
+      if (!current) throw new Error("Pelanggan tidak ditemukan.");
+
+      const username = sanitizeInput(String(req.body.mikrotikUsername || req.body.username || ""));
+      const profile = sanitizeInput(String(req.body.mikrotikProfile || req.body.profile || ""));
+      const password = req.body.mikrotikPassword !== undefined
+        ? sanitizeInput(String(req.body.mikrotikPassword || ""))
+        : (req.body.password !== undefined ? sanitizeInput(String(req.body.password || "")) : undefined);
+      if (!username) throw new Error("Username hotspot wajib diisi.");
+      if (!profile) throw new Error("Profile hotspot wajib dipilih.");
+
+      const hotspotPayload = {
+        mikrotikUsername: username,
+        mikrotikProfile: profile,
+        hotspotReactivationEnabled: req.body.hotspotReactivationEnabled,
+        hotspotReactivationAt: req.body.hotspotReactivationAt,
+      };
+      // An empty password on an existing account means keep the current one.
+      if (password !== undefined && password) hotspotPayload.mikrotikPassword = password;
+
+      const prepared = await this.dataManager.prepareContactUpdate(req.params.id, hotspotPayload);
+      if (!prepared.hotspotSyncRequired) {
+        return this.dataManager.toPublicContact(prepared.contact);
+      }
+
+      const result = await this.provisionHotspotContact(prepared.contact, {
+        sendCredentials: req.body.sendCredentials,
+      });
+      return { ...result.contact, hotspotSynced: true };
     }));
     this.app.delete("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.dataManager.deleteContact(req.params.id)));
     this.app.post("/api/contacts/:id/account-credentials", requireApiAuth, handleApi(async (req) => {

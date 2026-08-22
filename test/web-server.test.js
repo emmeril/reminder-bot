@@ -1186,6 +1186,72 @@ test("registrasi hotspot menyimpan PENDING sebelum membuat akun MikroTik", async
   ]);
 });
 
+test("endpoint akun hotspot membuat akun untuk pelanggan yang sudah tersimpan", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const events = [];
+  const contact = {
+    id: "contact-existing-customer",
+    name: "Pelanggan Existing",
+    phoneNumber: "6281234567896",
+    mikrotikUsername: "",
+    mikrotikProfile: "",
+    mikrotikPassword: "",
+    hotspotProvisioningStatus: "NONE",
+  };
+  const baseUrl = await startServer({
+    getContact: (id) => (String(id) === contact.id ? contact : null),
+    prepareContactUpdate: async (_id, payload) => {
+      events.push(`db:prepare:${payload.mikrotikUsername}:${payload.mikrotikProfile}`);
+      Object.assign(contact, {
+        mikrotikUsername: payload.mikrotikUsername,
+        mikrotikProfile: payload.mikrotikProfile,
+        mikrotikPassword: payload.mikrotikPassword || "67896",
+        hotspotProvisioningStatus: "PENDING",
+        hotspotProvisioningOperation: "CREATE",
+      });
+      return { contact, hotspotSyncRequired: true };
+    },
+    updateHotspotProvisioningStatus: async (_id, status) => {
+      events.push(`db:${status.toLowerCase()}`);
+      contact.hotspotProvisioningStatus = status;
+      return { contact, pelanggan: { username: contact.mikrotikUsername } };
+    },
+    toPublicContact: (value) => value,
+  }, {}, {
+    createHotspotCustomer: async (payload) => {
+      events.push(`mikrotik:create:${payload.username}`);
+      return { ...payload, created: true };
+    },
+    verifyHotspotCustomer: async (registered) => {
+      events.push("mikrotik:verify");
+      return { username: registered.username };
+    },
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/hotspot`, {
+    method: "POST",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({
+      mikrotikUsername: "pelanggan_existing",
+      mikrotikProfile: "100M",
+      mikrotikPassword: "67896",
+      sendCredentials: false,
+    }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.hotspotSynced, true);
+  assert.equal(payload.data.mikrotikUsername, "pelanggan_existing");
+  assert.deepEqual(events, [
+    "db:prepare:pelanggan_existing:100M",
+    "db:provisioning",
+    "mikrotik:create:pelanggan_existing",
+    "mikrotik:verify",
+    "db:active",
+  ]);
+});
+
 test("kegagalan provisioning mempertahankan pelanggan sebagai FAILED", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   const statuses = [];

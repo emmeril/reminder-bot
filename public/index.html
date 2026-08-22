@@ -255,6 +255,9 @@
               <p class="mt-1 text-sm text-ink/60">Data pelanggan, tagihan, dan layanan hotspot kini dipisahkan agar lebih mudah dibaca.</p>
             </div>
             <div class="customer-heading-actions">
+              <button type="button" x-show="activeContactTab === 'hotspot'" @click="openHotspotAccountModal()" class="bg-clay px-4 py-2 text-sm font-semibold text-white transition hover:bg-ink">
+                <i class="fa-solid fa-wifi mr-2"></i>Buat akun hotspot
+              </button>
               <button type="button" @click="openContactCreateModal()" class="bg-moss px-4 py-2 text-sm font-semibold text-white transition hover:bg-ink">
                 <i class="fa-solid fa-user-plus mr-2"></i>Tambah pelanggan
               </button>
@@ -496,7 +499,7 @@
                             <button x-show="contact.mikrotikUsername && contact.mikrotikProfile && canReactivateHotspot(contact)" type="button" @click="reactivateHotspotContact(contact)" class="border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-rotate-right mr-1.5"></i>Reaktivasi</button>
                             <button x-show="canDisableHotspot(contact)" type="button" @click="setHotspotDisabled(contact, true)" class="border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"><i class="fa-solid fa-ban mr-1.5"></i>Nonaktifkan</button>
                             <button x-show="canEnableHotspot(contact)" type="button" @click="setHotspotDisabled(contact, false)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-power-off mr-1.5"></i>Aktifkan</button>
-                            <button type="button" @click="openContactEditModal(contact)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-gear mr-1.5"></i>Atur hotspot</button>
+                            <button type="button" @click="openHotspotAccountModal(contact)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-gear mr-1.5"></i><span x-text="contact.mikrotikUsername ? 'Atur hotspot' : 'Buat akun'"></span></button>
                           </div>
                         </td>
                       </tr>
@@ -1061,59 +1064,110 @@
               </template>
             </select>
           </label>
-          <div class="rounded-[1.25rem] border border-ink/10 bg-haze/60 p-4">
-            <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div class="text-sm font-semibold text-ink">Options Hotspot</div>
-                <div class="text-xs text-ink/55">Pilih profile hotspot untuk pelanggan.</div>
-              </div>
-              <button type="button" @click="loadHotspotOptions('contact')" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white">
-                <i class="fa-solid fa-cloud-arrow-down mr-1.5"></i>Load
-              </button>
-            </div>
-            <div class="grid gap-4 md:grid-cols-2">
-              <label class="block text-sm text-ink/60">
-                Profile hotspot
-                <select x-model="forms.contact.mikrotikProfile" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.contact.createHotspotAccount">
-                  <option value="">-- Pilih profile --</option>
-                  <template x-if="forms.contact.mikrotikProfile && !hasMikrotikProfile(forms.contact.mikrotikProfile)">
-                    <option :value="forms.contact.mikrotikProfile" x-text="forms.contact.mikrotikProfile"></option>
-                  </template>
-                  <template x-for="profile in mikrotikProfiles" :key="'contact-profile-' + profile.name">
-                    <option :value="profile.name" x-text="profile.rateLimit ? profile.name + ' - ' + profile.rateLimit : profile.name"></option>
-                  </template>
-                </select>
-              </label>
-              <label class="block text-sm text-ink/60">
-                Jadwal reaktivasi / nonaktif
-                <div class="mt-2 grid grid-cols-2 gap-2">
-                  <input type="date" x-model="forms.contact.hotspotReactivationDate" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.contact.hotspotReactivationEnabled">
-                  <input type="time" x-model="forms.contact.hotspotReactivationTime" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.contact.hotspotReactivationEnabled">
-                </div>
-              </label>
-            </div>
-            <div class="mt-4 grid gap-3 md:grid-cols-2">
-              <label class="flex items-center gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink">
-                <input type="checkbox" x-model="forms.contact.sendCredentials" class="h-4 w-4 accent-moss">
-                Kirim akun WA
-              </label>
-              <label class="flex items-center gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink">
-                <input type="checkbox" x-model="forms.contact.hotspotReactivationEnabled" class="h-4 w-4 accent-moss">
-                Aktifkan reaktivasi otomatis bulanan
-              </label>
-            </div>
-            <p class="mt-2 text-xs text-ink/55">Jika reaktivasi otomatis nonaktif, akun hotspot tetap tersimpan dan hanya dinonaktifkan di MikroTik saat jadwal jatuh tempo.</p>
+          <div class="rounded-[1.25rem] border border-moss/15 bg-moss/5 px-4 py-3 text-sm text-ink/65">
+            <i class="fa-solid fa-circle-info mr-2 text-moss"></i>Akun hotspot dibuat terpisah setelah data pelanggan tersimpan.
           </div>
           <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" @click="closeContactCreateModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="contactCreateModal.loading">Batal</button>
             <button type="submit" class="rounded-2xl bg-moss px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20 transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60" :disabled="contactCreateModal.loading">
-              <span x-show="!contactCreateModal.loading">Registrasi Pelanggan</span>
+              <span x-show="!contactCreateModal.loading">Simpan Pelanggan</span>
               <span x-show="contactCreateModal.loading" class="inline-flex items-center gap-2">
                 <i class="fa-solid fa-circle-notch fa-spin"></i>Menyimpan...
               </span>
             </button>
           </div>
           <p x-cloak x-show="formErrors.contact" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.contact"></p>
+        </form>
+      </div>
+    </div>
+
+    <div
+      x-cloak
+      x-show="hotspotAccountModal.open"
+      x-transition.opacity
+      @keydown.escape.window="closeHotspotAccountModal()"
+      @click.self="closeHotspotAccountModal()"
+      class="dashboard-modal-overlay fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+    >
+      <div
+        x-show="hotspotAccountModal.open"
+        x-transition.scale.origin.center
+        class="w-full max-w-3xl rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
+      >
+        <div class="mb-4 flex items-start justify-between gap-4">
+          <div>
+            <h3 class="text-lg font-semibold text-ink">Kelola Akun Hotspot</h3>
+            <p class="mt-1 text-sm text-ink/55">Pilih pelanggan, lalu buat atau perbarui akun MikroTik tanpa mengubah data pelanggan lainnya.</p>
+          </div>
+          <button type="button" @click="closeHotspotAccountModal()" class="rounded-full border border-ink/10 px-3 py-1 text-sm font-semibold text-ink hover:bg-haze">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <form class="space-y-4" @submit.prevent="saveHotspotAccount()">
+          <label class="block text-sm text-ink/60">
+            Pelanggan
+            <select x-model="forms.hotspotAccount.contactId" @change="onHotspotAccountContactChange()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+              <option value="">-- Pilih pelanggan --</option>
+              <template x-for="contact in getHotspotAccountCandidates()" :key="'hotspot-account-contact-' + contact.id">
+                <option :value="contact.id" x-text="contact.name + ' (' + contact.phoneNumber + ')' + (contact.mikrotikUsername ? ' - ' + contact.mikrotikUsername : ' - belum ada akun')"></option>
+              </template>
+            </select>
+            <span class="mt-1 block text-xs text-ink/45">Pada pembuatan akun baru, dropdown hanya menampilkan pelanggan yang belum memiliki akun hotspot.</span>
+          </label>
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="block text-sm text-ink/60">
+              Username hotspot
+              <input list="hotspot-users" x-model="forms.hotspotAccount.username" @change="syncHotspotUserToForm('hotspotAccount')" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="username_hotspot" required>
+              <span class="mt-1 block text-xs text-ink/45">Username existing akan diperiksa agar akun pelanggan lain tidak tertimpa.</span>
+            </label>
+            <label class="block text-sm text-ink/60">
+              Profile hotspot
+              <select x-model="forms.hotspotAccount.profile" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" required>
+                <option value="">-- Pilih profile --</option>
+                <template x-if="forms.hotspotAccount.profile && !hasMikrotikProfile(forms.hotspotAccount.profile)">
+                  <option :value="forms.hotspotAccount.profile" x-text="forms.hotspotAccount.profile"></option>
+                </template>
+                <template x-for="profile in mikrotikProfiles" :key="'hotspot-account-profile-' + profile.name">
+                  <option :value="profile.name" x-text="profile.rateLimit ? profile.name + ' - ' + profile.rateLimit : profile.name"></option>
+                </template>
+              </select>
+            </label>
+            <label class="block text-sm text-ink/60">
+              Password hotspot
+              <input x-model="forms.hotspotAccount.password" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="Kosong saat edit = pertahankan password lama">
+            </label>
+            <label class="block text-sm text-ink/60">
+              Jadwal reaktivasi / nonaktif
+              <div class="mt-2 grid grid-cols-2 gap-2">
+                <input type="date" x-model="forms.hotspotAccount.reactivationDate" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.hotspotAccount.reactivationEnabled">
+                <input type="time" x-model="forms.hotspotAccount.reactivationTime" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.hotspotAccount.reactivationEnabled">
+              </div>
+            </label>
+          </div>
+          <div class="grid gap-3 md:grid-cols-2">
+            <label class="flex items-center gap-3 rounded-2xl border border-ink/10 bg-haze/60 px-4 py-3 text-sm font-semibold text-ink">
+              <input type="checkbox" x-model="forms.hotspotAccount.sendCredentials" class="h-4 w-4 accent-moss">
+              Kirim akun melalui WhatsApp
+            </label>
+            <label class="flex items-center gap-3 rounded-2xl border border-ink/10 bg-haze/60 px-4 py-3 text-sm font-semibold text-ink">
+              <input type="checkbox" x-model="forms.hotspotAccount.reactivationEnabled" class="h-4 w-4 accent-moss">
+              Aktifkan reaktivasi otomatis bulanan
+            </label>
+          </div>
+          <div class="flex flex-wrap items-center justify-between gap-3 rounded-[1.25rem] border border-moss/15 bg-moss/5 px-4 py-3">
+            <span class="text-xs leading-5 text-ink/55">Profile dan daftar user dibaca langsung dari MikroTik.</span>
+            <button type="button" @click="loadHotspotOptions('hotspotAccount')" :disabled="loading.hotspotOptions" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss disabled:opacity-50">
+              <i :class="loading.hotspotOptions ? 'fa-solid fa-circle-notch fa-spin mr-1.5' : 'fa-solid fa-cloud-arrow-down mr-1.5'"></i><span x-text="loading.hotspotOptions ? 'Memuat...' : 'Muat ulang MikroTik'"></span>
+            </button>
+          </div>
+          <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" @click="closeHotspotAccountModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink" :disabled="hotspotAccountModal.loading">Batal</button>
+            <button type="submit" class="rounded-2xl bg-clay px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-clay/20 disabled:cursor-not-allowed disabled:opacity-60" :disabled="hotspotAccountModal.loading">
+              <span x-show="!hotspotAccountModal.loading">Simpan dan Sinkronkan</span>
+              <span x-show="hotspotAccountModal.loading" class="inline-flex items-center gap-2"><i class="fa-solid fa-circle-notch fa-spin"></i>Memproses...</span>
+            </button>
+          </div>
+          <p x-cloak x-show="formErrors.hotspotAccount" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.hotspotAccount"></p>
         </form>
       </div>
     </div>
@@ -1227,52 +1281,8 @@
               </template>
             </select>
           </label>
-          <div class="rounded-[1.25rem] border border-ink/10 bg-haze/60 p-4">
-            <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div class="text-sm font-semibold text-ink">Options Hotspot</div>
-                <div class="text-xs text-ink/55">Perubahan akun disimpan dahulu, disinkronkan ke MikroTik, lalu diverifikasi otomatis.</div>
-              </div>
-              <button type="button" @click="loadHotspotOptions('contactEdit')" :disabled="loading.hotspotOptions" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white disabled:cursor-not-allowed disabled:opacity-60">
-                <i :class="loading.hotspotOptions ? 'fa-solid fa-circle-notch fa-spin mr-1.5' : 'fa-solid fa-cloud-arrow-down mr-1.5'"></i>
-                <span x-text="loading.hotspotOptions ? 'Loading...' : 'Load'"></span>
-              </button>
-            </div>
-            <div class="grid gap-4 md:grid-cols-2">
-              <label class="block text-sm text-ink/60">
-                User hotspot
-                <input list="hotspot-users" x-model="forms.contactEdit.mikrotikUsername" @change="syncHotspotUserToForm('contactEdit')" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="Pilih atau ketik username baru">
-                <span class="mt-1 block text-xs text-ink/45">Username baru akan diperiksa agar tidak menimpa akun MikroTik lain.</span>
-              </label>
-              <label class="block text-sm text-ink/60">
-                Profile hotspot
-                <select x-model="forms.contactEdit.mikrotikProfile" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss">
-                  <option value="">-- Pilih profile --</option>
-                  <template x-if="forms.contactEdit.mikrotikProfile && !hasMikrotikProfile(forms.contactEdit.mikrotikProfile)">
-                    <option :value="forms.contactEdit.mikrotikProfile" x-text="forms.contactEdit.mikrotikProfile"></option>
-                  </template>
-                  <template x-for="profile in mikrotikProfiles" :key="'contact-edit-profile-' + profile.name">
-                    <option :value="profile.name" x-text="profile.rateLimit ? profile.name + ' - ' + profile.rateLimit : profile.name"></option>
-                  </template>
-                </select>
-              </label>
-              <label class="block text-sm text-ink/60">
-                Password hotspot
-                <input x-model="forms.contactEdit.mikrotikPassword" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="Kosong = pertahankan password lama">
-              </label>
-              <label class="block text-sm text-ink/60">
-                Jadwal reaktivasi / nonaktif
-                <div class="mt-2 grid grid-cols-2 gap-2">
-                  <input type="date" x-model="forms.contactEdit.hotspotReactivationDate" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.contactEdit.hotspotReactivationEnabled">
-                  <input type="time" x-model="forms.contactEdit.hotspotReactivationTime" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.contactEdit.hotspotReactivationEnabled">
-                </div>
-              </label>
-            </div>
-            <label class="mt-4 flex items-center gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink">
-              <input type="checkbox" x-model="forms.contactEdit.hotspotReactivationEnabled" class="h-4 w-4 accent-moss">
-              Aktifkan reaktivasi otomatis bulanan
-            </label>
-            <p class="mt-2 text-xs text-ink/55">Mengosongkan user dan profile hanya melepas hubungan akun dari aplikasi; akun MikroTik tidak dihapus. Jika reaktivasi otomatis nonaktif, akun hanya dinonaktifkan di MikroTik saat jadwal jatuh tempo.</p>
+          <div class="rounded-[1.25rem] border border-ink/10 bg-haze/60 px-4 py-3 text-sm text-ink/60">
+            Pengaturan akun hotspot tersedia melalui tab <strong>Hotspot</strong> agar perubahan data pelanggan dan MikroTik tidak tercampur.
           </div>
           <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button type="button" @click="closeContactEditModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="contactEditModal.loading">Batal</button>
