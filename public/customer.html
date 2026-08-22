@@ -6,7 +6,7 @@
   <title>Akun Saya - __CUSTOMER_PORTAL_TITLE__</title>
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/customer.css?v=20260819-8">
-  <script defer src="/public/customer.js?v=20260819-8"></script>
+  <script defer src="/public/customer.js?v=20260822-9"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -57,7 +57,7 @@
         </article>
         <article class="portal-summary-card">
           <span class="portal-card-icon"><i class="fa-solid fa-circle-check"></i></span>
-          <div><small>Status bulan ini</small><strong class="portal-status-text" :class="isPaid() ? 'is-paid' : 'is-unpaid'" x-text="isPaid() ? 'Lunas' : 'Belum Lunas'"></strong><p x-text="dueLabel()"></p></div>
+          <div><small>Status bulan ini</small><strong class="portal-status-text" :class="isPaid() ? 'is-paid' : 'is-unpaid'" x-text="currentStatusLabel()"></strong><p x-text="dueLabel()"></p></div>
         </article>
       </section>
 

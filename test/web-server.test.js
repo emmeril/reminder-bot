@@ -1656,8 +1656,8 @@ test("endpoint pengingat tagihan menolak pelanggan lunas atau tagihan yang belum
   CONFIG.WEB_API_KEY = "test-api-key";
   const cases = [
     {
-      contact: { id: "paid", paymentStatus: "PAID", currentPaymentStatus: "PAID", hasDebt: true, debtCount: 1 },
-      error: /belum membayar bulan berjalan/,
+      contact: { id: "paid", paymentStatus: "PAID", currentPaymentStatus: "PAID", hasDebt: false, debtCount: 0 },
+      error: /jatuh tempo atau memiliki tunggakan/,
     },
     {
       contact: { id: "no-debt", paymentStatus: "UNPAID", currentPaymentStatus: "UNPAID", dueStatus: "UPCOMING", hasDebt: false, debtCount: 0 },

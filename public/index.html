@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>__DASHBOARD_TITLE__</title>
-  <link rel="stylesheet" href="/public/tailwind.css?v=20260819-1">
+  <link rel="stylesheet" href="/public/tailwind.css?v=20260822-2">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20260820-1">
-  <script defer src="/public/app.js?v=20260822-1"></script>
+  <script defer src="/public/app.js?v=20260822-2"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -384,7 +384,7 @@
                     </template>
                     <template x-for="contact in paginatedBillingContacts" :key="'billing-' + contact.id">
                       <tr>
-                        <td class="px-4 py-4" data-label="Pelanggan"><strong class="customer-name" x-text="contact.name"></strong><small class="customer-meta" x-text="contact.phoneNumber"></small></td>
+                        <td class="px-4 py-4" data-label="Pelanggan"><strong class="customer-name" x-text="contact.name"></strong><small class="customer-meta" x-text="contact.phoneNumber"></small><small class="customer-meta" x-text="getSubscriptionTypeLabel(contact)"></small></td>
                         <td class="px-4 py-4" data-label="Jatuh Tempo">
                           <span class="customer-due-date" x-text="contact.dueDate ? formatDateTime(contact.dueDate) : 'Belum dijadwalkan'"></span>
                           <span class="customer-due-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getDueStatusClass(contact.dueStatus)" x-text="getDueStatusLabel(contact.dueStatus)"></span>
@@ -396,7 +396,7 @@
                           </div>
                         </td>
                         <td class="px-4 py-4" data-label="Pembayaran">
-                          <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="contact.paymentStatus === 'PAID' ? 'bg-moss/10 text-moss' : 'bg-clay/10 text-clay'" x-text="contact.paymentType ? getPaymentTypeLabel(contact.paymentType) : (contact.paymentStatus === 'PAID' ? getPaymentTypeLabel(inferPaymentType(contact)) : 'Belum Bayar')"></span>
+                          <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="contact.currentPaymentStatus === 'PAID' ? 'bg-moss/10 text-moss' : 'bg-clay/10 text-clay'" x-text="getCurrentPaymentLabel(contact)"></span>
                           <template x-if="hasDebt(contact)">
                             <div class="customer-debt-note"><strong><i class="fa-solid fa-triangle-exclamation"></i><span x-text="getDebtCountLabel(contact)"></span></strong><small x-text="getDebtNote(contact)"></small></div>
                           </template>
@@ -406,21 +406,21 @@
                             <button x-show="canSendBillingReminder(contact)" type="button" @click="sendBillingReminder(contact)" class="w-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"><i class="fa-solid fa-paper-plane mr-1.5"></i>Kirim pengingat</button>
                             <details class="customer-payment-menu">
                               <summary>
-                                <span><i class="fa-solid fa-wallet"></i><span x-text="contact.paymentStatus === 'PAID' ? 'Kelola pembayaran' : 'Catat pembayaran'"></span></span>
+                                <span><i class="fa-solid fa-wallet"></i><span x-text="contact.subscriptionActive === false ? 'Kelola tunggakan' : (contact.currentPaymentStatus === 'PAID' ? 'Kelola pembayaran' : 'Catat pembayaran')"></span></span>
                                 <i class="fa-solid fa-chevron-down"></i>
                               </summary>
                               <div class="customer-payment-actions">
-                                <template x-if="contact.paymentStatus !== 'PAID'">
+                                <template x-if="contact.subscriptionActive !== false && contact.currentPaymentStatus !== 'PAID'">
                                   <div class="customer-payment-action-list">
                                     <button x-show="hasDebt(contact)" type="button" @click="togglePayment(contact.id, 'UNPAID', 'ARREARS-ONLY')" class="border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink"><i class="fa-solid fa-circle-check mr-1.5"></i>Bayar tunggakan</button>
                                     <button type="button" @click="togglePayment(contact.id, 'PAID', 'CURRENT-ONLY')" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-calendar-check mr-1.5"></i>Bayar bulan ini</button>
                                     <button type="button" @click="togglePayment(contact.id, 'PAID', 'FULL-PAID')" class="border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay"><i class="fa-solid fa-sack-dollar mr-1.5"></i>Lunas semua</button>
                                   </div>
                                 </template>
-                                <template x-if="contact.paymentStatus === 'PAID'">
+                                <template x-if="contact.subscriptionActive === false || contact.currentPaymentStatus === 'PAID'">
                                   <div class="customer-payment-action-list">
                                     <button x-show="hasDebt(contact)" type="button" @click="togglePayment(contact.id, 'PAID', 'FULL-PAID')" class="border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay"><i class="fa-solid fa-sack-dollar mr-1.5"></i>Lunasi hutang</button>
-                                    <button type="button" @click="togglePayment(contact.id, 'UNPAID')" class="border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink"><i class="fa-solid fa-rotate-left mr-1.5"></i>Reset pembayaran</button>
+                                    <button x-show="contact.subscriptionActive !== false" type="button" @click="togglePayment(contact.id, 'UNPAID')" class="border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink"><i class="fa-solid fa-rotate-left mr-1.5"></i>Reset pembayaran</button>
                                   </div>
                                 </template>
                               </div>
@@ -1056,6 +1056,14 @@
             <span class="mt-1 block text-xs text-ink/45">Nomor akan diperiksa langsung ke WhatsApp sebelum pelanggan disimpan.</span>
           </label>
           <label class="block text-sm text-ink/60">
+            Jenis berlangganan
+            <select x-model="forms.contact.subscriptionType" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+              <option value="RECURRING">Berlangganan bulanan</option>
+              <option value="ONE_TIME">Sekali berlangganan</option>
+            </select>
+            <span class="mt-1 block text-xs text-ink/45">Berlangganan bulanan membuat tagihan dan tunggakan setiap periode. Sekali berlangganan hanya mencatat periode mulai.</span>
+          </label>
+          <label class="block text-sm text-ink/60">
             AP tujuan (opsional)
             <select x-model="forms.contact.linkedApHost" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               <option value="">-- Tidak di-link ke AP --</option>
@@ -1150,9 +1158,10 @@
               Kirim akun melalui WhatsApp
             </label>
             <label class="flex items-center gap-3 rounded-2xl border border-ink/10 bg-haze/60 px-4 py-3 text-sm font-semibold text-ink">
-              <input type="checkbox" x-model="forms.hotspotAccount.reactivationEnabled" class="h-4 w-4 accent-moss">
+              <input type="checkbox" x-model="forms.hotspotAccount.reactivationEnabled" :disabled="!isHotspotReactivationAllowed()" class="h-4 w-4 accent-moss">
               Aktifkan reaktivasi otomatis bulanan
             </label>
+            <p x-show="!isHotspotReactivationAllowed()" class="text-xs text-ink/50">Reaktivasi otomatis hanya tersedia untuk pelanggan bulanan.</p>
           </div>
           <div class="flex flex-wrap items-center justify-between gap-3 rounded-[1.25rem] border border-moss/15 bg-moss/5 px-4 py-3">
             <span class="text-xs leading-5 text-ink/55">Profile dan daftar user dibaca langsung dari MikroTik.</span>
@@ -1271,6 +1280,14 @@
             Nomor WhatsApp
             <input x-model="forms.contactEdit.phoneNumber" inputmode="numeric" autocomplete="tel" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="628xxx" required>
             <span class="mt-1 block text-xs text-ink/45">Jika nomor diubah, nomor baru akan diperiksa langsung ke WhatsApp.</span>
+          </label>
+          <label class="block text-sm text-ink/60">
+            Jenis berlangganan
+            <select x-model="forms.contactEdit.subscriptionType" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+              <option value="RECURRING">Berlangganan bulanan</option>
+              <option value="ONE_TIME">Sekali berlangganan</option>
+            </select>
+            <span class="mt-1 block text-xs text-ink/45">Mengubah menjadi sekali berlangganan akan menghentikan tagihan periode berikutnya dan menonaktifkan reaktivasi otomatis.</span>
           </label>
           <label class="block text-sm text-ink/60">
             AP tujuan (opsional)

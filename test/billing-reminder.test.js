@@ -91,12 +91,37 @@ test("pengingat tagihan dapat dikirim untuk bulan berjalan yang sudah jatuh temp
   assert.equal(result.totalAmount, 100000);
 });
 
+test("pengingat tunggakan sekali berlangganan tidak menambahkan tagihan bulan berjalan", async () => {
+  const { bot, sent } = createBot();
+
+  const result = await bot.sendBillingDebtReminder(createContact({
+    subscriptionType: "ONE_TIME",
+    subscriptionActive: false,
+    paymentStatus: "PAID",
+    currentPaymentStatus: "PAID",
+    debtCount: 1,
+    debtPeriods: [{ key: "2026-07", label: "Juli 2026" }],
+  }));
+
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /Berjalan Rp 0/);
+  assert.match(sent[0].message, /Total Rp 100\.000/);
+  assert.equal(result.currentAmount, 0);
+  assert.equal(result.totalAmount, 100000);
+});
+
 test("pengingat tagihan menolak pelanggan lunas atau tagihan yang belum jatuh tempo tanpa tunggakan", async () => {
   const { bot, sent } = createBot();
 
   await assert.rejects(
-    () => bot.sendBillingDebtReminder(createContact({ currentPaymentStatus: "PAID" })),
-    /belum membayar bulan berjalan/
+    () => bot.sendBillingDebtReminder(createContact({
+      paymentStatus: "PAID",
+      currentPaymentStatus: "PAID",
+      hasDebt: false,
+      debtCount: 0,
+      debtPeriods: [],
+    })),
+    /jatuh tempo atau memiliki tunggakan/
   );
   await assert.rejects(
     () => bot.sendBillingDebtReminder(createContact({

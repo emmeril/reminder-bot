@@ -128,6 +128,7 @@
             name: "",
             phoneNumber: "",
             linkedApHost: "",
+            subscriptionType: "RECURRING",
             mikrotikUsername: "",
             mikrotikProfile: "",
             mikrotikPassword: "",
@@ -143,6 +144,7 @@
             name: "",
             phoneNumber: "",
             linkedApHost: "",
+            subscriptionType: "RECURRING",
             mikrotikUsername: "",
             mikrotikProfile: "",
             mikrotikPassword: "",
@@ -560,6 +562,13 @@
           );
         },
 
+        isHotspotReactivationAllowed() {
+          const selected = this.contacts.find(
+            (contact) => String(contact.id) === String(this.forms.hotspotAccount.contactId)
+          );
+          return String(selected?.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "RECURRING";
+        },
+
         suggestHotspotUsername(name) {
           return String(name || "")
             .trim()
@@ -772,7 +781,19 @@
         canSendBillingReminder(contact) {
           const status = String(contact?.currentPaymentStatus || contact?.paymentStatus || "UNPAID").toUpperCase();
           const dueStatus = String(contact?.dueStatus || "NOT_SCHEDULED").toUpperCase();
-          return status === "UNPAID" && (this.hasDebt(contact) || dueStatus === "OVERDUE");
+          return this.hasDebt(contact) || (status === "UNPAID" && dueStatus === "OVERDUE");
+        },
+
+        getSubscriptionTypeLabel(contact) {
+          return String(contact?.subscriptionType || "RECURRING").toUpperCase() === "ONE_TIME"
+            ? "Sekali berlangganan"
+            : "Bulanan aktif";
+        },
+
+        getCurrentPaymentLabel(contact) {
+          if (contact?.subscriptionActive === false) return "Tidak ada tagihan baru";
+          if (contact?.paymentType) return this.getPaymentTypeLabel(contact.paymentType);
+          return contact?.currentPaymentStatus === "PAID" ? "Lunas" : "Belum Bayar";
         },
 
         getDebtNote(contact) {
@@ -1214,6 +1235,7 @@
             name: this.forms.contact.name,
             phoneNumber: this.forms.contact.phoneNumber,
             linkedApHost: this.forms.contact.linkedApHost,
+            subscriptionType: this.forms.contact.subscriptionType,
           };
         },
 
@@ -1267,6 +1289,7 @@
             name: contact.name || "",
             phoneNumber: contact.phoneNumber || "",
             linkedApHost: contact.linkedApHost || "",
+            subscriptionType: contact.subscriptionType || "RECURRING",
           };
           this.clearFormError("contactEdit");
           this.contactEditModal.open = true;
@@ -1293,6 +1316,7 @@
                   name: this.forms.contactEdit.name,
                   phoneNumber: this.forms.contactEdit.phoneNumber,
                   linkedApHost: this.forms.contactEdit.linkedApHost,
+                  subscriptionType: this.forms.contactEdit.subscriptionType,
                 }),
               });
               this.notify(result.hotspotSynced
@@ -1319,7 +1343,8 @@
             this.forms.hotspotAccount.profile = selected.mikrotikProfile || "";
             this.forms.hotspotAccount.password = selected.mikrotikUsername ? "" : String(selected.phoneNumber || "").slice(-5);
             this.forms.hotspotAccount.sendCredentials = !selected.mikrotikUsername;
-            this.forms.hotspotAccount.reactivationEnabled = Boolean(selected.hotspotReactivationEnabled);
+            this.forms.hotspotAccount.reactivationEnabled = this.isHotspotReactivationAllowed()
+              && Boolean(selected.hotspotReactivationEnabled);
             this.forms.hotspotAccount.reactivationDate = this.formatDateInput(selected.hotspotReactivationAt);
             this.forms.hotspotAccount.reactivationTime = this.formatTimeInput(selected.hotspotReactivationAt) || "00:00";
           }
@@ -1347,7 +1372,8 @@
           this.forms.hotspotAccount.profile = selected.mikrotikProfile || "";
           this.forms.hotspotAccount.password = selected.mikrotikUsername ? "" : String(selected.phoneNumber || "").slice(-5);
           this.forms.hotspotAccount.sendCredentials = !selected.mikrotikUsername;
-          this.forms.hotspotAccount.reactivationEnabled = Boolean(selected.hotspotReactivationEnabled);
+          this.forms.hotspotAccount.reactivationEnabled = this.isHotspotReactivationAllowed()
+            && Boolean(selected.hotspotReactivationEnabled);
           this.forms.hotspotAccount.reactivationDate = this.formatDateInput(selected.hotspotReactivationAt);
           this.forms.hotspotAccount.reactivationTime = this.formatTimeInput(selected.hotspotReactivationAt) || "00:00";
         },

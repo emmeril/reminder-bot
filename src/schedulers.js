@@ -40,6 +40,15 @@ class ReminderScheduler {
 
   async rescheduleMonthlyReminder(reminder, sourceStatus = "SENT") {
     if (!this.dataManager.getSettings().autoRescheduleMonthly) return null;
+    const contact = this.dataManager.getResolvedReminderContact?.(reminder);
+    if (contact && String(contact.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "ONE_TIME") {
+      this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} tidak dijadwalkan ulang karena pelanggan sekali berlangganan`, {
+        reminderId: reminder.id,
+        contactId: contact.id || null,
+        sourceStatus,
+      });
+      return null;
+    }
 
     const nextReminder = this.buildNextReminder(reminder);
     const createdReminder = await this.dataManager.addReminder(nextReminder);

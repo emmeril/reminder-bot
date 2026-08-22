@@ -18,6 +18,7 @@ const {
   MONTH_NAMES,
   PAYMENT_STATUS,
   PAYMENT_TYPES,
+  SUBSCRIPTION_TYPES,
 } = require("./config");
 const ActivityLog = require("./activity-log");
 const AsyncLock = require("./async-lock");
@@ -141,6 +142,21 @@ function getContactBillingStartPeriod(contact, timeZone = "Asia/Jakarta") {
   return compareBillingPeriods(createdPeriod, BILLING_START_PERIOD) > 0
     ? createdPeriod
     : BILLING_START_PERIOD;
+}
+
+function normalizeSubscriptionType(value, fallback = SUBSCRIPTION_TYPES.RECURRING) {
+  const normalized = String(value || "").trim().toUpperCase().replace(/-/g, "_");
+  return Object.values(SUBSCRIPTION_TYPES).includes(normalized) ? normalized : fallback;
+}
+
+function isRecurringSubscription(contact) {
+  return normalizeSubscriptionType(contact?.subscriptionType) === SUBSCRIPTION_TYPES.RECURRING;
+}
+
+function isOneTimeSubscriptionEnded(contact, period, timeZone = "Asia/Jakarta") {
+  if (isRecurringSubscription(contact)) return false;
+  const startPeriod = getContactBillingStartPeriod(contact, timeZone);
+  return compareBillingPeriods(startPeriod, period) < 0;
 }
 
 function listBillingPeriods(start, end) {
@@ -1578,6 +1594,7 @@ class DataManager {
         0,
         1_000_000_000
       );
+      contact.subscriptionType = normalizeSubscriptionType(contact.subscriptionType);
       contact.linkedApHost = sanitizeInput(String(contact.linkedApHost || ""));
       contact.mikrotikUsername = sanitizeInput(String(contact.mikrotikUsername || ""));
       contact.mikrotikProfile = sanitizeInput(String(contact.mikrotikProfile || ""));
@@ -1622,6 +1639,10 @@ class DataManager {
       }
       contact.hotspotReactivationEnabled = parseBoolean(contact.hotspotReactivationEnabled, false);
       contact.hotspotReactivationAt = this.normalizeOptionalDate(contact.hotspotReactivationAt);
+      if (!isRecurringSubscription(contact)) {
+        contact.hotspotReactivationEnabled = false;
+        contact.hotspotReactivationAt = null;
+      }
       contact.hotspotLastReactivatedAt = this.normalizeOptionalDate(contact.hotspotLastReactivatedAt);
       contact.hotspotLastDeactivatedAt = this.normalizeOptionalDate(contact.hotspotLastDeactivatedAt);
       // Notifikasi WhatsApp setelah reaktivasi sudah tidak digunakan.
@@ -1799,7 +1820,11 @@ class DataManager {
         });
       }
     }
-    if (!historyByPeriod.has(currentKey)) {
+    const billingStartPeriod = getContactBillingStartPeriod(contact, timeZone);
+    const includeCurrentPeriod = isRecurringSubscription(contact)
+      || (billingStartPeriod.year === year && billingStartPeriod.month === month)
+      || historyByPeriod.has(currentKey);
+    if (includeCurrentPeriod && !historyByPeriod.has(currentKey)) {
       historyByPeriod.set(currentKey, {
         period: currentKey,
         label: formatBillingPeriodLabel(year, month),
@@ -1820,6 +1845,8 @@ class DataManager {
       billing: {
         period: currentKey,
         periodLabel: formatBillingPeriodLabel(year, month),
+        subscriptionType: hydrated.subscriptionType,
+        subscriptionActive: hydrated.subscriptionActive,
         monthlyAmount,
         currentAmount,
         debtAmount,
@@ -2078,9 +2105,13 @@ class DataManager {
   }
 
   normalizeContactHotspotFields(payload, current = {}) {
-    const enabled = payload.hotspotReactivationEnabled !== undefined
+    const subscriptionType = normalizeSubscriptionType(
+      payload.subscriptionType !== undefined ? payload.subscriptionType : current.subscriptionType
+    );
+    let enabled = payload.hotspotReactivationEnabled !== undefined
       ? parseBoolean(payload.hotspotReactivationEnabled, false)
       : parseBoolean(current.hotspotReactivationEnabled, false);
+    if (subscriptionType === SUBSCRIPTION_TYPES.ONE_TIME) enabled = false;
     const username = payload.mikrotikUsername !== undefined
       ? sanitizeInput(String(payload.mikrotikUsername || ""))
       : sanitizeInput(String(current.mikrotikUsername || ""));
@@ -2090,9 +2121,10 @@ class DataManager {
     const password = payload.mikrotikPassword !== undefined
       ? sanitizeInput(String(payload.mikrotikPassword || ""))
       : sanitizeInput(String(current.mikrotikPassword || ""));
-    const reactivationAt = payload.hotspotReactivationAt !== undefined
+    let reactivationAt = payload.hotspotReactivationAt !== undefined
       ? this.normalizeOptionalDate(payload.hotspotReactivationAt)
       : this.normalizeOptionalDate(current.hotspotReactivationAt);
+    if (subscriptionType === SUBSCRIPTION_TYPES.ONE_TIME) reactivationAt = null;
 
     if (enabled && !username) throw new Error("Username hotspot wajib diisi untuk reaktivasi.");
     if (enabled && !profile) throw new Error("Profile hotspot wajib diisi untuk reaktivasi.");
@@ -2334,9 +2366,12 @@ class DataManager {
     const currentType = String(currentPayment?.paymentType || contact.paymentType || "").toUpperCase();
     const previous = getPreviousBillingPeriod(year, month);
     const startPeriod = getContactBillingStartPeriod(contact, timeZone);
+    const billingPeriods = isRecurringSubscription(contact)
+      ? listBillingPeriods(startPeriod, previous)
+      : (compareBillingPeriods(startPeriod, previous) <= 0 ? [startPeriod] : []);
     const debtPeriods = currentType === PAYMENT_TYPES.FULL_PAID
       ? []
-      : listBillingPeriods(startPeriod, previous)
+      : billingPeriods
         .filter((period) => {
           const key = makeBillingPeriodKey(period.year, period.month);
           return paymentMonths[key]?.status !== PAYMENT_STATUS.PAID;
@@ -2348,6 +2383,10 @@ class DataManager {
         }));
     const hasDebt = debtPeriods.length > 0;
     const firstDebt = debtPeriods[0] || null;
+    const subscriptionEnded = isOneTimeSubscriptionEnded(contact, { year, month }, timeZone);
+    const effectivePaymentStatus = subscriptionEnded
+      ? PAYMENT_STATUS.PAID
+      : (currentPayment?.status || String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase());
 
     return {
       hasDebt,
@@ -2359,7 +2398,10 @@ class DataManager {
         ? `Masih ada hutang ${debtPeriods.map((period) => period.label).join(", ")}.`
         : "",
       previousPaymentStatus: paymentMonths[makeBillingPeriodKey(previous.year, previous.month)]?.status || PAYMENT_STATUS.UNPAID,
-      currentPaymentStatus: currentPayment?.status || String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase(),
+      paymentStatus: effectivePaymentStatus,
+      currentPaymentStatus: effectivePaymentStatus,
+      subscriptionType: normalizeSubscriptionType(contact.subscriptionType),
+      subscriptionActive: !subscriptionEnded,
     };
   }
 
@@ -2561,7 +2603,8 @@ class DataManager {
       const name = sanitizeInput(payload.name);
       const phoneNumber = normalizePhoneNumber(payload.phoneNumber);
       const linkedApHost = sanitizeInput(String(payload.linkedApHost || ""));
-      const hotspotFields = this.normalizeContactHotspotFields(payload);
+      const subscriptionType = normalizeSubscriptionType(payload.subscriptionType);
+      const hotspotFields = this.normalizeContactHotspotFields({ ...payload, subscriptionType });
 
       if (!name) throw new Error("Nama kontak wajib diisi.");
       if (!isValidPhoneNumber(phoneNumber)) throw new Error("Nomor kontak harus berformat 628xxx.");
@@ -2573,6 +2616,7 @@ class DataManager {
         name,
         phoneNumber,
         monthlyPaymentAmount: sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000),
+        subscriptionType,
         paymentStatus: PAYMENT_STATUS.UNPAID,
         paymentDate: null,
         paymentMonths: {},
@@ -2643,6 +2687,7 @@ class DataManager {
         : sanitizeInput(String(contact?.linkedApHost || ""));
       const hotspotFields = this.normalizeContactHotspotFields({
         ...payload,
+        subscriptionType: normalizeSubscriptionType(payload.subscriptionType, contact?.subscriptionType),
         mikrotikUsername: username,
         mikrotikProfile: profile,
         mikrotikPassword: password,
@@ -2654,6 +2699,7 @@ class DataManager {
           name,
           phoneNumber,
           monthlyPaymentAmount: sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000),
+          subscriptionType: normalizeSubscriptionType(payload.subscriptionType),
           paymentStatus: PAYMENT_STATUS.UNPAID,
           paymentDate: null,
           paymentMonths: {},
@@ -2674,6 +2720,7 @@ class DataManager {
         this.contacts.set(contact.id, contact);
       } else {
         contact.name = name;
+        contact.subscriptionType = normalizeSubscriptionType(payload.subscriptionType, contact.subscriptionType);
         contact.linkedApHost = linkedApHost;
         if (payload.monthlyPaymentAmount !== undefined) {
           contact.monthlyPaymentAmount = sanitizePositiveInteger(
@@ -2840,6 +2887,7 @@ class DataManager {
       const nextLinkedApHost = payload.linkedApHost !== undefined
         ? sanitizeInput(String(payload.linkedApHost || ""))
         : sanitizeInput(String(contact.linkedApHost || ""));
+      const nextSubscriptionType = normalizeSubscriptionType(payload.subscriptionType, contact.subscriptionType);
       const nextUsername = payload.mikrotikUsername !== undefined
         ? sanitizeInput(String(payload.mikrotikUsername || ""))
         : previousHotspot.username;
@@ -2863,6 +2911,7 @@ class DataManager {
 
       const hotspotFields = this.normalizeContactHotspotFields({
         ...payload,
+        subscriptionType: nextSubscriptionType,
         mikrotikUsername: nextUsername,
         mikrotikProfile: nextProfile,
         mikrotikPassword: nextPassword,
@@ -2878,6 +2927,7 @@ class DataManager {
       contact.name = nextName;
       contact.phoneNumber = nextPhone;
       contact.linkedApHost = nextLinkedApHost;
+      contact.subscriptionType = nextSubscriptionType;
       if (payload.monthlyPaymentAmount !== undefined) {
         contact.monthlyPaymentAmount = sanitizePositiveInteger(
           payload.monthlyPaymentAmount,
@@ -3336,12 +3386,16 @@ class DataManager {
 
       const now = new Date();
       const previousSchedule = contact.hotspotReactivationAt || now.toISOString();
-      let nextSchedule = addMonthsSafely(previousSchedule, 1, this.getTimezone());
-      while (nextSchedule.getTime() <= now.getTime()) {
-        nextSchedule = addMonthsSafely(nextSchedule, 1, this.getTimezone());
+      let nextSchedule = null;
+      if (isRecurringSubscription(contact)) {
+        nextSchedule = addMonthsSafely(previousSchedule, 1, this.getTimezone());
+        while (nextSchedule.getTime() <= now.getTime()) {
+          nextSchedule = addMonthsSafely(nextSchedule, 1, this.getTimezone());
+        }
       }
       contact.hotspotLastReactivatedAt = now.toISOString();
-      contact.hotspotReactivationAt = nextSchedule.toISOString();
+      contact.hotspotReactivationEnabled = isRecurringSubscription(contact);
+      contact.hotspotReactivationAt = nextSchedule ? nextSchedule.toISOString() : null;
       contact.mikrotikPassword = sanitizeInput(result?.password || contact.mikrotikPassword || "");
       contact.mikrotikProfile = sanitizeInput(result?.profile || contact.mikrotikProfile || "");
       contact.hotspotProvisioningStatus = HOTSPOT_PROVISIONING_STATUS.ACTIVE;
@@ -3923,6 +3977,19 @@ class DataManager {
       const { year, month } = getBillingPeriodParts(now, timeZone);
       const currentKey = makeBillingPeriodKey(year, month);
       const previous = getPreviousBillingPeriod(year, month);
+      const subscriptionEnded = isOneTimeSubscriptionEnded(contact, { year, month }, timeZone);
+      if (subscriptionEnded && ![PAYMENT_TYPES.FULL_PAID, PAYMENT_TYPES.ARREARS_ONLY].includes(paymentType)) {
+        if (status !== PAYMENT_STATUS.UNPAID) {
+          throw new Error("Pelanggan sekali berlangganan sudah tidak memiliki tagihan periode berjalan.");
+        }
+        contact.paymentStatus = PAYMENT_STATUS.PAID;
+        contact.paymentDate = null;
+        contact.paymentType = null;
+        contact.updatedAt = now.toISOString();
+        const remindersChanged = this.updateContactReminderMessages(contact);
+        await this.savePaymentAndReminderChanges(remindersChanged);
+        return this.hydrateContact(contact);
+      }
       if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") {
         contact.paymentMonths = {};
       }
@@ -3939,7 +4006,10 @@ class DataManager {
 
       if (paymentType === PAYMENT_TYPES.FULL_PAID) {
         const startPeriod = getContactBillingStartPeriod(contact, timeZone);
-        for (const period of listBillingPeriods(startPeriod, previous)) {
+        const periods = isRecurringSubscription(contact)
+          ? listBillingPeriods(startPeriod, previous)
+          : (compareBillingPeriods(startPeriod, previous) <= 0 ? [startPeriod] : []);
+        for (const period of periods) {
           contact.paymentMonths[makeBillingPeriodKey(period.year, period.month)] = {
             status: PAYMENT_STATUS.PAID,
             paidDate: now.toISOString(),
@@ -3954,11 +4024,17 @@ class DataManager {
         };
       }
 
-      contact.paymentMonths[currentKey] = {
-        status,
-        paidDate: status === PAYMENT_STATUS.PAID ? now.toISOString() : null,
-        paymentType: paymentType || null,
-      };
+      if (!subscriptionEnded) {
+        contact.paymentMonths[currentKey] = {
+          status,
+          paidDate: status === PAYMENT_STATUS.PAID ? now.toISOString() : null,
+          paymentType: paymentType || null,
+        };
+      } else {
+        contact.paymentStatus = PAYMENT_STATUS.PAID;
+        contact.paymentDate = null;
+        contact.paymentType = null;
+      }
       contact.updatedAt = now.toISOString();
 
       const remindersChanged = this.updateContactReminderMessages(contact);
@@ -3984,6 +4060,12 @@ class DataManager {
       const now = new Date();
       const timeZone = this.getTimezone();
       const previous = getPreviousBillingPeriod(year, month);
+      if (!isRecurringSubscription(contact)) {
+        const startPeriod = getContactBillingStartPeriod(contact, timeZone);
+        if (compareBillingPeriods(startPeriod, { year, month }) !== 0) {
+          throw new Error("Pelanggan sekali berlangganan hanya dapat dicatat pada periode saat berlangganan.");
+        }
+      }
       const arrearsDebtPeriod = paymentType === PAYMENT_TYPES.ARREARS_ONLY
         ? this.buildDebtInfo(contact, { year, month }).debtPeriods?.[0]
         : null;
@@ -3993,7 +4075,10 @@ class DataManager {
 
       if (paymentType === PAYMENT_TYPES.FULL_PAID) {
         const startPeriod = getContactBillingStartPeriod(contact, timeZone);
-        for (const period of listBillingPeriods(startPeriod, previous)) {
+        const periods = isRecurringSubscription(contact)
+          ? listBillingPeriods(startPeriod, previous)
+          : (compareBillingPeriods(startPeriod, previous) <= 0 ? [startPeriod] : []);
+        for (const period of periods) {
           contact.paymentMonths[makeBillingPeriodKey(period.year, period.month)] = {
             status: PAYMENT_STATUS.PAID,
             paidDate: now.toISOString(),
@@ -4071,6 +4156,19 @@ class DataManager {
     const currentKey = getBillingPeriodKey(new Date(), this.getTimezone());
 
     for (const contact of this.contacts.values()) {
+      if (!isRecurringSubscription(contact)) {
+        const startPeriod = getContactBillingStartPeriod(contact, this.getTimezone());
+        const currentPeriod = getBillingPeriodParts(new Date(), this.getTimezone());
+        if (compareBillingPeriods(startPeriod, currentPeriod) < 0) {
+          contact.paymentStatus = PAYMENT_STATUS.PAID;
+          contact.paymentDate = null;
+          contact.paymentType = null;
+          contact.updatedAt = new Date().toISOString();
+          remindersChanged += this.updateContactReminderMessages(contact);
+          resetCount += 1;
+          continue;
+        }
+      }
       contact.paymentStatus = PAYMENT_STATUS.UNPAID;
       contact.paymentDate = null;
       contact.paymentType = null;
@@ -4341,17 +4439,15 @@ class NotificationBot {
     const debtCount = Math.max(0, Number(
       contactState.debtCount ?? contactState.debtPeriods?.length ?? 0
     ) || 0);
+    const hasDebt = Boolean(contactState.hasDebt && debtCount > 0);
 
-    if (currentStatus !== PAYMENT_STATUS.UNPAID) {
-      throw new Error("Pengingat hanya dapat dikirim kepada pelanggan yang belum membayar bulan berjalan.");
-    }
     const isOverdue = String(contactState.dueStatus || "").toUpperCase() === "OVERDUE";
-    if ((!contactState.hasDebt || debtCount <= 0) && !isOverdue) {
+    if (!hasDebt && (currentStatus !== PAYMENT_STATUS.UNPAID || !isOverdue)) {
       throw new Error("Pengingat hanya dapat dikirim untuk tagihan yang jatuh tempo atau memiliki tunggakan.");
     }
 
     const monthlyAmount = Math.max(0, Number(contactState.monthlyPaymentAmount) || 0);
-    const currentAmount = monthlyAmount;
+    const currentAmount = currentStatus === PAYMENT_STATUS.UNPAID ? monthlyAmount : 0;
     const debtAmount = monthlyAmount * debtCount;
     const totalAmount = currentAmount + debtAmount;
     const settings = this.dataManager.getSettings();
@@ -5288,6 +5384,7 @@ class WebServer {
         const recoveryFailed = hotspotStatus === HOTSPOT_PROVISIONING_STATUS.FAILED
           && contact.hotspotProvisioningOperation === HOTSPOT_PROVISIONING_OPERATION.ENABLE;
         if (hydrated.currentPaymentStatus === PAYMENT_STATUS.PAID
+          && !hydrated.hasDebt
           && (isHotspotAccountUnavailable(hotspotStatus, contact.hotspotProvisioningError) || recoveryFailed)) {
           await this.recoverHotspotAfterPayment(contact).catch((error) => {
             this.activityLog.push("error", "payment", `Retry pemulihan hotspot pelanggan ${contact.id} gagal`, {
@@ -5968,11 +6065,9 @@ class WebServer {
       const currentStatus = String(
         contactState.currentPaymentStatus || contactState.paymentStatus || PAYMENT_STATUS.UNPAID
       ).toUpperCase();
-      if (currentStatus !== PAYMENT_STATUS.UNPAID) {
-        throw new Error("Pengingat hanya dapat dikirim kepada pelanggan yang belum membayar bulan berjalan.");
-      }
       const isOverdue = String(contactState.dueStatus || "").toUpperCase() === "OVERDUE";
-      if ((!contactState.hasDebt || Number(contactState.debtCount) <= 0) && !isOverdue) {
+      const hasDebt = Boolean(contactState.hasDebt && Number(contactState.debtCount) > 0);
+      if (!hasDebt && (currentStatus !== PAYMENT_STATUS.UNPAID || !isOverdue)) {
         throw new Error("Pengingat hanya dapat dikirim untuk tagihan yang jatuh tempo atau memiliki tunggakan.");
       }
 

@@ -7,6 +7,7 @@ const {
   DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   PAYMENT_STATUS,
   PAYMENT_TYPES,
+  SUBSCRIPTION_TYPES,
 } = require("../src/config");
 const {
   getBillingPeriodParts,
@@ -18,6 +19,7 @@ function createManager(contact) {
   manager.contacts.set(String(contact.id), contact);
   manager.saveContacts = async () => {};
   manager.savePelanggan = async () => {};
+  manager.saveCustomerAccounts = async () => {};
   manager.saveReminders = async () => {};
   manager.withDatabaseWrite = async (operation) => operation();
   manager.sequelize = {
@@ -95,6 +97,93 @@ test("pembayaran lunas tanpa jenis eksplisit default ke bulan berjalan", async (
 
   assert.equal(updated.paymentStatus, PAYMENT_STATUS.PAID);
   assert.equal(updated.paymentType, PAYMENT_TYPES.CURRENT_ONLY);
+});
+
+test("sekali berlangganan hanya menghitung periode mulai dan tidak membuat hutang bulanan baru", () => {
+  const contact = {
+    id: "contact-one-time",
+    name: "Pelanggan Sekali",
+    phoneNumber: "6281234567896",
+    createdAt: "2026-07-10T00:00:00.000Z",
+    subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+
+  const debtInfo = manager.buildDebtInfo(contact, { year: 2026, month: 8 });
+
+  assert.equal(debtInfo.subscriptionType, SUBSCRIPTION_TYPES.ONE_TIME);
+  assert.equal(debtInfo.currentPaymentStatus, PAYMENT_STATUS.PAID);
+  assert.equal(debtInfo.debtCount, 1);
+  assert.equal(debtInfo.debtPeriods[0].key, "2026-07");
+});
+
+test("pelanggan berlangganan tetap menghitung periode berjalan dan tunggakan bulanan", () => {
+  const contact = {
+    id: "contact-recurring",
+    name: "Pelanggan Bulanan",
+    phoneNumber: "6281234567897",
+    createdAt: "2026-07-10T00:00:00.000Z",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+
+  const debtInfo = manager.buildDebtInfo(contact, { year: 2026, month: 8 });
+
+  assert.equal(debtInfo.currentPaymentStatus, PAYMENT_STATUS.UNPAID);
+  assert.equal(debtInfo.debtCount, 1);
+  assert.equal(debtInfo.debtPeriods[0].key, "2026-07");
+});
+
+test("portal sekali berlangganan hanya menampilkan tunggakan periode awal", () => {
+  const contact = {
+    id: "contact-one-time-portal",
+    name: "Pelanggan Sekali Portal",
+    phoneNumber: "6281234567899",
+    createdAt: "2026-07-10T00:00:00.000Z",
+    subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
+    monthlyPaymentAmount: 125_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+  manager.customerAccounts.set(contact.id, { username: "sekali", password: "portal-pass" });
+
+  const portal = manager.getCustomerPortalData(contact.id);
+
+  assert.equal(portal.billing.subscriptionActive, false);
+  assert.equal(portal.billing.currentAmount, 0);
+  assert.equal(portal.billing.debtAmount, 125_000);
+  assert.equal(portal.billing.totalAmount, 125_000);
+  assert.deepEqual(portal.billing.history.map((payment) => payment.period), ["2026-07"]);
+});
+
+test("pembayaran pelanggan sekali berlangganan tidak membuat record periode baru", async () => {
+  const contact = {
+    id: "contact-one-time-payment",
+    name: "Pelanggan Sekali Bayar",
+    phoneNumber: "6281234567898",
+    createdAt: "2026-05-10T00:00:00.000Z",
+    subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+  manager.savePaymentAndReminderChanges = async () => {};
+
+  const updated = await manager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID, PAYMENT_TYPES.FULL_PAID);
+  const currentKey = getBillingPeriodParts(new Date(), manager.getTimezone());
+  const currentPeriodKey = `${currentKey.year}-${String(currentKey.month).padStart(2, "0")}`;
+
+  assert.equal(updated.paymentStatus, PAYMENT_STATUS.PAID);
+  assert.equal(updated.currentPaymentStatus, PAYMENT_STATUS.PAID);
+  assert.equal(Object.hasOwn(contact.paymentMonths, currentPeriodKey), false);
+  assert.equal(contact.paymentMonths["2026-05"].status, PAYMENT_STATUS.PAID);
+  assert.equal(Object.hasOwn(contact.paymentMonths, "2026-06"), false);
+  assert.equal(Object.hasOwn(contact.paymentMonths, "2026-07"), false);
 });
 
 test("perubahan status pembayaran langsung memperbarui pesan reminder aktif", async () => {
@@ -417,6 +506,31 @@ test("registrasi pelanggan MikroTik menyimpan AP dan jadwal reaktivasi dari form
   assert.equal(result.contact.hotspotReactivationAt, reactivationAt);
   assert.equal(result.contact.hotspotProvisioningStatus, "ACTIVE");
   assert.equal(result.pelanggan.hotspotProvisioningStatus, "ACTIVE");
+});
+
+test("sekali berlangganan menonaktifkan jadwal reaktivasi hotspot otomatis", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+  manager.saveCustomerAccounts = async () => {};
+
+  const result = await manager.addContact({
+    name: "Pelanggan Sekali Hotspot",
+    phoneNumber: "6281234567801",
+    subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: "2026-09-01 00:00",
+  });
+
+  assert.equal(result.subscriptionType, SUBSCRIPTION_TYPES.ONE_TIME);
+  assert.equal(result.hotspotReactivationEnabled, false);
+  assert.equal(result.hotspotReactivationAt, null);
+
+  const reactivated = await manager.markHotspotReactivated(result.id, { password: "hotspot-pass", profile: "default" });
+  assert.equal(reactivated.hotspotReactivationEnabled, false);
+  assert.equal(reactivated.hotspotReactivationAt, null);
 });
 
 test("persiapan akun hotspot menyimpan pelanggan sebagai PENDING", async () => {

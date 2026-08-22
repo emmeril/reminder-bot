@@ -112,6 +112,21 @@ test("nominal yang sudah ada di pesan reminder diperbarui menjadi total hutang",
   assert.doesNotMatch(message, /Rincian Pembayaran/);
 });
 
+test("reminder pelanggan sekali berlangganan tidak dijadwalkan ulang", async () => {
+  let created = 0;
+  const scheduler = new ReminderScheduler({}, {
+    getSettings: () => ({ autoRescheduleMonthly: true }),
+    getTimezone: () => "Asia/Jakarta",
+    getResolvedReminderContact: () => ({ id: "one-time", subscriptionType: "ONE_TIME" }),
+    addReminder: async () => { created += 1; },
+  }, { push() {} });
+
+  const result = await scheduler.rescheduleMonthlyReminder({ id: "reminder-one-time", contactId: "one-time" });
+
+  assert.equal(result, null);
+  assert.equal(created, 0);
+});
+
 test("WA reminder yang gagal tetap diarsipkan dan dijadwalkan bulan berikutnya", async () => {
   const timeZone = "Asia/Jakarta";
   const scheduledAt = new Date(Date.now() - 60_000);
