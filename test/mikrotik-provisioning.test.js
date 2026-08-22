@@ -126,6 +126,33 @@ test("retry dapat mengadopsi akun MikroTik existing yang belum memiliki email pe
   assert.equal(users[0].disabled, "no");
 });
 
+test("retry akun yang pernah dikelola dapat memperbarui email pemilik yang sudah berubah", async () => {
+  const { service, users, getAddCalls, getUpdateCalls } = createServiceWithUsers([{
+    ".id": "*1",
+    name: "mainang",
+    profile: "100M",
+    password: "password-lama",
+    email: "6281372968275@localhost.local",
+  }]);
+
+  const result = await service.createHotspotCustomer({
+    name: "Ma Inang",
+    phoneNumber: "62895619074907",
+    username: "mainang",
+    password: "68275",
+    profile: "100M",
+    adoptExisting: true,
+    adoptExistingOwnerMismatch: true,
+  });
+
+  assert.equal(result.created, false);
+  assert.equal(result.updated, true);
+  assert.equal(result.adopted, true);
+  assert.equal(getAddCalls(), 0);
+  assert.equal(getUpdateCalls(), 1);
+  assert.equal(users[0].email, "62895619074907@localhost.local");
+});
+
 test("menolak username MikroTik yang dimiliki pelanggan lain", async () => {
   const { service, getAddCalls } = createServiceWithUsers([{
     ".id": "*1",

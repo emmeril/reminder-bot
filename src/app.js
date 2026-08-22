@@ -584,7 +584,15 @@ class MikrotikService {
     });
   }
 
-  async createHotspotCustomer({ name, phoneNumber, profile, username, password, adoptExisting = false }) {
+  async createHotspotCustomer({
+    name,
+    phoneNumber,
+    profile,
+    username,
+    password,
+    adoptExisting = false,
+    adoptExistingOwnerMismatch = false,
+  }) {
     const registration = this.buildHotspotCustomerRegistration({
       name,
       phoneNumber,
@@ -612,7 +620,10 @@ class MikrotikService {
         const ownerUnknown = !sanitizeInput(existing.email || "");
         const existingPassword = sanitizeInput(existing.password || "");
         const samePassword = !existingPassword || existingPassword === registration.password;
-        const canAdopt = Boolean(adoptExisting) && ownerUnknown;
+        const canAdopt = Boolean(adoptExisting) && (
+          ownerUnknown
+          || (Boolean(adoptExistingOwnerMismatch) && sameProfile)
+        );
         if (!sameProfile || (!sameOwner && !canAdopt)) {
           throw new Error(`Username "${registration.username}" sudah dipakai akun MikroTik lain.`);
         }
@@ -4679,6 +4690,11 @@ class WebServer {
       }
       const adoptExisting = normalizeHotspotProvisioningStatus(current.hotspotProvisioningStatus) === HOTSPOT_PROVISIONING_STATUS.FAILED
         && /sudah dipakai akun MikroTik lain/i.test(current.hotspotProvisioningError || "");
+      const adoptExistingOwnerMismatch = Boolean(
+        current.hotspotLastReactivatedAt
+        || current.hotspotLastDeactivatedAt
+        || current.hotspotLastSyncedAt
+      );
 
       await this.dataManager.updateHotspotProvisioningStatus(
         current.id,
@@ -4714,6 +4730,7 @@ class WebServer {
             username: current.mikrotikUsername,
             password: current.mikrotikPassword,
             adoptExisting,
+            adoptExistingOwnerMismatch,
           });
         }
         verified = await this.mikrotikService.verifyHotspotCustomer(registered);
