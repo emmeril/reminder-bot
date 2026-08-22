@@ -55,6 +55,7 @@
         hotspotAccountModal: {
           open: false,
           loading: false,
+          editingContactId: "",
         },
         accountDeliveryModal: {
           open: false,
@@ -553,9 +554,9 @@
         },
 
         getHotspotAccountCandidates() {
-          const selectedId = String(this.forms.hotspotAccount.contactId || "");
+          const editingContactId = String(this.hotspotAccountModal.editingContactId || "");
           return this.contacts.filter(
-            (contact) => !contact.mikrotikUsername || String(contact.id) === selectedId
+            (contact) => !contact.mikrotikUsername || String(contact.id) === editingContactId
           );
         },
 
@@ -1310,6 +1311,7 @@
 
         async openHotspotAccountModal(contact = null) {
           const selected = contact || null;
+          this.hotspotAccountModal.editingContactId = selected ? String(selected.id) : "";
           this.forms.hotspotAccount = this.blankHotspotAccountForm();
           if (selected) {
             this.forms.hotspotAccount.contactId = String(selected.id);
@@ -1330,6 +1332,7 @@
         closeHotspotAccountModal() {
           this.hotspotAccountModal.open = false;
           this.hotspotAccountModal.loading = false;
+          this.hotspotAccountModal.editingContactId = "";
           this.forms.hotspotAccount = this.blankHotspotAccountForm();
           this.clearFormError("hotspotAccount");
           document.body.classList.remove("overflow-hidden");

@@ -1109,7 +1109,7 @@
             <select x-model="forms.hotspotAccount.contactId" @change="onHotspotAccountContactChange()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
               <option value="">-- Pilih pelanggan --</option>
               <template x-for="contact in getHotspotAccountCandidates()" :key="'hotspot-account-contact-' + contact.id">
-                <option :value="contact.id" x-text="contact.name + ' (' + contact.phoneNumber + ')' + (contact.mikrotikUsername ? ' - ' + contact.mikrotikUsername : ' - belum ada akun')"></option>
+                <option :value="String(contact.id)" x-text="contact.name + ' (' + contact.phoneNumber + ')' + (contact.mikrotikUsername ? ' - ' + contact.mikrotikUsername : ' - belum ada akun')"></option>
               </template>
             </select>
             <span class="mt-1 block text-xs text-ink/45">Pada pembuatan akun baru, dropdown hanya menampilkan pelanggan yang belum memiliki akun hotspot.</span>
