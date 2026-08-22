@@ -751,6 +751,8 @@ table tbody tr:hover { background: #fafaff; }
 .customer-table-frame { width: 100%; }
 .customer-workspace-table { width: 100%; min-width: 0; table-layout: fixed; }
 .customer-workspace-table th, .customer-workspace-table td { overflow-wrap: anywhere; }
+.customer-data-table { min-width: 980px; }
+.customer-data-table thead th { padding-inline: 15px !important; white-space: nowrap; letter-spacing: .12em; }
 .customer-data-table th:nth-child(1) { width: 14%; }
 .customer-data-table th:nth-child(2) { width: 16%; }
 .customer-data-table th:nth-child(3) { width: 15%; }
