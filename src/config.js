@@ -218,6 +218,7 @@ const DEFAULT_SETTINGS = {
   enableMikrotikBackupToWa: false,
   mikrotikBackupTime: "02:00",
   mikrotikBackupTimezone: "Asia/Jakarta",
+  profileMonthlyAmounts: {},
   mikrotikBackupLastRunDate: "",
   databaseBackupLastRunDate: "",
   reminderVariableTemplateMigrationVersion: 0,

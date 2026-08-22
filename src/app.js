@@ -119,6 +119,28 @@ function normalizeHotspotProvisioningOperation(value, fallback = HOTSPOT_PROVISI
   return Object.values(HOTSPOT_PROVISIONING_OPERATION).includes(normalized) ? normalized : fallback;
 }
 
+function normalizeProfileMonthlyAmounts(value, { strict = false } = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    if (strict && value !== undefined && value !== null) {
+      throw new Error("Tarif profile MikroTik tidak valid.");
+    }
+    return {};
+  }
+
+  const normalized = new Map();
+  for (const [rawProfile, rawAmount] of Object.entries(value).slice(0, 200)) {
+    const profile = sanitizeInput(String(rawProfile || ""));
+    if (!profile || rawAmount === "" || rawAmount === null || rawAmount === undefined) continue;
+    const amount = Number(rawAmount);
+    if (!Number.isFinite(amount) || amount < 0 || amount > 1_000_000_000) {
+      if (strict) throw new Error(`Nominal profile "${profile}" harus antara 0 sampai 1 miliar.`);
+      continue;
+    }
+    normalized.set(profile.toLowerCase(), [profile, Math.floor(amount)]);
+  }
+  return Object.fromEntries(normalized.values());
+}
+
 function compareBillingPeriods(a, b) {
   if (a.year !== b.year) return a.year - b.year;
   return a.month - b.month;
@@ -2686,6 +2708,7 @@ class DataManager {
         createdAt: now,
         updatedAt: now,
       };
+      this.applyProfileMonthlyAmount(contact);
 
       this.contacts.set(contact.id, contact);
       await this.synchronizeCustomerPortalAccounts({ save: false });
@@ -2736,6 +2759,7 @@ class DataManager {
       const now = new Date().toISOString();
       let contact = this.findContactByPhone(phoneNumber);
       let remindersRemoved = 0;
+      let reminderMessagesChanged = 0;
       const usernameOwner = this.pelanggan.get(username);
       if (usernameOwner
         && String(usernameOwner.contactId || "") !== String(contact?.id || "")
@@ -2777,6 +2801,7 @@ class DataManager {
           createdAt: now,
           updatedAt: now,
         };
+        this.applyProfileMonthlyAmount(contact);
         this.contacts.set(contact.id, contact);
       } else {
         contact.name = name;
@@ -2794,6 +2819,9 @@ class DataManager {
           );
         }
         Object.assign(contact, hotspotFields);
+        if (this.applyProfileMonthlyAmount(contact)) {
+          reminderMessagesChanged = this.updateContactReminderMessages(contact);
+        }
         contact.hotspotProvisioningStatus = provisioningStatus;
         contact.hotspotProvisioningError = provisioningError;
         contact.hotspotLastCheckedAt = hotspotLastCheckedAt;
@@ -2843,7 +2871,7 @@ class DataManager {
         await this.saveContacts(options);
         await this.savePelanggan(options);
         await this.saveCustomerAccounts(options);
-        if (remindersRemoved > 0) await this.saveReminders(options);
+        if (remindersRemoved > 0 || reminderMessagesChanged > 0) await this.saveReminders(options);
       }));
       return { contact, pelanggan };
     });
@@ -3002,6 +3030,7 @@ class DataManager {
         );
       }
       Object.assign(contact, hotspotFields);
+      if (this.applyProfileMonthlyAmount(contact)) this.updateContactReminderMessages(contact);
       const now = new Date().toISOString();
 
       if (unlinked) {
@@ -3101,6 +3130,10 @@ class DataManager {
       const parsed = Number(amount);
       if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1_000_000_000) {
         throw new Error("Nominal pembayaran harus antara 0 sampai 1 miliar.");
+      }
+      const profileAmount = this.getProfileMonthlyAmount(contact.mikrotikProfile);
+      if (profileAmount !== null && Math.floor(parsed) !== profileAmount) {
+        throw new Error(`Nominal pelanggan mengikuti tarif profile "${contact.mikrotikProfile}". Ubah tarif melalui menu Pengaturan.`);
       }
       contact.monthlyPaymentAmount = Math.floor(parsed);
       contact.updatedAt = new Date().toISOString();
@@ -3763,9 +3796,25 @@ class DataManager {
 
   getSettings() {
     const settings = { ...DEFAULT_SETTINGS, ...this.settings };
+    settings.profileMonthlyAmounts = normalizeProfileMonthlyAmounts(settings.profileMonthlyAmounts);
     delete settings.monthlyPaymentAmount;
     delete settings.hotspotReactivationMessageTemplate;
     return settings;
+  }
+
+  getProfileMonthlyAmount(profileName) {
+    const profile = sanitizeInput(String(profileName || "")).toLowerCase();
+    if (!profile) return null;
+    const entries = Object.entries(this.getSettings().profileMonthlyAmounts || {});
+    const match = entries.find(([name]) => name.toLowerCase() === profile);
+    return match ? Number(match[1]) : null;
+  }
+
+  applyProfileMonthlyAmount(contact, profileName = contact?.mikrotikProfile) {
+    const amount = this.getProfileMonthlyAmount(profileName);
+    if (!contact || amount === null || Number(contact.monthlyPaymentAmount) === amount) return false;
+    contact.monthlyPaymentAmount = amount;
+    return true;
   }
 
   async updateSettings(payload) {
@@ -3789,6 +3838,9 @@ class DataManager {
       const requestedDelayMax = payload.waRandomDelayMaxSeconds !== undefined
         ? sanitizePositiveInteger(payload.waRandomDelayMaxSeconds, current.waRandomDelayMaxSeconds, 0, 300)
         : current.waRandomDelayMaxSeconds;
+      const requestedProfileMonthlyAmounts = payload.profileMonthlyAmounts !== undefined
+        ? normalizeProfileMonthlyAmounts(payload.profileMonthlyAmounts, { strict: true })
+        : current.profileMonthlyAmounts;
       this.settings = {
         ...current,
         dashboardTitle: payload.dashboardTitle !== undefined ? sanitizeInput(payload.dashboardTitle) || current.dashboardTitle : current.dashboardTitle,
@@ -3835,12 +3887,34 @@ class DataManager {
           ? sanitizeTimeHHMM(payload.mikrotikBackupTime, current.mikrotikBackupTime || DEFAULT_SETTINGS.mikrotikBackupTime)
           : current.mikrotikBackupTime,
         mikrotikBackupTimezone: requestedBackupTimezone || requestedTimezone,
+        profileMonthlyAmounts: requestedProfileMonthlyAmounts,
         mikrotikBackupLastRunDate: payload.mikrotikBackupLastRunDate !== undefined
           ? sanitizeInput(payload.mikrotikBackupLastRunDate)
           : current.mikrotikBackupLastRunDate,
         databaseBackupLastRunDate: current.databaseBackupLastRunDate,
       };
-      await this.saveSettings();
+      let contactsChanged = false;
+      let remindersChanged = 0;
+      const updatedAt = new Date().toISOString();
+      for (const contact of this.contacts.values()) {
+        if (!this.applyProfileMonthlyAmount(contact)) continue;
+        contact.updatedAt = updatedAt;
+        contactsChanged = true;
+        remindersChanged += this.updateContactReminderMessages(contact);
+      }
+
+      if (this.sequelize && (contactsChanged || remindersChanged > 0)) {
+        await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+          const options = { transaction };
+          await this.saveSettings(options);
+          if (contactsChanged) await this.saveContacts(options);
+          if (remindersChanged > 0) await this.saveReminders(options);
+        }));
+      } else {
+        await this.saveSettings();
+        if (contactsChanged) await this.saveContacts();
+        if (remindersChanged > 0) await this.saveReminders();
+      }
       return this.getSettings();
     });
   }

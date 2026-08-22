@@ -185,6 +185,7 @@
             enableMikrotikBackupToWa: false,
             mikrotikBackupTime: "02:00",
             mikrotikBackupTimezone: "Asia/Jakarta",
+            profileMonthlyAmounts: {},
           },
         },
 
@@ -588,6 +589,32 @@
           if (!contact.mikrotikUsername) return "-";
           const profile = contact.mikrotikProfile ? ` / ${contact.mikrotikProfile}` : "";
           return `${contact.mikrotikUsername}${profile}`;
+        },
+
+        getProfileMonthlyAmount(profileName) {
+          const profile = String(profileName || "").trim().toLowerCase();
+          if (!profile) return null;
+          const entries = Object.entries(this.forms.settings.profileMonthlyAmounts || {});
+          const match = entries.find(([name]) => String(name).trim().toLowerCase() === profile);
+          if (!match || match[1] === "" || match[1] === null || match[1] === undefined) return null;
+          const amount = Number(match[1]);
+          return Number.isFinite(amount) && amount >= 0 ? Math.floor(amount) : null;
+        },
+
+        hasProfileMonthlyAmount(contact) {
+          return this.getProfileMonthlyAmount(contact?.mikrotikProfile) !== null;
+        },
+
+        syncProfileMonthlyAmountFields() {
+          const current = { ...(this.forms.settings.profileMonthlyAmounts || {}) };
+          for (const profile of this.mikrotikProfiles) {
+            const name = String(profile?.name || "").trim();
+            if (!name) continue;
+            const existingKey = Object.keys(current).find((key) => key.toLowerCase() === name.toLowerCase());
+            current[name] = existingKey ? current[existingKey] : "";
+            if (existingKey && existingKey !== name) delete current[existingKey];
+          }
+          this.forms.settings.profileMonthlyAmounts = current;
         },
 
         getHotspotProvisioningStatus(contact) {
@@ -1102,7 +1129,9 @@
                 enableMikrotikBackupToWa: Boolean(data.settings.enableMikrotikBackupToWa),
                 mikrotikBackupTime: data.settings.mikrotikBackupTime || "02:00",
                 mikrotikBackupTimezone: data.settings.mikrotikBackupTimezone || data.settings.timezone || "Asia/Jakarta",
+                profileMonthlyAmounts: { ...(data.settings.profileMonthlyAmounts || {}) },
               };
+              this.syncProfileMonthlyAmountFields();
             }
           } finally {
             this.loading.status = false;
@@ -1143,6 +1172,7 @@
 
         async loadMikrotikProfiles(options = {}) {
           this.mikrotikProfiles = await this.api("/api/mikrotik/profiles", { silent: Boolean(options.silent) });
+          this.syncProfileMonthlyAmountFields();
           if (!options.silent) this.notify(`${this.mikrotikProfiles.length} profile MikroTik dimuat.`);
         },
 

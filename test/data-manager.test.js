@@ -21,6 +21,7 @@ function createManager(contact) {
   manager.savePelanggan = async () => {};
   manager.saveCustomerAccounts = async () => {};
   manager.saveReminders = async () => {};
+  manager.saveSettings = async () => {};
   manager.withDatabaseWrite = async (operation) => operation();
   manager.sequelize = {
     transaction: async (operation) => operation({}),
@@ -477,6 +478,55 @@ test("menyimpan template pengiriman akun pelanggan dari menu pengaturan", async 
   );
 });
 
+test("tarif profile MikroTik memperbarui nominal pelanggan dan reminder", async () => {
+  const contact = {
+    id: "contact-profile-tariff",
+    name: "Pelanggan Profile",
+    phoneNumber: "6281234567893",
+    mikrotikProfile: "30Hari",
+    monthlyPaymentAmount: 100_000,
+    createdAt: new Date().toISOString(),
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+  manager.reminders.set("reminder-profile-tariff", {
+    id: "reminder-profile-tariff",
+    contactId: contact.id,
+    phoneNumber: contact.phoneNumber,
+    message: "Tagihan sebesar Rp 100.000",
+    messageSource: "Tagihan sebesar Rp 100.000",
+    paymentAmount: 100_000,
+  });
+
+  await manager.updateSettings({ profileMonthlyAmounts: { "30Hari": 40_000 } });
+
+  assert.equal(contact.monthlyPaymentAmount, 40_000);
+  assert.equal(manager.reminders.get("reminder-profile-tariff").paymentAmount, 40_000);
+  assert.match(manager.reminders.get("reminder-profile-tariff").message, /Rp\s?40\.000/);
+});
+
+test("nominal pelanggan mengikuti tarif profile MikroTik", async () => {
+  const contact = {
+    id: "contact-profile-fixed-price",
+    name: "Pelanggan Profile Fixed",
+    phoneNumber: "6281234567892",
+    mikrotikProfile: "30Hari",
+    monthlyPaymentAmount: 40_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+  await manager.updateSettings({ profileMonthlyAmounts: { "30Hari": 40_000 } });
+
+  await assert.rejects(
+    () => manager.updateContactPaymentAmount(contact.id, 50_000),
+    /Nominal pelanggan mengikuti tarif profile/
+  );
+  const unchanged = await manager.updateContactPaymentAmount(contact.id, 40_000);
+  assert.equal(unchanged.monthlyPaymentAmount, 40_000);
+});
+
 test("pengaturan tidak lagi menyimpan template notifikasi reaktivasi hotspot", async () => {
   const manager = new DataManager({ push() {} });
   manager.saveSettings = async () => {};
@@ -869,6 +919,7 @@ test("edit akun hotspot menyimpan snapshot lama sebagai PENDING UPDATE", async (
   manager.saveContacts = async () => {};
   manager.savePelanggan = async () => {};
   manager.saveReminders = async () => {};
+  manager.settings.profileMonthlyAmounts = { "100M": 120_000 };
   const contact = {
     id: "contact-edit-hotspot",
     name: "Pelanggan Lama",
@@ -878,6 +929,7 @@ test("edit akun hotspot menyimpan snapshot lama sebagai PENDING UPDATE", async (
     mikrotikPassword: "67805",
     hotspotProvisioningStatus: "ACTIVE",
     hotspotProvisioningOperation: "NONE",
+    monthlyPaymentAmount: 50_000,
     paymentMonths: {},
     createdAt: new Date().toISOString(),
   };
@@ -906,6 +958,7 @@ test("edit akun hotspot menyimpan snapshot lama sebagai PENDING UPDATE", async (
   assert.equal(result.hotspotSyncRequired, true);
   assert.equal(result.contact.hotspotProvisioningStatus, "PENDING");
   assert.equal(result.contact.hotspotProvisioningOperation, "UPDATE");
+  assert.equal(result.contact.monthlyPaymentAmount, 120_000);
   assert.deepEqual(result.contact.hotspotProvisioningPrevious, {
     username: "pelanggan_lama",
     profile: "50M",
