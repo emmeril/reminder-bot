@@ -118,6 +118,14 @@ test("halaman login membedakan akses administrator dan pelanggan", async () => {
   assert.doesNotMatch(adminHtml, /Akun ini berbeda dari akun hotspot/);
 });
 
+test("JavaScript dashboard tidak disimpan di cache browser", async () => {
+  const baseUrl = await startServer();
+  const response = await fetch(`${baseUrl}/public/app.js?v=test`);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
+});
+
 test("health check publik tidak membocorkan framework dan membawa request ID", async () => {
   const baseUrl = await startServer();
   const response = await fetch(`${baseUrl}/healthz`, {

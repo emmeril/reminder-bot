@@ -5069,7 +5069,7 @@ class WebServer {
     });
 
     this.app.use("/public", (req, res, next) => {
-      if (["/customer.js", "/customer.css", "/customer-login.js"].includes(req.path)) {
+      if (["/app.js", "/customer.js", "/customer.css", "/customer-login.js"].includes(req.path)) {
         res.setHeader("Cache-Control", "no-store, max-age=0");
       }
       next();
