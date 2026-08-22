@@ -127,6 +127,40 @@ test("reminder pelanggan sekali berlangganan tidak dijadwalkan ulang", async () 
   assert.equal(created, 0);
 });
 
+test("reminder jatuh tempo pelanggan sekali berlangganan dilewati tanpa mengirim WA", async () => {
+  const reminder = {
+    id: "reminder-one-time-due",
+    contactId: "one-time",
+    phoneNumber: "6281234567890",
+    reminderDateTime: new Date(Date.now() - 1000).toISOString(),
+    message: "Tagihan sekali berlangganan",
+  };
+  const archived = [];
+  let sendCount = 0;
+  const dataManager = {
+    getSettings: () => ({ autoRescheduleMonthly: true }),
+    getSortedReminders: () => [reminder],
+    getResolvedReminderContact: () => ({ id: "one-time", subscriptionType: "ONE_TIME" }),
+    claimDueReminder: async () => reminder,
+    moveToSent: async (_id, extras) => {
+      archived.push(extras);
+      return extras;
+    },
+    releaseReminderClaim: async () => null,
+  };
+  const notificationBot = {
+    getStatus: () => ({ whatsappProviderEnabled: true, isAvailable: true, outboundEnabled: true }),
+    sendMessage: async () => { sendCount += 1; },
+  };
+
+  await new ReminderScheduler(notificationBot, dataManager, { push() {} }).processDueReminders();
+
+  assert.equal(sendCount, 0);
+  assert.equal(archived.length, 1);
+  assert.equal(archived[0].deliveryStatus, "SKIPPED_ONE_TIME");
+  assert.equal(archived[0].providerStatus, "skipped");
+});
+
 test("WA reminder yang gagal tetap diarsipkan dan dijadwalkan bulan berikutnya", async () => {
   const timeZone = "Asia/Jakarta";
   const scheduledAt = new Date(Date.now() - 60_000);

@@ -274,6 +274,59 @@ test("reminder baru menyimpan template variabel tanpa mengganti data pelanggan",
   assert.match(reminder.message, /{{totalAmount}}/);
 });
 
+test("reminder tidak dapat dibuat untuk pelanggan sekali berlangganan", async () => {
+  const contact = {
+    id: "contact-one-time-reminder",
+    name: "Pelanggan Sekali Reminder",
+    phoneNumber: "6281234567894",
+    createdAt: new Date().toISOString(),
+    subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+
+  await assert.rejects(
+    () => manager.addReminder({
+      contactId: contact.id,
+      reminderDateTime: new Date(Date.now() + 86_400_000),
+      message: "Tagihan",
+    }),
+    /tidak diperlukan untuk pelanggan sekali berlangganan/
+  );
+});
+
+test("perubahan pelanggan menjadi sekali berlangganan menghapus reminder aktif", async () => {
+  const contact = {
+    id: "contact-change-one-time",
+    name: "Pelanggan Bulanan",
+    phoneNumber: "6281234567893",
+    createdAt: new Date().toISOString(),
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+  manager.reminders.set("reminder-change-one-time", {
+    id: "reminder-change-one-time",
+    contactId: contact.id,
+    phoneNumber: contact.phoneNumber,
+    reminderDateTime: new Date(Date.now() + 86_400_000).toISOString(),
+    message: "Tagihan bulanan",
+  });
+  let reminderSaves = 0;
+  manager.saveReminders = async () => { reminderSaves += 1; };
+
+  const updated = await manager.updateContact(contact.id, {
+    subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
+  });
+
+  assert.equal(updated.subscriptionType, SUBSCRIPTION_TYPES.ONE_TIME);
+  assert.equal(manager.reminders.size, 0);
+  assert.equal(reminderSaves, 1);
+});
+
 test("reset pembayaran bulanan juga menyegarkan pesan reminder aktif", async () => {
   const contact = {
     id: "contact-monthly-reset",

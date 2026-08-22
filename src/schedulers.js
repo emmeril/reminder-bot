@@ -225,6 +225,22 @@ class ReminderScheduler {
           claimedReminderId = reminder.id;
           activeReminder = reminder;
 
+          const reminderContact = this.dataManager.getResolvedReminderContact?.(reminder);
+          if (reminderContact
+            && String(reminderContact.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "ONE_TIME") {
+            await this.dataManager.moveToSent(reminder.id, {
+              sentAt: new Date().toISOString(),
+              deliveryStatus: "SKIPPED_ONE_TIME",
+              providerStatus: "skipped",
+            });
+            claimedReminderId = null;
+            this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} dilewati karena pelanggan sekali berlangganan`, {
+              reminderId: reminder.id,
+              contactId: reminderContact.id || reminder.contactId || null,
+            });
+            continue;
+          }
+
           if (reminder.deliveryAttemptedAt && !reminder.providerStatus) {
             const errorMessage = reminder.lastDeliveryError || "Pengiriman sebelumnya gagal";
             await this.dataManager.moveToSent(reminder.id, {

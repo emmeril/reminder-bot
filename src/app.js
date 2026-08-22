@@ -1424,6 +1424,7 @@ class DataManager {
     this.normalizeLoadedContacts();
     const portalAccountsCreated = await this.synchronizeCustomerPortalAccounts();
     await this.normalizeReminderRelations();
+    await this.removeNonRecurringReminders();
     await this.migrateReminderPaymentAmounts();
     await this.migrateReminderVariableTemplates();
     const migration = await migrateWhatsAppProviderMetadata(this);
@@ -2296,6 +2297,7 @@ class DataManager {
       contactId: reminder.contactId || contact?.id || null,
       contactName: contact?.name || reminder.contactName || null,
       phoneNumber: contact?.phoneNumber || reminder.phoneNumber || null,
+      subscriptionType: normalizeSubscriptionType(contact?.subscriptionType || reminder.subscriptionType),
       paymentAmount: Math.max(0, Number(reminder.paymentAmount ?? contact?.monthlyPaymentAmount) || 0),
     };
   }
@@ -2451,6 +2453,36 @@ class DataManager {
     if (hasChanges) {
       await this.saveReminders();
     }
+  }
+
+  async removeNonRecurringReminders() {
+    const removed = [];
+    for (const [id, reminder] of this.reminders.entries()) {
+      const contact = this.getResolvedReminderContact(reminder);
+      if (contact && !isRecurringSubscription(contact)) {
+        this.reminders.delete(id);
+        removed.push({ id, contactId: contact.id });
+      }
+    }
+    if (removed.length > 0) {
+      await this.saveReminders();
+      this.activityLog.push("info", "storage", `${removed.length} reminder pelanggan sekali berlangganan dihapus dari jadwal aktif`, {
+        removed,
+      });
+    }
+    return removed.length;
+  }
+
+  removeRemindersForContact(contactId) {
+    let removed = 0;
+    for (const [id, reminder] of this.reminders.entries()) {
+      const contact = this.getResolvedReminderContact(reminder);
+      if (String(contact?.id || reminder.contactId || "") === String(contactId)) {
+        this.reminders.delete(id);
+        removed += 1;
+      }
+    }
+    return removed;
   }
 
   async migrateReminderPaymentAmounts() {
@@ -2674,6 +2706,7 @@ class DataManager {
 
       const now = new Date().toISOString();
       let contact = this.findContactByPhone(phoneNumber);
+      let remindersRemoved = 0;
       const usernameOwner = this.pelanggan.get(username);
       if (usernameOwner
         && String(usernameOwner.contactId || "") !== String(contact?.id || "")
@@ -2719,6 +2752,9 @@ class DataManager {
       } else {
         contact.name = name;
         contact.subscriptionType = normalizeSubscriptionType(payload.subscriptionType, contact.subscriptionType);
+        if (!isRecurringSubscription(contact)) {
+          remindersRemoved = this.removeRemindersForContact(contact.id);
+        }
         contact.linkedApHost = linkedApHost;
         if (payload.monthlyPaymentAmount !== undefined) {
           contact.monthlyPaymentAmount = sanitizePositiveInteger(
@@ -2778,6 +2814,7 @@ class DataManager {
         await this.saveContacts(options);
         await this.savePelanggan(options);
         await this.saveCustomerAccounts(options);
+        if (remindersRemoved > 0) await this.saveReminders(options);
       }));
       return { contact, pelanggan };
     });
@@ -2926,6 +2963,7 @@ class DataManager {
       contact.phoneNumber = nextPhone;
       contact.linkedApHost = nextLinkedApHost;
       contact.subscriptionType = nextSubscriptionType;
+      if (!isRecurringSubscription(contact)) this.removeRemindersForContact(contact.id);
       if (payload.monthlyPaymentAmount !== undefined) {
         contact.monthlyPaymentAmount = sanitizePositiveInteger(
           payload.monthlyPaymentAmount,
@@ -3524,6 +3562,9 @@ class DataManager {
         : new Date(payload.reminderDateTime);
 
       if (!contact) throw new Error("Contact reminder tidak ditemukan.");
+      if (!isRecurringSubscription(contact)) {
+        throw new Error("Reminder tidak diperlukan untuk pelanggan sekali berlangganan.");
+      }
       if (!message) throw new Error("Isi reminder wajib diisi.");
       if (Number.isNaN(reminderDate.getTime())) throw new Error("Tanggal reminder tidak valid.");
 

@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>__DASHBOARD_TITLE__</title>
-  <link rel="stylesheet" href="/public/tailwind.css?v=20260822-2">
+  <link rel="stylesheet" href="/public/tailwind.css?v=20260822-3">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20260822-4">
-  <script defer src="/public/app.js?v=20260822-4"></script>
+  <script defer src="/public/app.js?v=20260822-5"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -642,6 +642,7 @@
                           <div class="min-w-0">
                             <div class="truncate font-semibold text-ink" x-text="reminder.contactName || 'Contact tidak ditemukan'"></div>
                             <div class="mt-1 text-xs font-medium text-ink/45" x-text="reminder.phoneNumber || '-'"></div>
+                            <span class="mt-2 inline-flex w-fit rounded-full px-2.5 py-1 text-[10px] font-bold" :class="String(reminder.subscriptionType || 'RECURRING').toUpperCase() === 'ONE_TIME' ? 'bg-clay/10 text-clay' : 'bg-moss/10 text-moss'" x-text="getSubscriptionTypeLabel(reminder)"></span>
                           </div>
                         </div>
                       </td>
