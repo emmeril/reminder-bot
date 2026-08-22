@@ -508,7 +508,7 @@ test("registrasi pelanggan MikroTik menyimpan AP dan jadwal reaktivasi dari form
   assert.equal(result.pelanggan.hotspotProvisioningStatus, "ACTIVE");
 });
 
-test("sekali berlangganan menonaktifkan jadwal reaktivasi hotspot otomatis", async () => {
+test("sekali berlangganan mengubah jadwal menjadi penonaktifan tanpa menghapus tanggal", async () => {
   const manager = new DataManager({ push() {} });
   manager.sequelize = { transaction: async (operation) => operation({}) };
   manager.withDatabaseWrite = async (operation) => operation();
@@ -520,13 +520,15 @@ test("sekali berlangganan menonaktifkan jadwal reaktivasi hotspot otomatis", asy
     name: "Pelanggan Sekali Hotspot",
     phoneNumber: "6281234567801",
     subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
+    mikrotikUsername: "pelanggan-sekali",
+    mikrotikProfile: "default",
     hotspotReactivationEnabled: true,
     hotspotReactivationAt: "2026-09-01 00:00",
   });
 
   assert.equal(result.subscriptionType, SUBSCRIPTION_TYPES.ONE_TIME);
   assert.equal(result.hotspotReactivationEnabled, false);
-  assert.equal(result.hotspotReactivationAt, null);
+  assert.equal(result.hotspotReactivationAt, "2026-08-31T17:00:00.000Z");
 
   const reactivated = await manager.markHotspotReactivated(result.id, { password: "hotspot-pass", profile: "default" });
   assert.equal(reactivated.hotspotReactivationEnabled, false);

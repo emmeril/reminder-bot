@@ -650,7 +650,7 @@
         },
 
         getReactivationLabel(contact) {
-          if (!contact.hotspotReactivationAt) return contact.hotspotReactivationEnabled ? "Belum dijadwalkan" : "Nonaktif";
+          if (!contact.hotspotReactivationAt) return contact.hotspotReactivationEnabled ? "Belum dijadwalkan" : "Tanpa jadwal";
           if (!contact.hotspotReactivationEnabled) return `Nonaktif terjadwal: ${this.formatDateTime(contact.hotspotReactivationAt)}`;
           return this.formatDateTime(contact.hotspotReactivationAt);
         },

@@ -1641,7 +1641,6 @@ class DataManager {
       contact.hotspotReactivationAt = this.normalizeOptionalDate(contact.hotspotReactivationAt);
       if (!isRecurringSubscription(contact)) {
         contact.hotspotReactivationEnabled = false;
-        contact.hotspotReactivationAt = null;
       }
       contact.hotspotLastReactivatedAt = this.normalizeOptionalDate(contact.hotspotLastReactivatedAt);
       contact.hotspotLastDeactivatedAt = this.normalizeOptionalDate(contact.hotspotLastDeactivatedAt);
@@ -2121,10 +2120,9 @@ class DataManager {
     const password = payload.mikrotikPassword !== undefined
       ? sanitizeInput(String(payload.mikrotikPassword || ""))
       : sanitizeInput(String(current.mikrotikPassword || ""));
-    let reactivationAt = payload.hotspotReactivationAt !== undefined
+    const reactivationAt = payload.hotspotReactivationAt !== undefined
       ? this.normalizeOptionalDate(payload.hotspotReactivationAt)
       : this.normalizeOptionalDate(current.hotspotReactivationAt);
-    if (subscriptionType === SUBSCRIPTION_TYPES.ONE_TIME) reactivationAt = null;
 
     if (enabled && !username) throw new Error("Username hotspot wajib diisi untuk reaktivasi.");
     if (enabled && !profile) throw new Error("Profile hotspot wajib diisi untuk reaktivasi.");

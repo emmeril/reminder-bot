@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/public/tailwind.css?v=20260822-2">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20260820-1">
-  <script defer src="/public/app.js?v=20260822-2"></script>
+  <script defer src="/public/app.js?v=20260822-3"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -1145,11 +1145,12 @@
               <input x-model="forms.hotspotAccount.password" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="Kosong saat edit = pertahankan password lama">
             </label>
             <label class="block text-sm text-ink/60">
-              Jadwal reaktivasi / nonaktif
+              <span x-text="forms.hotspotAccount.reactivationEnabled ? 'Jadwal reaktivasi pertama' : 'Jadwal penonaktifan (opsional)'"></span>
               <div class="mt-2 grid grid-cols-2 gap-2">
                 <input type="date" x-model="forms.hotspotAccount.reactivationDate" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.hotspotAccount.reactivationEnabled">
                 <input type="time" x-model="forms.hotspotAccount.reactivationTime" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.hotspotAccount.reactivationEnabled">
               </div>
+              <span class="mt-1 block text-xs text-ink/45" x-text="forms.hotspotAccount.reactivationEnabled ? 'Sistem akan mereaktivasi akun pada jadwal ini dan mengulangnya setiap bulan.' : 'Jika tanggal diisi, akun akan dinonaktifkan pada jadwal tersebut tanpa dihapus dari MikroTik.'"></span>
             </label>
           </div>
           <div class="grid gap-3 md:grid-cols-2">
