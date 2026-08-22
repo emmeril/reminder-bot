@@ -397,7 +397,6 @@
                           <div class="customer-amount-editor">
                             <div class="currency-input-group"><span class="currency-prefix">Rp</span><input x-model.number="contact.monthlyPaymentAmount" type="number" min="0" max="1000000000" step="1000" class="tabular-nums" :disabled="hasProfileMonthlyAmount(contact)" aria-label="Nominal pembayaran per bulan"></div>
                             <button x-show="!hasProfileMonthlyAmount(contact)" type="button" @click="saveContactPaymentAmount(contact)" class="customer-amount-save bg-moss text-xs font-semibold text-white" title="Simpan nominal" aria-label="Simpan nominal"><i class="fa-solid fa-floppy-disk"></i></button>
-                            <small x-show="hasProfileMonthlyAmount(contact)" class="customer-meta">Tarif profile otomatis</small>
                           </div>
                         </td>
                         <td class="px-4 py-4" data-label="Pembayaran">
