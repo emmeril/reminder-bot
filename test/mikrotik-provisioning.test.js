@@ -98,6 +98,34 @@ test("akun MikroTik yang cocok diperlakukan sebagai retry idempotent", async () 
   assert.equal(getAddCalls(), 0);
 });
 
+test("retry dapat mengadopsi akun MikroTik existing yang belum memiliki email pemilik", async () => {
+  const { service, users, getAddCalls, getUpdateCalls } = createServiceWithUsers([{
+    ".id": "*1",
+    name: "cantik",
+    profile: "100M",
+    password: "password-lama",
+    email: "",
+    disabled: "true",
+  }]);
+
+  const result = await service.createHotspotCustomer({
+    name: "Cantik",
+    phoneNumber: "6288972126048",
+    username: "cantik",
+    password: "cantik67890",
+    profile: "100M",
+    adoptExisting: true,
+  });
+
+  assert.equal(result.created, false);
+  assert.equal(result.updated, true);
+  assert.equal(result.adopted, true);
+  assert.equal(getAddCalls(), 0);
+  assert.equal(getUpdateCalls(), 1);
+  assert.equal(users[0].email, "6288972126048@localhost.local");
+  assert.equal(users[0].disabled, "no");
+});
+
 test("menolak username MikroTik yang dimiliki pelanggan lain", async () => {
   const { service, getAddCalls } = createServiceWithUsers([{
     ".id": "*1",

@@ -1316,6 +1316,7 @@ test("endpoint retry provisioning memakai data pelanggan tersimpan secara idempo
     mikrotikProfile: "100M",
     mikrotikPassword: "67892",
     hotspotProvisioningStatus: "FAILED",
+    hotspotProvisioningError: 'Username "pelanggan_retry" sudah dipakai akun MikroTik lain.',
     hotspotProvisioningOperation: "CREATE",
     hotspotSendCredentials: false,
   };
@@ -1328,7 +1329,10 @@ test("endpoint retry provisioning memakai data pelanggan tersimpan secara idempo
     },
     toPublicContact: (value) => value,
   }, {}, {
-    createHotspotCustomer: async (payload) => ({ ...payload, created: false }),
+    createHotspotCustomer: async (payload) => {
+      assert.equal(payload.adoptExisting, true);
+      return { ...payload, created: false };
+    },
     verifyHotspotCustomer: async (registered) => ({ username: registered.username }),
   });
 

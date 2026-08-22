@@ -584,7 +584,7 @@ class MikrotikService {
     });
   }
 
-  async createHotspotCustomer({ name, phoneNumber, profile, username, password }) {
+  async createHotspotCustomer({ name, phoneNumber, profile, username, password, adoptExisting = false }) {
     const registration = this.buildHotspotCustomerRegistration({
       name,
       phoneNumber,
@@ -609,18 +609,36 @@ class MikrotikService {
       if (existing) {
         const sameProfile = String(existing.profile || "") === registration.profile;
         const sameOwner = String(existing.email || "").toLowerCase() === expectedEmail.toLowerCase();
+        const ownerUnknown = !sanitizeInput(existing.email || "");
         const existingPassword = sanitizeInput(existing.password || "");
         const samePassword = !existingPassword || existingPassword === registration.password;
-        if (!sameProfile || !sameOwner) {
+        const canAdopt = Boolean(adoptExisting) && ownerUnknown;
+        if (!sameProfile || (!sameOwner && !canAdopt)) {
           throw new Error(`Username "${registration.username}" sudah dipakai akun MikroTik lain.`);
         }
-        if (!samePassword) {
+        if (!samePassword && !canAdopt) {
           throw new Error(`Password akun "${registration.username}" berbeda dengan data aplikasi.`);
+        }
+
+        const existingId = existing[".id"] || existing.id || existing.numbers || "";
+        if (!existingId) throw new Error(`ID akun "${registration.username}" tidak ditemukan di MikroTik.`);
+        const updateResult = await userMenu.update({
+          name: registration.username,
+          password: registration.password,
+          profile: registration.profile,
+          email: expectedEmail,
+          disabled: "no",
+        }, String(existingId));
+        if (updateResult?.["!trap"]) {
+          const message = updateResult["!trap"]?.[0]?.message || "Error tidak diketahui dari MikroTik.";
+          throw new Error(`Gagal memperbarui user hotspot: ${message}`);
         }
         return {
           ...registration,
-          id: existing[".id"] || existing.id || existing.numbers || "",
+          id: existingId,
           created: false,
+          updated: true,
+          adopted: canAdopt,
         };
       }
 
@@ -4659,6 +4677,8 @@ class WebServer {
       if (!current.mikrotikUsername || !current.mikrotikProfile || !current.mikrotikPassword) {
         throw new Error("Data akun hotspot pelanggan belum lengkap.");
       }
+      const adoptExisting = normalizeHotspotProvisioningStatus(current.hotspotProvisioningStatus) === HOTSPOT_PROVISIONING_STATUS.FAILED
+        && /sudah dipakai akun MikroTik lain/i.test(current.hotspotProvisioningError || "");
 
       await this.dataManager.updateHotspotProvisioningStatus(
         current.id,
@@ -4693,6 +4713,7 @@ class WebServer {
             profile: current.mikrotikProfile,
             username: current.mikrotikUsername,
             password: current.mikrotikPassword,
+            adoptExisting,
           });
         }
         verified = await this.mikrotikService.verifyHotspotCustomer(registered);
