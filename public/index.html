@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/public/tailwind.css?v=20260822-2">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20260820-1">
-  <script defer src="/public/app.js?v=20260822-3"></script>
+  <script defer src="/public/app.js?v=20260822-4"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -298,6 +298,7 @@
                     <tr>
                       <th class="px-4 py-3"><i class="fa-solid fa-user mr-2"></i>Nama</th>
                       <th class="px-4 py-3"><i class="fa-brands fa-whatsapp mr-2"></i>No. WA</th>
+                      <th class="px-4 py-3"><i class="fa-solid fa-repeat mr-2"></i>Jenis Berlangganan</th>
                       <th class="px-4 py-3"><i class="fa-solid fa-link mr-2"></i>AP Terkait</th>
                       <th class="px-4 py-3"><i class="fa-solid fa-signal mr-2"></i>Status AP</th>
                       <th class="px-4 py-3"><i class="fa-solid fa-bolt mr-2"></i>Aksi</th>
@@ -305,12 +306,15 @@
                   </thead>
                   <tbody class="divide-y divide-ink/6 bg-white/70">
                     <template x-if="!filteredContacts.length">
-                      <tr><td colspan="5" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada pelanggan yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
+                      <tr><td colspan="6" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada pelanggan yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
                     </template>
                     <template x-for="contact in paginatedContacts" :key="'data-' + contact.id">
                       <tr>
                         <td class="px-4 py-4 font-medium" data-label="Nama" x-text="contact.name"></td>
                         <td class="px-4 py-4 text-ink/65 whitespace-nowrap tabular-nums" data-label="No. WA" x-text="contact.phoneNumber"></td>
+                        <td class="px-4 py-4" data-label="Jenis Berlangganan">
+                          <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="String(contact.subscriptionType || 'RECURRING').toUpperCase() === 'ONE_TIME' ? 'bg-clay/10 text-clay' : 'bg-moss/10 text-moss'" x-text="getSubscriptionTypeLabel(contact)"></span>
+                        </td>
                         <td class="px-4 py-4 text-ink/65" data-label="AP Terkait" x-text="contact.linkedApHost || '-'"></td>
                         <td class="px-4 py-4" data-label="Status AP">
                           <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getContactApStatusClass(contact)" x-text="getContactApStatusLabel(contact)"></span>
