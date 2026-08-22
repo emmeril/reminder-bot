@@ -6,7 +6,7 @@
   <title>__DASHBOARD_TITLE__</title>
   <link rel="stylesheet" href="/public/tailwind.css?v=20260822-2">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20260820-1">
+  <link rel="stylesheet" href="/public/styles.css?v=20260822-2">
   <script defer src="/public/app.js?v=20260822-4"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
@@ -320,7 +320,7 @@
                           <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getContactApStatusClass(contact)" x-text="getContactApStatusLabel(contact)"></span>
                         </td>
                         <td class="px-4 py-4" data-label="Aksi">
-                          <div class="customer-action-group">
+                          <div class="customer-action-group customer-data-actions">
                             <button type="button" @click="openAccountDeliveryModal(contact)" class="customer-account-send-button border border-emerald-600 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"><i class="fa-brands fa-whatsapp mr-1.5"></i>Kirim Akun</button>
                             <button type="button" @click="openContactEditModal(contact)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit</button>
                             <button type="button" @click="removeContact(contact)" class="border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Hapus</button>
