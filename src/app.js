@@ -637,20 +637,12 @@ class MikrotikService {
         (user) => String(user.name || "").toLowerCase() === registration.username.toLowerCase()
       );
       if (existing) {
-        const sameProfile = String(existing.profile || "") === registration.profile;
         const sameOwner = String(existing.email || "").toLowerCase() === expectedEmail.toLowerCase();
         const ownerUnknown = !sanitizeInput(existing.email || "");
-        const existingPassword = sanitizeInput(existing.password || "");
-        const samePassword = !existingPassword || existingPassword === registration.password;
-        const canAdopt = Boolean(adoptExisting) && (
-          ownerUnknown
-          || (Boolean(adoptExistingOwnerMismatch) && sameProfile)
-        );
-        if (!sameProfile || (!sameOwner && !canAdopt)) {
+        const canAdopt = Boolean(adoptExisting)
+          && (ownerUnknown || Boolean(adoptExistingOwnerMismatch));
+        if (!sameOwner && !canAdopt) {
           throw new Error(`Username "${registration.username}" sudah dipakai akun MikroTik lain.`);
-        }
-        if (!samePassword && !canAdopt) {
-          throw new Error(`Password akun "${registration.username}" berbeda dengan data aplikasi.`);
         }
 
         const existingId = existing[".id"] || existing.id || existing.numbers || "";
@@ -671,7 +663,7 @@ class MikrotikService {
           id: existingId,
           created: false,
           updated: true,
-          adopted: canAdopt,
+          adopted: !sameOwner && canAdopt,
         };
       }
 
@@ -799,16 +791,44 @@ class MikrotikService {
 
       if (!previous) {
         const targetPassword = sanitizeInput(target?.password || "");
+        const targetDisabled = String(target?.disabled || "false").toLowerCase() === "true"
+          || ["yes", "on"].includes(String(target?.disabled || "").toLowerCase());
+        const targetOwnerMatches = target
+          && String(target.email || "").toLowerCase() === expectedEmail.toLowerCase();
         const targetMatches = target
+          && targetOwnerMatches
           && String(target.profile || "") === registration.profile
-          && String(target.email || "").toLowerCase() === expectedEmail.toLowerCase()
-          && (!targetPassword || targetPassword === registration.password);
+          && (!targetPassword || targetPassword === registration.password)
+          && !targetDisabled;
         if (targetMatches) {
           return {
             ...registration,
             previousUsername: oldUsername,
             id: target[".id"] || target.id || target.numbers || "",
             updated: false,
+          };
+        }
+        if (target && targetOwnerMatches) {
+          const targetId = target[".id"] || target.id || target.numbers || target.number;
+          if (!targetId) throw new Error(`ID akun "${registration.username}" tidak ditemukan di MikroTik.`);
+          await this.removeActiveHotspotSessionsByName(conn, registration.username);
+          const updateResult = await userMenu.update({
+            name: registration.username,
+            password: registration.password,
+            profile: registration.profile,
+            email: expectedEmail,
+            disabled: "no",
+          }, String(targetId));
+          if (updateResult?.["!trap"]) {
+            const message = updateResult["!trap"]?.[0]?.message || "Error tidak diketahui dari MikroTik.";
+            throw new Error(`Gagal menyelesaikan sinkronisasi user hotspot: ${message}`);
+          }
+          return {
+            ...registration,
+            previousUsername: oldUsername,
+            id: targetId,
+            updated: true,
+            recovered: true,
           };
         }
         throw new Error(`Akun lama "${oldUsername}" tidak ditemukan di MikroTik.`);
@@ -834,6 +854,7 @@ class MikrotikService {
         password: registration.password,
         profile: registration.profile,
         email: expectedEmail,
+        disabled: "no",
       }, String(previousId));
       if (updateResult?.["!trap"]) {
         const message = updateResult["!trap"]?.[0]?.message || "Error tidak diketahui dari MikroTik.";
@@ -4762,8 +4783,16 @@ class WebServer {
       if (!current.mikrotikUsername || !current.mikrotikProfile || !current.mikrotikPassword) {
         throw new Error("Data akun hotspot pelanggan belum lengkap.");
       }
-      const adoptExisting = normalizeHotspotProvisioningStatus(current.hotspotProvisioningStatus) === HOTSPOT_PROVISIONING_STATUS.FAILED
-        && /sudah dipakai akun MikroTik lain/i.test(current.hotspotProvisioningError || "");
+      const provisioningStatus = normalizeHotspotProvisioningStatus(current.hotspotProvisioningStatus);
+      const provisioningOperation = normalizeHotspotProvisioningOperation(
+        current.hotspotProvisioningOperation,
+        HOTSPOT_PROVISIONING_OPERATION.CREATE
+      );
+      // A failed CREATE may have reached MikroTik before the response or local
+      // status was saved. Retry by reconciling that account, while ownership
+      // checks in MikrotikService still protect genuinely foreign usernames.
+      const adoptExisting = provisioningOperation === HOTSPOT_PROVISIONING_OPERATION.CREATE
+        && provisioningStatus === HOTSPOT_PROVISIONING_STATUS.FAILED;
       const adoptExistingOwnerMismatch = Boolean(
         current.hotspotLastReactivatedAt
         || current.hotspotLastDeactivatedAt
@@ -4779,10 +4808,6 @@ class WebServer {
       let registered;
       let verified;
       let persisted;
-      const provisioningOperation = normalizeHotspotProvisioningOperation(
-        current.hotspotProvisioningOperation,
-        HOTSPOT_PROVISIONING_OPERATION.CREATE
-      );
       try {
         if (provisioningOperation === HOTSPOT_PROVISIONING_OPERATION.UPDATE) {
           const previous = current.hotspotProvisioningPrevious;

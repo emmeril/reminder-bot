@@ -1316,7 +1316,7 @@ test("endpoint retry provisioning memakai data pelanggan tersimpan secara idempo
     mikrotikProfile: "100M",
     mikrotikPassword: "67892",
     hotspotProvisioningStatus: "FAILED",
-    hotspotProvisioningError: 'Username "pelanggan_retry" sudah dipakai akun MikroTik lain.',
+    hotspotProvisioningError: "koneksi terputus setelah perintah dikirim ke MikroTik",
     hotspotProvisioningOperation: "CREATE",
     hotspotSendCredentials: false,
   };

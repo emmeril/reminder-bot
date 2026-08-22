@@ -80,11 +80,13 @@ test("membuat akun hotspot lalu membacanya kembali dari MikroTik", async () => {
 });
 
 test("akun MikroTik yang cocok diperlakukan sebagai retry idempotent", async () => {
-  const { service, getAddCalls } = createServiceWithUsers([{
+  const { service, users, getAddCalls, getUpdateCalls } = createServiceWithUsers([{
     ".id": "*1",
     name: "pelanggan_baru",
-    profile: "100M",
+    profile: "profile-lama",
+    password: "password-lama",
     email: "6281234567890@localhost.local",
+    disabled: "true",
   }]);
 
   const result = await service.createHotspotCustomer({
@@ -96,6 +98,10 @@ test("akun MikroTik yang cocok diperlakukan sebagai retry idempotent", async () 
   assert.equal(result.created, false);
   assert.equal(result.id, "*1");
   assert.equal(getAddCalls(), 0);
+  assert.equal(getUpdateCalls(), 1);
+  assert.equal(users[0].profile, "100M");
+  assert.equal(users[0].password, "67890");
+  assert.equal(users[0].disabled, "no");
 });
 
 test("retry dapat mengadopsi akun MikroTik existing yang belum memiliki email pemilik", async () => {
@@ -126,11 +132,35 @@ test("retry dapat mengadopsi akun MikroTik existing yang belum memiliki email pe
   assert.equal(users[0].disabled, "no");
 });
 
+test("retry akun tanpa email dapat sekaligus mengganti profile MikroTik", async () => {
+  const { service, users, getUpdateCalls } = createServiceWithUsers([{
+    ".id": "*1",
+    name: "nini",
+    profile: "30Hari",
+    password: "password-lama",
+    email: "",
+  }]);
+
+  const result = await service.createHotspotCustomer({
+    name: "Nini",
+    phoneNumber: "6285703100985",
+    username: "nini",
+    password: "00985",
+    profile: "100M",
+    adoptExisting: true,
+  });
+
+  assert.equal(result.adopted, true);
+  assert.equal(getUpdateCalls(), 1);
+  assert.equal(users[0].profile, "100M");
+  assert.equal(users[0].email, "6285703100985@localhost.local");
+});
+
 test("retry akun yang pernah dikelola dapat memperbarui email pemilik yang sudah berubah", async () => {
   const { service, users, getAddCalls, getUpdateCalls } = createServiceWithUsers([{
     ".id": "*1",
     name: "mainang",
-    profile: "100M",
+    profile: "profile-lama",
     password: "password-lama",
     email: "6281372968275@localhost.local",
   }]);
@@ -151,6 +181,28 @@ test("retry akun yang pernah dikelola dapat memperbarui email pemilik yang sudah
   assert.equal(getAddCalls(), 0);
   assert.equal(getUpdateCalls(), 1);
   assert.equal(users[0].email, "62895619074907@localhost.local");
+  assert.equal(users[0].profile, "100M");
+});
+
+test("retry tetap menolak akun milik pelanggan lain tanpa riwayat pengelolaan", async () => {
+  const { service, getUpdateCalls } = createServiceWithUsers([{
+    ".id": "*1",
+    name: "pelanggan_baru",
+    profile: "profile-lama",
+    password: "password-lama",
+    email: "6289999999999@localhost.local",
+  }]);
+
+  await assert.rejects(
+    () => service.createHotspotCustomer({
+      name: "Pelanggan Baru",
+      phoneNumber: "6281234567890",
+      profile: "100M",
+      adoptExisting: true,
+    }),
+    /dipakai akun MikroTik lain/
+  );
+  assert.equal(getUpdateCalls(), 0);
 });
 
 test("menolak username MikroTik yang dimiliki pelanggan lain", async () => {
@@ -250,6 +302,33 @@ test("retry edit idempotent menerima akun baru ketika akun lama sudah berganti n
   assert.equal(result.updated, false);
   assert.equal(result.username, "pelanggan_baru");
   assert.equal(getUpdateCalls(), 0);
+});
+
+test("retry edit menyelesaikan akun baru yang baru tersinkron sebagian", async () => {
+  const { service, users, getUpdateCalls } = createServiceWithUsers([{
+    ".id": "*1",
+    name: "pelanggan_baru",
+    profile: "profile-lama",
+    password: "password-lama",
+    email: "6281234567806@localhost.local",
+    disabled: "true",
+  }]);
+
+  const result = await service.updateHotspotCustomer({
+    previousUsername: "pelanggan_lama",
+    name: "Pelanggan Baru",
+    username: "pelanggan_baru",
+    phoneNumber: "6281234567806",
+    password: "67806",
+    profile: "100M",
+  });
+
+  assert.equal(result.updated, true);
+  assert.equal(result.recovered, true);
+  assert.equal(getUpdateCalls(), 1);
+  assert.equal(users[0].profile, "100M");
+  assert.equal(users[0].password, "67806");
+  assert.equal(users[0].disabled, "no");
 });
 
 test("edit hotspot menolak username baru yang sudah digunakan akun lain", async () => {
