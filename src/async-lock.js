@@ -1,22 +1,30 @@
 class AsyncLock {
   constructor() {
-    this._locks = new Map();
+    this._tails = new Map();
   }
 
   async acquire(key) {
-    while (this._locks.has(key)) {
-      await this._locks.get(key);
-    }
-    let releaseResolver;
-    const releasePromise = new Promise((resolve) => {
-      releaseResolver = resolve;
+    const previous = this._tails.get(key) || Promise.resolve();
+
+    let releaseCurrent;
+    const current = new Promise((resolve) => {
+      releaseCurrent = resolve;
     });
-    this._locks.set(key, releasePromise);
-    const release = () => {
-      this._locks.delete(key);
-      releaseResolver();
+
+    const tail = previous.then(() => current);
+    this._tails.set(key, tail);
+    await previous;
+
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      releaseCurrent();
+
+      if (this._tails.get(key) === tail) {
+        this._tails.delete(key);
+      }
     };
-    return release;
   }
 
   async runExclusive(key, fn) {
