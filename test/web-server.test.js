@@ -519,7 +519,7 @@ test("pelanggan dapat mengganti password portal tanpa mengubah password hotspot"
 
 test("signature notifikasi Midtrans diverifikasi dengan server key", () => {
   Object.assign(CONFIG, { MIDTRANS_ENABLED: true, MIDTRANS_SERVER_KEY: "midtrans-server-key" });
-  const service = new MidtransService({ push() {} });
+  const service = new MidtransService();
   const notification = {
     order_id: "RB-ORDER-1",
     status_code: "200",
