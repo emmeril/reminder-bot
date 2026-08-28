@@ -2313,9 +2313,21 @@ class DataManager {
     const billingPeriods = isRecurringSubscription(contact)
       ? listBillingPeriods(startPeriod, previous)
       : (compareBillingPeriods(startPeriod, previous) <= 0 ? [startPeriod] : []);
+    const legacyOneTimePeriods = !isRecurringSubscription(contact)
+      ? Object.entries(paymentMonths)
+        .filter(([key, payment]) => /^\d{4}-\d{2}$/.test(key)
+          && payment?.status !== PAYMENT_STATUS.PAID
+          && key !== currentKey)
+        .map(([key, payment]) => ({
+          year: Number(key.slice(0, 4)),
+          month: Number(key.slice(5, 7)),
+          status: payment?.status || PAYMENT_STATUS.UNPAID,
+        }))
+      : [];
     const debtPeriods = currentType === PAYMENT_TYPES.FULL_PAID
       ? []
-      : billingPeriods
+      : [...billingPeriods, ...legacyOneTimePeriods]
+        .filter((period, index, all) => all.findIndex((candidate) => candidate.year === period.year && candidate.month === period.month) === index)
         .filter((period) => {
           const key = makeBillingPeriodKey(period.year, period.month);
           return paymentMonths[key]?.status !== PAYMENT_STATUS.PAID;
@@ -4108,7 +4120,10 @@ class DataManager {
       const previous = getPreviousBillingPeriod(year, month);
       if (!isRecurringSubscription(contact)) {
         const startPeriod = getContactBillingStartPeriod(contact, timeZone);
-        if (compareBillingPeriods(startPeriod, { year, month }) !== 0) {
+        const existingPeriod = contact.paymentMonths[key];
+        const isExistingArrears = existingPeriod?.status === PAYMENT_STATUS.UNPAID
+          && compareBillingPeriods(startPeriod, { year, month }) < 0;
+        if (compareBillingPeriods(startPeriod, { year, month }) !== 0 && !isExistingArrears) {
           throw new Error("Pelanggan sekali berlangganan hanya dapat dicatat pada periode saat berlangganan.");
         }
       }
