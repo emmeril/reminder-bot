@@ -2585,15 +2585,21 @@ class DataManager {
       if (this.hasContactPhone(phoneNumber)) throw new Error("Nomor kontak sudah digunakan.");
 
       const now = new Date().toISOString();
+      const { year: initialYear, month: initialMonth } = getBillingPeriodParts(new Date(now), this.getTimezone());
+      const initialPeriod = makeBillingPeriodKey(initialYear, initialMonth);
       const contact = {
         id: generateId(),
         name,
         phoneNumber,
         monthlyPaymentAmount: sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000),
         subscriptionType,
-        paymentStatus: PAYMENT_STATUS.UNPAID,
-        paymentDate: null,
-        paymentMonths: {},
+        // Akun baru diasumsikan sudah melunasi biaya awal pada periode pendaftaran.
+        paymentStatus: PAYMENT_STATUS.PAID,
+        paymentDate: now,
+        paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+        paymentMonths: {
+          [initialPeriod]: { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: PAYMENT_TYPES.CURRENT_ONLY },
+        },
         linkedApHost,
         ...hotspotFields,
         hotspotLastReactivatedAt: this.normalizeOptionalDate(payload.hotspotLastReactivatedAt),
@@ -2650,6 +2656,8 @@ class DataManager {
       );
 
       const now = new Date().toISOString();
+      const { year: initialYear, month: initialMonth } = getBillingPeriodParts(new Date(now), this.getTimezone());
+      const initialPeriod = makeBillingPeriodKey(initialYear, initialMonth);
       let contact = this.findContactByPhone(phoneNumber);
       let remindersRemoved = 0;
       let reminderMessagesChanged = 0;
@@ -2677,9 +2685,12 @@ class DataManager {
           phoneNumber,
           monthlyPaymentAmount: sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000),
           subscriptionType: normalizeSubscriptionType(payload.subscriptionType),
-          paymentStatus: PAYMENT_STATUS.UNPAID,
-          paymentDate: null,
-          paymentMonths: {},
+          paymentStatus: PAYMENT_STATUS.PAID,
+          paymentDate: now,
+          paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+          paymentMonths: {
+            [initialPeriod]: { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: PAYMENT_TYPES.CURRENT_ONLY },
+          },
           linkedApHost,
           ...hotspotFields,
           hotspotProvisioningStatus: provisioningStatus,
