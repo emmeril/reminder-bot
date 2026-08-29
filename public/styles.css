@@ -808,9 +808,11 @@ table tbody tr:hover { background: #fafaff; }
   .customer-panel-toolbar { align-items: stretch; flex-direction: column; gap: 9px; }
   .customer-panel-toolbar button { width: 100%; }
   .customer-workspace-table { table-layout: auto; }
+  /* Let the data tab use the same full-width mobile card layout as other customer tabs. */
+  .customer-data-table { min-width: 0; }
   .customer-action-group, .customer-payment-menu, .customer-payment-actions { width: 100%; }
   .customer-action-group button { min-width: 0; flex: 1; }
-  .customer-data-actions { display: grid; grid-template-columns: 1.35fr 1fr 1fr; }
+  .customer-data-actions { display: grid; grid-template-columns: 1fr; }
   .customer-data-actions button { flex: none; min-height: 40px; font-size: 11px !important; }
   .customer-hotspot-action-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
   .customer-hotspot-action-grid button { flex: none; min-height: 40px; font-size: 11px !important; }
