@@ -151,7 +151,19 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .portal-payment-gateway > button:disabled { cursor: not-allowed; filter: none; opacity: .55; transform: none; }
 .portal-payment-message { margin: 10px 2px 0; color: #1d4ed8; font-size: 10px; font-weight: 650; line-height: 1.5; }
 .portal-history-panel { margin-top: 16px; }
-.portal-history-list { margin-top: 7px; }
+.portal-history-list {
+  max-height: 360px;
+  margin-top: 7px;
+  overflow-y: auto;
+  padding-right: 6px;
+  overscroll-behavior: contain;
+  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-width: thin;
+}
+.portal-history-list::-webkit-scrollbar { width: 7px; }
+.portal-history-list::-webkit-scrollbar-track { background: transparent; }
+.portal-history-list::-webkit-scrollbar-thumb { border: 2px solid #fff; border-radius: 999px; background: #cbd5e1; }
+.portal-history-list::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 .portal-history-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 4px; border-bottom: 1px solid #edf0f4; }
 .portal-history-row:last-child { border-bottom: 0; }
 .portal-history-row div { display: flex; min-width: 0; flex-direction: column; }
@@ -185,6 +197,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .portal-panel { padding: 17px; }
   .portal-panel-heading { align-items: flex-start; }
   .portal-panel-heading p { display: none; }
+  .portal-history-list { max-height: 320px; }
   .portal-credential-list small { width: 72px; flex-basis: 72px; }
   .portal-change-password-button { width: 100%; }
   .portal-modal-overlay { align-items: flex-end; padding: 12px; }
