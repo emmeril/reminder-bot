@@ -23,7 +23,7 @@ test("menormalkan status transaksi Midtrans", () => {
     ["capture", "deny", PAYMENT_GATEWAY_STATUS.FAILED],
     ["cancel", "", PAYMENT_GATEWAY_STATUS.FAILED],
     ["expire", "", PAYMENT_GATEWAY_STATUS.EXPIRED],
-    ["partial_refund", "", PAYMENT_GATEWAY_STATUS.REFUNDED],
+    ["partial_refund", "", PAYMENT_GATEWAY_STATUS.PARTIALLY_REFUNDED],
     ["pending", "", PAYMENT_GATEWAY_STATUS.PENDING],
     [undefined, undefined, PAYMENT_GATEWAY_STATUS.PENDING],
   ];
@@ -88,4 +88,25 @@ test("menolak request ketika Midtrans belum dikonfigurasi", async () => {
     service.request("https://api.sandbox.midtrans.com/v2/ORDER-3/status"),
     (error) => error.statusCode === 503 && /belum dikonfigurasi/.test(error.message)
   );
+});
+
+test("mengembalikan payload status Midtrans ketika HTTP 404", async () => {
+  Object.assign(CONFIG, { MIDTRANS_ENABLED: true, MIDTRANS_SERVER_KEY: "server-key" });
+  const originalFetch = global.fetch;
+  global.fetch = async () => new Response(JSON.stringify({
+    status_code: "404",
+    status_message: "Transaction doesn't exist.",
+  }), {
+    status: 404,
+    headers: { "content-type": "application/json" },
+  });
+
+  try {
+    const service = new MidtransService();
+    const result = await service.getTransactionStatus("ORDER-NOT-FOUND");
+    assert.equal(result.status_code, "404");
+    assert.match(result.status_message, /doesn't exist/);
+  } finally {
+    global.fetch = originalFetch;
+  }
 });

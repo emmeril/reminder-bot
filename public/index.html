@@ -6,7 +6,7 @@
   <title>__DASHBOARD_TITLE__</title>
   <link rel="stylesheet" href="/public/tailwind.css?v=20260822-4">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20260829-1">
+  <link rel="stylesheet" href="/public/styles.css?v=20260829-2">
   <script defer src="/public/app.js?v=20260822-6"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
@@ -621,16 +621,17 @@
               <table class="dashboard-table min-w-full text-sm">
                 <thead class="bg-haze/90 text-left text-xs uppercase text-ink/50">
                   <tr>
-                    <th class="w-[28%] px-5 py-4"><i class="fa-solid fa-user mr-2 text-moss"></i>Tujuan</th>
-                    <th class="w-[20%] px-5 py-4"><i class="fa-solid fa-clock mr-2 text-clay"></i>Jadwal</th>
-                    <th class="w-[16%] px-5 py-4"><i class="fa-solid fa-file-lines mr-2 text-moss"></i>Template</th>
+                    <th class="w-[22%] px-5 py-4"><i class="fa-solid fa-user mr-2 text-moss"></i>Tujuan</th>
+                    <th class="w-[14%] px-5 py-4"><i class="fa-solid fa-repeat mr-2 text-moss"></i>Langganan</th>
+                    <th class="w-[18%] px-5 py-4"><i class="fa-solid fa-clock mr-2 text-clay"></i>Jadwal</th>
+                    <th class="w-[14%] px-5 py-4"><i class="fa-solid fa-file-lines mr-2 text-moss"></i>Template</th>
                     <th class="px-5 py-4"><i class="fa-solid fa-message mr-2 text-ink/45"></i>Pesan</th>
                     <th class="w-[14%] px-5 py-4"><i class="fa-solid fa-bolt mr-2 text-ink/45"></i>Aksi</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white">
                   <template x-if="!filteredReminders.length">
-                    <tr><td colspan="5" class="px-5 py-10 text-center text-ink/45" x-text="reminders.length ? 'Tidak ada reminder yang cocok.' : 'Belum ada reminder aktif.'"></td></tr>
+                    <tr><td colspan="6" class="px-5 py-10 text-center text-ink/45" x-text="reminders.length ? 'Tidak ada reminder yang cocok.' : 'Belum ada reminder aktif.'"></td></tr>
                   </template>
                   <template x-for="reminder in paginatedReminders" :key="reminder.id">
                     <tr>
@@ -642,9 +643,11 @@
                           <div class="min-w-0">
                             <div class="truncate font-semibold text-ink" x-text="reminder.contactName || 'Contact tidak ditemukan'"></div>
                             <div class="mt-1 text-xs font-medium text-ink/45" x-text="reminder.phoneNumber || '-'"></div>
-                            <span class="mt-2 inline-flex w-fit rounded-full px-2.5 py-1 text-[10px] font-bold" :class="String(reminder.subscriptionType || 'RECURRING').toUpperCase() === 'ONE_TIME' ? 'bg-clay/10 text-clay' : 'bg-moss/10 text-moss'" x-text="getSubscriptionTypeLabel(reminder)"></span>
                           </div>
                         </div>
+                      </td>
+                      <td class="px-5 py-4" data-label="Langganan">
+                        <span class="inline-flex w-fit rounded-full px-2.5 py-1 text-[10px] font-bold" :class="String(reminder.subscriptionType || 'RECURRING').toUpperCase() === 'ONE_TIME' ? 'bg-clay/10 text-clay' : 'bg-moss/10 text-moss'" x-text="getSubscriptionTypeLabel(reminder)"></span>
                       </td>
                       <td class="px-5 py-4 text-ink/65" data-label="Jadwal">
                         <span class="inline-flex items-center gap-2 whitespace-nowrap">

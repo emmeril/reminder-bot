@@ -60,6 +60,7 @@ class AuthManager {
     const now = Date.now();
     const maximumAttempts = Math.max(1, Math.floor(CONFIG.AUTH_MAX_LOGIN_ATTEMPTS));
     const current = this.getLoginAttempt(key);
+    if (!current) this.enforceLoginAttemptLimit(now);
     const attempt = current || {
       count: 0,
       firstAttemptAt: now,
@@ -76,6 +77,23 @@ class AuthManager {
 
   clearLoginFailures(identifier) {
     this.loginAttempts.delete(this.getLoginAttemptKey(identifier));
+  }
+
+  enforceLoginAttemptLimit(now = Date.now()) {
+    const maximumEntries = Math.max(
+      100,
+      Math.floor(Number(CONFIG.AUTH_MAX_TRACKED_LOGIN_ATTEMPTS) || 5_000)
+    );
+    if (this.loginAttempts.size < maximumEntries) return;
+
+    for (const [key, attempt] of this.loginAttempts.entries()) {
+      if (this.isLoginAttemptExpired(attempt, now)) this.loginAttempts.delete(key);
+    }
+    while (this.loginAttempts.size >= maximumEntries) {
+      const oldestKey = this.loginAttempts.keys().next().value;
+      if (oldestKey === undefined) break;
+      this.loginAttempts.delete(oldestKey);
+    }
   }
 
   validateCredentials(username, password) {

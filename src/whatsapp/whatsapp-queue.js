@@ -37,6 +37,10 @@ class WhatsAppQueue {
       result: null,
       task,
     };
+    const completion = new Promise((resolve, reject) => {
+      item.resolve = resolve;
+      item.reject = reject;
+    });
     this.items.set(item.id, item);
     this.pending.push(item);
     this.log("info", "whatsapp.message.queued", `Message queued: ${item.phone || "unknown"}`, {
@@ -46,20 +50,26 @@ class WhatsAppQueue {
     });
     this.trimHistory();
     this.drain();
-    return new Promise((resolve, reject) => {
-      item.resolve = resolve;
-      item.reject = reject;
-    });
+    return completion;
   }
 
   drain() {
     while (!this.stopped && this.active < this.concurrency && this.pending.length > 0) {
       const item = this.pending.shift();
       this.active += 1;
-      void this.run(item).finally(() => {
-        this.active -= 1;
-        this.drain();
-      });
+      void this.run(item)
+        .catch((error) => {
+          if (!TERMINAL_STATUSES.has(item.status)) {
+            item.status = "failed";
+            item.error = error?.message || String(error);
+            item.updatedAt = new Date().toISOString();
+            item.reject(error);
+          }
+        })
+        .finally(() => {
+          this.active -= 1;
+          this.drain();
+        });
     }
   }
 

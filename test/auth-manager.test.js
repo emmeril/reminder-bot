@@ -6,6 +6,7 @@ const { CONFIG } = require("../src/config");
 
 const originalConfig = {
   AUTH_MAX_LOGIN_ATTEMPTS: CONFIG.AUTH_MAX_LOGIN_ATTEMPTS,
+  AUTH_MAX_TRACKED_LOGIN_ATTEMPTS: CONFIG.AUTH_MAX_TRACKED_LOGIN_ATTEMPTS,
   AUTH_LOGIN_WINDOW: CONFIG.AUTH_LOGIN_WINDOW,
   AUTH_LOGIN_LOCKOUT: CONFIG.AUTH_LOGIN_LOCKOUT,
   SESSION_TTL: CONFIG.SESSION_TTL,
@@ -31,6 +32,19 @@ test("memblokir percobaan login berulang dan mereset blokir setelah login sukses
 
   manager.clearLoginFailures("127.0.0.1");
   assert.equal(manager.isLoginBlocked("127.0.0.1"), false);
+});
+
+test("membatasi jumlah bucket percobaan login di memori", () => {
+  CONFIG.AUTH_MAX_TRACKED_LOGIN_ATTEMPTS = 100;
+  const manager = new AuthManager({ push() {} });
+
+  for (let index = 0; index < 150; index += 1) {
+    manager.recordLoginFailure(`attacker-${index}`);
+  }
+
+  assert.equal(manager.loginAttempts.size, 100);
+  assert.equal(manager.loginAttempts.has("attacker-0"), false);
+  assert.equal(manager.loginAttempts.has("attacker-149"), true);
 });
 
 test("sesi pelanggan terpisah dari sesi administrator", () => {

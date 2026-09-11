@@ -36,6 +36,18 @@ test("WhatsApp queue memberi status retry lalu sent", async () => {
   assert.equal(queue.getStatus().counts.sent, 1);
 });
 
+test("WhatsApp queue menolak Promise pemanggil ketika task melempar sinkron", async () => {
+  const queue = new WhatsAppQueue({ concurrency: 1, retryLimit: 1, retryDelayMs: 0 });
+
+  await assert.rejects(
+    queue.enqueue(() => {
+      throw new Error("gagal sinkron");
+    }),
+    /gagal sinkron/
+  );
+  assert.equal(queue.getStatus().counts.failed, 1);
+});
+
 test("WhatsApp queue tidak mengubah respons unconfirmed menjadi sent", async () => {
   const queue = new WhatsAppQueue({ concurrency: 1, retryLimit: 1, retryDelayMs: 0 });
   await assert.rejects(

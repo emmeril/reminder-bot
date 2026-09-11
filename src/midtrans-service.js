@@ -9,6 +9,7 @@ const PAYMENT_GATEWAY_STATUS = Object.freeze({
   FAILED: "FAILED",
   EXPIRED: "EXPIRED",
   REFUNDED: "REFUNDED",
+  PARTIALLY_REFUNDED: "PARTIALLY_REFUNDED",
 });
 
 function normalizeMidtransPaymentStatus(transactionStatus, fraudStatus = "") {
@@ -22,7 +23,8 @@ function normalizeMidtransPaymentStatus(transactionStatus, fraudStatus = "") {
     return PAYMENT_GATEWAY_STATUS.FAILED;
   }
   if (status === "expire") return PAYMENT_GATEWAY_STATUS.EXPIRED;
-  if (["refund", "partial_refund"].includes(status)) return PAYMENT_GATEWAY_STATUS.REFUNDED;
+  if (status === "refund") return PAYMENT_GATEWAY_STATUS.REFUNDED;
+  if (status === "partial_refund") return PAYMENT_GATEWAY_STATUS.PARTIALLY_REFUNDED;
   return PAYMENT_GATEWAY_STATUS.PENDING;
 }
 
@@ -54,18 +56,20 @@ class MidtransService {
       throw error;
     }
 
+    const acceptedStatuses = new Set(options.acceptedStatuses || []);
+    const { acceptedStatuses: _acceptedStatuses, ...fetchOptions } = options;
     const response = await fetch(url, {
-      ...options,
+      ...fetchOptions,
       signal: AbortSignal.timeout(Math.max(1_000, CONFIG.MIDTRANS_HTTP_TIMEOUT)),
       headers: {
         Accept: "application/json",
         Authorization: this.getAuthorizationHeader(),
         "Content-Type": "application/json",
-        ...(options.headers || {}),
+        ...(fetchOptions.headers || {}),
       },
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
+    if (!response.ok && !acceptedStatuses.has(response.status)) {
       const message = payload.error_messages?.join(", ")
         || payload.status_message
         || `Midtrans merespons HTTP ${response.status}.`;
@@ -125,6 +129,10 @@ class MidtransService {
   async getTransactionStatus(orderId) {
     return this.request(`${this.getStatusApiBaseUrl()}/v2/${encodeURIComponent(orderId)}/status`, {
       method: "GET",
+      // Midtrans dapat mengembalikan HTTP 404 sesaat setelah transaksi Snap
+      // dibuat. Rekonsiliasi perlu membaca payload tersebut untuk menentukan
+      // apakah transaksi masih perlu dicoba ulang.
+      acceptedStatuses: [404],
     });
   }
 }

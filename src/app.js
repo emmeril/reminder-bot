@@ -1939,6 +1939,32 @@ class DataManager {
     ));
   }
 
+  findReusablePaymentGatewayTransaction({ contactId, amount, periods }) {
+    const normalizedContactId = String(contactId || "");
+    const normalizedAmount = Math.floor(Number(amount) || 0);
+    const normalizedPeriods = Array.from(new Set((periods || []).map(String))).sort();
+    const maximumAge = Math.max(
+      60_000,
+      Number(CONFIG.MIDTRANS_PENDING_TRANSACTION_TTL) || 24 * 60 * 60 * 1000
+    );
+    const cutoff = Date.now() - maximumAge;
+
+    return Array.from(this.paymentGatewayTransactions.values())
+      .filter((transaction) => {
+        const createdAt = new Date(transaction.createdAt || 0).getTime();
+        const transactionPeriods = Array.from(new Set((transaction.periods || []).map(String))).sort();
+        return transaction.provider === "midtrans"
+          && transaction.status === PAYMENT_GATEWAY_STATUS.PENDING
+          && String(transaction.contactId) === normalizedContactId
+          && Number(transaction.amount) === normalizedAmount
+          && Boolean(transaction.redirectUrl)
+          && Number.isFinite(createdAt)
+          && createdAt >= cutoff
+          && JSON.stringify(transactionPeriods) === JSON.stringify(normalizedPeriods);
+      })
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
+  }
+
   async createPaymentGatewayTransaction(payload) {
     return this.withDataMutation(async () => {
       const orderId = sanitizeInput(String(payload.orderId || ""));
@@ -2038,6 +2064,92 @@ class DataManager {
         if (remindersChanged) await this.saveReminders(options);
       }));
       return { transaction, contact: this.hydrateContact(contact), alreadyProcessed: false };
+    });
+  }
+
+  async refundMidtransPayment(orderId, gatewayData = {}, options = {}) {
+    return this.withDataMutation(async () => {
+      const transaction = this.getPaymentGatewayTransaction(orderId);
+      if (!transaction) throw new Error("Transaksi pembayaran tidak ditemukan.");
+      const receivedAmount = Number(gatewayData.gross_amount);
+      if (!Number.isFinite(receivedAmount) || Math.round(receivedAmount) !== transaction.amount) {
+        const error = new Error("Nominal refund Midtrans tidak sesuai dengan transaksi.");
+        error.statusCode = 400;
+        throw error;
+      }
+      const contact = this.getContact(transaction.contactId);
+      if (!contact) throw new Error("Kontak transaksi pembayaran tidak ditemukan.");
+      const partial = Boolean(options.partial);
+      const refundStatus = partial
+        ? PAYMENT_GATEWAY_STATUS.PARTIALLY_REFUNDED
+        : PAYMENT_GATEWAY_STATUS.REFUNDED;
+      const refundAmount = Math.max(
+        0,
+        Number(gatewayData.refund_amount) || (partial ? 0 : transaction.amount)
+      );
+      const sameRefundAlreadyProcessed = transaction.status === refundStatus
+        && (!partial || Number(transaction.refundAmount || 0) === refundAmount);
+      if (sameRefundAlreadyProcessed) {
+        return { transaction, contact: this.hydrateContact(contact), alreadyProcessed: true, reversedPeriods: [] };
+      }
+
+      const now = new Date().toISOString();
+      const reversedPeriods = [];
+      if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") contact.paymentMonths = {};
+      for (const period of partial ? [] : transaction.periods || []) {
+        const payment = contact.paymentMonths[period];
+        if (payment?.paymentProvider !== "midtrans" || String(payment.transactionId) !== String(orderId)) {
+          continue;
+        }
+        contact.paymentMonths[period] = {
+          ...payment,
+          status: PAYMENT_STATUS.UNPAID,
+          paidDate: null,
+          paymentType: null,
+          refundedAt: gatewayData.refund_time || now,
+          refundedTransactionId: transaction.transactionId || null,
+        };
+        reversedPeriods.push(period);
+      }
+
+      const currentKey = getBillingPeriodKey(new Date(), this.getTimezone());
+      const currentPayment = contact.paymentMonths[currentKey];
+      contact.paymentStatus = currentPayment?.status === PAYMENT_STATUS.PAID
+        ? PAYMENT_STATUS.PAID
+        : PAYMENT_STATUS.UNPAID;
+      contact.paymentDate = contact.paymentStatus === PAYMENT_STATUS.PAID
+        ? currentPayment?.paidDate || null
+        : null;
+      contact.paymentType = contact.paymentStatus === PAYMENT_STATUS.PAID
+        ? currentPayment?.paymentType || null
+        : null;
+      contact.updatedAt = now;
+
+      transaction.status = refundStatus;
+      transaction.gatewayStatus = sanitizeInput(String(
+        gatewayData.transaction_status || (partial ? "partial_refund" : "refund")
+      ));
+      transaction.transactionId = sanitizeInput(String(gatewayData.transaction_id || transaction.transactionId || "")) || null;
+      transaction.paymentMethod = sanitizeInput(String(gatewayData.payment_type || transaction.paymentMethod || "")) || null;
+      transaction.refundedAt = gatewayData.refund_time || now;
+      transaction.refundAmount = refundAmount;
+      transaction.manualReviewRequired = partial;
+      transaction.error = null;
+      transaction.updatedAt = now;
+
+      const remindersChanged = this.updateContactReminderMessages(contact);
+      await this.withDatabaseWrite(() => this.sequelize.transaction(async (databaseTransaction) => {
+        const options = { transaction: databaseTransaction };
+        await this.saveContacts(options);
+        await this.savePaymentGatewayTransactions(options);
+        if (remindersChanged) await this.saveReminders(options);
+      }));
+      return {
+        transaction,
+        contact: this.hydrateContact(contact),
+        alreadyProcessed: false,
+        reversedPeriods,
+      };
     });
   }
 
@@ -5026,27 +5138,8 @@ class WebServer {
 
   async reconcileMidtransTransaction(orderId) {
     if (!this.midtransService.isConfigured()) return { status: "DISABLED" };
-    let localTransaction = this.dataManager.getPaymentGatewayTransaction(orderId);
+    const localTransaction = this.dataManager.getPaymentGatewayTransaction(orderId);
     if (!localTransaction) return { status: "UNKNOWN_ORDER", orderId };
-    if (localTransaction.status === PAYMENT_GATEWAY_STATUS.PAID) {
-      if (localTransaction.error) {
-        localTransaction = await this.dataManager.updatePaymentGatewayTransaction(orderId, { error: null });
-      }
-      let hotspotRecovery = { attempted: false, reason: "already_paid" };
-      const contact = this.dataManager.getContact(localTransaction.contactId);
-      if (contact) {
-        try {
-          hotspotRecovery = await this.recoverHotspotAfterPayment(contact);
-        } catch (error) {
-          hotspotRecovery = { attempted: true, action: "failed", error: error.message };
-          this.activityLog.push("error", "payment", `Pembayaran ${orderId} lunas tetapi pemulihan hotspot gagal`, {
-            contactId: contact.id,
-            error: error.message,
-          });
-        }
-      }
-      return { status: PAYMENT_GATEWAY_STATUS.PAID, alreadyProcessed: true, transaction: localTransaction, hotspotRecovery };
-    }
 
     const gatewayData = await this.midtransService.getTransactionStatus(orderId);
     if (!gatewayData.transaction_status) {
@@ -5075,6 +5168,34 @@ class WebServer {
       gatewayData.transaction_status,
       gatewayData.fraud_status
     );
+
+    if ([PAYMENT_GATEWAY_STATUS.REFUNDED, PAYMENT_GATEWAY_STATUS.PARTIALLY_REFUNDED].includes(status)) {
+      const partial = status === PAYMENT_GATEWAY_STATUS.PARTIALLY_REFUNDED;
+      const result = await this.paymentGatewayLock.runExclusive(String(orderId), () => (
+        this.dataManager.refundMidtransPayment(orderId, gatewayData, { partial })
+      ));
+      if (!result.alreadyProcessed) {
+        this.activityLog.push("warn", "payment", `Pembayaran Midtrans ${orderId} ${partial ? "direfund sebagian" : "direfund"}`, {
+          contactId: result.contact.id,
+          amount: localTransaction.amount,
+          reversedPeriods: result.reversedPeriods,
+        });
+        if (typeof this.notificationBot.sendAdminBroadcast === "function") {
+          await this.notificationBot.sendAdminBroadcast(
+            partial ? "Refund sebagian Midtrans perlu ditinjau" : "Refund pembayaran Midtrans",
+            `Order: ${orderId}\nPelanggan: ${result.contact.name || result.contact.id}\nNominal transaksi: ${localTransaction.amount}\nNominal refund: ${gatewayData.refund_amount || localTransaction.amount}\nPeriode dibatalkan: ${result.reversedPeriods.join(", ") || (partial ? "tidak dibatalkan otomatis" : "tidak ada (sudah ditimpa pembayaran lain)")}`
+          ).catch((error) => {
+            this.activityLog.push("error", "payment", `Notifikasi admin untuk refund ${orderId} gagal: ${error.message}`);
+          });
+        }
+      }
+      return {
+        status,
+        alreadyProcessed: result.alreadyProcessed,
+        transaction: result.transaction,
+        reversedPeriods: result.reversedPeriods,
+      };
+    }
 
     if (status === PAYMENT_GATEWAY_STATUS.PAID) {
       const result = await this.paymentGatewayLock.runExclusive(String(orderId), () => (
@@ -5387,9 +5508,13 @@ class WebServer {
     this.app.post("/api/pelanggan/auth/login", handleApi(async (req, res) => {
       const username = sanitizeInput(req.body.username);
       const password = String(req.body.password || "");
-      const attemptKey = `customer:${req.ip || req.socket?.remoteAddress || "unknown"}:${username.toLowerCase()}`;
+      const sourceAddress = req.ip || req.socket?.remoteAddress || "unknown";
+      const attemptKeys = [
+        `customer-ip:${sourceAddress}`,
+        `customer-account:${username.toLowerCase()}`,
+      ];
 
-      if (this.authManager.isLoginBlocked(attemptKey)) {
+      if (attemptKeys.some((key) => this.authManager.isLoginBlocked(key))) {
         const error = new Error("Terlalu banyak percobaan login. Coba lagi beberapa saat.");
         error.statusCode = 429;
         throw error;
@@ -5398,14 +5523,14 @@ class WebServer {
       const account = this.dataManager.findCustomerPortalAccount?.(username) || null;
       const passwordMatches = safeCompareString(password, account?.account?.password || "invalid-customer-password");
       if (!account || !passwordMatches) {
-        this.authManager.recordLoginFailure(attemptKey);
+        attemptKeys.forEach((key) => this.authManager.recordLoginFailure(key));
         this.activityLog.push("warn", "customer-auth", `Login portal pelanggan gagal untuk ${username || "(kosong)"}`);
         const error = new Error("Username atau password salah.");
         error.statusCode = 401;
         throw error;
       }
 
-      this.authManager.clearLoginFailures(attemptKey);
+      attemptKeys.forEach((key) => this.authManager.clearLoginFailures(key));
       const { token, session } = this.authManager.createCustomerSession({
         username: account.account.username,
         contactId: account.contact.id,
@@ -5485,44 +5610,63 @@ class WebServer {
         throw new Error("Tidak ada tagihan yang perlu dibayar.");
       }
 
-      const orderId = `RB-${Date.now()}-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
-      const transaction = await this.dataManager.createPaymentGatewayTransaction({
-        orderId,
-        contactId: req.customerSession.contactId,
-        amount,
-        periods,
-      });
-      const fallbackFinishUrl = `${req.protocol}://${req.get("host")}/pelanggan?payment=finish`;
-      const finishUrl = CONFIG.MIDTRANS_FINISH_URL || fallbackFinishUrl;
+      return this.paymentGatewayLock.runExclusive(
+        `create:${req.customerSession.contactId}`,
+        async () => {
+          const reusable = await this.dataManager.findReusablePaymentGatewayTransaction?.({
+            contactId: req.customerSession.contactId,
+            amount,
+            periods,
+          });
+          if (reusable) {
+            return {
+              orderId: reusable.orderId,
+              redirectUrl: reusable.redirectUrl,
+              amount: reusable.amount,
+              reused: true,
+            };
+          }
 
-      try {
-        const snap = await this.midtransService.createSnapTransaction({
-          orderId,
-          amount,
-          customer: req.customerPortalData.customer,
-          itemName: `Tagihan internet ${req.customerPortalData.billing.periodLabel}`,
-          finishUrl,
-        });
-        await this.dataManager.updatePaymentGatewayTransaction(orderId, {
-          token: sanitizeInput(String(snap.token || "")) || null,
-          redirectUrl: String(snap.redirect_url || ""),
-          gatewayStatus: "pending",
-        });
-        if (!snap.redirect_url) throw new Error("Midtrans tidak mengembalikan URL pembayaran.");
-        this.activityLog.push("info", "payment", `Transaksi Midtrans ${orderId} dibuat`, {
-          contactId: transaction.contactId,
-          amount,
-          environment: CONFIG.MIDTRANS_IS_PRODUCTION ? "production" : "sandbox",
-        });
-        return { orderId, redirectUrl: snap.redirect_url, amount };
-      } catch (error) {
-        await this.dataManager.updatePaymentGatewayTransaction(orderId, {
-          status: PAYMENT_GATEWAY_STATUS.FAILED,
-          gatewayStatus: "create_failed",
-          error: sanitizeInput(error.message),
-        }).catch(() => {});
-        throw error;
-      }
+          const orderId = `RB-${Date.now()}-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
+          const transaction = await this.dataManager.createPaymentGatewayTransaction({
+            orderId,
+            contactId: req.customerSession.contactId,
+            amount,
+            periods,
+          });
+          const fallbackFinishUrl = `${req.protocol}://${req.get("host")}/pelanggan?payment=finish`;
+          const finishUrl = CONFIG.MIDTRANS_FINISH_URL || fallbackFinishUrl;
+
+          try {
+            const snap = await this.midtransService.createSnapTransaction({
+              orderId,
+              amount,
+              customer: req.customerPortalData.customer,
+              itemName: `Tagihan internet ${req.customerPortalData.billing.periodLabel}`,
+              finishUrl,
+            });
+            await this.dataManager.updatePaymentGatewayTransaction(orderId, {
+              token: sanitizeInput(String(snap.token || "")) || null,
+              redirectUrl: String(snap.redirect_url || ""),
+              gatewayStatus: "pending",
+            });
+            if (!snap.redirect_url) throw new Error("Midtrans tidak mengembalikan URL pembayaran.");
+            this.activityLog.push("info", "payment", `Transaksi Midtrans ${orderId} dibuat`, {
+              contactId: transaction.contactId,
+              amount,
+              environment: CONFIG.MIDTRANS_IS_PRODUCTION ? "production" : "sandbox",
+            });
+            return { orderId, redirectUrl: snap.redirect_url, amount, reused: false };
+          } catch (error) {
+            await this.dataManager.updatePaymentGatewayTransaction(orderId, {
+              status: PAYMENT_GATEWAY_STATUS.FAILED,
+              gatewayStatus: "create_failed",
+              error: sanitizeInput(error.message),
+            }).catch(() => {});
+            throw error;
+          }
+        }
+      );
     }));
 
     this.app.post("/api/payments/midtrans/notification", handleApi(async (req) => {

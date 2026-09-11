@@ -39,6 +39,7 @@ class TelegramManager {
     const response = await fetch(this.getApiUrl("sendDocument"), {
       method: "POST",
       body: formData,
+      signal: AbortSignal.timeout(Math.max(1_000, Number(CONFIG.TELEGRAM_HTTP_TIMEOUT) || 30_000)),
     });
 
     let payload = null;

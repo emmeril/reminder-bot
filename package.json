@@ -42,6 +42,8 @@
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "node-cron": "^4.1.1",
+    "pg": "^8.23.0",
+    "pg-hstore": "^2.3.4",
     "qrcode": "^1.5.4",
     "routeros-client": "^1.1.1",
     "sequelize": "^6.37.8",

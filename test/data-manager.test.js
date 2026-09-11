@@ -47,6 +47,33 @@ test("transaksi Midtrans not_found yang masih baru tetap masuk antrean rekonsili
   );
 });
 
+test("menggunakan ulang transaksi Midtrans pending untuk tagihan yang sama", () => {
+  const manager = createManager({ id: "contact-midtrans-reuse" });
+  manager.paymentGatewayTransactions.set("RB-REUSE", {
+    orderId: "RB-REUSE",
+    contactId: "contact-midtrans-reuse",
+    provider: "midtrans",
+    status: "PENDING",
+    amount: 200000,
+    periods: ["2026-08", "2026-09"],
+    redirectUrl: "https://app.sandbox.midtrans.com/payment",
+    createdAt: new Date().toISOString(),
+  });
+
+  const reusable = manager.findReusablePaymentGatewayTransaction({
+    contactId: "contact-midtrans-reuse",
+    amount: 200000,
+    periods: ["2026-09", "2026-08"],
+  });
+
+  assert.equal(reusable.orderId, "RB-REUSE");
+  assert.equal(manager.findReusablePaymentGatewayTransaction({
+    contactId: "contact-midtrans-reuse",
+    amount: 100000,
+    periods: ["2026-09"],
+  }), null);
+});
+
 test("pembayaran tunggakan saja tidak menandai bulan berjalan lunas", async () => {
   const { year, month } = getBillingPeriodParts();
   const currentKey = makeBillingPeriodKey(year, month);
@@ -883,6 +910,109 @@ test("pembayaran Midtrans menandai periode transaksi lunas secara atomik", async
   assert.equal(contact.paymentMonths["2026-08"].transactionId, "RB-MIDTRANS-1");
   assert.equal(manager.paymentGatewayTransactions.get("RB-MIDTRANS-1").status, "PAID");
   assert.equal(manager.paymentGatewayTransactions.get("RB-MIDTRANS-1").paymentMethod, "bank_transfer");
+});
+
+test("refund Midtrans membalik hanya periode yang masih dimiliki transaksi tersebut", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.savePaymentGatewayTransactions = async () => {};
+  manager.saveReminders = async () => {};
+  const { year, month } = getBillingPeriodParts();
+  const currentKey = makeBillingPeriodKey(year, month);
+  const previousKey = makeBillingPeriodKey(month === 1 ? year - 1 : year, month === 1 ? 12 : month - 1);
+  const contact = {
+    id: "contact-midtrans-refund",
+    name: "Pelanggan Refund",
+    phoneNumber: "6281234567823",
+    monthlyPaymentAmount: 100000,
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentType: PAYMENT_TYPES.FULL_PAID,
+    paymentMonths: {
+      [currentKey]: {
+        status: PAYMENT_STATUS.PAID,
+        transactionId: "RB-REFUND",
+        paymentProvider: "midtrans",
+      },
+      [previousKey]: {
+        status: PAYMENT_STATUS.PAID,
+        transactionId: "MANUAL-REPLACEMENT",
+        paymentProvider: "manual",
+      },
+    },
+    createdAt: new Date().toISOString(),
+  };
+  manager.contacts.set(contact.id, contact);
+  manager.paymentGatewayTransactions.set("RB-REFUND", {
+    orderId: "RB-REFUND",
+    contactId: contact.id,
+    amount: 200000,
+    periods: [previousKey, currentKey],
+    transactionId: "gateway-refund",
+    status: "PAID",
+  });
+
+  const result = await manager.refundMidtransPayment("RB-REFUND", {
+    gross_amount: "200000.00",
+    transaction_status: "refund",
+    transaction_id: "gateway-refund",
+    refund_amount: "200000.00",
+  });
+
+  assert.deepEqual(result.reversedPeriods, [currentKey]);
+  assert.equal(contact.paymentMonths[currentKey].status, PAYMENT_STATUS.UNPAID);
+  assert.equal(contact.paymentMonths[previousKey].status, PAYMENT_STATUS.PAID);
+  assert.equal(contact.paymentStatus, PAYMENT_STATUS.UNPAID);
+  assert.equal(result.transaction.status, "REFUNDED");
+});
+
+test("refund sebagian Midtrans dicatat tanpa membatalkan seluruh periode", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.savePaymentGatewayTransactions = async () => {};
+  manager.saveReminders = async () => {};
+  const currentKey = getBillingPeriodParts();
+  const period = makeBillingPeriodKey(currentKey.year, currentKey.month);
+  const contact = {
+    id: "contact-midtrans-partial-refund",
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentMonths: {
+      [period]: { status: PAYMENT_STATUS.PAID, transactionId: "RB-PARTIAL", paymentProvider: "midtrans" },
+    },
+    createdAt: new Date().toISOString(),
+  };
+  manager.contacts.set(contact.id, contact);
+  manager.paymentGatewayTransactions.set("RB-PARTIAL", {
+    orderId: "RB-PARTIAL",
+    contactId: contact.id,
+    amount: 100000,
+    periods: [period],
+    status: "PAID",
+  });
+
+  const result = await manager.refundMidtransPayment("RB-PARTIAL", {
+    gross_amount: "100000.00",
+    transaction_status: "partial_refund",
+    refund_amount: "25000.00",
+  }, { partial: true });
+
+  assert.deepEqual(result.reversedPeriods, []);
+  assert.equal(contact.paymentMonths[period].status, PAYMENT_STATUS.PAID);
+  assert.equal(result.transaction.status, "PARTIALLY_REFUNDED");
+  assert.equal(result.transaction.refundAmount, 25000);
+  assert.equal(result.transaction.manualReviewRequired, true);
+
+  const repeated = await manager.refundMidtransPayment("RB-PARTIAL", {
+    gross_amount: "100000.00",
+    transaction_status: "partial_refund",
+    refund_amount: "50000.00",
+  }, { partial: true });
+
+  assert.equal(repeated.alreadyProcessed, false);
+  assert.equal(repeated.transaction.refundAmount, 50000);
 });
 
 test("status FAILED menyimpan error tanpa menghapus pelanggan", async () => {

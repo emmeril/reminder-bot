@@ -19,6 +19,8 @@ const originalAuthConfig = {
   MIDTRANS_IS_PRODUCTION: CONFIG.MIDTRANS_IS_PRODUCTION,
   MIDTRANS_SERVER_KEY: CONFIG.MIDTRANS_SERVER_KEY,
   MIDTRANS_FINISH_URL: CONFIG.MIDTRANS_FINISH_URL,
+  AUTH_MAX_LOGIN_ATTEMPTS: CONFIG.AUTH_MAX_LOGIN_ATTEMPTS,
+  AUTH_LOGIN_LOCKOUT: CONFIG.AUTH_LOGIN_LOCKOUT,
 };
 const openServers = [];
 
@@ -517,6 +519,25 @@ test("pelanggan dapat mengganti password portal tanpa mengubah password hotspot"
   assert.equal((await customerLogin(hotspotPassword)).status, 401);
 });
 
+test("percobaan login pelanggan dibatasi per alamat IP meski username berubah", async () => {
+  Object.assign(CONFIG, {
+    AUTH_MAX_LOGIN_ATTEMPTS: 2,
+    AUTH_LOGIN_LOCKOUT: 60_000,
+  });
+  const baseUrl = await startServer({
+    findCustomerPortalAccount: () => null,
+  });
+  const attempt = (username) => fetch(`${baseUrl}/api/pelanggan/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username, password: "salah" }),
+  });
+
+  assert.equal((await attempt("akun-acak-1")).status, 401);
+  assert.equal((await attempt("akun-acak-2")).status, 401);
+  assert.equal((await attempt("akun-acak-3")).status, 429);
+});
+
 test("signature notifikasi Midtrans diverifikasi dengan server key", () => {
   Object.assign(CONFIG, { MIDTRANS_ENABLED: true, MIDTRANS_SERVER_KEY: "midtrans-server-key" });
   const service = new MidtransService();
@@ -623,6 +644,124 @@ test("pelanggan membuat pembayaran Midtrans dan webhook melunasi tagihan", async
   assert.equal(webhook.data.status, "PAID");
   assert.equal(transaction.status, "PAID");
   assert.equal(paymentNotifications, 1);
+});
+
+test("request pembayaran Midtrans serentak menggunakan ulang transaksi pending", async () => {
+  Object.assign(CONFIG, {
+    MIDTRANS_ENABLED: true,
+    MIDTRANS_SERVER_KEY: "midtrans-server-key",
+  });
+  const contact = { id: "contact-midtrans-idempotent", name: "Pelanggan", phoneNumber: "6281234567890" };
+  const portalData = {
+    customer: contact,
+    billing: {
+      periodLabel: "September 2026",
+      totalAmount: 100000,
+      history: [{ period: "2026-09", status: PAYMENT_STATUS.UNPAID }],
+    },
+    account: { username: "akun_idempotent" },
+  };
+  let transaction = null;
+  let createCalls = 0;
+  let snapCalls = 0;
+  const baseUrl = await startServer({
+    findCustomerPortalAccount: () => ({
+      account: { contactId: contact.id, username: "akun_idempotent", password: "portal-123" },
+      contact,
+    }),
+    getCustomerPortalData: () => portalData,
+    findReusablePaymentGatewayTransaction: () => (
+      transaction?.status === "PENDING" && transaction.redirectUrl ? transaction : null
+    ),
+    createPaymentGatewayTransaction: async (payload) => {
+      createCalls += 1;
+      transaction = { ...payload, status: "PENDING", createdAt: new Date().toISOString() };
+      return transaction;
+    },
+    updatePaymentGatewayTransaction: async (_orderId, changes) => Object.assign(transaction, changes),
+  }, {}, {}, {}, {
+    isConfigured: () => true,
+    createSnapTransaction: async () => {
+      snapCalls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return {
+        token: "same-token",
+        redirect_url: "https://app.sandbox.midtrans.com/snap/v4/redirection/same-token",
+      };
+    },
+  });
+  const loginResponse = await fetch(`${baseUrl}/api/pelanggan/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "akun_idempotent", password: "portal-123" }),
+  });
+  const cookie = loginResponse.headers.get("set-cookie").split(";", 1)[0];
+
+  const responses = await Promise.all([
+    fetch(`${baseUrl}/api/pelanggan/payments/midtrans`, { method: "POST", headers: { cookie } }),
+    fetch(`${baseUrl}/api/pelanggan/payments/midtrans`, { method: "POST", headers: { cookie } }),
+  ]);
+  const payloads = await Promise.all(responses.map((response) => response.json()));
+
+  assert.deepEqual(responses.map((response) => response.status), [200, 200]);
+  assert.equal(createCalls, 1);
+  assert.equal(snapCalls, 1);
+  assert.equal(payloads[0].data.orderId, payloads[1].data.orderId);
+  assert.deepEqual(payloads.map((payload) => payload.data.reused).sort(), [false, true]);
+});
+
+test("webhook refund tetap diverifikasi ketika transaksi lokal sudah PAID", async () => {
+  Object.assign(CONFIG, {
+    MIDTRANS_ENABLED: true,
+    MIDTRANS_SERVER_KEY: "midtrans-server-key",
+  });
+  const transaction = {
+    orderId: "RB-ALREADY-PAID-REFUND",
+    contactId: "contact-refund",
+    amount: 100000,
+    status: "PAID",
+  };
+  let refundCalls = 0;
+  let statusCalls = 0;
+  const baseUrl = await startServer({
+    getPaymentGatewayTransaction: () => transaction,
+    refundMidtransPayment: async (_orderId, gatewayData, options) => {
+      refundCalls += 1;
+      assert.equal(gatewayData.transaction_status, "refund");
+      assert.equal(options.partial, false);
+      transaction.status = "REFUNDED";
+      return {
+        transaction,
+        contact: { id: "contact-refund", name: "Pelanggan Refund" },
+        alreadyProcessed: false,
+        reversedPeriods: ["2026-09"],
+      };
+    },
+  }, {}, {}, {}, {
+    isConfigured: () => true,
+    verifyNotificationSignature: () => true,
+    getTransactionStatus: async () => {
+      statusCalls += 1;
+      return {
+        order_id: transaction.orderId,
+        gross_amount: "100000.00",
+        transaction_status: "refund",
+        transaction_id: "gateway-refund",
+      };
+    },
+  });
+
+  const response = await fetch(`${baseUrl}/api/payments/midtrans/notification`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ order_id: transaction.orderId, signature_key: "verified" }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.status, "REFUNDED");
+  assert.equal(statusCalls, 1);
+  assert.equal(refundCalls, 1);
 });
 
 test("status Midtrans yang belum ditemukan tetap pending agar dicoba ulang", async () => {
