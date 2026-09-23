@@ -79,6 +79,86 @@ test("membuat akun hotspot lalu membacanya kembali dari MikroTik", async () => {
   assert.equal(getAddCalls(), 1);
 });
 
+test("sinkronisasi hotspot hanya meminta field RouterOS yang dipakai", async () => {
+  const selectedFields = new Map();
+  const menus = {
+    "/ip/hotspot/user": [{ id: "*1", name: "pelanggan", profile: "100M", disabled: false }],
+    "/ip/hotspot/active": [{ id: "*2", user: "pelanggan", address: "192.0.2.10" }],
+  };
+  const connection = {
+    menu(path) {
+      return {
+        select(fields) {
+          selectedFields.set(path, [...fields]);
+          return this;
+        },
+        async print() {
+          return menus[path];
+        },
+      };
+    },
+  };
+  const service = new MikrotikService({ push() {} });
+  service.withConnection = async (operation) => operation(connection, {});
+
+  const users = await service.getHotspotUsers();
+
+  assert.deepEqual(selectedFields.get("/ip/hotspot/user"), [
+    "id", "name", "profile", "comment", "disabled", "email",
+  ]);
+  assert.deepEqual(selectedFields.get("/ip/hotspot/active"), [
+    "id", "user", "address", "mac-address", "uptime", "server",
+  ]);
+  assert.equal(users.length, 1);
+  assert.equal(users[0].active, true);
+});
+
+test("sinkronisasi status tidak membaca sesi aktif atau field akun yang tidak diperlukan", async () => {
+  const menuCalls = [];
+  let selectedFields = [];
+  const filters = [];
+  const connection = {
+    menu(path) {
+      menuCalls.push(path);
+      return {
+        select(fields) {
+          selectedFields = [...fields];
+          return this;
+        },
+        where(key, value) {
+          filters.push({ operator: "where", key, value });
+          return this;
+        },
+        orWhere(key, value) {
+          filters.push({ operator: "orWhere", key, value });
+          return this;
+        },
+        async print() {
+          return [{ name: "pelanggan", profile: "100M", disabled: "false", email: "6281@localhost.local" }];
+        },
+      };
+    },
+  };
+  const service = new MikrotikService({ push() {} });
+  service.withConnection = async (operation) => operation(connection, {});
+
+  const users = await service.getHotspotUsersForStatusSync(["pelanggan", "pelanggan_dua"]);
+
+  assert.deepEqual(menuCalls, ["/ip/hotspot/user"]);
+  assert.deepEqual(selectedFields, ["name", "profile", "disabled", "email"]);
+  assert.deepEqual(filters, [
+    { operator: "where", key: "name", value: "pelanggan" },
+    { operator: "orWhere", key: "name", value: "pelanggan_dua" },
+  ]);
+  assert.deepEqual(users, [{
+    username: "pelanggan",
+    profile: "100M",
+    disabled: false,
+    email: "6281@localhost.local",
+    source: "user",
+  }]);
+});
+
 test("akun MikroTik yang cocok diperlakukan sebagai retry idempotent", async () => {
   const { service, users, getAddCalls, getUpdateCalls } = createServiceWithUsers([{
     ".id": "*1",

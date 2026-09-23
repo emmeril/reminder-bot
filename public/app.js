@@ -1161,6 +1161,20 @@
           });
         },
 
+        async resetContactPaymentAmount(contact) {
+          if (!contact?.id || !this.hasProfileMonthlyAmount(contact)) return;
+          await this.withProcessing(`Mengembalikan nominal ${contact.name}...`, async () => {
+            const updated = await this.api(`/api/contacts/${contact.id}/payment-amount`, {
+              method: "POST",
+              body: JSON.stringify({ useProfileDefault: true }),
+            });
+            const index = this.contacts.findIndex((item) => String(item.id) === String(contact.id));
+            if (index >= 0) this.contacts.splice(index, 1, updated);
+            this.notify(`Nominal ${contact.name} kembali mengikuti tarif profile.`);
+            await this.loadReminders();
+          });
+        },
+
         exportPaymentRecap() {
           const link = document.createElement("a");
           link.href = "/api/payments/export.xlsx";

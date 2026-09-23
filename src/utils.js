@@ -117,17 +117,29 @@ function parseNetwatchSinceDate(value) {
   return null;
 }
 
+const dateTimeFormatters = new Map();
+const validTimeZones = new Map();
+
+function getDateTimeFormatter(timeZone) {
+  let formatter = dateTimeFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    });
+    dateTimeFormatters.set(timeZone, formatter);
+  }
+  return formatter;
+}
+
 function getDateTimePartsInTimezone(date = new Date(), timeZone = "Asia/Jakarta") {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  });
+  const formatter = getDateTimeFormatter(timeZone);
 
   const parts = formatter.formatToParts(date).reduce((acc, item) => {
     if (item.type !== "literal") acc[item.type] = item.value;
@@ -194,11 +206,14 @@ function zonedDateTimeToDate(parts, timeZone = "Asia/Jakarta") {
 function isValidTimeZone(value) {
   const timeZone = sanitizeInput(value);
   if (!timeZone) return false;
+  if (validTimeZones.has(timeZone)) return validTimeZones.get(timeZone);
 
   try {
     new Intl.DateTimeFormat("en-US", { timeZone }).format();
+    validTimeZones.set(timeZone, true);
     return true;
   } catch {
+    validTimeZones.set(timeZone, false);
     return false;
   }
 }

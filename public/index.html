@@ -395,9 +395,11 @@
                         </td>
                         <td class="px-4 py-4" data-label="Nominal Bulanan">
                           <div class="customer-amount-editor">
-                            <div class="currency-input-group"><span class="currency-prefix">Rp</span><input x-model.number="contact.monthlyPaymentAmount" type="number" min="0" max="1000000000" step="1000" class="tabular-nums" :disabled="hasProfileMonthlyAmount(contact)" aria-label="Nominal pembayaran per bulan"></div>
-                            <button x-show="!hasProfileMonthlyAmount(contact)" type="button" @click="saveContactPaymentAmount(contact)" class="customer-amount-save bg-moss text-xs font-semibold text-white" title="Simpan nominal" aria-label="Simpan nominal"><i class="fa-solid fa-floppy-disk"></i></button>
+                            <div class="currency-input-group"><span class="currency-prefix">Rp</span><input x-model.number="contact.monthlyPaymentAmount" @input="contact.monthlyPaymentAmountCustomized = true" type="number" min="0" max="1000000000" step="1000" class="tabular-nums" aria-label="Nominal pembayaran per bulan"></div>
+                            <button type="button" @click="saveContactPaymentAmount(contact)" class="customer-amount-save bg-moss text-xs font-semibold text-white" title="Simpan nominal custom" aria-label="Simpan nominal custom"><i class="fa-solid fa-floppy-disk"></i></button>
+                            <button x-show="contact.monthlyPaymentAmountCustomized && hasProfileMonthlyAmount(contact)" type="button" @click="resetContactPaymentAmount(contact)" class="customer-amount-save border border-moss/20 bg-white text-xs font-semibold text-moss" title="Kembalikan ke tarif profile" aria-label="Kembalikan ke tarif profile"><i class="fa-solid fa-rotate-left"></i></button>
                           </div>
+                          <small x-show="hasProfileMonthlyAmount(contact)" class="mt-1 block text-xs" :class="contact.monthlyPaymentAmountCustomized ? 'text-clay' : 'text-moss'" x-text="contact.monthlyPaymentAmountCustomized ? 'Nominal custom · default profile Rp ' + Number(getProfileMonthlyAmount(contact.mikrotikProfile)).toLocaleString('id-ID') : 'Mengikuti tarif profile'"></small>
                         </td>
                         <td class="px-4 py-4" data-label="Pembayaran">
                           <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="contact.currentPaymentStatus === 'PAID' ? 'bg-moss/10 text-moss' : 'bg-clay/10 text-clay'" x-text="getCurrentPaymentLabel(contact)"></span>
@@ -778,9 +780,9 @@
               </div>
             </section>
             <section class="settings-section">
-              <div class="settings-section-heading"><span><i class="fa-solid fa-tags"></i></span><div><strong>Tarif profile MikroTik</strong><small>Nominal bulanan pelanggan otomatis mengikuti profile hotspot</small></div></div>
+              <div class="settings-section-heading"><span><i class="fa-solid fa-tags"></i></span><div><strong>Tarif profile MikroTik</strong><small>Nominal bulanan memakai tarif profile sebagai default dan dapat dicustom per pelanggan</small></div></div>
               <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-moss/15 bg-moss/5 px-4 py-3">
-                <p class="text-sm leading-6 text-ink/60">Contoh: profile <strong>30Hari</strong> diisi <strong>40000</strong>, maka pelanggan dengan profile tersebut otomatis memiliki nominal bulanan Rp40.000.</p>
+                <p class="text-sm leading-6 text-ink/60">Contoh: profile <strong>30Hari</strong> diisi <strong>40000</strong>, maka nominal awal pelanggan adalah Rp40.000. Nominal tiap pelanggan tetap dapat dicustom dari menu Tagihan.</p>
                 <button type="button" @click="loadMikrotikProfiles()" :disabled="loading.hotspotOptions" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss disabled:opacity-50"><i class="fa-solid fa-rotate mr-1.5"></i>Muat profile</button>
               </div>
               <div x-show="mikrotikProfiles.length" class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -1163,7 +1165,7 @@
                   <option :value="profile.name" x-text="profile.rateLimit ? profile.name + ' - ' + profile.rateLimit : profile.name"></option>
                 </template>
               </select>
-              <span x-show="getProfileMonthlyAmount(forms.hotspotAccount.profile) !== null" class="mt-1 block text-xs font-semibold text-moss" x-text="'Tarif bulanan otomatis: Rp ' + Number(getProfileMonthlyAmount(forms.hotspotAccount.profile)).toLocaleString('id-ID')"></span>
+              <span x-show="getProfileMonthlyAmount(forms.hotspotAccount.profile) !== null" class="mt-1 block text-xs font-semibold text-moss" x-text="'Tarif bulanan default: Rp ' + Number(getProfileMonthlyAmount(forms.hotspotAccount.profile)).toLocaleString('id-ID')"></span>
             </label>
             <label class="block text-sm text-ink/60">
               Password hotspot

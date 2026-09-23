@@ -308,9 +308,13 @@ class MikrotikService {
 
   async getHotspotUsers() {
     return this.withConnection(async (conn) => {
+      const userMenu = conn.menu("/ip/hotspot/user")
+        .select(["id", "name", "profile", "comment", "disabled", "email"]);
+      const activeMenu = conn.menu("/ip/hotspot/active")
+        .select(["id", "user", "address", "mac-address", "uptime", "server"]);
       const [users, activeSessions] = await Promise.all([
-        conn.menu("/ip/hotspot/user").print(),
-        conn.menu("/ip/hotspot/active").print(),
+        userMenu.print(),
+        activeMenu.print(),
       ]);
 
       const byUsername = new Map();
@@ -359,6 +363,31 @@ class MikrotikService {
 
       return Array.from(byUsername.values())
         .sort((a, b) => a.username.localeCompare(b.username, "id-ID"));
+    });
+  }
+
+  async getHotspotUsersForStatusSync(usernames = []) {
+    return this.withConnection(async (conn) => {
+      const managedUsernames = [...new Set(
+        usernames.map((username) => sanitizeInput(username)).filter(Boolean)
+      )];
+      const userMenu = conn.menu("/ip/hotspot/user")
+        .select(["name", "profile", "disabled", "email"]);
+      if (managedUsernames.length > 0) {
+        userMenu.where("name", managedUsernames[0]);
+        for (const username of managedUsernames.slice(1)) {
+          userMenu.orWhere("name", username);
+        }
+      }
+      const users = await userMenu.print();
+
+      return (users || []).map((user) => ({
+        username: sanitizeInput(user.name || user.user || ""),
+        profile: user.profile || "",
+        disabled: user.disabled === true || String(user.disabled || "").toLowerCase() === "true",
+        email: user.email || "",
+        source: "user",
+      })).filter((user) => user.username);
     });
   }
 
@@ -1539,6 +1568,11 @@ class DataManager {
         0,
         1_000_000_000
       );
+      // Data lama belum memiliki penanda ini dan tetap mengikuti tarif profile.
+      contact.monthlyPaymentAmountCustomized = parseBoolean(
+        contact.monthlyPaymentAmountCustomized,
+        false
+      );
       contact.subscriptionType = normalizeSubscriptionType(contact.subscriptionType);
       contact.linkedApHost = sanitizeInput(String(contact.linkedApHost || ""));
       contact.mikrotikUsername = sanitizeInput(String(contact.mikrotikUsername || ""));
@@ -2716,6 +2750,7 @@ class DataManager {
         name,
         phoneNumber,
         monthlyPaymentAmount: sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000),
+        monthlyPaymentAmountCustomized: payload.monthlyPaymentAmount !== undefined,
         subscriptionType,
         // Akun baru diasumsikan sudah melunasi biaya awal pada periode pendaftaran.
         paymentStatus: PAYMENT_STATUS.PAID,
@@ -2808,6 +2843,7 @@ class DataManager {
           name,
           phoneNumber,
           monthlyPaymentAmount: sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000),
+          monthlyPaymentAmountCustomized: payload.monthlyPaymentAmount !== undefined,
           subscriptionType: normalizeSubscriptionType(payload.subscriptionType),
           paymentStatus: PAYMENT_STATUS.PAID,
           paymentDate: now,
@@ -2845,6 +2881,7 @@ class DataManager {
             0,
             1_000_000_000
           );
+          contact.monthlyPaymentAmountCustomized = true;
         }
         Object.assign(contact, hotspotFields);
         if (this.applyProfileMonthlyAmount(contact)) {
@@ -3056,6 +3093,7 @@ class DataManager {
           0,
           1_000_000_000
         );
+        contact.monthlyPaymentAmountCustomized = true;
       }
       Object.assign(contact, hotspotFields);
       if (this.applyProfileMonthlyAmount(contact)) this.updateContactReminderMessages(contact);
@@ -3151,19 +3189,25 @@ class DataManager {
     return result.contact;
   }
 
-  async updateContactPaymentAmount(id, amount) {
+  async updateContactPaymentAmount(id, amount, options = {}) {
     return this.withDataMutation(async () => {
       const contact = this.getContact(id);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
-      const parsed = Number(amount);
-      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1_000_000_000) {
-        throw new Error("Nominal pembayaran harus antara 0 sampai 1 miliar.");
+      if (options.useProfileDefault) {
+        const profileAmount = this.getProfileMonthlyAmount(contact.mikrotikProfile);
+        if (profileAmount === null) {
+          throw new Error(`Tarif profile "${contact.mikrotikProfile || "MikroTik"}" belum diatur.`);
+        }
+        contact.monthlyPaymentAmount = profileAmount;
+        contact.monthlyPaymentAmountCustomized = false;
+      } else {
+        const parsed = Number(amount);
+        if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1_000_000_000) {
+          throw new Error("Nominal pembayaran harus antara 0 sampai 1 miliar.");
+        }
+        contact.monthlyPaymentAmount = Math.floor(parsed);
+        contact.monthlyPaymentAmountCustomized = true;
       }
-      const profileAmount = this.getProfileMonthlyAmount(contact.mikrotikProfile);
-      if (profileAmount !== null && Math.floor(parsed) !== profileAmount) {
-        throw new Error(`Nominal pelanggan mengikuti tarif profile "${contact.mikrotikProfile}". Ubah tarif melalui menu Pengaturan.`);
-      }
-      contact.monthlyPaymentAmount = Math.floor(parsed);
       contact.updatedAt = new Date().toISOString();
       const remindersChanged = this.updateContactReminderMessages(contact);
       await this.savePaymentAndReminderChanges(remindersChanged);
@@ -3840,7 +3884,8 @@ class DataManager {
 
   applyProfileMonthlyAmount(contact, profileName = contact?.mikrotikProfile) {
     const amount = this.getProfileMonthlyAmount(profileName);
-    if (!contact || amount === null || Number(contact.monthlyPaymentAmount) === amount) return false;
+    if (!contact || contact.monthlyPaymentAmountCustomized || amount === null
+      || Number(contact.monthlyPaymentAmount) === amount) return false;
     contact.monthlyPaymentAmount = amount;
     return true;
   }
@@ -6299,7 +6344,8 @@ class WebServer {
     this.app.post("/api/contacts/:id/payment-amount", requireApiAuth, handleApi(async (req) => {
       const contact = await this.dataManager.updateContactPaymentAmount(
         req.params.id,
-        req.body.monthlyPaymentAmount
+        req.body.monthlyPaymentAmount,
+        { useProfileDefault: parseBoolean(req.body.useProfileDefault, false) }
       );
       return this.dataManager.toPublicContact(contact);
     }));
@@ -6654,7 +6700,9 @@ async function runScheduledTasks(tasks, activityLog) {
 
 async function bootstrap() {
   assertSecureConfiguration();
-  if (!cron.validate(CONFIG.CRON_SCHEDULE) || !cron.validate(CONFIG.SENT_HISTORY_CLEANUP_SCHEDULE)) {
+  if (!cron.validate(CONFIG.CRON_SCHEDULE)
+    || !cron.validate(CONFIG.HOTSPOT_STATUS_SYNC_SCHEDULE)
+    || !cron.validate(CONFIG.SENT_HISTORY_CLEANUP_SCHEDULE)) {
     throw new Error("Konfigurasi cron tidak valid.");
   }
 
@@ -6728,9 +6776,14 @@ async function bootstrap() {
       { name: "mikrotik-backup", run: () => mikrotikBackupScheduler.processDailyBackup() },
       { name: "database-backup", run: () => databaseBackupScheduler.processDailyBackup() },
       { name: "hotspot-reactivation", run: () => hotspotReactivationScheduler.processDueReactivations() },
-      { name: "hotspot-status-sync", run: () => hotspotStatusSyncScheduler.processStatusSync() },
       { name: "midtrans-payments", run: () => webServer.reconcilePendingMidtransPayments() },
       { name: "monthly-payment-reset", run: () => sendMonthlyResetNotification(notificationBot, dataManager, activityLog) },
+    ], activityLog));
+  }));
+
+  scheduledJobs.push(cron.schedule(CONFIG.HOTSPOT_STATUS_SYNC_SCHEDULE, () => {
+    void trackBackgroundTask(runScheduledTasks([
+      { name: "hotspot-status-sync", run: () => hotspotStatusSyncScheduler.processStatusSync() },
     ], activityLog));
   }));
 

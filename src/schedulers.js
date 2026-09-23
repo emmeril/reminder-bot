@@ -435,7 +435,6 @@ class MikrotikBackupScheduler {
     if (!scheduleCheck.due) return;
 
     if (settings.mikrotikBackupLastRunDate === scheduleCheck.nowParts.dateKey) {
-      this.activityLog.push("info", "mikrotik-backup", "Backup MikroTik sudah dikirim untuk hari ini");
       return;
     }
 
@@ -557,7 +556,12 @@ class HotspotStatusSyncScheduler {
     this.isProcessing = true;
     const observedAt = new Date().toISOString();
     try {
-      const routerUsers = await this.mikrotikService.getHotspotUsers();
+      const readRouterUsers = this.mikrotikService.getHotspotUsersForStatusSync
+        || this.mikrotikService.getHotspotUsers;
+      const managedUsernames = typeof this.dataManager.getContacts === "function"
+        ? this.dataManager.getContacts().map((contact) => contact.mikrotikUsername).filter(Boolean)
+        : [];
+      const routerUsers = await readRouterUsers.call(this.mikrotikService, managedUsernames);
       const result = await this.dataManager.reconcileHotspotStatuses(routerUsers, {
         observedAt,
         checkedAt: new Date().toISOString(),

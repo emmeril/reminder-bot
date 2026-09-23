@@ -533,7 +533,7 @@ test("tarif profile MikroTik memperbarui nominal pelanggan dan reminder", async 
   assert.match(manager.reminders.get("reminder-profile-tariff").message, /Rp\s?40\.000/);
 });
 
-test("nominal pelanggan mengikuti tarif profile MikroTik", async () => {
+test("nominal pelanggan dapat dicustom meskipun profile memiliki tarif default", async () => {
   const contact = {
     id: "contact-profile-fixed-price",
     name: "Pelanggan Profile Fixed",
@@ -546,12 +546,16 @@ test("nominal pelanggan mengikuti tarif profile MikroTik", async () => {
   const manager = createManager(contact);
   await manager.updateSettings({ profileMonthlyAmounts: { "30Hari": 40_000 } });
 
-  await assert.rejects(
-    () => manager.updateContactPaymentAmount(contact.id, 50_000),
-    /Nominal pelanggan mengikuti tarif profile/
-  );
-  const unchanged = await manager.updateContactPaymentAmount(contact.id, 40_000);
-  assert.equal(unchanged.monthlyPaymentAmount, 40_000);
+  const customized = await manager.updateContactPaymentAmount(contact.id, 50_000);
+  assert.equal(customized.monthlyPaymentAmount, 50_000);
+  assert.equal(customized.monthlyPaymentAmountCustomized, true);
+
+  await manager.updateSettings({ profileMonthlyAmounts: { "30Hari": 60_000 } });
+  assert.equal(contact.monthlyPaymentAmount, 50_000);
+
+  const reset = await manager.updateContactPaymentAmount(contact.id, undefined, { useProfileDefault: true });
+  assert.equal(reset.monthlyPaymentAmount, 60_000);
+  assert.equal(reset.monthlyPaymentAmountCustomized, false);
 });
 
 test("pengaturan tidak lagi menyimpan template notifikasi reaktivasi hotspot", async () => {
