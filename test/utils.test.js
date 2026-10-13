@@ -7,6 +7,7 @@ const {
   getDateTimePartsInTimezone,
   isValidTimeZone,
   parseDateTimeInput,
+  parseNetwatchSinceDate,
 } = require("../src/utils");
 const { CONFIG } = require("../src/config");
 
@@ -32,6 +33,13 @@ test("periode tagihan mengikuti batas bulan timezone aplikasi", () => {
   const instant = new Date("2026-07-31T17:30:00.000Z");
   assert.equal(getBillingPeriodKey(instant, "Asia/Jakarta"), "2026-08");
   assert.equal(getBillingPeriodKey(instant, "UTC"), "2026-07");
+});
+
+test("menolak timestamp Netwatch dengan tanggal atau waktu yang mustahil", () => {
+  assert.equal(parseNetwatchSinceDate("feb/30/2026 12:00:00"), null);
+  assert.equal(parseNetwatchSinceDate("2026-13-01 12:00:00"), null);
+  assert.equal(parseNetwatchSinceDate("2026-10-13 24:00:00"), null);
+  assert.equal(parseNetwatchSinceDate("oct/13/2026 12:34:56")?.getFullYear(), 2026);
 });
 
 test("menolak startup tanpa kredensial dashboard eksplisit", () => {

@@ -65,11 +65,6 @@ function parseNetwatchSinceDate(value) {
   const input = sanitizeInput(value);
   if (!input) return null;
 
-  const directDate = new Date(input);
-  if (!Number.isNaN(directDate.getTime())) {
-    return directDate;
-  }
-
   const normalized = input.toLowerCase();
   const monthMap = {
     jan: 0,
@@ -89,29 +84,52 @@ function parseNetwatchSinceDate(value) {
   let match = normalized.match(/^([a-z]{3})\/(\d{1,2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
   if (match && monthMap[match[1]] !== undefined) {
     const [, monthName, day, year, hour, minute, second] = match;
-    const date = new Date(
-      Number(year),
-      monthMap[monthName],
-      Number(day),
-      Number(hour),
-      Number(minute),
-      Number(second)
-    );
-    if (!Number.isNaN(date.getTime())) return date;
+    const parts = {
+      year: Number(year),
+      month: monthMap[monthName],
+      day: Number(day),
+      hour: Number(hour),
+      minute: Number(minute),
+      second: Number(second),
+    };
+    const date = new Date(parts.year, parts.month, parts.day, parts.hour, parts.minute, parts.second);
+    if (date.getFullYear() === parts.year
+      && date.getMonth() === parts.month
+      && date.getDate() === parts.day
+      && date.getHours() === parts.hour
+      && date.getMinutes() === parts.minute
+      && date.getSeconds() === parts.second) {
+      return date;
+    }
+    return null;
   }
 
   match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?$/);
   if (match) {
     const [, year, month, day, hour, minute, second = "00"] = match;
-    const date = new Date(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      Number(hour),
-      Number(minute),
-      Number(second)
-    );
-    if (!Number.isNaN(date.getTime())) return date;
+    const parts = {
+      year: Number(year),
+      month: Number(month) - 1,
+      day: Number(day),
+      hour: Number(hour),
+      minute: Number(minute),
+      second: Number(second),
+    };
+    const date = new Date(parts.year, parts.month, parts.day, parts.hour, parts.minute, parts.second);
+    if (date.getFullYear() === parts.year
+      && date.getMonth() === parts.month
+      && date.getDate() === parts.day
+      && date.getHours() === parts.hour
+      && date.getMinutes() === parts.minute
+      && date.getSeconds() === parts.second) {
+      return date;
+    }
+    return null;
+  }
+
+  const directDate = new Date(input);
+  if (!Number.isNaN(directDate.getTime())) {
+    return directDate;
   }
 
   return null;

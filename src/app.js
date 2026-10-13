@@ -4582,9 +4582,9 @@ class NotificationBot {
       }
     }
 
-    const successCount = results.filter(r => r.status === "sent").length;
-    const failedCount = results.filter(r => r.status === "failed").length;
-    
+    const successCount = results.filter((result) => ["sent", "delivered", "read"].includes(result.status)).length;
+    const failedCount = results.filter((result) => result.status === "failed").length;
+
     if (!options.silentLog) {
       this.activityLog.push("info", "broadcast", `${title} dikirim ke ${successCount} contact(s), ${failedCount} gagal`);
     }

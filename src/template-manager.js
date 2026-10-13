@@ -83,7 +83,8 @@ class TemplateManager {
     let message = String(template || "");
     for (const [key, value] of Object.entries(variables)) {
       const safeValue = typeof value === "string" ? value.replace(/[*_`~]/g, "\\$&") : String(value);
-      message = message.replace(new RegExp(`{{${key}}}`, "gi"), safeValue);
+      const escapedKey = String(key).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      message = message.replace(new RegExp(`{{${escapedKey}}}`, "gi"), () => safeValue);
     }
     return message;
   }
