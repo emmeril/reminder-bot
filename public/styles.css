@@ -958,16 +958,35 @@ input:focus, textarea:focus, select:focus, .currency-input-group:focus-within {
   .sidebar-collapsed .content-wrapper { margin-left: 68px; }
 }
 
+@media (max-width: 1199px) {
+  .page-grid.overview-workspace { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 991px) {
+  .main-sidebar { width: min(244px, calc(100vw - 44px)); }
+  .content-wrapper { width: 100%; min-width: 0; margin-left: 0; }
+  .menu-pill.nav-item { min-height: 44px; }
+  .sidebar-logout { width: 44px; height: 44px; }
+}
+
 @media (max-width: 767px) {
-  .main-header { padding-inline: 10px; }
+  .main-header { gap: 8px; padding-inline: 10px; }
+  .header-left { min-width: 0; }
+  .header-context { min-width: 0; }
+  .header-actions { flex: 0 0 auto; }
   .navbar-button, .page-actions button { min-width: 44px; min-height: 44px; }
-  .content-header { padding: 18px 14px 14px; }
-  .page-title-wrap { align-items: flex-start; gap: 10px; }
+  .content-header { align-items: stretch; flex-direction: column; gap: 12px; padding: 18px 14px 14px; }
+  .page-title-wrap { width: 100%; min-width: 0; align-items: flex-start; gap: 10px; }
+  .page-title-wrap > div { min-width: 0; }
+  .content-header h1, .content-header p { overflow-wrap: anywhere; }
+  .page-actions { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr); }
+  .page-actions .primary-action { width: 100%; }
   .page-title-icon { width: 34px; height: 34px; flex-basis: 34px; }
   .dashboard-content { padding: 0 10px 26px; }
   .filter-inline { flex-wrap: wrap; }
   .filter-inline > * { width: 100%; min-width: 0; flex: 1 1 100% !important; }
   .panel-shell button, .customer-payment-menu summary { min-height: 44px; }
+  .service-card > a { width: 44px; height: 44px; }
   .customer-tabs > button { min-height: 56px; }
   .login-page { align-items: start; padding: 14px 10px; }
   .login-shell { margin-block: auto; border-radius: 12px; box-shadow: none; }
