@@ -6,8 +6,8 @@
   <title>__DASHBOARD_TITLE__</title>
   <link rel="stylesheet" href="/public/tailwind.css?v=20260822-4">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20260829-2">
-  <script defer src="/public/app.js?v=20260822-6"></script>
+  <link rel="stylesheet" href="/public/styles.css?v=20261013-1">
+  <script defer src="/public/app.js?v=20261013-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -28,7 +28,7 @@
         <span class="brand-icon"><i class="fa-solid fa-bell"></i></span>
         <span class="brand-copy">
           <strong>Reminder Bot</strong>
-          <small>Customer operations</small>
+          <small>Operasional pelanggan</small>
         </span>
       </a>
       <div class="sidebar-body">
@@ -37,7 +37,7 @@
             <div class="nav-group">
               <div class="nav-header" x-text="group.label"></div>
               <template x-for="menu in navMenus.filter(item => item.group === group.key)" :key="'sidebar-' + menu.key">
-                <button type="button" @click="selectMenu(menu.key)" class="menu-pill nav-item" :class="activeMenu === menu.key ? 'active' : ''" :title="menu.label">
+                <button type="button" @click="selectMenu(menu.key)" class="menu-pill nav-item" :class="activeMenu === menu.key ? 'active' : ''" :aria-current="activeMenu === menu.key ? 'page' : null" :title="menu.label">
                   <span class="nav-icon"><i :class="menu.icon"></i></span>
                   <span class="nav-label" x-text="menu.label"></span>
                 </button>
@@ -49,7 +49,7 @@
       <div class="sidebar-footer">
         <span class="user-avatar"><i class="fa-solid fa-user"></i></span>
         <span class="user-info"><strong>Administrator</strong><small><span class="status-dot"></span> Sistem berjalan</small></span>
-        <button type="button" @click="logout()" class="sidebar-logout" title="Keluar"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
+        <button type="button" @click="logout()" class="sidebar-logout" aria-label="Keluar dari dashboard"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
       </div>
     </aside>
 
@@ -70,10 +70,10 @@
           </div>
         </div>
         <div class="header-actions">
-          <a href="/transport" target="_blank" rel="noreferrer" class="navbar-button provider-link" title="Status Provider WhatsApp">
-            <span class="provider-dot"></span><span class="action-text">WhatsApp Provider</span><i class="fa-solid fa-arrow-up-right-from-square"></i>
+          <a href="/transport" target="_blank" rel="noreferrer" class="navbar-button provider-link" aria-label="Buka status koneksi WhatsApp">
+            <span class="provider-dot"></span><span class="action-text">Status WhatsApp</span><i class="fa-solid fa-arrow-up-right-from-square"></i>
           </a>
-          <button @click="refreshAll()" class="navbar-button icon-only" title="Muat ulang data"><i class="fa-solid fa-rotate"></i></button>
+          <button type="button" @click="refreshAll()" class="navbar-button icon-only" aria-label="Muat ulang data"><i class="fa-solid fa-rotate"></i></button>
         </div>
       </header>
 
@@ -221,7 +221,7 @@
               <textarea x-model="forms.recipients" class="mt-2 min-h-36 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Satu nomor per baris, format 628xxx"></textarea>
             </label>
             <button class="w-full rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
-              <i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Recipients
+              <i class="fa-solid fa-floppy-disk mr-2"></i>Simpan penerima
             </button>
             <p x-cloak x-show="formErrors.recipients" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.recipients"></p>
           </form>
@@ -287,7 +287,7 @@
               <input x-model="filters.contacts.search" @input="resetPage('contacts')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama, nomor WA, atau IP AP">
               <select x-model.number="filters.contacts.pageSize" @change="resetPage('contacts')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
                 <template x-for="size in pageSizes" :key="'contacts-size-' + size">
-                  <option :value="size" x-text="size + ' / page'"></option>
+                  <option :value="size" x-text="size + ' per halaman'"></option>
                 </template>
               </select>
             </div>
@@ -366,7 +366,7 @@
               </select>
               <select x-model.number="filters.contactBilling.pageSize" @change="resetPage('contactBilling')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
                 <template x-for="size in pageSizes" :key="'contact-billing-size-' + size">
-                  <option :value="size" x-text="size + ' / page'"></option>
+                  <option :value="size" x-text="size + ' per halaman'"></option>
                 </template>
               </select>
             </div>
@@ -465,7 +465,7 @@
               </select>
               <select x-model.number="filters.contactHotspot.pageSize" @change="resetPage('contactHotspot')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
                 <template x-for="size in pageSizes" :key="'contact-hotspot-size-' + size">
-                  <option :value="size" x-text="size + ' / page'"></option>
+                  <option :value="size" x-text="size + ' per halaman'"></option>
                 </template>
               </select>
             </div>
@@ -544,7 +544,7 @@
             </select>
             <select x-model.number="filters.monitorAp.pageSize" @change="resetPage('monitorAp')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <template x-for="size in pageSizes" :key="'ap-size-' + size">
-                <option :value="size" x-text="size + ' / page'"></option>
+                <option :value="size" x-text="size + ' per halaman'"></option>
               </template>
             </select>
           </div>
@@ -614,7 +614,7 @@
             </select>
             <select x-model.number="filters.reminders.pageSize" @change="resetPage('reminders')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <template x-for="size in pageSizes" :key="'reminders-size-' + size">
-                <option :value="size" x-text="size + ' / page'"></option>
+                <option :value="size" x-text="size + ' per halaman'"></option>
               </template>
             </select>
           </div>
@@ -929,7 +929,7 @@
             </select>
             <select x-model.number="filters.sent.pageSize" @change="resetPage('sent')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <template x-for="size in pageSizes" :key="'sent-size-' + size">
-                <option :value="size" x-text="size + ' / page'"></option>
+                <option :value="size" x-text="size + ' per halaman'"></option>
               </template>
             </select>
           </div>
@@ -1015,7 +1015,7 @@
             <div class="flex w-full items-center gap-2 sm:w-auto">
               <select x-model.number="filters.logs.pageSize" @change="resetPage('logs')" class="min-w-[120px] flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-2 text-sm outline-none transition focus:border-clay sm:flex-none">
                 <template x-for="size in pageSizes" :key="'logs-size-' + size">
-                  <option :value="size" x-text="size + ' / page'"></option>
+                  <option :value="size" x-text="size + ' per halaman'"></option>
                 </template>
               </select>
               <button @click="withProcessing('Memuat activity log...', () => loadLogs())" class="action-chip inline-flex items-center justify-center whitespace-nowrap rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white"><i class="fa-solid fa-rotate mr-2"></i>Muat ulang</button>

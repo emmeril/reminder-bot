@@ -6,6 +6,7 @@ function loginApp() {
     },
     error: "",
     submitting: false,
+    showPassword: false,
 
     async api(path, options = {}) {
       const response = await fetch(path, {

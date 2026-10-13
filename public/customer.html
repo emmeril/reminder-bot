@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Akun Saya - __CUSTOMER_PORTAL_TITLE__</title>
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/customer.css?v=20260901-9">
+  <link rel="stylesheet" href="/public/customer.css?v=20261013-1">
   <script defer src="/public/customer.js?v=20260822-9"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
@@ -16,16 +16,16 @@
         <span><i class="fa-solid fa-wifi"></i></span>
         <div><strong x-text="data?.company?.name || '__CUSTOMER_PORTAL_TITLE__'"></strong><small>Portal Pelanggan</small></div>
       </a>
-      <button class="portal-logout" @click="logout()" :disabled="loggingOut"><i class="fa-solid fa-arrow-right-from-bracket"></i><span>Keluar</span></button>
+      <button type="button" class="portal-logout" @click="logout()" :disabled="loggingOut"><i class="fa-solid fa-arrow-right-from-bracket"></i><span>Keluar</span></button>
     </header>
 
-    <section class="portal-loading" x-show="loading">
+    <section class="portal-loading" x-show="loading" role="status" aria-live="polite">
       <i class="fa-solid fa-circle-notch fa-spin"></i><span>Memuat akun Anda...</span>
     </section>
 
     <section class="portal-error-card" x-cloak x-show="error && !loading">
       <i class="fa-solid fa-triangle-exclamation"></i>
-      <div><strong>Data belum dapat dimuat</strong><p x-text="error"></p><button @click="load()">Coba lagi</button></div>
+      <div><strong>Data belum dapat dimuat</strong><p x-text="error"></p><button type="button" @click="load()">Coba lagi</button></div>
     </section>
 
     <div class="portal-content" x-cloak x-show="data && !loading">
@@ -45,7 +45,7 @@
       <section class="portal-summary-grid">
         <article class="portal-summary-card portal-summary-total">
           <span class="portal-card-icon"><i class="fa-solid fa-wallet"></i></span>
-          <div><small>Total tagihan</small><strong x-text="currency(data?.billing?.totalAmount)"></strong><p x-text="billingSummary()"></p></div>
+          <div><small>Perlu dibayar</small><strong x-text="currency(data?.billing?.totalAmount)"></strong><p x-text="billingSummary()"></p></div>
         </article>
         <article class="portal-summary-card">
           <span class="portal-card-icon"><i class="fa-solid fa-file-invoice-dollar"></i></span>
@@ -57,7 +57,7 @@
         </article>
         <article class="portal-summary-card">
           <span class="portal-card-icon"><i class="fa-solid fa-circle-check"></i></span>
-          <div><small>Status bulan ini</small><strong class="portal-status-text" :class="isPaid() ? 'is-paid' : 'is-unpaid'" x-text="currentStatusLabel()"></strong><p x-text="dueLabel()"></p></div>
+          <div><small>Status pembayaran</small><strong class="portal-status-text" :class="isPaid() ? 'is-paid' : 'is-unpaid'" x-text="currentStatusLabel()"></strong><p x-text="dueLabel()"></p></div>
         </article>
       </section>
 
@@ -68,8 +68,8 @@
             <span class="portal-service-badge" :class="hotspotIsActive() ? 'is-active' : 'is-inactive'"><i class="fa-solid fa-circle"></i><span x-text="hotspotStatusLabel()"></span></span>
           </div>
           <div class="portal-credential-list">
-            <div><small>Username</small><strong x-text="data?.hotspot?.username || '-' "></strong><button @click="copyText(data?.hotspot?.username, 'username')" title="Salin username"><i class="fa-regular" :class="copied === 'username' ? 'fa-circle-check' : 'fa-copy'"></i></button></div>
-            <div><small>Password</small><strong x-text="showHotspotPassword ? (data?.hotspot?.password || '-') : maskedPassword()"></strong><button @click="showHotspotPassword = !showHotspotPassword" :title="showHotspotPassword ? 'Sembunyikan password' : 'Tampilkan password'"><i class="fa-regular" :class="showHotspotPassword ? 'fa-eye-slash' : 'fa-eye'"></i></button><button @click="copyText(data?.hotspot?.password, 'password')" title="Salin password"><i class="fa-regular" :class="copied === 'password' ? 'fa-circle-check' : 'fa-copy'"></i></button></div>
+            <div><small>Username</small><strong x-text="data?.hotspot?.username || '-' "></strong><button type="button" @click="copyText(data?.hotspot?.username, 'username')" aria-label="Salin username hotspot"><i class="fa-regular" :class="copied === 'username' ? 'fa-circle-check' : 'fa-copy'"></i></button></div>
+            <div><small>Password</small><strong x-text="showHotspotPassword ? (data?.hotspot?.password || '-') : maskedPassword()"></strong><button type="button" @click="showHotspotPassword = !showHotspotPassword" :aria-label="showHotspotPassword ? 'Sembunyikan password hotspot' : 'Tampilkan password hotspot'"><i class="fa-regular" :class="showHotspotPassword ? 'fa-eye-slash' : 'fa-eye'"></i></button><button type="button" @click="copyText(data?.hotspot?.password, 'password')" aria-label="Salin password hotspot"><i class="fa-regular" :class="copied === 'password' ? 'fa-circle-check' : 'fa-copy'"></i></button></div>
             <div><small>Profil layanan</small><strong x-text="data?.hotspot?.profile || '-'"></strong></div>
           </div>
           <button class="portal-change-password-button" type="button" @click="openPasswordModal('hotspot')">

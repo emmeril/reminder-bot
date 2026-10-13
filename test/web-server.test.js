@@ -106,11 +106,11 @@ test("halaman login membedakan akses administrator dan pelanggan", async () => {
 
   assert.equal(adminResponse.status, 200);
   assert.equal(customerResponse.status, 200);
-  assert.match(adminHtml, /Login Administrator/);
-  assert.match(adminHtml, /Masuk ke Dashboard Admin/);
+  assert.match(adminHtml, /Akses administrator/);
+  assert.match(adminHtml, /Masuk sebagai admin/);
   assert.match(adminHtml, /username administrator/);
   assert.match(customerHtml, /Login Pelanggan/);
-  assert.match(customerHtml, /Portal Pelanggan/);
+  assert.match(customerHtml, /Masuk ke portal pelanggan/);
   assert.match(customerHtml, /placeholder="Masukkan username"/);
   assert.match(customerHtml, /placeholder="Masukkan password"/);
   assert.doesNotMatch(customerHtml, /Username akun pelanggan/);
@@ -1028,7 +1028,7 @@ test("reset pairing memerlukan konfirmasi eksplisit", async () => {
   const html = await pageResponse.text();
   assert.equal(pageResponse.status, 200);
   assert.match(html, /name="confirmReset" value="yes" required/);
-  assert.match(html, /Hapus Sesi &amp; Buat QR Baru/);
+  assert.match(html, /Hapus sesi dan buat QR baru/);
   const csrfToken = html.match(/name="csrfToken" value="([a-f0-9]+)"/)?.[1];
   assert.match(csrfToken || "", /^[a-f0-9]{64}$/);
 

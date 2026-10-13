@@ -5922,25 +5922,24 @@ class WebServer {
           const qrDataUrl = instance.currentQR
             ? await QRCode.toDataURL(instance.currentQR, { width: 280, margin: 2, errorCorrectionLevel: "M" })
             : null;
-          const stateColor = instance.connected ? "#17603a" : (qrDataUrl ? "#775b00" : "#991b1b");
-          const stateBackground = instance.connected ? "#e6f4ea" : (qrDataUrl ? "#fff4ce" : "#fee2e2");
+          const stateClass = instance.connected ? "connected" : (qrDataUrl ? "pairing" : "disconnected");
           return `
-            <section style="padding:20px;border:1px solid #d8e2dc;border-radius:18px;background:#fff;text-align:left;">
-              <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;">
-                <div><strong style="font-size:1.1rem;">${escapeHtml(instance.id)}</strong><small style="display:block;margin-top:3px;color:#70837e;font:12px/1.4 sans-serif;text-transform:uppercase;letter-spacing:.08em;">${escapeHtml(instance.role || "backup")}</small></div>
-                <span style="padding:7px 10px;border-radius:999px;background:${stateBackground};color:${stateColor};font:700 12px/1 sans-serif;">${instance.connected ? (instance.id === status.activeInstanceId ? "AKTIF" : "STANDBY") : (qrDataUrl ? "BUTUH QR" : "TERPUTUS")}</span>
+            <section class="connection-card">
+              <div class="connection-heading">
+                <div><strong>${escapeHtml(instance.id)}</strong><small>${escapeHtml(instance.role || "backup")}</small></div>
+                <span class="status-badge ${stateClass}">${instance.connected ? (instance.id === status.activeInstanceId ? "Aktif" : "Siaga") : (qrDataUrl ? "Perlu QR" : "Terputus")}</span>
               </div>
-              ${instance.account ? `<p style="margin:14px 0 0;font:14px/1.5 sans-serif;color:#405d58;">Akun: ${escapeHtml(instance.account)}</p>` : ""}
-              ${instance.detail ? `<p style="margin:12px 0 0;font:14px/1.5 sans-serif;color:#627773;">${escapeHtml(instance.detail)}</p>` : ""}
-              ${qrDataUrl ? `<div style="margin-top:16px;text-align:center;"><img src="${qrDataUrl}" alt="QR pairing ${escapeHtml(instance.id)}" width="280" height="280" style="max-width:100%;height:auto;border-radius:14px;"><p style="font:13px/1.5 sans-serif;color:#627773;">Pindai sebagai perangkat tertaut yang berbeda.</p></div>` : ""}
-              <form method="post" action="/transport/reset-pairing" style="margin-top:16px;">
+              ${instance.account ? `<p class="account"><span>Akun terhubung</span><strong>${escapeHtml(instance.account)}</strong></p>` : ""}
+              ${instance.detail ? `<p class="connection-detail">${escapeHtml(instance.detail)}</p>` : ""}
+              ${qrDataUrl ? `<div class="qr-panel"><img src="${qrDataUrl}" alt="Kode QR untuk menghubungkan ${escapeHtml(instance.id)}" width="280" height="280"><p>Pindai melalui menu Perangkat tertaut di WhatsApp.</p></div>` : ""}
+              <form method="post" action="/transport/reset-pairing" class="reset-form">
                 <input type="hidden" name="csrfToken" value="${csrfToken}">
                 <input type="hidden" name="instanceId" value="${escapeHtml(instance.id)}">
-                <label style="display:flex;gap:8px;align-items:flex-start;margin:0 0 12px;font:12px/1.5 sans-serif;color:#7c2d12;text-align:left;">
-                  <input type="checkbox" name="confirmReset" value="yes" required style="margin-top:3px;">
+                <label>
+                  <input type="checkbox" name="confirmReset" value="yes" required>
                   <span>Saya paham sesi ${escapeHtml(instance.id)} akan dihapus dan harus memindai QR lagi.</span>
                 </label>
-                <button type="submit" style="padding:10px 15px;border:1px solid #9a3412;border-radius:999px;background:#fff;color:#9a3412;font:700 13px/1 sans-serif;cursor:pointer;">Hapus Sesi &amp; Buat QR Baru</button>
+                <button type="submit" class="button danger-secondary">Hapus sesi dan buat QR baru</button>
               </form>
             </section>
           `;
@@ -5949,37 +5948,57 @@ class WebServer {
         const sendingDisabled = req.query.sendingDisabled === "1";
         const pairingReset = req.query.pairingReset === "1";
         const error = sanitizeInput(req.query.error);
+        const connectedCount = instances.filter((item) => item.connected).length;
         return res.status(status.deviceReady ? 200 : 503).send(`
           <!doctype html>
-          <html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="5"><title>Koneksi WhatsApp</title></head><body style="display:flex;justify-content:center;min-height:100vh;margin:0;background:radial-gradient(circle at top,#dcecdf,#f4f5ef 55%);font-family:Georgia,serif;">
-            <main style="width:min(94vw,760px);margin:32px 0;padding:28px 34px;border-radius:24px;background:#f8faf7;box-shadow:0 20px 60px rgba(0,0,0,.12);color:#204b57;text-align:center;">
-              <h1 style="margin:0 0 8px;font-size:1.7rem;">Koneksi WhatsApp Baileys</h1>
-              <p style="margin:0 0 20px;font:14px/1.6 sans-serif;color:#627773;">${instances.filter((item) => item.connected).length}/${instances.length} koneksi terhubung. Pengiriman memakai satu koneksi aktif dan berpindah otomatis ke cadangan.</p>
-              ${sendingEnabled ? '<p style="padding:10px;border-radius:12px;background:#e6f4ea;color:#17603a;">Pengiriman WhatsApp sudah diaktifkan.</p>' : ""}
-              ${sendingDisabled ? '<p style="padding:10px;border-radius:12px;background:#fff4ce;color:#775b00;">Pengiriman WhatsApp sudah dijeda.</p>' : ""}
-              ${pairingReset ? '<p style="padding:10px;border-radius:12px;background:#e6f4ea;color:#17603a;">Pairing instance direset. QR baru sedang disiapkan.</p>' : ""}
-              ${error ? `<p style="padding:10px;border-radius:12px;background:#fee2e2;color:#991b1b;">${escapeHtml(error)}</p>` : ""}
-              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin:20px 0;">${instanceCards.join("")}</div>
-              <p style="margin:0 0 18px;line-height:1.6;">Status pengiriman: <strong>${status.outboundEnabled ? "AKTIF" : "DIJEDA"}</strong>.</p>
-              ${status.outboundEnabled ? `
-                <form method="post" action="/transport/disable-sending">
-                  <input type="hidden" name="csrfToken" value="${csrfToken}">
-                  <button type="submit" style="padding:13px 20px;border:0;border-radius:999px;background:#9a3412;color:#fff;font-weight:700;cursor:pointer;">Jeda Pengiriman</button>
-                </form>
-              ` : `
-                <p style="font:14px/1.6 sans-serif;color:#627773;">Pairing saja tidak akan mengirim pesan. Periksa antrean reminder sebelum mengaktifkan pengiriman.</p>
-                <form method="post" action="/transport/enable-sending">
-                  <input type="hidden" name="csrfToken" value="${csrfToken}">
-                  <button type="submit" style="padding:13px 20px;border:0;border-radius:999px;background:#176b5b;color:#fff;font-weight:700;cursor:pointer;">Aktifkan Pengiriman</button>
-                </form>
-              `}
-              <p style="margin:18px 0 0;font:13px/1.6 sans-serif;color:#70837e;">Buka WhatsApp &gt; Perangkat tertaut &gt; Tautkan perangkat untuk setiap QR. Jangan gunakan database sesi yang sama pada dua instance.</p>
+          <html lang="id">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>Status WhatsApp</title>
+            <style>
+              :root{--primary:#2563eb;--primary-dark:#1d4ed8;--ink:#182230;--muted:#667085;--border:#e4e7ec;--canvas:#f6f7f9;--success:#15803d;--warning:#9a6700;--danger:#b42318}*{box-sizing:border-box}body{min-height:100vh;margin:0;color:var(--ink);background:var(--canvas);font:14px/1.5 Inter,"Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}.transport-page{width:min(960px,calc(100% - 40px));margin:0 auto;padding:28px 0 44px}.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:28px}.brand{display:flex;align-items:center;gap:11px;color:inherit;text-decoration:none}.brand-mark{display:inline-flex;width:38px;height:38px;align-items:center;justify-content:center;color:#fff;border-radius:9px;background:var(--primary);font-size:18px;font-weight:800}.brand-copy{display:flex;flex-direction:column}.brand-copy strong{font-size:14px}.brand-copy small{margin-top:1px;color:var(--muted);font-size:11px}.top-actions{display:flex;gap:8px}.button{display:inline-flex;min-height:42px;align-items:center;justify-content:center;gap:7px;padding:9px 13px;color:#344054;border:1px solid var(--border);border-radius:8px;background:#fff;font-family:inherit;font-size:13px;font-weight:700;line-height:1.2;text-decoration:none;cursor:pointer}.button:hover{border-color:#bfdbfe;background:#eff6ff}.button.primary{color:#fff;border-color:var(--primary);background:var(--primary)}.button.primary:hover{background:var(--primary-dark)}.button.danger{color:#fff;border-color:var(--danger);background:var(--danger)}.button.danger-secondary{min-height:38px;color:var(--danger);border-color:#f0c7c3;background:#fff}.button.danger-secondary:hover{background:#fff7f6}.page-heading{margin-bottom:20px}.eyebrow{margin:0 0 6px;color:var(--primary-dark);font-size:11px;font-weight:800;text-transform:uppercase}.page-heading h1{margin:0;font-size:clamp(25px,4vw,32px);line-height:1.2}.page-heading p{max-width:680px;margin:8px 0 0;color:var(--muted)}.notice{margin:0 0 12px;padding:11px 13px;border:1px solid;border-radius:8px;font-weight:650}.notice.success{color:var(--success);border-color:#bbdec7;background:#f2fbf5}.notice.warning{color:#805600;border-color:#f2d28d;background:#fffaf0}.notice.error{color:var(--danger);border-color:#f0c7c3;background:#fff7f6}.summary-bar{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:18px 0;padding:15px 16px;border:1px solid var(--border);border-radius:10px;background:#fff}.summary-bar strong{display:block;font-size:15px}.summary-bar p{margin:3px 0 0;color:var(--muted);font-size:12px}.summary-status{display:flex;align-items:center;gap:8px;white-space:nowrap}.summary-status::before{width:8px;height:8px;border-radius:50%;background:${status.outboundEnabled ? "#16a34a" : "#d97706"};content:""}.connection-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.connection-card{min-width:0;padding:18px;border:1px solid var(--border);border-radius:10px;background:#fff}.connection-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.connection-heading strong{font-size:16px}.connection-heading small{display:block;margin-top:2px;color:var(--muted);font-size:10px;font-weight:750;text-transform:uppercase}.status-badge{padding:5px 8px;border-radius:6px;font-size:11px;font-weight:750}.status-badge.connected{color:var(--success);background:#edf8f1}.status-badge.pairing{color:var(--warning);background:#fff7e6}.status-badge.disconnected{color:var(--danger);background:#fff0ef}.account{display:flex;justify-content:space-between;gap:12px;margin:16px 0 0;padding:10px 11px;border-radius:8px;background:#f8fafc}.account span{color:var(--muted);font-size:12px}.account strong{overflow-wrap:anywhere;font-size:12px;text-align:right}.connection-detail{margin:12px 0 0;color:var(--muted);font-size:12px}.qr-panel{margin-top:16px;text-align:center}.qr-panel img{display:block;width:min(100%,280px);height:auto;margin:auto;border:1px solid var(--border);border-radius:8px}.qr-panel p{margin:9px 0 0;color:var(--muted);font-size:12px}.reset-form{margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}.reset-form label{display:flex;align-items:flex-start;gap:9px;margin-bottom:12px;color:#7a342d;font-size:12px}.reset-form input{width:17px;height:17px;flex:0 0 17px;margin:1px 0 0;accent-color:var(--danger)}.sending-panel{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:12px;padding:18px;border:1px solid var(--border);border-radius:10px;background:#fff}.sending-panel h2{margin:0;font-size:16px}.sending-panel p{max-width:600px;margin:5px 0 0;color:var(--muted);font-size:12px}.sending-actions{display:flex;flex:0 0 auto;gap:8px}.helper{margin:18px 0 0;padding:13px 15px;color:var(--muted);border-left:3px solid #bfdbfe;background:#f8fbff;font-size:12px}.disabled-card{max-width:560px;margin:15vh auto 0;padding:24px;border:1px solid var(--border);border-radius:10px;background:#fff}.disabled-card h1{margin:0 0 8px;font-size:22px}.disabled-card p{margin:0 0 18px;color:var(--muted)}:focus-visible{outline:3px solid rgba(37,99,235,.28);outline-offset:2px}@media(max-width:640px){.transport-page{width:min(100% - 20px,960px);padding-top:14px}.topbar{align-items:flex-start;margin-bottom:22px}.brand-copy small{display:none}.top-actions{flex-direction:column}.button{min-height:44px}.page-heading{margin-bottom:16px}.summary-bar,.sending-panel{align-items:flex-start;flex-direction:column}.sending-actions{width:100%;flex-direction:column}.sending-actions form,.sending-actions .button{width:100%}.connection-card{padding:15px}.reset-form .button{width:100%}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+            </style>
+          </head>
+          <body>
+            <main class="transport-page">
+              <header class="topbar">
+                <a class="brand" href="/dashboard"><span class="brand-mark">R</span><span class="brand-copy"><strong>Reminder Bot</strong><small>Pengaturan koneksi</small></span></a>
+                <nav class="top-actions" aria-label="Aksi halaman"><a class="button" href="/dashboard">Kembali</a><a class="button" href="/transport">Muat ulang</a></nav>
+              </header>
+              <section class="page-heading">
+                <p class="eyebrow">Kanal pengiriman</p>
+                <h1>Status WhatsApp</h1>
+                <p>Pantau koneksi, atur pengiriman, atau pindai ulang QR bila perangkat terputus.</p>
+              </section>
+              ${sendingEnabled ? '<p class="notice success" role="status">Pengiriman WhatsApp sudah diaktifkan.</p>' : ""}
+              ${sendingDisabled ? '<p class="notice warning" role="status">Pengiriman WhatsApp sudah dijeda.</p>' : ""}
+              ${pairingReset ? '<p class="notice success" role="status">Sesi dihapus. QR baru sedang disiapkan; muat ulang halaman beberapa saat lagi.</p>' : ""}
+              ${error ? `<p class="notice error" role="alert">${escapeHtml(error)}</p>` : ""}
+              <section class="summary-bar" aria-label="Ringkasan koneksi">
+                <div><strong>${connectedCount} dari ${instances.length} koneksi terhubung</strong><p>Satu koneksi aktif digunakan dan sistem dapat berpindah ke koneksi cadangan.</p></div>
+                <span class="summary-status">Pengiriman ${status.outboundEnabled ? "aktif" : "dijeda"}</span>
+              </section>
+              <div class="connection-grid">${instanceCards.join("")}</div>
+              <section class="sending-panel">
+                <div><h2>Kontrol pengiriman</h2><p>${status.outboundEnabled ? "Pesan dapat dikirim melalui koneksi aktif." : "Periksa antrean pengingat sebelum mengaktifkan kembali pengiriman."}</p></div>
+                <div class="sending-actions">
+                  <form method="post" action="/transport/reconnect"><input type="hidden" name="csrfToken" value="${csrfToken}"><button type="submit" class="button">Hubungkan ulang</button></form>
+                  ${status.outboundEnabled ? `
+                    <form method="post" action="/transport/disable-sending"><input type="hidden" name="csrfToken" value="${csrfToken}"><button type="submit" class="button danger">Jeda pengiriman</button></form>
+                  ` : `
+                    <form method="post" action="/transport/enable-sending"><input type="hidden" name="csrfToken" value="${csrfToken}"><button type="submit" class="button primary">Aktifkan pengiriman</button></form>
+                  `}
+                </div>
+              </section>
+              <p class="helper">Untuk menghubungkan QR, buka WhatsApp → Perangkat tertaut → Tautkan perangkat. Gunakan sesi berbeda untuk setiap koneksi.</p>
             </main>
-          </body></html>
+          </body>
+          </html>
         `);
       }
 
-      return res.send("Baileys dinonaktifkan. Aktifkan BAILEYS_ENABLED pada environment.");
+      return res.send(`<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Status WhatsApp</title><style>*{box-sizing:border-box}body{margin:0;padding:20px;color:#182230;background:#f6f7f9;font:14px/1.5 Inter,"Segoe UI",Roboto,Arial,sans-serif}.disabled-card{max-width:560px;margin:15vh auto 0;padding:24px;border:1px solid #e4e7ec;border-radius:10px;background:#fff}.disabled-card h1{margin:0 0 8px;font-size:22px}.disabled-card p{margin:0 0 18px;color:#667085}.disabled-card a{display:inline-flex;min-height:42px;align-items:center;padding:9px 13px;color:#fff;border-radius:8px;background:#2563eb;font-weight:700;text-decoration:none}</style></head><body><main class="disabled-card"><h1>WhatsApp belum aktif</h1><p>Aktifkan BAILEYS_ENABLED pada environment untuk menggunakan kanal WhatsApp.</p><a href="/dashboard">Kembali ke dashboard</a></main></body></html>`);
     });
 
     this.app.get("/api/status", requireApiAuth, handleApi(async () => {

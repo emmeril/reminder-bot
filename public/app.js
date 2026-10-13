@@ -77,7 +77,7 @@
         sidebarHidden: false,
         mobileSidebarOpen: false,
         navGroups: [
-          { key: "workspace", label: "Workspace" },
+          { key: "workspace", label: "Utama" },
           { key: "operations", label: "Operasional" },
           { key: "messages", label: "Komunikasi" },
           { key: "system", label: "Sistem" },
