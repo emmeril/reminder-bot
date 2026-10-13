@@ -980,3 +980,60 @@ input:focus, textarea:focus, select:focus, .currency-input-group:focus-within {
   html { scroll-behavior: auto; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* Explicit action colors keep labels readable across utility-class overrides. */
+.panel-shell button.ui-primary-button {
+  color: #fff !important;
+  border-color: var(--primary) !important;
+  background: var(--primary) !important;
+}
+.panel-shell button.ui-primary-button:hover {
+  color: #fff !important;
+  border-color: var(--primary-dark) !important;
+  background: var(--primary-dark) !important;
+}
+.panel-shell button.ui-secondary-button,
+.dashboard-modal-overlay button.ui-secondary-button {
+  color: var(--primary-dark) !important;
+  border-color: #93c5fd !important;
+  background: #eff6ff !important;
+}
+.panel-shell button.ui-secondary-button:hover,
+.dashboard-modal-overlay button.ui-secondary-button:hover {
+  color: #1e40af !important;
+  border-color: #60a5fa !important;
+  background: #dbeafe !important;
+}
+.panel-shell button.ui-primary-button i,
+.panel-shell button.ui-secondary-button i,
+.dashboard-modal-overlay button.ui-secondary-button i,
+.panel-shell button.pagination-button i { color: currentColor !important; }
+.panel-shell button.pagination-button {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  color: var(--primary-dark) !important;
+  border-color: #bfdbfe !important;
+  border-radius: 8px !important;
+  background: #eff6ff !important;
+  opacity: 1 !important;
+}
+.panel-shell button.pagination-button:hover:not(:disabled) {
+  color: #fff !important;
+  border-color: var(--primary) !important;
+  background: var(--primary) !important;
+}
+.panel-shell button.pagination-button:disabled {
+  color: #667085 !important;
+  border-color: #d0d5dd !important;
+  background: #f2f4f7 !important;
+  opacity: 1 !important;
+}
+
+@media (max-width: 767px) {
+  .panel-shell button.pagination-button { width: 44px; height: 44px; min-height: 44px; }
+}

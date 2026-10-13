@@ -6,7 +6,7 @@
   <title>__DASHBOARD_TITLE__</title>
   <link rel="stylesheet" href="/public/tailwind.css?v=20260822-4">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20261013-1">
+  <link rel="stylesheet" href="/public/styles.css?v=20261013-2">
   <script defer src="/public/app.js?v=20261013-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
@@ -220,7 +220,7 @@
               Nomor admin
               <textarea x-model="forms.recipients" class="mt-2 min-h-36 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Satu nomor per baris, format 628xxx"></textarea>
             </label>
-            <button class="w-full rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
+            <button type="submit" class="ui-primary-button w-full rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
               <i class="fa-solid fa-floppy-disk mr-2"></i>Simpan penerima
             </button>
             <p x-cloak x-show="formErrors.recipients" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.recipients"></p>
@@ -261,7 +261,7 @@
               <button type="button" @click="openContactCreateModal()" class="bg-moss px-4 py-2 text-sm font-semibold text-white transition hover:bg-ink">
                 <i class="fa-solid fa-user-plus mr-2"></i>Tambah pelanggan
               </button>
-              <button type="button" @click="withProcessing('Memuat kontak...', () => loadContacts())" class="border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
+              <button type="button" @click="withProcessing('Memuat kontak...', () => loadContacts())" class="ui-secondary-button border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
                 <i class="fa-solid fa-rotate mr-2"></i>Muat ulang
               </button>
             </div>
@@ -335,9 +335,9 @@
             <div class="customer-pagination">
               <div x-text="paginationLabel('contacts', filteredContacts.length)"></div>
               <div class="customer-pagination-controls">
-                <button type="button" @click="setPage('contacts', filters.contacts.page - 1)" :disabled="filters.contacts.page <= 1" class="border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
+                <button type="button" aria-label="Halaman sebelumnya" @click="setPage('contacts', filters.contacts.page - 1)" :disabled="filters.contacts.page <= 1" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
                 <span x-text="filters.contacts.page + ' / ' + totalPages('contacts', filteredContacts.length)"></span>
-                <button type="button" @click="setPage('contacts', filters.contacts.page + 1)" :disabled="filters.contacts.page >= totalPages('contacts', filteredContacts.length)" class="border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
+                <button type="button" aria-label="Halaman berikutnya" @click="setPage('contacts', filters.contacts.page + 1)" :disabled="filters.contacts.page >= totalPages('contacts', filteredContacts.length)" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
               </div>
             </div>
           </div>
@@ -345,7 +345,7 @@
           <div id="customer-billing-panel" role="tabpanel" aria-labelledby="customer-billing-tab" x-cloak x-show="activeContactTab === 'billing'" x-transition.opacity class="customer-tab-panel">
             <div class="customer-panel-toolbar">
               <p>Atur nominal bulanan dan catat pembayaran tanpa bercampur dengan pengaturan hotspot.</p>
-              <button type="button" @click="exportPaymentRecap()" class="border border-moss/20 bg-white px-4 py-2 text-sm font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-file-excel mr-2"></i>Rekap Excel</button>
+              <button type="button" @click="exportPaymentRecap()" class="ui-secondary-button border border-moss/20 bg-white px-4 py-2 text-sm font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-file-excel mr-2"></i>Rekap Excel</button>
             </div>
             <div class="filter-inline">
               <input x-model="filters.contactBilling.search" @input="resetPage('contactBilling')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari pelanggan, nomor WA, atau nominal">
@@ -442,9 +442,9 @@
             <div class="customer-pagination">
               <div x-text="paginationLabel('contactBilling', filteredBillingContacts.length)"></div>
               <div class="customer-pagination-controls">
-                <button type="button" @click="setPage('contactBilling', filters.contactBilling.page - 1)" :disabled="filters.contactBilling.page <= 1" class="border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
+                <button type="button" aria-label="Halaman sebelumnya" @click="setPage('contactBilling', filters.contactBilling.page - 1)" :disabled="filters.contactBilling.page <= 1" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
                 <span x-text="filters.contactBilling.page + ' / ' + totalPages('contactBilling', filteredBillingContacts.length)"></span>
-                <button type="button" @click="setPage('contactBilling', filters.contactBilling.page + 1)" :disabled="filters.contactBilling.page >= totalPages('contactBilling', filteredBillingContacts.length)" class="border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
+                <button type="button" aria-label="Halaman berikutnya" @click="setPage('contactBilling', filters.contactBilling.page + 1)" :disabled="filters.contactBilling.page >= totalPages('contactBilling', filteredBillingContacts.length)" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
               </div>
             </div>
           </div>
@@ -517,9 +517,9 @@
             <div class="customer-pagination">
               <div x-text="paginationLabel('contactHotspot', filteredHotspotContacts.length)"></div>
               <div class="customer-pagination-controls">
-                <button type="button" @click="setPage('contactHotspot', filters.contactHotspot.page - 1)" :disabled="filters.contactHotspot.page <= 1" class="border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
+                <button type="button" aria-label="Halaman sebelumnya" @click="setPage('contactHotspot', filters.contactHotspot.page - 1)" :disabled="filters.contactHotspot.page <= 1" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
                 <span x-text="filters.contactHotspot.page + ' / ' + totalPages('contactHotspot', filteredHotspotContacts.length)"></span>
-                <button type="button" @click="setPage('contactHotspot', filters.contactHotspot.page + 1)" :disabled="filters.contactHotspot.page >= totalPages('contactHotspot', filteredHotspotContacts.length)" class="border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
+                <button type="button" aria-label="Halaman berikutnya" @click="setPage('contactHotspot', filters.contactHotspot.page + 1)" :disabled="filters.contactHotspot.page >= totalPages('contactHotspot', filteredHotspotContacts.length)" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
               </div>
             </div>
           </div>
@@ -584,9 +584,9 @@
           <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
             <div class="min-w-0" x-text="paginationLabel('monitorAp', filteredApMonitors.length)"></div>
             <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
-              <button @click="setPage('monitorAp', filters.monitorAp.page - 1)" :disabled="filters.monitorAp.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
+              <button type="button" aria-label="Halaman sebelumnya" @click="setPage('monitorAp', filters.monitorAp.page - 1)" :disabled="filters.monitorAp.page <= 1" class="pagination-button rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
               <span class="px-2" x-text="filters.monitorAp.page + ' / ' + totalPages('monitorAp', filteredApMonitors.length)"></span>
-              <button @click="setPage('monitorAp', filters.monitorAp.page + 1)" :disabled="filters.monitorAp.page >= totalPages('monitorAp', filteredApMonitors.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
+              <button type="button" aria-label="Halaman berikutnya" @click="setPage('monitorAp', filters.monitorAp.page + 1)" :disabled="filters.monitorAp.page >= totalPages('monitorAp', filteredApMonitors.length)" class="pagination-button rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
           </div>
         </section>
@@ -597,7 +597,7 @@
               <h2 class="font-display text-2xl"><i class="fa-solid fa-calendar-check mr-2 text-clay"></i>Reminders</h2>
               <!-- <p class="mt-1 text-sm text-ink/60">Seluruh jadwal outbound dibuat dan diubah dari sini.</p> -->
             </div>
-            <button @click="withProcessing('Memuat reminders...', () => loadReminders())" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white"><i class="fa-solid fa-rotate mr-2"></i>Muat ulang</button>
+            <button type="button" @click="withProcessing('Memuat reminders...', () => loadReminders())" class="ui-secondary-button rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white"><i class="fa-solid fa-rotate mr-2"></i>Muat ulang</button>
           </div>
           <div class="mb-4 flex flex-nowrap items-center justify-start gap-2 overflow-x-auto pb-1">
             <button type="button" @click="openReminderCreateModal()" class="shrink-0 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">
@@ -691,9 +691,9 @@
           <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
             <div class="min-w-0" x-text="paginationLabel('reminders', filteredReminders.length)"></div>
             <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
-              <button @click="setPage('reminders', filters.reminders.page - 1)" :disabled="filters.reminders.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
+              <button type="button" aria-label="Halaman sebelumnya" @click="setPage('reminders', filters.reminders.page - 1)" :disabled="filters.reminders.page <= 1" class="pagination-button rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
               <span class="px-2" x-text="filters.reminders.page + ' / ' + totalPages('reminders', filteredReminders.length)"></span>
-              <button @click="setPage('reminders', filters.reminders.page + 1)" :disabled="filters.reminders.page >= totalPages('reminders', filteredReminders.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
+              <button type="button" aria-label="Halaman berikutnya" @click="setPage('reminders', filters.reminders.page + 1)" :disabled="filters.reminders.page >= totalPages('reminders', filteredReminders.length)" class="pagination-button rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
           </div>
         </section>
@@ -999,9 +999,9 @@
           <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
             <div class="min-w-0" x-text="paginationLabel('sent', filteredSent.length)"></div>
             <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
-              <button @click="setPage('sent', filters.sent.page - 1)" :disabled="filters.sent.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
+              <button type="button" aria-label="Halaman sebelumnya" @click="setPage('sent', filters.sent.page - 1)" :disabled="filters.sent.page <= 1" class="pagination-button rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
               <span class="px-2" x-text="filters.sent.page + ' / ' + totalPages('sent', filteredSent.length)"></span>
-              <button @click="setPage('sent', filters.sent.page + 1)" :disabled="filters.sent.page >= totalPages('sent', filteredSent.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
+              <button type="button" aria-label="Halaman berikutnya" @click="setPage('sent', filters.sent.page + 1)" :disabled="filters.sent.page >= totalPages('sent', filteredSent.length)" class="pagination-button rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
           </div>
         </section>
@@ -1018,7 +1018,7 @@
                   <option :value="size" x-text="size + ' per halaman'"></option>
                 </template>
               </select>
-              <button @click="withProcessing('Memuat activity log...', () => loadLogs())" class="action-chip inline-flex items-center justify-center whitespace-nowrap rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white"><i class="fa-solid fa-rotate mr-2"></i>Muat ulang</button>
+              <button type="button" @click="withProcessing('Memuat activity log...', () => loadLogs())" class="ui-secondary-button action-chip inline-flex items-center justify-center whitespace-nowrap rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white"><i class="fa-solid fa-rotate mr-2"></i>Muat ulang</button>
             </div>
           </div>
           <div class="space-y-3">
@@ -1041,9 +1041,9 @@
           <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm text-ink/60">
             <div class="min-w-0" x-text="paginationLabel('logs', logs.length)"></div>
             <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
-              <button @click="setPage('logs', filters.logs.page - 1)" :disabled="filters.logs.page <= 1" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
+              <button type="button" aria-label="Halaman sebelumnya" @click="setPage('logs', filters.logs.page - 1)" :disabled="filters.logs.page <= 1" class="pagination-button rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
               <span class="px-2" x-text="filters.logs.page + ' / ' + totalPages('logs', logs.length)"></span>
-              <button @click="setPage('logs', filters.logs.page + 1)" :disabled="filters.logs.page >= totalPages('logs', logs.length)" class="rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
+              <button type="button" aria-label="Halaman berikutnya" @click="setPage('logs', filters.logs.page + 1)" :disabled="filters.logs.page >= totalPages('logs', logs.length)" class="pagination-button rounded-full border border-ink/10 bg-white px-3 py-2 font-semibold text-ink transition hover:bg-ink hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
           </div>
         </section>
@@ -1193,7 +1193,7 @@
           </div>
           <div class="flex flex-wrap items-center justify-between gap-3 rounded-[1.25rem] border border-moss/15 bg-moss/5 px-4 py-3">
             <span class="text-xs leading-5 text-ink/55">Profile dan daftar user dibaca langsung dari MikroTik.</span>
-            <button type="button" @click="loadHotspotOptions('hotspotAccount')" :disabled="loading.hotspotOptions" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss disabled:opacity-50">
+            <button type="button" @click="loadHotspotOptions('hotspotAccount')" :disabled="loading.hotspotOptions" class="ui-secondary-button rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss disabled:opacity-50">
               <i :class="loading.hotspotOptions ? 'fa-solid fa-circle-notch fa-spin mr-1.5' : 'fa-solid fa-cloud-arrow-down mr-1.5'"></i><span x-text="loading.hotspotOptions ? 'Memuat...' : 'Muat ulang MikroTik'"></span>
             </button>
           </div>
