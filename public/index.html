@@ -530,7 +530,7 @@
             <div>
               <h2 class="font-display text-2xl"><i class="fa-solid fa-tower-cell mr-2 text-moss"></i>Status jaringan</h2>
             </div>
-            <button @click="withProcessing('Memuat monitor AP...', () => loadApMonitors())" class="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
+            <button type="button" @click="withProcessing('Memuat monitor AP...', () => loadApMonitors())" class="ui-secondary-button rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
               <i class="fa-solid fa-rotate mr-2"></i>Reload
             </button>
           </div>
