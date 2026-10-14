@@ -6,8 +6,8 @@
   <title>__DASHBOARD_TITLE__</title>
   <link rel="stylesheet" href="/public/tailwind.css?v=20260822-4">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20261014-1">
-  <script defer src="/public/app.js?v=20261013-1"></script>
+  <link rel="stylesheet" href="/public/styles.css?v=20261014-4">
+  <script defer src="/public/app.js?v=20261014-2"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -278,7 +278,7 @@
             </button>
             <button id="customer-hotspot-tab" type="button" role="tab" aria-controls="customer-hotspot-panel" :aria-selected="activeContactTab === 'hotspot'" @click="selectContactTab('hotspot')" :class="activeContactTab === 'hotspot' ? 'active' : ''">
               <span class="customer-tab-icon"><i class="fa-solid fa-wifi"></i></span>
-              <span class="customer-tab-copy"><strong>Hotspot</strong><small>Akun dan jadwal reaktivasi</small></span>
+              <span class="customer-tab-copy"><strong>Hotspot</strong><small>Akun dan jadwal layanan</small></span>
             </button>
           </div>
 
@@ -476,7 +476,7 @@
                     <tr>
                       <th class="px-4 py-3">Pelanggan</th>
                       <th class="px-4 py-3">User / Profile</th>
-                      <th class="px-4 py-3">Reaktivasi</th>
+                      <th class="px-4 py-3">Jadwal layanan</th>
                       <th class="px-4 py-3">Access Point</th>
                       <th class="px-4 py-3">Aksi</th>
                     </tr>
@@ -493,7 +493,10 @@
                           <span class="customer-hotspot-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getHotspotProvisioningClass(contact)" x-text="getHotspotProvisioningLabel(contact)"></span>
                           <small x-show="contact.hotspotProvisioningError && canRetryHotspotProvisioning(contact)" class="customer-hotspot-error" x-text="contact.hotspotProvisioningError"></small>
                         </td>
-                        <td class="px-4 py-4" data-label="Reaktivasi"><span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="contact.hotspotReactivationEnabled ? 'bg-moss/10 text-moss' : 'bg-slate-200/70 text-slate-700'" x-text="getReactivationLabel(contact)"></span></td>
+                        <td class="px-4 py-4" data-label="Jadwal layanan">
+                          <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getReactivationClass(contact)" x-text="getReactivationLabel(contact)"></span>
+                          <small class="customer-schedule-detail" x-text="getReactivationDetail(contact)"></small>
+                        </td>
                         <td class="px-4 py-4" data-label="Access Point">
                           <span class="customer-ap-host" x-text="contact.linkedApHost || 'Belum dipilih'"></span>
                           <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getContactApStatusClass(contact)" x-text="getContactApStatusLabel(contact)"></span>
@@ -502,10 +505,11 @@
                           <div class="customer-action-group customer-hotspot-action-grid">
                             <button type="button" @click="openAccountDeliveryModal(contact)" class="customer-account-send-button border border-emerald-600 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"><i class="fa-brands fa-whatsapp mr-1.5"></i>Kirim Akun</button>
                             <button x-show="canRetryHotspotProvisioning(contact)" type="button" @click="retryHotspotProvisioning(contact)" class="border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"><i class="fa-solid fa-rotate mr-1.5"></i>Coba lagi</button>
-                            <button x-show="contact.mikrotikUsername && contact.mikrotikProfile && canReactivateHotspot(contact)" type="button" @click="reactivateHotspotContact(contact)" class="border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-rotate-right mr-1.5"></i>Reaktivasi</button>
+                            <button x-show="contact.mikrotikUsername && contact.mikrotikProfile && canReactivateHotspot(contact)" type="button" @click="reactivateHotspotContact(contact)" class="border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-power-off mr-1.5"></i>Aktifkan sekarang</button>
                             <button x-show="canDisableHotspot(contact)" type="button" @click="setHotspotDisabled(contact, true)" class="border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"><i class="fa-solid fa-ban mr-1.5"></i>Nonaktifkan</button>
-                            <button x-show="canEnableHotspot(contact)" type="button" @click="setHotspotDisabled(contact, false)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-power-off mr-1.5"></i>Aktifkan</button>
-                            <button type="button" @click="openHotspotAccountModal(contact)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-gear mr-1.5"></i><span x-text="contact.mikrotikUsername ? 'Atur hotspot' : 'Buat akun'"></span></button>
+                            <button x-show="canEnableHotspot(contact)" type="button" @click="setHotspotDisabled(contact, false)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-power-off mr-1.5"></i>Aktifkan akun</button>
+                            <button x-show="contact.mikrotikUsername && contact.mikrotikProfile" type="button" @click="openHotspotScheduleModal(contact)" class="customer-schedule-button border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"><i class="fa-solid fa-calendar-days mr-1.5"></i>Atur jadwal</button>
+                            <button type="button" @click="openHotspotAccountModal(contact)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-gear mr-1.5"></i><span x-text="contact.mikrotikUsername ? 'Atur akun' : 'Buat akun'"></span></button>
                           </div>
                         </td>
                       </tr>
@@ -1171,25 +1175,13 @@
               Password hotspot
               <input x-model="forms.hotspotAccount.password" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="Kosong saat edit = pertahankan password lama">
             </label>
-            <label class="block text-sm text-ink/60">
-              <span x-text="forms.hotspotAccount.reactivationEnabled ? 'Jadwal reaktivasi pertama' : 'Jadwal penonaktifan (opsional)'"></span>
-              <div class="mt-2 grid grid-cols-2 gap-2">
-                <input type="date" x-model="forms.hotspotAccount.reactivationDate" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.hotspotAccount.reactivationEnabled">
-                <input type="time" x-model="forms.hotspotAccount.reactivationTime" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" :required="forms.hotspotAccount.reactivationEnabled">
-              </div>
-              <span class="mt-1 block text-xs text-ink/45" x-text="forms.hotspotAccount.reactivationEnabled ? 'Sistem akan mereaktivasi akun pada jadwal ini dan mengulangnya setiap bulan.' : 'Jika tanggal diisi, akun akan dinonaktifkan pada jadwal tersebut tanpa dihapus dari MikroTik.'"></span>
-            </label>
           </div>
-          <div class="grid gap-3 md:grid-cols-2">
+          <div class="grid gap-3">
             <label class="flex items-center gap-3 rounded-2xl border border-ink/10 bg-haze/60 px-4 py-3 text-sm font-semibold text-ink">
               <input type="checkbox" x-model="forms.hotspotAccount.sendCredentials" class="h-4 w-4 accent-moss">
               Kirim akun melalui WhatsApp
             </label>
-            <label class="flex items-center gap-3 rounded-2xl border border-ink/10 bg-haze/60 px-4 py-3 text-sm font-semibold text-ink">
-              <input type="checkbox" x-model="forms.hotspotAccount.reactivationEnabled" :disabled="!isHotspotReactivationAllowed()" class="h-4 w-4 accent-moss">
-              Aktifkan reaktivasi otomatis bulanan
-            </label>
-            <p x-show="!isHotspotReactivationAllowed()" class="text-xs text-ink/50">Reaktivasi otomatis hanya tersedia untuk pelanggan bulanan.</p>
+            <p class="text-xs leading-5 text-ink/55">Jadwal aktif atau nonaktif dikelola terpisah melalui tombol Atur jadwal pada tabel hotspot.</p>
           </div>
           <div class="flex flex-wrap items-center justify-between gap-3 rounded-[1.25rem] border border-moss/15 bg-moss/5 px-4 py-3">
             <span class="text-xs leading-5 text-ink/55">Profile dan daftar user dibaca langsung dari MikroTik.</span>
@@ -1205,6 +1197,79 @@
             </button>
           </div>
           <p x-cloak x-show="formErrors.hotspotAccount" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.hotspotAccount"></p>
+        </form>
+      </div>
+    </div>
+
+    <div
+      x-cloak
+      x-show="hotspotScheduleModal.open"
+      x-transition.opacity
+      @keydown.escape.window="closeHotspotScheduleModal()"
+      @click.self="closeHotspotScheduleModal()"
+      class="dashboard-modal-overlay fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+    >
+      <div
+        x-show="hotspotScheduleModal.open"
+        x-transition.scale.origin.center
+        class="hotspot-schedule-dialog w-full max-w-xl rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="hotspot-schedule-title"
+      >
+        <div class="mb-4 flex items-start justify-between gap-4">
+          <div>
+            <h3 id="hotspot-schedule-title" class="text-lg font-semibold text-ink">Atur jadwal layanan</h3>
+            <p class="mt-1 text-sm text-ink/55">
+              <strong x-text="hotspotScheduleModal.contact?.name || ''"></strong>
+              <span x-show="hotspotScheduleModal.contact?.mikrotikUsername" x-text="' · ' + hotspotScheduleModal.contact?.mikrotikUsername"></span>
+            </p>
+          </div>
+          <button type="button" @click="closeHotspotScheduleModal()" :disabled="hotspotScheduleModal.loading" class="hotspot-schedule-close rounded-full border border-ink/10 text-sm font-semibold text-ink hover:bg-haze" aria-label="Tutup pengaturan jadwal">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <form class="space-y-4" @submit.prevent="saveHotspotSchedule()">
+          <fieldset class="hotspot-schedule-options">
+            <legend class="text-sm font-semibold text-ink">Pilih cara kerja jadwal</legend>
+            <label x-show="isRecurringSubscription(hotspotScheduleModal.contact)" :class="forms.hotspotSchedule.mode === 'REACTIVATE' ? 'selected' : ''">
+              <input type="radio" x-model="forms.hotspotSchedule.mode" value="REACTIVATE">
+              <span><strong>Aktif otomatis setiap bulan</strong><small>Akun diaktifkan pada jadwal pertama, lalu diulang setiap bulan.</small></span>
+            </label>
+            <label :class="forms.hotspotSchedule.mode === 'DEACTIVATE' ? 'selected' : ''">
+              <input type="radio" x-model="forms.hotspotSchedule.mode" value="DEACTIVATE">
+              <span><strong>Nonaktifkan sekali</strong><small>Akun dinonaktifkan pada waktu yang dipilih tanpa menghapus datanya.</small></span>
+            </label>
+            <label :class="forms.hotspotSchedule.mode === 'NONE' ? 'selected' : ''">
+              <input type="radio" x-model="forms.hotspotSchedule.mode" value="NONE">
+              <span><strong>Tanpa jadwal</strong><small>Tidak ada perubahan otomatis pada akun hotspot.</small></span>
+            </label>
+          </fieldset>
+
+          <div x-show="forms.hotspotSchedule.mode !== 'NONE'" x-transition.opacity class="hotspot-schedule-time-grid">
+            <label>
+              <span x-text="forms.hotspotSchedule.mode === 'REACTIVATE' ? 'Tanggal aktif pertama' : 'Tanggal penonaktifan'"></span>
+              <input type="date" x-model="forms.hotspotSchedule.date" :required="forms.hotspotSchedule.mode !== 'NONE'">
+            </label>
+            <label>
+              Waktu
+              <input type="time" x-model="forms.hotspotSchedule.time" :required="forms.hotspotSchedule.mode !== 'NONE'">
+            </label>
+          </div>
+
+          <div class="hotspot-schedule-summary" aria-live="polite">
+            <strong>Ringkasan</strong>
+            <p x-text="getHotspotScheduleSummary()"></p>
+          </div>
+
+          <p x-cloak x-show="formErrors.hotspotSchedule" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.hotspotSchedule"></p>
+          <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" @click="closeHotspotScheduleModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink" :disabled="hotspotScheduleModal.loading">Batal</button>
+            <button type="submit" class="rounded-2xl bg-moss px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60" :disabled="hotspotScheduleModal.loading">
+              <span x-show="!hotspotScheduleModal.loading">Simpan jadwal</span>
+              <span x-show="hotspotScheduleModal.loading" class="inline-flex items-center gap-2"><i class="fa-solid fa-circle-notch fa-spin"></i>Menyimpan...</span>
+            </button>
+          </div>
         </form>
       </div>
     </div>

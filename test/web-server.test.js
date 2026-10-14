@@ -1399,6 +1399,49 @@ test("endpoint akun hotspot membuat akun untuk pelanggan yang sudah tersimpan", 
   ]);
 });
 
+test("endpoint akun hotspot menyimpan jadwal tanpa provisioning ulang", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const contact = {
+    id: "contact-hotspot-schedule",
+    name: "Pelanggan Jadwal",
+    phoneNumber: "6281234567895",
+    mikrotikUsername: "pelanggan_jadwal",
+    mikrotikProfile: "50M",
+    hotspotProvisioningStatus: "ACTIVE",
+  };
+  let savedPayload = null;
+  const baseUrl = await startServer({
+    getContact: (id) => (String(id) === contact.id ? contact : null),
+    prepareContactUpdate: async (_id, payload) => {
+      savedPayload = payload;
+      Object.assign(contact, {
+        hotspotReactivationEnabled: payload.hotspotReactivationEnabled,
+        hotspotReactivationAt: payload.hotspotReactivationAt,
+      });
+      return { contact, hotspotSyncRequired: false };
+    },
+    toPublicContact: (value) => value,
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/hotspot`, {
+    method: "POST",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({
+      mikrotikUsername: contact.mikrotikUsername,
+      mikrotikProfile: contact.mikrotikProfile,
+      hotspotReactivationEnabled: true,
+      hotspotReactivationAt: "2026-10-20 08:30",
+      sendCredentials: false,
+    }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(savedPayload.hotspotReactivationEnabled, true);
+  assert.equal(savedPayload.hotspotReactivationAt, "2026-10-20 08:30");
+  assert.equal(payload.data.hotspotSynced, undefined);
+});
+
 test("kegagalan provisioning mempertahankan pelanggan sebagai FAILED", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   const statuses = [];

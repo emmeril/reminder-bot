@@ -37,6 +37,7 @@
           contact: "",
           contactEdit: "",
           hotspotAccount: "",
+          hotspotSchedule: "",
           accountDelivery: "",
           reminder: "",
           reminderEdit: "",
@@ -56,6 +57,11 @@
           open: false,
           loading: false,
           editingContactId: "",
+        },
+        hotspotScheduleModal: {
+          open: false,
+          loading: false,
+          contact: null,
         },
         accountDeliveryModal: {
           open: false,
@@ -158,9 +164,12 @@
             profile: "",
             password: "",
             sendCredentials: true,
-            reactivationEnabled: false,
-            reactivationDate: "",
-            reactivationTime: "",
+          },
+          hotspotSchedule: {
+            contactId: "",
+            mode: "NONE",
+            date: "",
+            time: "00:00",
           },
           reminderEdit: { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
           template: { name: "", content: "" },
@@ -547,9 +556,15 @@
             profile: "",
             password: "",
             sendCredentials: true,
-            reactivationEnabled: false,
-            reactivationDate: "",
-            reactivationTime: "",
+          };
+        },
+
+        blankHotspotScheduleForm() {
+          return {
+            contactId: "",
+            mode: "NONE",
+            date: "",
+            time: "00:00",
           };
         },
 
@@ -564,11 +579,8 @@
           );
         },
 
-        isHotspotReactivationAllowed() {
-          const selected = this.contacts.find(
-            (contact) => String(contact.id) === String(this.forms.hotspotAccount.contactId)
-          );
-          return String(selected?.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "RECURRING";
+        isRecurringSubscription(contact) {
+          return String(contact?.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "RECURRING";
         },
 
         suggestHotspotUsername(name) {
@@ -580,8 +592,8 @@
         },
 
         buildHotspotReactivationAt(form) {
-          const date = form.hotspotReactivationDate || form.reactivationDate;
-          const time = form.hotspotReactivationTime || form.reactivationTime;
+          const date = form.hotspotReactivationDate || form.reactivationDate || form.date;
+          const time = form.hotspotReactivationTime || form.reactivationTime || form.time;
           if (!date) return "";
           return `${date} ${time || "00:00"}`;
         },
@@ -658,7 +670,7 @@
         },
 
         canReactivateHotspot(contact) {
-          return ["ACTIVE", "DEACTIVATED"].includes(this.getHotspotProvisioningStatus(contact));
+          return this.getHotspotProvisioningStatus(contact) === "DEACTIVATED";
         },
 
         canDisableHotspot(contact) {
@@ -679,8 +691,21 @@
 
         getReactivationLabel(contact) {
           if (!contact.hotspotReactivationAt) return contact.hotspotReactivationEnabled ? "Belum dijadwalkan" : "Tanpa jadwal";
-          if (!contact.hotspotReactivationEnabled) return `Nonaktif terjadwal: ${this.formatDateTime(contact.hotspotReactivationAt)}`;
+          if (!contact.hotspotReactivationEnabled) return "Penonaktifan terjadwal";
+          return "Aktif otomatis";
+        },
+
+        getReactivationDetail(contact) {
+          if (!contact.hotspotReactivationAt) {
+            return contact.hotspotReactivationEnabled ? "Tanggal belum dipilih" : "Tidak ada perubahan otomatis";
+          }
           return this.formatDateTime(contact.hotspotReactivationAt);
+        },
+
+        getReactivationClass(contact) {
+          if (contact.hotspotReactivationEnabled) return "bg-moss/10 text-moss";
+          if (contact.hotspotReactivationAt) return "bg-amber-100 text-amber-800";
+          return "bg-slate-200/70 text-slate-700";
         },
 
         hasMikrotikProfile(profileName) {
@@ -1388,10 +1413,6 @@
             this.forms.hotspotAccount.profile = selected.mikrotikProfile || "";
             this.forms.hotspotAccount.password = selected.mikrotikUsername ? "" : String(selected.phoneNumber || "").slice(-5);
             this.forms.hotspotAccount.sendCredentials = !selected.mikrotikUsername;
-            this.forms.hotspotAccount.reactivationEnabled = this.isHotspotReactivationAllowed()
-              && Boolean(selected.hotspotReactivationEnabled);
-            this.forms.hotspotAccount.reactivationDate = this.formatDateInput(selected.hotspotReactivationAt);
-            this.forms.hotspotAccount.reactivationTime = this.formatTimeInput(selected.hotspotReactivationAt) || "00:00";
           }
           this.clearFormError("hotspotAccount");
           this.hotspotAccountModal.open = true;
@@ -1417,10 +1438,6 @@
           this.forms.hotspotAccount.profile = selected.mikrotikProfile || "";
           this.forms.hotspotAccount.password = selected.mikrotikUsername ? "" : String(selected.phoneNumber || "").slice(-5);
           this.forms.hotspotAccount.sendCredentials = !selected.mikrotikUsername;
-          this.forms.hotspotAccount.reactivationEnabled = this.isHotspotReactivationAllowed()
-            && Boolean(selected.hotspotReactivationEnabled);
-          this.forms.hotspotAccount.reactivationDate = this.formatDateInput(selected.hotspotReactivationAt);
-          this.forms.hotspotAccount.reactivationTime = this.formatTimeInput(selected.hotspotReactivationAt) || "00:00";
         },
 
         async saveHotspotAccount() {
@@ -1435,8 +1452,6 @@
                 mikrotikUsername: form.username,
                 mikrotikProfile: form.profile,
                 sendCredentials: form.sendCredentials,
-                hotspotReactivationEnabled: form.reactivationEnabled,
-                hotspotReactivationAt: this.buildHotspotReactivationAt(form),
               };
               if (form.password) payload.mikrotikPassword = form.password;
               const result = await this.api(`/api/contacts/${form.contactId}/hotspot`, {
@@ -1452,6 +1467,84 @@
             await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]).catch(() => {});
           } finally {
             this.hotspotAccountModal.loading = false;
+          }
+        },
+
+        openHotspotScheduleModal(contact) {
+          if (!contact?.id || !contact.mikrotikUsername || !contact.mikrotikProfile) return;
+          this.hotspotScheduleModal.contact = contact;
+          this.forms.hotspotSchedule = {
+            contactId: String(contact.id),
+            mode: contact.hotspotReactivationEnabled
+              ? "REACTIVATE"
+              : (contact.hotspotReactivationAt ? "DEACTIVATE" : "NONE"),
+            date: this.formatDateInput(contact.hotspotReactivationAt),
+            time: this.formatTimeInput(contact.hotspotReactivationAt) || "00:00",
+          };
+          if (!this.isRecurringSubscription(contact) && this.forms.hotspotSchedule.mode === "REACTIVATE") {
+            this.forms.hotspotSchedule.mode = "NONE";
+          }
+          this.clearFormError("hotspotSchedule");
+          this.hotspotScheduleModal.open = true;
+          document.body.classList.add("overflow-hidden");
+        },
+
+        closeHotspotScheduleModal() {
+          if (this.hotspotScheduleModal.loading) return;
+          this.hotspotScheduleModal.open = false;
+          this.hotspotScheduleModal.contact = null;
+          this.forms.hotspotSchedule = this.blankHotspotScheduleForm();
+          this.clearFormError("hotspotSchedule");
+          document.body.classList.remove("overflow-hidden");
+        },
+
+        getHotspotScheduleSummary() {
+          const form = this.forms.hotspotSchedule;
+          if (form.mode === "NONE") return "Tidak ada perubahan otomatis pada akun hotspot.";
+          if (!form.date) return "Pilih tanggal dan waktu untuk melihat ringkasan jadwal.";
+          const schedule = this.formatDateTime(this.buildHotspotReactivationAt(form));
+          if (form.mode === "REACTIVATE") {
+            return `Akun akan diaktifkan kembali pada ${schedule}. Setelah berhasil, jadwal berikutnya dibuat untuk bulan selanjutnya.`;
+          }
+          return `Akun akan dinonaktifkan pada ${schedule}. Data akun tetap tersimpan di MikroTik.`;
+        },
+
+        async saveHotspotSchedule() {
+          if (this.hotspotScheduleModal.loading) return;
+          const contact = this.hotspotScheduleModal.contact;
+          const form = this.forms.hotspotSchedule;
+          if (!contact?.id) return;
+          if (form.mode !== "NONE" && !form.date) {
+            this.setFormError("hotspotSchedule", "Tanggal jadwal wajib dipilih.");
+            return;
+          }
+
+          this.hotspotScheduleModal.loading = true;
+          this.clearFormError("hotspotSchedule");
+          try {
+            await this.withProcessing("Menyimpan jadwal layanan...", async () => {
+              await this.api(`/api/contacts/${contact.id}/hotspot`, {
+                method: "POST",
+                body: JSON.stringify({
+                  mikrotikUsername: contact.mikrotikUsername,
+                  mikrotikProfile: contact.mikrotikProfile,
+                  sendCredentials: false,
+                  hotspotReactivationEnabled: form.mode === "REACTIVATE",
+                  hotspotReactivationAt: form.mode === "NONE" ? "" : this.buildHotspotReactivationAt(form),
+                }),
+              });
+              const message = form.mode === "REACTIVATE"
+                ? "Jadwal aktif otomatis bulanan berhasil disimpan."
+                : (form.mode === "DEACTIVATE" ? "Jadwal penonaktifan berhasil disimpan." : "Jadwal layanan berhasil dihapus.");
+              this.hotspotScheduleModal.loading = false;
+              this.closeHotspotScheduleModal();
+              this.notify(message);
+              await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
+            });
+          } catch (error) {
+            this.setFormError("hotspotSchedule", error);
+          } finally {
+            this.hotspotScheduleModal.loading = false;
           }
         },
 
