@@ -1170,6 +1170,121 @@ test("API menyimpan pelanggan setelah nomor dipastikan terdaftar di WhatsApp", a
   assert.equal(payload.data.id, "contact-1");
 });
 
+test("hapus pelanggan menghapus akun hotspot MikroTik sebelum data lokal", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const events = [];
+  const contact = {
+    id: "contact-delete-hotspot",
+    name: "Pelanggan Hapus",
+    phoneNumber: "6281234567890",
+    mikrotikUsername: "pelanggan_hapus",
+    mikrotikPassword: "67890",
+    mikrotikProfile: "100M",
+    hotspotProvisioningStatus: "ACTIVE",
+  };
+  const baseUrl = await startServer({
+    getContact: (id) => (id === contact.id ? contact : null),
+    deleteContact: async (id) => {
+      events.push(`local:${id}`);
+      return { deletedContact: contact, deletedReminders: 1 };
+    },
+    toPublicContact: ({ mikrotikPassword: _password, ...publicContact }) => publicContact,
+  }, {}, {
+    deleteHotspotUser: async (username, phoneNumber) => {
+      events.push(`mikrotik:${username}:${phoneNumber}`);
+      return { username, removedUsers: 1, activeSessionsKilled: 1 };
+    },
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}`, {
+    method: "DELETE",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY },
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(events, [
+    "mikrotik:pelanggan_hapus:6281234567890",
+    "local:contact-delete-hotspot",
+  ]);
+  assert.equal(payload.data.hotspot.removedUsers, 1);
+  assert.equal(payload.data.hotspot.activeSessionsKilled, 1);
+  assert.equal(Object.hasOwn(payload.data.deletedContact, "mikrotikPassword"), false);
+});
+
+test("data pelanggan dipertahankan ketika penghapusan akun hotspot gagal", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  let localDeleteCalls = 0;
+  const contact = {
+    id: "contact-delete-failed",
+    phoneNumber: "6281234567891",
+    mikrotikUsername: "pelanggan_asing",
+  };
+  const baseUrl = await startServer({
+    getContact: () => contact,
+    deleteContact: async () => {
+      localDeleteCalls += 1;
+    },
+  }, {}, {
+    deleteHotspotUser: async () => {
+      throw new Error("Akun terhubung ke pelanggan yang berbeda.");
+    },
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}`, {
+    method: "DELETE",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY },
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 502);
+  assert.match(payload.error, /Data pelanggan belum dihapus/);
+  assert.equal(localDeleteCalls, 0);
+});
+
+test("akun hotspot dipulihkan ketika penghapusan data lokal gagal", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const events = [];
+  const contact = {
+    id: "contact-delete-rollback",
+    phoneNumber: "6281234567892",
+    mikrotikUsername: "pelanggan_rollback",
+    mikrotikPassword: "67892",
+    mikrotikProfile: "50M",
+    hotspotProvisioningStatus: "ACTIVE",
+  };
+  const baseUrl = await startServer({
+    getContact: () => contact,
+    deleteContact: async () => {
+      events.push("local-delete");
+      throw new Error("database gagal");
+    },
+  }, {}, {
+    deleteHotspotUser: async () => {
+      events.push("mikrotik-delete");
+      return { username: contact.mikrotikUsername, removedUsers: 1, activeSessionsKilled: 0 };
+    },
+    reactivateHotspotUser: async (account) => {
+      events.push(`mikrotik-restore:${account.username}`);
+      return { ...account, created: true };
+    },
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}`, {
+    method: "DELETE",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY },
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 500);
+  assert.match(payload.error, /sudah dipulihkan/);
+  assert.deepEqual(events, [
+    "mikrotik-delete",
+    "local-delete",
+    "mikrotik-restore:pelanggan_rollback",
+  ]);
+});
+
 test("admin dapat mengirim akun portal dan hotspot pelanggan lewat WhatsApp", async () => {
   const sentMessages = [];
   const accountMessageTemplate = [

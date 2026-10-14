@@ -1713,14 +1713,16 @@
 
         removeContact(contact) {
           const label = contact?.name ? `"${contact.name}"` : "ini";
+          const hasHotspot = Boolean(contact?.mikrotikUsername);
           this.openDeleteConfirm({
-            title: "Hapus kontak?",
-            description: contact?.name
-              ? `Kontak ${label} akan dihapus dari daftar. Tindakan ini tidak bisa dibatalkan.`
-              : "Kontak ini akan dihapus dari daftar. Tindakan ini tidak bisa dibatalkan.",
+            title: hasHotspot ? "Hapus pelanggan dan akun hotspot?" : "Hapus pelanggan?",
+            description: hasHotspot
+              ? `Data pelanggan ${label}, akun hotspot ${contact.mikrotikUsername} di MikroTik, dan reminder terkait akan dihapus. Tindakan ini tidak bisa dibatalkan.`
+              : `Data pelanggan ${label} dan reminder terkait akan dihapus. Tindakan ini tidak bisa dibatalkan.`,
+            confirmLabel: hasHotspot ? "Hapus pelanggan dan hotspot" : "Hapus pelanggan",
             action: async () => {
               await this.api(`/api/contacts/${contact.id}`, { method: "DELETE" });
-              this.notify("Contact dihapus.");
+              this.notify(hasHotspot ? "Pelanggan dan akun hotspot dihapus." : "Pelanggan dihapus.");
               await Promise.all([this.loadContacts(), this.loadReminders(), this.loadStatus()]);
             },
           });

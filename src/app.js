@@ -5345,6 +5345,93 @@ class WebServer {
     });
   }
 
+  async deleteContactWithHotspot(contactId) {
+    return this.hotspotProvisioningLock.runExclusive(String(contactId), async () => {
+      const contact = this.dataManager.getContact(contactId);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+
+      const username = sanitizeInput(contact.mikrotikUsername || "");
+      let hotspotDeletion = {
+        username: username || null,
+        removedUsers: 0,
+        activeSessionsKilled: 0,
+        skipped: !username,
+      };
+
+      if (username) {
+        try {
+          hotspotDeletion = {
+            ...await this.mikrotikService.deleteHotspotUser(username, contact.phoneNumber),
+            skipped: false,
+          };
+        } catch (error) {
+          const wrapped = new Error(`Data pelanggan belum dihapus karena akun hotspot gagal dihapus: ${error.message}`);
+          wrapped.statusCode = 502;
+          wrapped.cause = error;
+          throw wrapped;
+        }
+      }
+
+      let deleted;
+      try {
+        deleted = await this.dataManager.deleteContact(contact.id);
+      } catch (error) {
+        if (!username || hotspotDeletion.removedUsers < 1) throw error;
+
+        const password = sanitizeInput(contact.mikrotikPassword || "")
+          || String(contact.phoneNumber || "").slice(-5);
+        try {
+          if (!password || !contact.mikrotikProfile) {
+            throw new Error("Data profile atau password hotspot tidak lengkap.");
+          }
+          await this.mikrotikService.reactivateHotspotUser({
+            username,
+            password,
+            profile: contact.mikrotikProfile,
+            phoneNumber: contact.phoneNumber,
+          });
+          if (normalizeHotspotProvisioningStatus(contact.hotspotProvisioningStatus) === HOTSPOT_PROVISIONING_STATUS.DISABLED) {
+            await this.mikrotikService.setHotspotUserDisabled(username, contact.phoneNumber, true);
+          }
+        } catch (rollbackError) {
+          this.activityLog.push("error", "mikrotik", `Rollback penghapusan akun hotspot ${username} gagal: ${rollbackError.message}`, {
+            contactId: contact.id,
+          });
+          const wrapped = new Error("Akun hotspot sudah terhapus, tetapi data pelanggan gagal dihapus dan akun tidak dapat dipulihkan. Periksa MikroTik secara manual.");
+          wrapped.statusCode = 502;
+          wrapped.cause = error;
+          throw wrapped;
+        }
+
+        const wrapped = new Error(`Data pelanggan gagal dihapus. Akun hotspot ${username} sudah dipulihkan.`);
+        wrapped.statusCode = 500;
+        wrapped.cause = error;
+        throw wrapped;
+      }
+
+      this.activityLog.push("info", "mikrotik", username
+        ? `Pelanggan dan akun hotspot ${username} dihapus`
+        : `Pelanggan ${contact.name || contact.id} dihapus tanpa akun hotspot`, {
+        contactId: contact.id,
+        username: username || null,
+        removedUsers: hotspotDeletion.removedUsers,
+        activeSessionsKilled: hotspotDeletion.activeSessionsKilled,
+      });
+      return {
+        ...deleted,
+        deletedContact: typeof this.dataManager.toPublicContact === "function"
+          ? this.dataManager.toPublicContact(deleted.deletedContact)
+          : {
+              id: deleted.deletedContact.id,
+              name: deleted.deletedContact.name,
+              phoneNumber: deleted.deletedContact.phoneNumber,
+              mikrotikUsername: deleted.deletedContact.mikrotikUsername || "",
+            },
+        hotspot: hotspotDeletion,
+      };
+    });
+  }
+
   async recoverHotspotAfterPayment(contact) {
     const password = sanitizeInput(contact?.mikrotikPassword || "")
       || String(contact?.phoneNumber || "").slice(-5);
@@ -6414,7 +6501,7 @@ class WebServer {
       });
       return { ...result.contact, hotspotSynced: true };
     }));
-    this.app.delete("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.dataManager.deleteContact(req.params.id)));
+    this.app.delete("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.deleteContactWithHotspot(req.params.id)));
     this.app.post("/api/contacts/:id/account-credentials", requireApiAuth, handleApi(async (req) => {
       const contact = this.dataManager.getContact(req.params.id);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
