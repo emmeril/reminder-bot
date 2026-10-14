@@ -229,6 +229,7 @@ const DEFAULT_SETTINGS = {
   mikrotikBackupLastRunDate: "",
   databaseBackupLastRunDate: "",
   reminderVariableTemplateMigrationVersion: 0,
+  serviceScheduleAnchorMigrationVersion: 0,
 };
 
 module.exports = {

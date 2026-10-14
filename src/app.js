@@ -1395,6 +1395,7 @@ class DataManager {
     }
 
     this.normalizeLoadedContacts();
+    await this.migrateServiceSchedulesFromRegistration();
     const portalAccountsCreated = await this.synchronizeCustomerPortalAccounts();
     await this.normalizeReminderRelations();
     await this.removeNonRecurringReminders();
@@ -1666,6 +1667,80 @@ class DataManager {
         pelanggan.hotspotLastSyncedAt || contact?.hotspotLastSyncedAt
       );
     }
+  }
+
+  getContactRegistrationAt(contact) {
+    const pelanggan = this.pelanggan.get(String(contact.mikrotikUsername || ""))
+      || Array.from(this.pelanggan.values()).find(
+        (item) => String(item.contactId || "") === String(contact.id)
+      )
+      || null;
+    const candidates = [contact.createdAt, pelanggan?.tanggalDaftar]
+      .map((value) => new Date(value || ""))
+      .filter((date) => !Number.isNaN(date.getTime()))
+      .sort((a, b) => a.getTime() - b.getTime());
+    return candidates[0] || null;
+  }
+
+  getNextServiceScheduleFromRegistration(contact, options = {}) {
+    const registrationAt = options.registrationAt
+      ? new Date(options.registrationAt)
+      : this.getContactRegistrationAt(contact);
+    if (!registrationAt || Number.isNaN(registrationAt.getTime())) return null;
+
+    const now = options.now ? new Date(options.now) : new Date();
+    let schedule = addMonthsSafely(registrationAt, 1, this.getTimezone());
+    if (Number.isNaN(now.getTime())) return schedule.toISOString();
+    while (schedule.getTime() <= now.getTime()) {
+      schedule = addMonthsSafely(schedule, 1, this.getTimezone());
+    }
+    return schedule.toISOString();
+  }
+
+  async migrateServiceSchedulesFromRegistration(options = {}) {
+    return this.withDataMutation(async () => {
+      const settings = this.getSettings();
+      if (Number(settings.serviceScheduleAnchorMigrationVersion) >= 1) {
+        return { migrated: 0, skipped: 0, version: 1 };
+      }
+
+      let migrated = 0;
+      let skipped = 0;
+      const updatedAt = new Date().toISOString();
+      for (const contact of this.contacts.values()) {
+        const schedule = this.getNextServiceScheduleFromRegistration(contact, options);
+        if (!schedule) {
+          skipped += 1;
+          continue;
+        }
+
+        const hadSchedule = Boolean(contact.hotspotReactivationAt);
+        contact.hotspotReactivationAt = schedule;
+        if (!hadSchedule) {
+          contact.hotspotReactivationEnabled = isRecurringSubscription(contact);
+        } else if (!isRecurringSubscription(contact)) {
+          contact.hotspotReactivationEnabled = false;
+        }
+        contact.updatedAt = updatedAt;
+        migrated += 1;
+      }
+
+      this.settings = {
+        ...settings,
+        serviceScheduleAnchorMigrationVersion: 1,
+      };
+      await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+        const saveOptions = { transaction };
+        if (migrated > 0) await this.saveContacts(saveOptions);
+        await this.saveSettings(saveOptions);
+      }));
+      this.activityLog.push("info", "storage", `Jadwal layanan ${migrated} pelanggan diselaraskan dengan waktu registrasi pertama`, {
+        migration: "service-schedule-registration-anchor-v1",
+        migrated,
+        skipped,
+      });
+      return { migrated, skipped, version: 1 };
+    });
   }
 
   async synchronizeCustomerPortalAccounts(options = {}) {
@@ -2776,6 +2851,7 @@ class DataManager {
       if (this.hasContactPhone(phoneNumber)) throw new Error("Nomor kontak sudah digunakan.");
 
       const now = new Date().toISOString();
+      const initialServiceSchedule = addMonthsSafely(now, 1, this.getTimezone()).toISOString();
       const { year: initialYear, month: initialMonth } = getBillingPeriodParts(new Date(now), this.getTimezone());
       const initialPeriod = makeBillingPeriodKey(initialYear, initialMonth);
       const contact = {
@@ -2794,6 +2870,8 @@ class DataManager {
         },
         linkedApHost,
         ...hotspotFields,
+        hotspotReactivationEnabled: subscriptionType === SUBSCRIPTION_TYPES.RECURRING,
+        hotspotReactivationAt: initialServiceSchedule,
         hotspotLastReactivatedAt: this.normalizeOptionalDate(payload.hotspotLastReactivatedAt),
         hotspotLastDeactivatedAt: this.normalizeOptionalDate(payload.hotspotLastDeactivatedAt),
         createdAt: now,
@@ -2848,6 +2926,7 @@ class DataManager {
       );
 
       const now = new Date().toISOString();
+      const initialServiceSchedule = addMonthsSafely(now, 1, this.getTimezone()).toISOString();
       const { year: initialYear, month: initialMonth } = getBillingPeriodParts(new Date(now), this.getTimezone());
       const initialPeriod = makeBillingPeriodKey(initialYear, initialMonth);
       let contact = this.findContactByPhone(phoneNumber);
@@ -2886,6 +2965,8 @@ class DataManager {
           },
           linkedApHost,
           ...hotspotFields,
+          hotspotReactivationEnabled: normalizeSubscriptionType(payload.subscriptionType) === SUBSCRIPTION_TYPES.RECURRING,
+          hotspotReactivationAt: initialServiceSchedule,
           hotspotProvisioningStatus: provisioningStatus,
           hotspotProvisioningError: provisioningError,
           hotspotLastCheckedAt,
@@ -2917,6 +2998,10 @@ class DataManager {
           contact.monthlyPaymentAmountCustomized = true;
         }
         Object.assign(contact, hotspotFields);
+        if (!contact.hotspotReactivationAt) {
+          contact.hotspotReactivationAt = this.getNextServiceScheduleFromRegistration(contact);
+          contact.hotspotReactivationEnabled = isRecurringSubscription(contact);
+        }
         if (this.applyProfileMonthlyAmount(contact)) {
           reminderMessagesChanged = this.updateContactReminderMessages(contact);
         }

@@ -10,6 +10,7 @@ const {
   SUBSCRIPTION_TYPES,
 } = require("../src/config");
 const {
+  addMonthsSafely,
   getBillingPeriodParts,
   getPreviousBillingPeriod,
   makeBillingPeriodKey,
@@ -702,7 +703,7 @@ test("migration mengganti reminder Penagihan existing dengan template variabel s
   assert.equal(manager.settings.reminderVariableTemplateMigrationVersion, 1);
 });
 
-test("registrasi pelanggan MikroTik menyimpan AP dan jadwal reaktivasi dari form", async () => {
+test("registrasi pelanggan MikroTik membuat jadwal sebulan dari waktu registrasi", async () => {
   const manager = new DataManager({ push() {} });
   manager.sequelize = {
     transaction: async (operation) => operation({}),
@@ -710,8 +711,6 @@ test("registrasi pelanggan MikroTik menyimpan AP dan jadwal reaktivasi dari form
   manager.withDatabaseWrite = async (operation) => operation();
   manager.saveContacts = async () => {};
   manager.savePelanggan = async () => {};
-  const reactivationAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
   const result = await manager.upsertPelangganFromRegistration({
     name: "Pelanggan Baru",
     phoneNumber: "6281234567800",
@@ -720,12 +719,15 @@ test("registrasi pelanggan MikroTik menyimpan AP dan jadwal reaktivasi dari form
     password: "67800",
     linkedApHost: "10.0.0.20",
     hotspotReactivationEnabled: true,
-    hotspotReactivationAt: reactivationAt,
+    hotspotReactivationAt: "2027-01-01T00:00:00.000Z",
   });
 
   assert.equal(result.contact.linkedApHost, "10.0.0.20");
   assert.equal(result.contact.hotspotReactivationEnabled, true);
-  assert.equal(result.contact.hotspotReactivationAt, reactivationAt);
+  assert.equal(
+    result.contact.hotspotReactivationAt,
+    addMonthsSafely(result.contact.createdAt, 1, manager.getTimezone()).toISOString()
+  );
   assert.equal(result.contact.hotspotProvisioningStatus, "ACTIVE");
   assert.equal(result.pelanggan.hotspotProvisioningStatus, "ACTIVE");
 });
@@ -750,11 +752,62 @@ test("sekali berlangganan mengubah jadwal menjadi penonaktifan tanpa menghapus t
 
   assert.equal(result.subscriptionType, SUBSCRIPTION_TYPES.ONE_TIME);
   assert.equal(result.hotspotReactivationEnabled, false);
-  assert.equal(result.hotspotReactivationAt, "2026-08-31T17:00:00.000Z");
+  assert.equal(
+    result.hotspotReactivationAt,
+    addMonthsSafely(result.createdAt, 1, manager.getTimezone()).toISOString()
+  );
 
   const reactivated = await manager.markHotspotReactivated(result.id, { password: "hotspot-pass", profile: "default" });
   assert.equal(reactivated.hotspotReactivationEnabled, false);
   assert.equal(reactivated.hotspotReactivationAt, null);
+});
+
+test("migrasi jadwal layanan memakai tanggal dan jam registrasi pertama", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.saveSettings = async () => {};
+
+  const registeredAt = "2026-10-14T06:13:00.000Z";
+  const expectedSchedule = "2026-11-14T06:13:00.000Z";
+  manager.contacts.set("recurring-anchor", {
+    id: "recurring-anchor",
+    name: "Pelanggan Bulanan",
+    createdAt: registeredAt,
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: "2026-11-01T00:00:00.000Z",
+  });
+  manager.contacts.set("one-time-anchor", {
+    id: "one-time-anchor",
+    name: "Pelanggan Sekali",
+    mikrotikUsername: "one-time-anchor",
+    subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
+    hotspotReactivationEnabled: false,
+    hotspotReactivationAt: null,
+  });
+  manager.pelanggan.set("one-time-anchor", {
+    username: "one-time-anchor",
+    contactId: "one-time-anchor",
+    tanggalDaftar: registeredAt,
+  });
+
+  const first = await manager.migrateServiceSchedulesFromRegistration({
+    now: "2026-10-14T00:00:00.000Z",
+  });
+  const second = await manager.migrateServiceSchedulesFromRegistration({
+    now: "2026-10-14T00:00:00.000Z",
+  });
+
+  assert.equal(first.migrated, 2);
+  assert.equal(first.skipped, 0);
+  assert.equal(manager.contacts.get("recurring-anchor").hotspotReactivationAt, expectedSchedule);
+  assert.equal(manager.contacts.get("recurring-anchor").hotspotReactivationEnabled, true);
+  assert.equal(manager.contacts.get("one-time-anchor").hotspotReactivationAt, expectedSchedule);
+  assert.equal(manager.contacts.get("one-time-anchor").hotspotReactivationEnabled, false);
+  assert.equal(manager.settings.serviceScheduleAnchorMigrationVersion, 1);
+  assert.equal(second.migrated, 0);
 });
 
 test("persiapan akun hotspot menyimpan pelanggan sebagai PENDING", async () => {
