@@ -234,6 +234,11 @@ test("pelanggan menunggak menjadi sekali berlangganan lalu kembali bulanan setel
   assert.equal(paid.hotspotReactivationEnabled, true);
   assert.equal(paid.hotspotReactivationAt, schedule);
   assert.equal(paid.paymentStatus, PAYMENT_STATUS.UNPAID);
+  const restoredReminders = Array.from(manager.reminders.values());
+  assert.equal(restoredReminders.length, 1);
+  assert.equal(restoredReminders[0].contactId, contact.id);
+  assert.equal(restoredReminders[0].reminderDateTime, schedule);
+  assert.equal(restoredReminders[0].templateName, "Penagihan.txt");
 });
 
 test("pelanggan bulanan tanpa tunggakan tetap berlangganan dan tetap dijadwalkan reaktivasi", async () => {
@@ -763,6 +768,7 @@ test("registrasi pelanggan MikroTik membuat jadwal sebulan dari waktu registrasi
   manager.withDatabaseWrite = async (operation) => operation();
   manager.saveContacts = async () => {};
   manager.savePelanggan = async () => {};
+  manager.saveReminders = async () => {};
   const result = await manager.upsertPelangganFromRegistration({
     name: "Pelanggan Baru",
     phoneNumber: "6281234567800",
@@ -782,6 +788,13 @@ test("registrasi pelanggan MikroTik membuat jadwal sebulan dari waktu registrasi
   );
   assert.equal(result.contact.hotspotProvisioningStatus, "ACTIVE");
   assert.equal(result.pelanggan.hotspotProvisioningStatus, "ACTIVE");
+  const reminders = Array.from(manager.reminders.values());
+  assert.equal(reminders.length, 1);
+  assert.equal(reminders[0].contactId, result.contact.id);
+  assert.equal(reminders[0].reminderDateTime, result.contact.hotspotReactivationAt);
+  assert.equal(reminders[0].templateName, "Penagihan.txt");
+  assert.equal(manager.ensureRecurringReminder(result.contact).created, false);
+  assert.equal(manager.reminders.size, 1);
 });
 
 test("sekali berlangganan mengubah jadwal menjadi penonaktifan tanpa menghapus tanggal", async () => {
@@ -790,6 +803,7 @@ test("sekali berlangganan mengubah jadwal menjadi penonaktifan tanpa menghapus t
   manager.withDatabaseWrite = async (operation) => operation();
   manager.saveContacts = async () => {};
   manager.savePelanggan = async () => {};
+  manager.saveReminders = async () => {};
   manager.saveCustomerAccounts = async () => {};
 
   const result = await manager.addContact({
@@ -870,6 +884,7 @@ test("persiapan akun hotspot menyimpan pelanggan sebagai PENDING", async () => {
   manager.withDatabaseWrite = async (operation) => operation();
   manager.saveContacts = async () => {};
   manager.savePelanggan = async () => {};
+  manager.saveReminders = async () => {};
 
   const result = await manager.prepareHotspotRegistration({
     name: "Pelanggan Pending",
@@ -921,6 +936,7 @@ test("kontak baru dengan akun hotspot langsung mendapat akun portal", async () =
   manager.withDatabaseWrite = async (operation) => operation();
   manager.saveContacts = async () => {};
   manager.savePelanggan = async () => {};
+  manager.saveReminders = async () => {};
 
   const contact = await manager.addContact({
     name: "Pelanggan Langsung",
@@ -1220,6 +1236,7 @@ test("status FAILED menyimpan error tanpa menghapus pelanggan", async () => {
   manager.withDatabaseWrite = async (operation) => operation();
   manager.saveContacts = async () => {};
   manager.savePelanggan = async () => {};
+  manager.saveReminders = async () => {};
   const prepared = await manager.prepareHotspotRegistration({
     name: "Pelanggan Tetap Ada",
     phoneNumber: "6281234567804",

@@ -2178,8 +2178,8 @@ class DataManager {
 
       const arrearsPolicy = contact.subscriptionChangedByArrears
         ? this.applyArrearsSubscriptionPolicy(contact)
-        : { remindersRemoved: 0 };
-      const remindersChanged = arrearsPolicy.remindersRemoved
+        : { remindersAdded: 0, remindersRemoved: 0 };
+      const remindersChanged = arrearsPolicy.remindersAdded + arrearsPolicy.remindersRemoved
         + this.updateContactReminderMessages(contact);
       await this.withDatabaseWrite(() => this.sequelize.transaction(async (databaseTransaction) => {
         const options = { transaction: databaseTransaction };
@@ -2263,8 +2263,8 @@ class DataManager {
 
       const arrearsPolicy = contact.subscriptionChangedByArrears
         ? this.applyArrearsSubscriptionPolicy(contact)
-        : { remindersRemoved: 0 };
-      const remindersChanged = arrearsPolicy.remindersRemoved
+        : { remindersAdded: 0, remindersRemoved: 0 };
+      const remindersChanged = arrearsPolicy.remindersAdded + arrearsPolicy.remindersRemoved
         + this.updateContactReminderMessages(contact);
       await this.withDatabaseWrite(() => this.sequelize.transaction(async (databaseTransaction) => {
         const options = { transaction: databaseTransaction };
@@ -2634,11 +2634,11 @@ class DataManager {
         remindersRemoved,
       });
 
-      return { changed: true, converted: true, restored: false, remindersRemoved };
+      return { changed: true, converted: true, restored: false, remindersAdded: 0, remindersRemoved };
     }
 
     if (!contact.subscriptionChangedByArrears || isRecurringSubscription(contact)) {
-      return { changed: false, converted: false, restored: false, remindersRemoved: 0 };
+      return { changed: false, converted: false, restored: false, remindersAdded: 0, remindersRemoved: 0 };
     }
 
     const debtPeriods = Array.from(new Set(
@@ -2648,7 +2648,7 @@ class DataManager {
       (period) => contact.paymentMonths?.[period]?.status !== PAYMENT_STATUS.PAID
     );
     if (hasUnpaidArrears || debtInfo.hasDebt) {
-      return { changed: false, converted: false, restored: false, remindersRemoved: 0 };
+      return { changed: false, converted: false, restored: false, remindersAdded: 0, remindersRemoved: 0 };
     }
 
     contact.subscriptionType = SUBSCRIPTION_TYPES.RECURRING;
@@ -2680,13 +2680,20 @@ class DataManager {
       ? currentPayment?.paymentType || null
       : null;
     contact.updatedAt = updatedAt;
+    const reminderResult = this.ensureRecurringReminder(contact);
 
     this.activityLog.push("info", "billing", `Pelanggan ${contact.name || contact.id} otomatis kembali berlangganan bulanan setelah tunggakan lunas`, {
       contactId: contact.id,
       hotspotSchedule: contact.hotspotReactivationAt || null,
     });
 
-    return { changed: true, converted: false, restored: true, remindersRemoved: 0 };
+    return {
+      changed: true,
+      converted: false,
+      restored: true,
+      remindersAdded: reminderResult.created ? 1 : 0,
+      remindersRemoved: 0,
+    };
   }
 
   usesRecurringBilling(contact) {
@@ -2696,6 +2703,7 @@ class DataManager {
   enforceArrearsSubscriptionPolicy(options = {}) {
     let converted = 0;
     let restored = 0;
+    let remindersAdded = 0;
     let remindersRemoved = 0;
 
     for (const contact of this.contacts.values()) {
@@ -2703,10 +2711,11 @@ class DataManager {
       if (!result.changed) continue;
       if (result.converted) converted += 1;
       if (result.restored) restored += 1;
+      remindersAdded += result.remindersAdded;
       remindersRemoved += result.remindersRemoved;
     }
 
-    return { changed: converted + restored, converted, restored, remindersRemoved };
+    return { changed: converted + restored, converted, restored, remindersAdded, remindersRemoved };
   }
 
   hydrateContact(contact) {
@@ -2921,6 +2930,44 @@ class DataManager {
     return changed;
   }
 
+  ensureRecurringReminder(contact) {
+    if (!contact || !isRecurringSubscription(contact)) {
+      return { created: false, reminder: null };
+    }
+
+    const existing = Array.from(this.reminders.values()).find((reminder) => {
+      const resolvedContact = this.getResolvedReminderContact(reminder);
+      return String(resolvedContact?.id || reminder.contactId || "") === String(contact.id);
+    });
+    if (existing) return { created: false, reminder: existing };
+
+    const reminderDateTime = this.normalizeOptionalDate(
+      contact.hotspotReactivationAt || this.getNextServiceScheduleFromRegistration(contact)
+    );
+    if (!reminderDateTime) return { created: false, reminder: null };
+
+    const reminder = {
+      id: generateId(),
+      contactId: String(contact.id),
+      contactName: contact.name,
+      phoneNumber: contact.phoneNumber,
+      paymentAmount: Math.max(0, Number(contact.monthlyPaymentAmount) || 0),
+      reminderDateTime,
+      message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+      messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+      templateName: "Penagihan.txt",
+      createdAt: new Date().toISOString(),
+    };
+    this.rewriteReminderPaymentMessage(reminder, contact);
+    this.reminders.set(String(reminder.id), reminder);
+    this.activityLog.push("info", "billing", `Jadwal reminder otomatis dibuat untuk ${contact.name || contact.id}`, {
+      contactId: contact.id,
+      reminderId: reminder.id,
+      reminderDateTime,
+    });
+    return { created: true, reminder };
+  }
+
   async savePaymentAndReminderChanges(remindersChanged) {
     if (!remindersChanged) {
       await this.saveContacts();
@@ -2978,6 +3025,7 @@ class DataManager {
       this.applyProfileMonthlyAmount(contact);
 
       this.contacts.set(contact.id, contact);
+      const reminderCreated = this.ensureRecurringReminder(contact).created;
       await this.synchronizeCustomerPortalAccounts({ save: false });
       if (this.sequelize) {
         await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
@@ -2985,9 +3033,11 @@ class DataManager {
           await this.saveContacts(options);
           await this.savePelanggan(options);
           await this.saveCustomerAccounts(options);
+          if (reminderCreated) await this.saveReminders(options);
         }));
       } else {
         await this.saveContacts();
+        if (reminderCreated) await this.saveReminders();
       }
       return contact;
     });
@@ -3153,13 +3203,16 @@ class DataManager {
       };
 
       this.pelanggan.set(username, pelanggan);
+      const reminderCreated = this.ensureRecurringReminder(contact).created;
       await this.synchronizeCustomerPortalAccounts({ save: false });
       await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
         const options = { transaction };
         await this.saveContacts(options);
         await this.savePelanggan(options);
         await this.saveCustomerAccounts(options);
-        if (remindersRemoved > 0 || reminderMessagesChanged > 0) await this.saveReminders(options);
+        if (reminderCreated || remindersRemoved > 0 || reminderMessagesChanged > 0) {
+          await this.saveReminders(options);
+        }
       }));
       return { contact, pelanggan };
     });
@@ -3359,6 +3412,8 @@ class DataManager {
         hotspotSyncRequired = true;
       }
       contact.updatedAt = now;
+
+      this.ensureRecurringReminder(contact);
 
       for (const reminder of this.reminders.values()) {
         if (String(reminder.contactId) === String(id) || reminder.phoneNumber === previousPhone) {
@@ -4483,8 +4538,8 @@ class DataManager {
 
       const arrearsPolicy = contact.subscriptionChangedByArrears
         ? this.applyArrearsSubscriptionPolicy(contact)
-        : { remindersRemoved: 0 };
-      const remindersChanged = arrearsPolicy.remindersRemoved
+        : { remindersAdded: 0, remindersRemoved: 0 };
+      const remindersChanged = arrearsPolicy.remindersAdded + arrearsPolicy.remindersRemoved
         + this.updateContactReminderMessages(contact);
       await this.savePaymentAndReminderChanges(remindersChanged);
       return this.hydrateContact(contact);
@@ -4560,8 +4615,8 @@ class DataManager {
 
       const arrearsPolicy = contact.subscriptionChangedByArrears
         ? this.applyArrearsSubscriptionPolicy(contact)
-        : { remindersRemoved: 0 };
-      const remindersChanged = arrearsPolicy.remindersRemoved
+        : { remindersAdded: 0, remindersRemoved: 0 };
+      const remindersChanged = arrearsPolicy.remindersAdded + arrearsPolicy.remindersRemoved
         + this.updateContactReminderMessages(contact);
       await this.savePaymentAndReminderChanges(remindersChanged);
       return this.hydrateContact(contact);
@@ -4612,7 +4667,7 @@ class DataManager {
 
     for (const contact of this.contacts.values()) {
       const arrearsPolicy = this.applyArrearsSubscriptionPolicy(contact);
-      remindersChanged += arrearsPolicy.remindersRemoved;
+      remindersChanged += arrearsPolicy.remindersAdded + arrearsPolicy.remindersRemoved;
       if (!isRecurringSubscription(contact)) {
         const startPeriod = getContactBillingStartPeriod(contact, this.getTimezone());
         const currentPeriod = getBillingPeriodParts(new Date(), this.getTimezone());
@@ -4708,7 +4763,9 @@ class DataManager {
           await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
             const options = { transaction };
             await this.saveContacts(options);
-            if (arrearsPolicy.remindersRemoved > 0) await this.saveReminders(options);
+            if (arrearsPolicy.remindersAdded > 0 || arrearsPolicy.remindersRemoved > 0) {
+              await this.saveReminders(options);
+            }
           }));
         }
         return {
