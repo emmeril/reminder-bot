@@ -95,3 +95,25 @@ test("simpan jadwal mengirim pilihan modal dan menutup form setelah berhasil", a
   assert.equal(closed, true);
   assert.equal(notification, "Jadwal penonaktifan berhasil disimpan.");
 });
+
+test("aksi tagihan menampilkan tindakan utama langsung dan menyimpan tindakan jarang di opsi lain", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+
+  assert.match(html, /customer-billing-primary[^>]*>[\s\S]*?Bayar bulan ini<\/button>/);
+  assert.match(html, /customer-billing-reminder[^>]*>[\s\S]*?Kirim pengingat<\/button>/);
+  assert.match(html, /contact\.currentPaymentStatus === 'PAID' \? 'Ubah status' : 'Opsi lain'/);
+  assert.match(html, /Lunasi tunggakan/);
+  assert.match(html, /Tandai belum bayar/);
+  assert.doesNotMatch(html, /Kelola pembayaran|Kelola tunggakan|Catat pembayaran/);
+});
+
+test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
+
+  assert.match(html, /customer-data-actions customer-row-actions/);
+  assert.match(html, /customer-billing-actions customer-row-actions/);
+  assert.match(html, /customer-hotspot-action-grid customer-row-actions/);
+  assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 36px !important;[^}]*border-radius: 9px !important;[^}]*font-size: 10px !important;/);
+  assert.match(styles, /\.panel-shell \.customer-row-actions button, \.customer-row-actions \.customer-payment-menu summary \{[^}]*min-height: 44px !important;[^}]*font-size: 11px !important;/);
+});

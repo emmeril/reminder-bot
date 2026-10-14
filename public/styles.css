@@ -773,7 +773,18 @@ table tbody tr:hover { background: #fafaff; }
 .customer-payment-menu[open] summary > i { transform: rotate(180deg); }
 .customer-payment-actions { padding-top: 6px; }
 .customer-payment-action-list { display: grid; gap: 5px; }
-.customer-payment-action-list button { width: 100%; white-space: normal; }
+.customer-payment-action-list button { display: inline-flex; width: 100%; min-height: 38px !important; align-items: center; justify-content: center; gap: 7px; white-space: normal; }
+.customer-billing-actions { display: grid; width: 100%; gap: 6px; }
+.customer-billing-actions > button { display: inline-flex; width: 100%; min-height: 38px !important; align-items: center; justify-content: center; gap: 7px; border-radius: 8px !important; }
+.customer-billing-primary { color: #fff; border: 1px solid #2563eb; background: #2563eb; }
+.customer-billing-primary:hover { border-color: #1d4ed8; background: #1d4ed8; }
+.customer-billing-reminder:hover { border-color: #f59e0b; background: #fef3c7; }
+.customer-action-empty { display: block; padding-block: 7px; color: #667085; font-size: 11px; line-height: 1.4; text-align: center; }
+.customer-row-actions { gap: 7px; }
+.panel-shell .customer-row-actions button { display: inline-flex; width: 100%; min-width: 0; min-height: 36px !important; align-items: center; justify-content: center; gap: 7px; padding: 8px 10px !important; border-radius: 9px !important; font-size: 10px !important; line-height: 1.2; white-space: nowrap; }
+.customer-row-actions button i { width: 12px; flex: 0 0 12px; margin-right: 0 !important; text-align: center; }
+.customer-row-actions .customer-payment-menu summary { min-height: 36px; padding: 8px 10px; border-radius: 9px; font-size: 10px; line-height: 1.2; }
+.customer-row-actions .customer-payment-action-list { gap: 7px; }
 .customer-debt-note { display: flex; max-width: 220px; flex-direction: column; gap: 3px; margin-top: 7px; padding: 7px 8px; color: #b42318; border: 1px solid #f4c7c3; border-radius: 8px; background: #fff7f6; }
 .customer-debt-note strong { display: flex; align-items: center; gap: 5px; font-size: 11px; }
 .customer-debt-note small { color: #c05a50; font-size: 10px; line-height: 1.4; }
@@ -838,6 +849,7 @@ table tbody tr:hover { background: #fafaff; }
   .customer-amount-editor { width: 100%; min-width: 0; }
   .customer-amount-editor .currency-input-group { min-width: 0; flex: 1; }
   .customer-payment-menu summary { min-height: 42px; font-size: 12px; }
+  .panel-shell .customer-row-actions button, .customer-row-actions .customer-payment-menu summary { min-height: 44px !important; font-size: 11px !important; }
   .customer-debt-note { width: 100%; max-width: none; }
   .customer-pagination { align-items: flex-start; }
   .customer-panel .table-scroll { max-height: none; overflow: visible; }
