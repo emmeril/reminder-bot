@@ -11,6 +11,7 @@ const {
 } = require("../src/config");
 const {
   getBillingPeriodParts,
+  getPreviousBillingPeriod,
   makeBillingPeriodKey,
 } = require("../src/utils");
 
@@ -164,6 +165,93 @@ test("pelanggan berlangganan tetap menghitung periode berjalan dan tunggakan bul
   assert.equal(debtInfo.currentPaymentStatus, PAYMENT_STATUS.UNPAID);
   assert.equal(debtInfo.debtCount, 1);
   assert.equal(debtInfo.debtPeriods[0].key, "2026-07");
+});
+
+test("pelanggan bulanan dengan tunggakan otomatis menjadi sekali berlangganan", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.saveReminders = async () => {};
+  manager.saveSettings = async () => {};
+
+  const current = getBillingPeriodParts(new Date(), manager.getTimezone());
+  const previous = getPreviousBillingPeriod(current.year, current.month);
+  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
+  const currentKey = makeBillingPeriodKey(current.year, current.month);
+  const schedule = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const contact = {
+    id: "contact-recurring-arrears",
+    name: "Pelanggan Menunggak",
+    phoneNumber: "6281234567810",
+    createdAt: `${previousKey}-01T00:00:00.000Z`,
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentDate: null,
+    paymentType: null,
+    paymentMonths: {
+      [previousKey]: {
+        status: PAYMENT_STATUS.UNPAID,
+        paidDate: null,
+        paymentType: null,
+      },
+    },
+    mikrotikUsername: "pelanggan-menunggak",
+    mikrotikProfile: "default",
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: schedule,
+  };
+  manager.contacts.set(contact.id, contact);
+  manager.reminders.set("reminder-arrears", {
+    id: "reminder-arrears",
+    contactId: contact.id,
+    phoneNumber: contact.phoneNumber,
+    reminderDateTime: schedule,
+    message: "Pengingat tagihan",
+  });
+  manager.settings.lastPaymentResetPeriod = currentKey;
+
+  const result = await manager.ensureMonthlyPaymentReset();
+
+  assert.equal(result.converted, 1);
+  assert.equal(contact.subscriptionType, SUBSCRIPTION_TYPES.ONE_TIME);
+  assert.equal(contact.hotspotReactivationEnabled, false);
+  assert.equal(contact.hotspotReactivationAt, schedule);
+  assert.equal(manager.reminders.has("reminder-arrears"), false);
+});
+
+test("pelanggan bulanan tanpa tunggakan tetap berlangganan dan tetap dijadwalkan reaktivasi", async () => {
+  const current = getBillingPeriodParts();
+  const currentKey = makeBillingPeriodKey(current.year, current.month);
+  const schedule = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const contact = {
+    id: "contact-recurring-current",
+    name: "Pelanggan Lancar",
+    phoneNumber: "6281234567811",
+    createdAt: new Date().toISOString(),
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentDate: null,
+    paymentType: null,
+    paymentMonths: {
+      [currentKey]: {
+        status: PAYMENT_STATUS.UNPAID,
+        paidDate: null,
+        paymentType: null,
+      },
+    },
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: schedule,
+  };
+  const manager = createManager(contact);
+  manager.settings.lastPaymentResetPeriod = currentKey;
+
+  const result = await manager.ensureMonthlyPaymentReset();
+
+  assert.equal(result.converted, 0);
+  assert.equal(contact.subscriptionType, SUBSCRIPTION_TYPES.RECURRING);
+  assert.equal(contact.hotspotReactivationEnabled, true);
+  assert.equal(contact.hotspotReactivationAt, schedule);
 });
 
 test("portal sekali berlangganan hanya menampilkan tunggakan periode awal", () => {

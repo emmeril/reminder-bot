@@ -2507,6 +2507,39 @@ class DataManager {
     };
   }
 
+  applyArrearsSubscriptionPolicy(contact, options = {}) {
+    if (!isRecurringSubscription(contact) || !this.buildDebtInfo(contact, options).hasDebt) {
+      return { converted: false, remindersRemoved: 0 };
+    }
+
+    contact.subscriptionType = SUBSCRIPTION_TYPES.ONE_TIME;
+    contact.hotspotReactivationEnabled = false;
+    contact.updatedAt = options.updatedAt || new Date().toISOString();
+    const remindersRemoved = this.removeRemindersForContact(contact.id);
+
+    this.activityLog.push("info", "billing", `Pelanggan ${contact.name || contact.id} otomatis menjadi sekali berlangganan karena memiliki tunggakan`, {
+      contactId: contact.id,
+      hotspotSchedule: contact.hotspotReactivationAt || null,
+      remindersRemoved,
+    });
+
+    return { converted: true, remindersRemoved };
+  }
+
+  enforceArrearsSubscriptionPolicy(options = {}) {
+    let converted = 0;
+    let remindersRemoved = 0;
+
+    for (const contact of this.contacts.values()) {
+      const result = this.applyArrearsSubscriptionPolicy(contact, options);
+      if (!result.converted) continue;
+      converted += 1;
+      remindersRemoved += result.remindersRemoved;
+    }
+
+    return { converted, remindersRemoved };
+  }
+
   hydrateContact(contact) {
     const debtInfo = this.buildDebtInfo(contact);
     const dueDateInfo = this.buildDueDateInfo(contact);
@@ -4374,6 +4407,8 @@ class DataManager {
     const currentKey = getBillingPeriodKey(new Date(), this.getTimezone());
 
     for (const contact of this.contacts.values()) {
+      const arrearsPolicy = this.applyArrearsSubscriptionPolicy(contact);
+      remindersChanged += arrearsPolicy.remindersRemoved;
       if (!isRecurringSubscription(contact)) {
         const startPeriod = getContactBillingStartPeriod(contact, this.getTimezone());
         const currentPeriod = getBillingPeriodParts(new Date(), this.getTimezone());
@@ -4443,20 +4478,40 @@ class DataManager {
 
       if (!settings.lastPaymentResetPeriod) {
         const synchronized = this.synchronizeCurrentPaymentStatus();
+        const arrearsPolicy = this.enforceArrearsSubscriptionPolicy();
         this.settings.lastPaymentResetPeriod = currentPeriod;
         await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
           const options = { transaction };
-          if (synchronized > 0) {
+          if (synchronized > 0 || arrearsPolicy.converted > 0) {
             await this.saveContacts(options);
             await this.saveReminders(options);
           }
           await this.saveSettings(options);
         }));
-        return { reset: false, initialized: true, period: currentPeriod, count: synchronized };
+        return {
+          reset: false,
+          initialized: true,
+          period: currentPeriod,
+          count: synchronized,
+          converted: arrearsPolicy.converted,
+        };
       }
 
       if (settings.lastPaymentResetPeriod === currentPeriod) {
-        return { reset: false, period: currentPeriod, count: 0 };
+        const arrearsPolicy = this.enforceArrearsSubscriptionPolicy();
+        if (arrearsPolicy.converted > 0) {
+          await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+            const options = { transaction };
+            await this.saveContacts(options);
+            if (arrearsPolicy.remindersRemoved > 0) await this.saveReminders(options);
+          }));
+        }
+        return {
+          reset: false,
+          period: currentPeriod,
+          count: 0,
+          converted: arrearsPolicy.converted,
+        };
       }
 
       const count = await this.resetAllPaymentStatusUnlocked({ save: false });
