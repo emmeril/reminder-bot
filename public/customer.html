@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Akun Saya - __CUSTOMER_PORTAL_TITLE__</title>
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/customer.css?v=20261014-1">
-  <script defer src="/public/customer.js?v=20260822-9"></script>
+  <link rel="stylesheet" href="/public/customer.css?v=20261014-2">
+  <script defer src="/public/customer.js?v=20261014-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -35,8 +35,10 @@
           <h1>Halo, <span x-text="data?.customer?.name"></span></h1>
           <p>Lihat status layanan dan tagihan Anda dalam satu tempat.</p>
           <div class="portal-account-actions">
-            <span class="portal-account-id"><i class="fa-solid fa-user-shield"></i> Akun pelanggan: <strong x-text="data?.account?.username"></strong></span>
-            <button type="button" @click="openPasswordModal('portal')"><i class="fa-solid fa-key"></i> Ganti password login</button>
+            <button x-ref="portalPasswordTrigger" type="button" class="portal-account-trigger" @click="openPasswordModal('portal')" :aria-label="`Ganti password akun pelanggan ${data?.account?.username || ''}`">
+              <span class="portal-account-trigger-copy"><i class="fa-solid fa-user-shield"></i><span>Akun pelanggan: <strong x-text="data?.account?.username"></strong></span></span>
+              <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+            </button>
           </div>
         </div>
         <span class="portal-period"><i class="fa-regular fa-calendar"></i><span x-text="data?.billing?.periodLabel"></span></span>
@@ -72,7 +74,7 @@
             <div><small>Password</small><strong x-text="showHotspotPassword ? (data?.hotspot?.password || '-') : maskedPassword()"></strong><button type="button" @click="showHotspotPassword = !showHotspotPassword" :aria-label="showHotspotPassword ? 'Sembunyikan password hotspot' : 'Tampilkan password hotspot'"><i class="fa-regular" :class="showHotspotPassword ? 'fa-eye-slash' : 'fa-eye'"></i></button><button type="button" @click="copyText(data?.hotspot?.password, 'password')" aria-label="Salin password hotspot"><i class="fa-regular" :class="copied === 'password' ? 'fa-circle-check' : 'fa-copy'"></i></button></div>
             <div><small>Profil layanan</small><strong x-text="data?.hotspot?.profile || '-'"></strong></div>
           </div>
-          <button class="portal-change-password-button" type="button" @click="openPasswordModal('hotspot')">
+          <button x-ref="hotspotPasswordTrigger" class="portal-change-password-button" type="button" @click="openPasswordModal('hotspot')">
             <i class="fa-solid fa-key"></i> Ganti Password Hotspot
           </button>
           <p class="portal-security-note"><i class="fa-solid fa-shield-halved"></i> Jangan bagikan username dan password kepada orang lain.</p>

@@ -117,3 +117,15 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 36px !important;[^}]*border-radius: 9px !important;[^}]*font-size: 10px !important;/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button, \.customer-row-actions \.customer-payment-menu summary \{[^}]*min-height: 44px !important;[^}]*font-size: 11px !important;/);
 });
+
+test("baris akun pelanggan membuka modal ganti password melalui ikon chevron", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/customer.html"), "utf8");
+  const script = fs.readFileSync(path.join(__dirname, "../public/customer.js"), "utf8");
+
+  assert.match(html, /class="portal-account-trigger"[^>]*openPasswordModal\('portal'\)/);
+  assert.match(html, /Akun pelanggan:[\s\S]*?fa-chevron-right/);
+  assert.doesNotMatch(html, /Ganti password login/);
+  assert.match(html, /Ganti Password Akun Pelanggan/);
+  assert.match(script, /this\.\$refs\.portalPasswordTrigger/);
+  assert.match(script, /trigger\?\.focus\(\)/);
+});

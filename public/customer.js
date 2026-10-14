@@ -76,12 +76,16 @@ function customerPortalApp() {
 
     closePasswordModal() {
       if (this.changingPassword) return;
+      const trigger = this.passwordModalTarget === "portal"
+        ? this.$refs.portalPasswordTrigger
+        : this.$refs.hotspotPasswordTrigger;
       this.passwordModalOpen = false;
       this.passwordModalTarget = "hotspot";
       this.passwordForm = { currentPassword: "", newPassword: "", confirmPassword: "" };
       this.passwordMessage = { type: "", text: "" };
       this.showPasswordFields = { current: false, new: false, confirm: false };
       document.body.style.overflow = "";
+      this.$nextTick(() => window.setTimeout(() => trigger?.focus(), 180));
     },
 
     async changePassword() {
