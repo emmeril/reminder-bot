@@ -6,8 +6,8 @@
   <title>__DASHBOARD_TITLE__</title>
   <link rel="stylesheet" href="/public/tailwind.css?v=20261014-5">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20261014-8">
-  <script defer src="/public/app.js?v=20261014-2"></script>
+  <link rel="stylesheet" href="/public/styles.css?v=20261014-9">
+  <script defer src="/public/app.js?v=20261014-3"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -763,7 +763,14 @@
             <!-- <p class="mt-1 text-sm text-ink/60">Konfigurasi operasional untuk perilaku dashboard dan alert.</p> -->
           </div>
           <form class="space-y-4" @input="settingsDirty = true" @change="settingsDirty = true" @submit.prevent="saveSettings()">
-            <section class="settings-section">
+            <div class="settings-tabs" role="tablist" aria-label="Bagian pengaturan">
+              <button id="settings-general-tab" type="button" role="tab" aria-controls="settings-general-panel" :aria-selected="activeSettingsTab === 'general'" :tabindex="activeSettingsTab === 'general' ? 0 : -1" @click="selectSettingsTab('general')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'general' ? 'active' : ''"><span><i class="fa-solid fa-building"></i></span><strong>Umum</strong></button>
+              <button id="settings-rates-tab" type="button" role="tab" aria-controls="settings-rates-panel" :aria-selected="activeSettingsTab === 'rates'" :tabindex="activeSettingsTab === 'rates' ? 0 : -1" @click="selectSettingsTab('rates')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'rates' ? 'active' : ''"><span><i class="fa-solid fa-tags"></i></span><strong>Tarif</strong></button>
+              <button id="settings-backup-tab" type="button" role="tab" aria-controls="settings-backup-panel" :aria-selected="activeSettingsTab === 'backup'" :tabindex="activeSettingsTab === 'backup' ? 0 : -1" @click="selectSettingsTab('backup')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'backup' ? 'active' : ''"><span><i class="fa-solid fa-database"></i></span><strong>Backup</strong></button>
+              <button id="settings-messages-tab" type="button" role="tab" aria-controls="settings-messages-panel" :aria-selected="activeSettingsTab === 'messages'" :tabindex="activeSettingsTab === 'messages' ? 0 : -1" @click="selectSettingsTab('messages')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'messages' ? 'active' : ''"><span><i class="fa-solid fa-message"></i></span><strong>Template Pesan</strong></button>
+              <button id="settings-automation-tab" type="button" role="tab" aria-controls="settings-automation-panel" :aria-selected="activeSettingsTab === 'automation'" :tabindex="activeSettingsTab === 'automation' ? 0 : -1" @click="selectSettingsTab('automation')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'automation' ? 'active' : ''"><span><i class="fa-solid fa-bell"></i></span><strong>Otomasi</strong></button>
+            </div>
+            <section id="settings-general-panel" role="tabpanel" aria-labelledby="settings-general-tab" x-cloak x-show="activeSettingsTab === 'general'" x-transition.opacity class="settings-section">
               <div class="settings-section-heading"><span><i class="fa-solid fa-building"></i></span><div><strong>Identitas dashboard</strong><small>Nama dan zona waktu yang digunakan aplikasi</small></div></div>
               <div class="grid gap-4 md:grid-cols-2">
               <label class="block text-sm text-ink/60">
@@ -784,7 +791,7 @@
               </label>
               </div>
             </section>
-            <section class="settings-section">
+            <section id="settings-rates-panel" role="tabpanel" aria-labelledby="settings-rates-tab" x-cloak x-show="activeSettingsTab === 'rates'" x-transition.opacity class="settings-section">
               <div class="settings-section-heading"><span><i class="fa-solid fa-tags"></i></span><div><strong>Tarif profile MikroTik</strong><small>Nominal bulanan memakai tarif profile sebagai default dan dapat dicustom per pelanggan</small></div></div>
               <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-moss/15 bg-moss/5 px-4 py-3">
                 <p class="text-sm leading-6 text-ink/60">Contoh: profile <strong>30Hari</strong> diisi <strong>40000</strong>, maka nominal awal pelanggan adalah Rp40.000. Nominal tiap pelanggan tetap dapat dicustom dari menu Tagihan.</p>
@@ -800,7 +807,7 @@
               </div>
               <p x-show="!mikrotikProfiles.length" class="rounded-2xl border border-dashed border-ink/15 px-4 py-6 text-center text-sm text-ink/45">Muat profile MikroTik untuk mengatur nominal bulanan.</p>
             </section>
-            <section class="settings-section">
+            <section id="settings-backup-panel" role="tabpanel" aria-labelledby="settings-backup-tab" x-cloak x-show="activeSettingsTab === 'backup'" x-transition.opacity class="settings-section">
               <div class="settings-section-heading"><span><i class="fa-solid fa-database"></i></span><div><strong>Backup dan pengiriman</strong><small>Jadwal backup serta jeda aman WhatsApp</small></div></div>
               <div class="grid gap-4 md:grid-cols-2">
               <label class="block text-sm text-ink/60">
@@ -821,7 +828,7 @@
               </label>
               </div>
             </section>
-            <section class="settings-section notification-settings-section">
+            <section id="settings-messages-panel" role="tabpanel" aria-labelledby="settings-messages-tab" x-cloak x-show="activeSettingsTab === 'messages'" x-transition.opacity class="settings-section notification-settings-section">
               <div class="settings-section-heading"><span><i class="fa-solid fa-message"></i></span><div><strong>Template notifikasi</strong><small>Pesan otomatis untuk jaringan, hotspot, dan pembayaran</small></div></div>
               <div class="notification-template-grid">
                 <label class="notification-template-card tone-danger">
@@ -880,7 +887,7 @@
                 </label>
               </div>
             </section>
-            <section class="settings-section">
+            <section id="settings-automation-panel" role="tabpanel" aria-labelledby="settings-automation-tab" x-cloak x-show="activeSettingsTab === 'automation'" x-transition.opacity class="settings-section">
               <div class="settings-section-heading"><span><i class="fa-solid fa-bell"></i></span><div><strong>Otomasi dan pemberitahuan</strong><small>Pilih aktivitas yang berjalan dan siapa yang menerima update</small></div></div>
             <div class="grid gap-3 rounded-[1.5rem] border border-ink/8 bg-haze p-4">
               <label class="flex items-start gap-3 text-sm text-ink/75">
@@ -911,7 +918,7 @@
             </section>
             <div class="flex flex-wrap gap-2">
               <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan pengaturan</button>
-              <button type="button" @click="sendMikrotikBackupNow()" :disabled="loading.mikrotikBackup" class="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-haze disabled:cursor-not-allowed disabled:opacity-60">
+              <button x-cloak x-show="activeSettingsTab === 'backup'" type="button" @click="sendMikrotikBackupNow()" :disabled="loading.mikrotikBackup" class="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-haze disabled:cursor-not-allowed disabled:opacity-60">
                 <i :class="loading.mikrotikBackup ? 'fa-solid fa-spinner fa-spin mr-2' : 'fa-solid fa-file-export mr-2'"></i>
                 <span x-text="loading.mikrotikBackup ? 'Mengirim Backup...' : 'Kirim Backup Sekarang'"></span>
               </button>

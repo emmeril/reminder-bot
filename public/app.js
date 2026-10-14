@@ -80,6 +80,7 @@
         },
         activeMenu: "overview",
         activeContactTab: "data",
+        activeSettingsTab: "general",
         sidebarHidden: false,
         mobileSidebarOpen: false,
         navGroups: [
@@ -202,6 +203,7 @@
           const requestedMenu = new URLSearchParams(window.location.search).get("menu");
           const savedMenu = requestedMenu || localStorage.getItem("dashboardActiveMenu");
           const savedContactTab = localStorage.getItem("dashboardContactTab");
+          const savedSettingsTab = localStorage.getItem("dashboardSettingsTab");
           const isValidSavedMenu = this.navMenus.some((menu) => menu.key === savedMenu);
           if (savedMenu === "payment-amount") {
             this.activeMenu = "contacts";
@@ -214,6 +216,9 @@
           if (savedMenu !== "payment-amount" && ["data", "billing", "hotspot"].includes(savedContactTab)) {
             this.activeContactTab = savedContactTab;
           }
+          if (["general", "rates", "backup", "messages", "automation"].includes(savedSettingsTab)) {
+            this.activeSettingsTab = savedSettingsTab;
+          }
           this.sidebarHidden = localStorage.getItem("dashboardSidebarHidden") === "true";
 
           this.$watch("activeMenu", (value) => {
@@ -224,6 +229,9 @@
           });
           this.$watch("activeContactTab", (value) => {
             localStorage.setItem("dashboardContactTab", value);
+          });
+          this.$watch("activeSettingsTab", (value) => {
+            localStorage.setItem("dashboardSettingsTab", value);
           });
 
           await this.loadStatus();
@@ -278,6 +286,19 @@
         selectContactTab(key) {
           if (!["data", "billing", "hotspot"].includes(key)) return;
           this.activeContactTab = key;
+        },
+
+        selectSettingsTab(key) {
+          if (!["general", "rates", "backup", "messages", "automation"].includes(key)) return;
+          this.activeSettingsTab = key;
+        },
+
+        selectAdjacentSettingsTab(direction) {
+          const tabs = ["general", "rates", "backup", "messages", "automation"];
+          const currentIndex = tabs.indexOf(this.activeSettingsTab);
+          const nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
+          this.activeSettingsTab = tabs[nextIndex];
+          this.$nextTick(() => document.getElementById(`settings-${tabs[nextIndex]}-tab`)?.focus());
         },
 
         get activeMenuLabel() {
