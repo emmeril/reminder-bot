@@ -1094,7 +1094,7 @@
             <select x-model="forms.contact.linkedApHost" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               <option value="">-- Tidak di-link ke AP --</option>
               <template x-for="ap in apMonitors" :key="'contact-ap-' + ap.id + '-' + ap.host">
-                <option :value="ap.host" x-text="ap.host + ' (' + (ap.status || 'UNKNOWN') + ')'"></option>
+                <option :value="ap.host" x-text="ap.host + ' (' + (ap.comment || 'Tanpa comment') + ')'"></option>
               </template>
             </select>
           </label>
@@ -1322,7 +1322,7 @@
             <select x-model="forms.contactEdit.linkedApHost" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               <option value="">-- Tidak di-link ke AP --</option>
               <template x-for="ap in apMonitors" :key="'contact-edit-ap-' + ap.id + '-' + ap.host">
-                <option :value="ap.host" x-text="ap.host + ' (' + (ap.status || 'UNKNOWN') + ')'"></option>
+                <option :value="ap.host" x-text="ap.host + ' (' + (ap.comment || 'Tanpa comment') + ')'"></option>
               </template>
             </select>
           </label>
