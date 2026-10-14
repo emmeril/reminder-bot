@@ -166,17 +166,20 @@ test("mengirim pesan ke LID ketika mapping PN tersedia", async () => {
   }), { conversation: "Halo" });
 });
 
-test("menggunakan LID dari hasil pemeriksaan nomor sebelum mapping lokal", async () => {
+test("mengambil LID melalui mapping resmi setelah pemeriksaan nomor", async () => {
   let request;
+  let mappingJid;
   BaileysManager.socket = {
     onWhatsApp: async () => [{
       exists: true,
       jid: "6281234567890@s.whatsapp.net",
-      lid: "987654321@lid",
     }],
     signalRepository: {
       lidMapping: {
-        getLIDForPN: async () => "stale@lid",
+        getLIDForPN: async (jid) => {
+          mappingJid = jid;
+          return "987654321@lid";
+        },
       },
     },
     sendMessage: async (jid, content) => {
@@ -190,8 +193,43 @@ test("menggunakan LID dari hasil pemeriksaan nomor sebelum mapping lokal", async
 
   const result = await BaileysManager.sendMessage("6281234567890", "Halo");
 
+  assert.equal(mappingJid, "6281234567890@s.whatsapp.net");
   assert.deepEqual(request, { jid: "987654321@lid", content: { text: "Halo" } });
   assert.equal(result.targetJid, "987654321@lid");
+});
+
+test("membungkus key store auth dengan cache resmi Baileys", () => {
+  const connection = BaileysManager.getPrimaryConnection();
+  const originalAuthState = connection.authState;
+  const originalSaveCreds = connection.saveCreds;
+  const persistentKeys = { get() {}, set() {} };
+  const cachedKeys = { get() {}, set() {} };
+  const saveCreds = async () => {};
+  let wrapperInput;
+
+  try {
+    connection.signalKeyCache.set("stale", true);
+    connection.configureAuthState({
+      state: { creds: { registered: true }, keys: persistentKeys },
+      saveCreds,
+    }, {
+      makeCacheableSignalKeyStore(keys, logger, cache) {
+        wrapperInput = { keys, logger, cache };
+        return cachedKeys;
+      },
+    });
+
+    assert.equal(wrapperInput.keys, persistentKeys);
+    assert.equal(wrapperInput.cache, connection.signalKeyCache);
+    assert.equal(typeof wrapperInput.logger.trace, "function");
+    assert.equal(connection.signalKeyCache.get("stale"), undefined);
+    assert.equal(connection.authState.keys, cachedKeys);
+    assert.equal(connection.saveCreds, saveCreds);
+  } finally {
+    connection.authState = originalAuthState;
+    connection.saveCreds = originalSaveCreds;
+    connection.signalKeyCache.flushAll();
+  }
 });
 
 test("melaporkan penolakan 463 walaupun sendMessage sempat mengembalikan ID", async () => {
@@ -200,7 +238,6 @@ test("melaporkan penolakan 463 walaupun sendMessage sempat mengembalikan ID", as
     onWhatsApp: async () => [{
       exists: true,
       jid: "6281234567890@s.whatsapp.net",
-      lid: "987654321@lid",
     }],
     sendMessage: async (jid) => {
       const result = {

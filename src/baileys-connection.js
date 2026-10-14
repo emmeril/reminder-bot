@@ -30,6 +30,10 @@ class BoundedCache {
   flushAll() {
     this.values.clear();
   }
+
+  close() {
+    this.flushAll();
+  }
 }
 
 const silentLogger = {
@@ -90,6 +94,8 @@ class BaileysConnection {
 
   msgRetryCounterCache = new BoundedCache(1000);
 
+  signalKeyCache = new BoundedCache(5000);
+
   // Automatic guard against burst sends and repeated reachout failures.
   autoSafetyGuard = new AutoSafetyGuard();
 
@@ -121,6 +127,21 @@ class BaileysConnection {
   async loadBaileys() {
     if (!this.baileys) this.baileys = await import("baileys");
     return this.baileys;
+  }
+
+  configureAuthState(auth, baileys) {
+    this.signalKeyCache.flushAll();
+    this.authState = typeof baileys.makeCacheableSignalKeyStore === "function"
+      ? {
+        ...auth.state,
+        keys: baileys.makeCacheableSignalKeyStore(
+          auth.state.keys,
+          silentLogger,
+          this.signalKeyCache
+        ),
+      }
+      : auth.state;
+    this.saveCreds = auth.saveCreds;
   }
 
   updateConnection(patch) {
@@ -166,8 +187,7 @@ class BaileysConnection {
     if (!this.authStore) {
       this.authStore = new BaileysAuthStore(this.authStorage);
       const auth = await this.authStore.initialize(baileys);
-      this.authState = auth.state;
-      this.saveCreds = auth.saveCreds;
+      this.configureAuthState(auth, baileys);
     }
 
     const makeWASocket = baileys.default || baileys.makeWASocket;
@@ -460,8 +480,7 @@ class BaileysConnection {
       this.autoSafetyGuard.reset();
       await this.authStore.clear();
       const auth = await this.authStore.initialize(baileys);
-      this.authState = auth.state;
-      this.saveCreds = auth.saveCreds;
+      this.configureAuthState(auth, baileys);
       this.updateConnection({
         connected: false,
         detail: "Menyiapkan QR pairing WhatsApp baru",
@@ -601,10 +620,6 @@ class BaileysConnection {
       error.statusCode = 422;
       throw error;
     }
-
-    // USync sudah mengembalikan LID terbaru untuk nomor ini. Gunakan nilai
-    // tersebut sebelum membaca mapping lokal yang mungkin belum tersinkron.
-    if (result.lid) return result.lid;
 
     try {
       const lid = await this.socket.signalRepository?.lidMapping?.getLIDForPN?.(result.jid);
@@ -784,7 +799,6 @@ class BaileysConnection {
       phoneNumber: normalized,
       registered: Boolean(match),
       jid: match?.jid || null,
-      lid: match?.lid || null,
     };
   }
 
@@ -903,6 +917,7 @@ class BaileysConnection {
       } catch {}
     }
     if (this.authStore) await this.authStore.close();
+    this.signalKeyCache.close();
     this.authStore = null;
     this.authState = null;
     this.saveCreds = null;

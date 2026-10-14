@@ -9,8 +9,17 @@ const BaileysAuthStore = require("../src/baileys-auth-store");
 const temporaryDirectories = [];
 const mockBaileys = {
   BufferJSON: {
-    replacer: (_key, value) => value,
-    reviver: (_key, value) => value,
+    replacer: (_key, value) => {
+      if (Buffer.isBuffer(value) || value instanceof Uint8Array || value?.type === "Buffer") {
+        return { type: "Buffer", data: Buffer.from(value?.data || value).toString("base64") };
+      }
+      return value;
+    },
+    reviver: (_key, value) => (
+      value?.type === "Buffer" && typeof value.data === "string"
+        ? Buffer.from(value.data, "base64")
+        : value
+    ),
   },
   initAuthCreds: () => ({ registered: false, marker: "new" }),
   proto: {
@@ -28,7 +37,7 @@ afterEach(async () => {
   )));
 });
 
-test("menyimpan creds dan seluruh jenis key auth Baileys", async () => {
+test("menyimpan creds dan key auth tambahan Baileys v7", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "reminder-baileys-"));
   temporaryDirectories.push(directory);
   const storagePath = path.join(directory, "auth.sqlite");
@@ -38,9 +47,9 @@ test("menyimpan creds dan seluruh jenis key auth Baileys", async () => {
   auth.state.creds.registered = true;
   await auth.saveCreds();
   await auth.state.keys.set({
-    "lid-mapping": { pn1: { lid: "100@lid" } },
-    "device-list": { device1: { devices: [1, 2] } },
-    tctoken: { token1: { token: "secret" } },
+    "lid-mapping": { pn1: "100" },
+    "device-list": { device1: ["device-a", "device-b"] },
+    tctoken: { token1: { token: Buffer.from("secret") } },
     "app-state-sync-key": { sync1: { keyData: "value" } },
   });
   await store.saveMessage(
@@ -54,13 +63,13 @@ test("menyimpan creds dan seluruh jenis key auth Baileys", async () => {
 
   assert.equal(restored.state.creds.registered, true);
   assert.deepEqual(await restored.state.keys.get("lid-mapping", ["pn1"]), {
-    pn1: { lid: "100@lid" },
+    pn1: "100",
   });
   assert.deepEqual(await restored.state.keys.get("device-list", ["device1"]), {
-    device1: { devices: [1, 2] },
+    device1: ["device-a", "device-b"],
   });
   assert.deepEqual(await restored.state.keys.get("tctoken", ["token1"]), {
-    token1: { token: "secret" },
+    token1: { token: Buffer.from("secret") },
   });
   assert.deepEqual(await restored.state.keys.get("app-state-sync-key", ["sync1"]), {
     sync1: { keyData: "value", hydrated: true },
