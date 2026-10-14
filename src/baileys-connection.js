@@ -806,7 +806,13 @@ class BaileysConnection {
     this.assertOutboundReady();
 
     const normalized = normalizePhoneNumber(number);
-    if (!isValidPhoneNumber(normalized)) throw new Error("Invalid target phone number");
+    if (!isValidPhoneNumber(normalized)) {
+      const error = new Error("Nomor WhatsApp harus berformat 628xxx.");
+      error.code = "INVALID_PHONE_NUMBER";
+      error.retryable = false;
+      error.statusCode = 400;
+      throw error;
+    }
 
     await this.initialize();
     this.assertOutboundReady();

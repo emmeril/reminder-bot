@@ -741,3 +741,23 @@ test("menormalkan rentang jeda yang tertukar", () => {
     Math.random = originalRandom;
   }
 });
+
+test("nomor WhatsApp invalid ditolak tanpa retry", async () => {
+  const connection = BaileysManager.getPrimaryConnection();
+  const originalAssertOutboundReady = connection.assertOutboundReady;
+  connection.assertOutboundReady = () => {};
+
+  try {
+    await assert.rejects(
+      connection.sendRequest("nomor-invalid", "pesan"),
+      (error) => {
+        assert.equal(error.code, "INVALID_PHONE_NUMBER");
+        assert.equal(error.retryable, false);
+        assert.equal(error.statusCode, 400);
+        return true;
+      }
+    );
+  } finally {
+    connection.assertOutboundReady = originalAssertOutboundReady;
+  }
+});

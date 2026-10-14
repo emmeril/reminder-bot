@@ -68,6 +68,7 @@ class WhatsAppQueue {
         })
         .finally(() => {
           this.active -= 1;
+          this.trimHistory();
           this.drain();
         });
     }

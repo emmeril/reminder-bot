@@ -127,3 +127,28 @@ test("WhatsApp queue membatalkan item pending saat shutdown", async () => {
   release();
   await active;
 });
+
+test("WhatsApp queue memangkas riwayat setelah burst selesai", async () => {
+  const queue = new WhatsAppQueue({
+    concurrency: 25,
+    retryLimit: 1,
+    retryDelayMs: 0,
+    historyLimit: 20,
+  });
+
+  await Promise.all(Array.from({ length: 50 }, (_, index) => (
+    queue.enqueue(async () => ({
+      provider: "baileys",
+      messageId: `burst-${index}`,
+      confirmed: true,
+    }), {
+      phone: `62812345${String(index).padStart(5, "0")}`,
+      provider: "baileys",
+    })
+  )));
+
+  const status = queue.getStatus();
+  assert.equal(status.items.length, 20);
+  assert.equal(status.counts.sent, 20);
+  assert.equal(queue.messageItems.size, 20);
+});
