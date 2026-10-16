@@ -711,11 +711,17 @@ class HotspotReactivationScheduler {
     try {
       this.activityLog.push("info", "hotspot-reactivation", `Memproses ${dueContacts.length} jadwal hotspot`);
       for (const contact of dueContacts) {
-        const autoReactivation = Boolean(contact.hotspotReactivationEnabled);
+        const recurring = String(contact.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "RECURRING";
+        const blockedByArrears = recurring
+          && Boolean(contact.hotspotReactivationEnabled)
+          && (Boolean(contact.hasDebt)
+            || String(contact.currentPaymentStatus || contact.paymentStatus || "UNPAID").toUpperCase() !== "PAID");
+        const autoReactivation = Boolean(contact.hotspotReactivationEnabled) && !blockedByArrears;
+        const arrearsDisable = blockedByArrears || Boolean(contact.hotspotManualActivationWithArrears);
         try {
           const result = autoReactivation
             ? await this.reactivateContact(contact)
-            : await this.deactivateContact(contact);
+            : await this.deactivateContact(contact, { arrears: arrearsDisable });
           results.push({
             contactId: contact.id,
             username: contact.mikrotikUsername,

@@ -135,3 +135,54 @@ test("jadwal nonaktif mempertahankan akun MikroTik dan hanya menonaktifkannya", 
   assert.equal(manager.getContact(contact.id).hotspotReactivationAt, null);
   assert.equal(manager.getContact(contact.id).hotspotReactivationEnabled, false);
 });
+
+test("jadwal bulanan menonaktifkan akun dan menjeda billing ketika tagihan belum lunas", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  const now = new Date();
+  const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const contact = {
+    id: "contact-arrears-disable",
+    name: "Pelanggan Menunggak",
+    phoneNumber: "6281234567813",
+    subscriptionType: "RECURRING",
+    createdAt: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
+    monthlyPaymentAmount: 100000,
+    paymentStatus: "UNPAID",
+    paymentMonths: {
+      [currentKey]: { status: "UNPAID", paidAmount: 0 },
+    },
+    mikrotikUsername: "pelanggan_menunggak",
+    mikrotikPassword: "67813",
+    mikrotikProfile: "100M",
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: new Date(Date.now() - 60_000).toISOString(),
+    hotspotProvisioningStatus: "ACTIVE",
+  };
+  manager.contacts.set(contact.id, contact);
+  const calls = [];
+  const scheduler = new HotspotReactivationScheduler(
+    {
+      async setHotspotUserDisabled(username, phoneNumber, disabled) {
+        calls.push([username, phoneNumber, disabled]);
+        return { username, disabled };
+      },
+    },
+    manager,
+    { push() {} }
+  );
+
+  const results = await scheduler.processDueReactivations();
+
+  assert.equal(results[0].action, "disable");
+  assert.equal(results[0].status, "success");
+  assert.deepEqual(calls, [[contact.mikrotikUsername, contact.phoneNumber, true]]);
+  assert.equal(contact.hotspotProvisioningStatus, "DISABLED");
+  assert.equal(contact.hotspotSuspendedForArrears, true);
+  assert.equal(contact.billingPausedForArrears, true);
+  assert.equal(contact.billingPausedAfterPeriod, currentKey);
+  assert.equal(contact.hotspotReactivationAt, null);
+});

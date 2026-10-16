@@ -159,7 +159,8 @@ function customerPortalApp() {
     },
     hotspotIsActive() { return this.data?.hotspot?.status === "ACTIVE"; },
     hotspotStatusLabel() {
-      const labels = { ACTIVE: "Aktif", PENDING: "Diproses", PROVISIONING: "Diproses", FAILED: "Perlu dicek", DEACTIVATED: "Nonaktif", MISSING: "Tidak ditemukan", CHANGED: "Berubah", NONE: "Belum aktif" };
+      if (this.data?.hotspot?.manualActivationWithArrears) return "Aktif manual";
+      const labels = { ACTIVE: "Aktif", PENDING: "Diproses", PROVISIONING: "Diproses", FAILED: "Perlu dicek", DEACTIVATED: "Nonaktif", DISABLED: "Nonaktif", MISSING: "Tidak ditemukan", CHANGED: "Berubah", NONE: "Belum aktif" };
       return labels[this.data?.hotspot?.status] || "Belum aktif";
     },
     debtLabel() {
@@ -170,6 +171,7 @@ function customerPortalApp() {
       return Number(this.data?.billing?.totalAmount) > 0 ? "Jumlah yang perlu dibayar" : "Tidak ada tagihan tertunda";
     },
     dueLabel() {
+      if (this.data?.billing?.billingPausedForArrears) return "Tagihan baru dijeda selama layanan nonaktif";
       if (this.data?.billing?.subscriptionActive === false) return "Sekali berlangganan telah selesai";
       return this.data?.billing?.dueDate ? `Jatuh tempo ${this.date(this.data.billing.dueDate)}` : "Jatuh tempo belum dijadwalkan";
     },

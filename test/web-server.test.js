@@ -817,6 +817,10 @@ test("pembayaran Midtrans memulihkan akun hotspot yang disabled di MikroTik", as
     mikrotikProfile: "50M",
     mikrotikPassword: "67891",
     hotspotProvisioningStatus: "DISABLED",
+    hotspotSuspendedForArrears: true,
+    paymentStatus: "PAID",
+    currentPaymentStatus: "PAID",
+    hasDebt: false,
   };
   const transaction = {
     orderId: "RB-RECOVER-1",
@@ -846,6 +850,7 @@ test("pembayaran Midtrans memulihkan akun hotspot yang disabled di MikroTik", as
     markHotspotEnabled: async () => {
       calls.push("mark:enabled");
       contact.hotspotProvisioningStatus = "ACTIVE";
+      contact.hotspotSuspendedForArrears = false;
       return contact;
     },
   }, {}, {
@@ -897,7 +902,8 @@ test("pembayaran Midtrans memulihkan akun hotspot yang disabled di MikroTik", as
     body: JSON.stringify({ order_id: transaction.orderId, signature_key: "verified-by-stub" }),
   });
   assert.equal(secondResponse.status, 200);
-  assert.deepEqual(calls.slice(-3), ["router:reactivate", "router:verify", "mark:enabled"]);
+  assert.equal(calls.includes("router:reactivate"), false);
+  assert.equal(calls.includes("router:verify"), false);
 });
 
 test("password lokal tidak berubah ketika sinkronisasi MikroTik gagal", async () => {

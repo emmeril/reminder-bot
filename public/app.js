@@ -664,6 +664,9 @@
         },
 
         getHotspotProvisioningLabel(contact) {
+          const status = this.getHotspotProvisioningStatus(contact);
+          if (contact?.hotspotSuspendedForArrears && status === "DISABLED") return "Nonaktif karena tunggakan";
+          if (contact?.hotspotManualActivationWithArrears && status === "ACTIVE") return "Aktif manual";
           return {
             NONE: "Belum diproses",
             PENDING: "Menunggu provisioning",
@@ -674,7 +677,7 @@
             DISABLED: "Dinonaktifkan di MikroTik",
             MISSING: "Akun tidak ditemukan",
             CHANGED: "Data akun berubah",
-          }[this.getHotspotProvisioningStatus(contact)] || "Status tidak dikenal";
+          }[status] || "Status tidak dikenal";
         },
 
         getHotspotProvisioningClass(contact) {
@@ -717,6 +720,8 @@
         },
 
         getReactivationLabel(contact) {
+          if (contact.hotspotManualActivationWithArrears) return "Aktif manual satu bulan";
+          if (contact.billingPausedForArrears && !contact.hotspotReactivationAt) return "Perpanjangan dijeda";
           if (!contact.hotspotReactivationAt) return contact.hotspotReactivationEnabled ? "Belum dijadwalkan" : "Tanpa jadwal";
           if (!contact.hotspotReactivationEnabled) return "Penonaktifan terjadwal";
           return "Aktif otomatis";
@@ -1778,7 +1783,9 @@
                 method: "POST",
                 body: JSON.stringify({}),
               });
-              if (result.contact.hotspotReactivationEnabled && result.contact.hotspotReactivationAt) {
+              if (result.contact.hotspotManualActivationWithArrears && result.contact.hotspotReactivationAt) {
+                this.notify(`Hotspot ${result.username} aktif manual sampai ${this.formatDateTime(result.contact.hotspotReactivationAt)}. Tunggakan tetap tersimpan.`);
+              } else if (result.contact.hotspotReactivationEnabled && result.contact.hotspotReactivationAt) {
                 this.notify(`Hotspot ${result.username} direaktivasi. Jadwal berikutnya ${this.formatDateTime(result.contact.hotspotReactivationAt)}.`);
               } else {
                 this.notify(`Hotspot ${result.username} direaktivasi.`);
@@ -1796,14 +1803,18 @@
             title: `${disabled ? "Nonaktifkan" : "Aktifkan"} akun hotspot?`,
             description: disabled
               ? `Akun hotspot ${contact.mikrotikUsername || "ini"} akan dinonaktifkan di MikroTik dan sesi aktifnya akan diputus. Data akun tetap tersimpan.`
-              : `Akun hotspot ${contact.mikrotikUsername || "ini"} akan diaktifkan kembali di MikroTik.`,
+              : contact.billingPausedForArrears && contact.hasDebt
+                ? `Akun hotspot ${contact.mikrotikUsername || "ini"} akan aktif selama satu bulan dari sekarang. Tunggakan tetap tersimpan dan perpanjangan otomatis tetap dijeda sampai seluruh tunggakan lunas.`
+                : `Akun hotspot ${contact.mikrotikUsername || "ini"} akan diaktifkan kembali di MikroTik.`,
             confirmLabel: disabled ? "Nonaktifkan" : "Aktifkan",
             action: async () => {
               await this.api(`/api/contacts/${contact.id}/hotspot/${disabled ? "disable" : "enable"}`, {
                 method: "POST",
                 body: JSON.stringify({}),
               });
-              this.notify(`Akun hotspot berhasil ${action}.`);
+              this.notify(!disabled && contact.billingPausedForArrears && contact.hasDebt
+                ? "Akun hotspot aktif selama satu bulan. Tunggakan tetap tersimpan."
+                : `Akun hotspot berhasil ${action}.`);
               await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
             },
           });
