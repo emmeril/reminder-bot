@@ -6,7 +6,7 @@
   <title>__DASHBOARD_TITLE__</title>
   <link rel="stylesheet" href="/public/tailwind.css?v=20261014-5">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20261016-7">
+  <link rel="stylesheet" href="/public/styles.css?v=20261016-8">
   <script defer src="/public/app.js?v=20261016-2"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
@@ -1096,15 +1096,22 @@
             <small>Pilih satu tindakan untuk pelanggan ini.</small>
           </div>
 
-          <button
-            x-show="billingActionModal.contact?.subscriptionActive !== false && billingActionModal.contact?.currentPaymentStatus !== 'PAID'"
-            type="button"
-            @click="runBillingPayment('PAID', 'CURRENT-ONLY')"
-            class="billing-action-option billing-action-option-primary"
-          >
-            <i class="fa-solid fa-calendar-check"></i>
-            <span>Bayar bulan ini</span>
-          </button>
+          <div class="billing-action-quick-row billing-action-primary-row">
+            <button
+              x-show="billingActionModal.contact?.subscriptionActive !== false && billingActionModal.contact?.currentPaymentStatus !== 'PAID'"
+              type="button"
+              @click="runBillingPayment('PAID', 'CURRENT-ONLY')"
+              class="billing-action-option billing-action-option-primary"
+            >
+              <i class="fa-solid fa-calendar-check"></i>
+              <span>Bayar bulan ini</span>
+            </button>
+
+            <button x-show="canSendBillingReminder(billingActionModal.contact)" type="button" @click="sendBillingActionReminder()" class="billing-action-option billing-action-option-reminder" aria-label="Kirim pengingat WhatsApp" title="Kirim pengingat WhatsApp">
+              <i class="fa-solid fa-paper-plane"></i>
+              <span>Kirim WhatsApp</span>
+            </button>
+          </div>
 
           <form x-show="hasDebt(billingActionModal.contact)" class="customer-arrears-payment-form billing-action-arrears" @submit.prevent="payArrears(billingActionModal.contact)">
             <label :for="'arrears-payment-' + billingActionModal.contact?.id">Bayar sebagian tunggakan</label>
@@ -1120,11 +1127,6 @@
             <button x-show="hasDebt(billingActionModal.contact)" type="button" @click="runBillingPayment('PAID', 'FULL-PAID')" class="billing-action-option" aria-label="Lunasi semua tagihan" title="Lunasi semua tagihan">
               <i class="fa-solid fa-sack-dollar"></i>
               <span>Lunasi semua</span>
-            </button>
-
-            <button x-show="canSendBillingReminder(billingActionModal.contact)" type="button" @click="sendBillingActionReminder()" class="billing-action-option billing-action-option-reminder" aria-label="Kirim pengingat WhatsApp" title="Kirim pengingat WhatsApp">
-              <i class="fa-solid fa-paper-plane"></i>
-              <span>Kirim WhatsApp</span>
             </button>
           </div>
 

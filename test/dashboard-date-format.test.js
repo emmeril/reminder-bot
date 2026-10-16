@@ -108,7 +108,8 @@ test("aksi tagihan memakai satu tombol dan menampilkan pilihan di modal", () => 
   assert.match(html, /@keydown\.tab="trapModalFocus\(\$event, 'billing-action-dialog'\)"/);
   assert.match(html, /billing-action-section-heading[\s\S]*?Pilih tindakan/);
   assert.match(html, /Bayar bulan ini/);
-  assert.match(html, /billing-action-quick-row[\s\S]*?aria-label="Lunasi semua tagihan"[\s\S]*?>Lunasi semua<[\s\S]*?aria-label="Kirim pengingat WhatsApp"[\s\S]*?>Kirim WhatsApp</);
+  assert.match(html, /billing-action-primary-row[\s\S]*?>Bayar bulan ini<[\s\S]*?aria-label="Kirim pengingat WhatsApp"[\s\S]*?>Kirim WhatsApp</);
+  assert.match(html, /billing-action-quick-row[\s\S]*?aria-label="Lunasi semua tagihan"[\s\S]*?>Lunasi semua</);
   assert.match(html, /Tandai belum bayar/);
   assert.match(html, /Bayar sebagian tunggakan/);
   assert.match(html, /Catat pembayaran/);
