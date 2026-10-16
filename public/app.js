@@ -63,6 +63,11 @@
           loading: false,
           contact: null,
         },
+        billingActionModal: {
+          open: false,
+          contact: null,
+          returnFocusId: "",
+        },
         accountDeliveryModal: {
           open: false,
           loading: false,
@@ -823,6 +828,7 @@
         },
 
         getDebtPeriods(contact) {
+          if (!contact) return [];
           if (Array.isArray(contact.debtPeriods)) return contact.debtPeriods;
           if (this.inferPaymentType(contact) === "FULL-PAID") return [];
 
@@ -849,6 +855,7 @@
 
 
         hasDebt(contact) {
+          if (!contact) return false;
           if (contact.hasDebt !== undefined) return Boolean(contact.hasDebt);
           return this.getDebtPeriods(contact).length > 0;
         },
@@ -1579,7 +1586,67 @@
           }
         },
 
-        async payArrears(contact, detailsElement = null) {
+        hasBillingActions(contact) {
+          return Boolean(
+            (contact?.subscriptionActive !== false && contact?.currentPaymentStatus !== "PAID")
+            || this.hasDebt(contact)
+            || this.canSendBillingReminder(contact)
+            || (contact?.subscriptionActive !== false && contact?.currentPaymentStatus === "PAID")
+          );
+        },
+
+        openBillingActionModal(contact, trigger = null) {
+          if (!contact?.id || !this.hasBillingActions(contact)) return;
+          this.billingActionModal.contact = contact;
+          this.billingActionModal.returnFocusId = trigger?.id || "";
+          this.billingActionModal.open = true;
+          document.body.classList.add("overflow-hidden");
+          this.$nextTick(() => document.getElementById("billing-action-close")?.focus());
+        },
+
+        closeBillingActionModal() {
+          if (!this.billingActionModal.open) return;
+          const returnFocusId = this.billingActionModal.returnFocusId;
+          this.billingActionModal.open = false;
+          this.billingActionModal.contact = null;
+          this.billingActionModal.returnFocusId = "";
+          document.body.classList.remove("overflow-hidden");
+          this.$nextTick(() => document.getElementById(returnFocusId)?.focus());
+        },
+
+        trapModalFocus(event, dialogId) {
+          const dialog = document.getElementById(dialogId);
+          if (!dialog) return;
+          const controls = Array.from(dialog.querySelectorAll(
+            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+          )).filter((element) => element.offsetParent !== null);
+          if (!controls.length) return;
+          const first = controls[0];
+          const last = controls[controls.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        },
+
+        async runBillingPayment(status, paymentType = "") {
+          const contact = this.billingActionModal.contact;
+          if (!contact?.id) return;
+          await this.togglePayment(contact.id, status, paymentType);
+          this.closeBillingActionModal();
+        },
+
+        async sendBillingActionReminder() {
+          const contact = this.billingActionModal.contact;
+          if (!contact?.id) return;
+          await this.sendBillingReminder(contact);
+          this.closeBillingActionModal();
+        },
+
+        async payArrears(contact) {
           const paymentAmount = Number(this.arrearsPaymentAmounts[contact.id]);
           const debtAmount = this.getDebtAmount(contact);
           if (!Number.isSafeInteger(paymentAmount) || paymentAmount <= 0) {
@@ -1593,7 +1660,7 @@
 
           await this.togglePayment(contact.id, "UNPAID", "ARREARS-ONLY", paymentAmount);
           delete this.arrearsPaymentAmounts[contact.id];
-          detailsElement?.removeAttribute("open");
+          this.closeBillingActionModal();
         },
 
         async togglePayment(id, status, paymentType = "", paymentAmount = null) {

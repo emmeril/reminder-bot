@@ -776,16 +776,6 @@ table tbody tr:hover { background: #fafaff; }
 .customer-amount-editor { display: flex; min-width: 0; align-items: center; gap: 6px; }
 .customer-amount-editor .currency-input-group { min-width: 0; flex: 1; }
 .customer-amount-save { display: inline-flex; width: 38px; min-width: 38px; height: 38px; align-items: center; justify-content: center; padding: 0 !important; }
-.customer-payment-menu { width: 100%; min-width: 0; }
-.customer-payment-menu summary { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; color: #4f46e5; border: 1px solid #d9d7ff; border-radius: 8px; background: #f8f7ff; font-size: 11px; font-weight: 700; list-style: none; cursor: pointer; }
-.customer-payment-menu summary::-webkit-details-marker { display: none; }
-.customer-payment-menu summary > span { display: inline-flex; min-width: 0; align-items: center; gap: 7px; }
-.customer-payment-menu summary > span > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.customer-payment-menu summary > i { flex: 0 0 auto; color: #9893d8; font-size: 9px; transition: transform .15s ease; }
-.customer-payment-menu[open] summary > i { transform: rotate(180deg); }
-.customer-payment-actions { padding-top: 6px; }
-.customer-payment-action-list { display: grid; gap: 5px; }
-.customer-payment-action-list button { display: inline-flex; width: 100%; min-height: 38px !important; align-items: center; justify-content: center; gap: 7px; white-space: normal; }
 .customer-arrears-payment-form { display: grid; min-width: 0; gap: 7px; padding: 9px; border: 1px solid #e1e5ec; border-radius: 9px; background: #fbfcfd; }
 .customer-arrears-payment-form label { color: #344054; font-size: 11px; font-weight: 700; }
 .customer-arrears-payment-form .currency-input-group { min-width: 0; min-height: 40px; }
@@ -794,15 +784,41 @@ table tbody tr:hover { background: #fafaff; }
 .customer-arrears-payment-form small { color: #667085; font-size: 10px; line-height: 1.4; }
 .customer-billing-actions { display: grid; width: 100%; gap: 6px; }
 .customer-billing-actions > button { display: inline-flex; width: 100%; min-height: 38px !important; align-items: center; justify-content: center; gap: 7px; border-radius: 8px !important; }
-.customer-billing-primary { color: #fff; border: 1px solid #2563eb; background: #2563eb; }
-.customer-billing-primary:hover { border-color: #1d4ed8; background: #1d4ed8; }
-.customer-billing-reminder:hover { border-color: #f59e0b; background: #fef3c7; }
-.customer-action-empty { display: block; padding-block: 7px; color: #667085; font-size: 11px; line-height: 1.4; text-align: center; }
+.billing-action-trigger { justify-content: center; }
 .customer-row-actions { gap: 7px; }
 .panel-shell .customer-row-actions button { display: inline-flex; width: 100%; min-width: 0; min-height: 36px !important; align-items: center; justify-content: center; gap: 7px; padding: 8px 10px !important; border-radius: 9px !important; font-size: 10px !important; line-height: 1.2; white-space: nowrap; }
 .customer-row-actions button i { width: 12px; flex: 0 0 12px; margin-right: 0 !important; text-align: center; }
-.customer-row-actions .customer-payment-menu summary { min-height: 36px; padding: 8px 10px; border-radius: 9px; font-size: 10px; line-height: 1.2; }
-.customer-row-actions .customer-payment-action-list { gap: 7px; }
+.billing-action-dialog { max-height: calc(100dvh - 32px); overflow-y: auto; }
+.billing-action-close { display: inline-flex; width: 44px; height: 44px; flex: 0 0 44px; align-items: center; justify-content: center; padding: 0; color: #344054; border: 1px solid #64748b; background: #fff; }
+.billing-action-close:hover { color: #1e40af; border-color: #2563eb; background: #eff6ff; }
+.billing-action-summary { display: grid; overflow: hidden; margin-bottom: 14px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc; }
+.billing-action-summary > div { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 11px; background: #f8fafc; }
+.billing-action-summary > div + div { border-top: 1px solid #d9dee7; }
+.billing-action-summary span { color: #667085; font-size: 10px; font-weight: 650; }
+.billing-action-summary strong { color: #344054; font-size: 11px; line-height: 1.4; text-align: right; overflow-wrap: anywhere; }
+.billing-action-list { display: grid; gap: 8px; }
+.billing-action-section-heading { display: flex; flex-direction: column; gap: 2px; margin-bottom: 1px; }
+.billing-action-section-heading strong { color: #344054; font-size: 12px; }
+.billing-action-section-heading small { color: #667085; font-size: 10px; }
+.billing-action-quick-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.billing-action-option { display: inline-flex; width: fit-content; max-width: 100%; min-height: 44px; align-items: center; justify-content: center; justify-self: end; gap: 8px; padding: 9px 16px; color: #fff; border: 1px solid #2563eb; border-radius: 999px; background: #2563eb; text-align: center; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer; box-shadow: 0 2px 5px rgba(37,99,235,.2); }
+.billing-action-option:hover { color: #fff; border-color: #1d4ed8; background: #1d4ed8; }
+.billing-action-option > i { display: inline-flex; width: 18px; height: 18px; flex: 0 0 18px; align-items: center; justify-content: center; color: #fff; border-radius: 50%; background: transparent; }
+.billing-action-option:hover > i { color: #fff; }
+.billing-action-option > span { min-width: 0; line-height: 1.35; }
+.billing-action-option-reminder { color: #fff; border-color: #15803d; background: #15803d; box-shadow: 0 2px 5px rgba(21,128,61,.22); }
+.billing-action-option-reminder:hover { color: #fff; border-color: #166534; background: #166534; }
+.billing-action-option-reset { color: #fff; border-color: #9f1239; background: #9f1239; }
+.billing-action-option-reset:hover { color: #fff; border-color: #881337; background: #881337; }
+.billing-action-arrears { gap: 8px; padding: 12px; border-color: #94a3b8; background: #f8fafc; }
+.billing-action-arrears label { font-size: 12px; }
+.billing-action-arrears .currency-input-group { border-color: #64748b; background: #fff; }
+.billing-action-arrears small { font-size: 11px; }
+.billing-action-submit { display: inline-flex; width: fit-content; max-width: 100%; min-height: 44px; align-items: center; justify-content: center; justify-self: end; gap: 8px; padding: 10px 18px; color: #fff; border: 1px solid #2563eb; border-radius: 999px; background: #2563eb; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer; box-shadow: 0 2px 5px rgba(37,99,235,.2); }
+.billing-action-submit:hover { border-color: #1d4ed8; background: #1d4ed8; }
+.billing-action-submit > i, .billing-action-submit:hover > i { color: #fff; }
+.billing-action-footer { display: flex; justify-content: flex-end; margin-top: 14px; padding-top: 12px; border-top: 1px solid #d9dee7; }
+.billing-action-footer button { min-width: 96px; min-height: 44px; padding: 10px 16px; font-size: 12px; font-weight: 700; }
 .customer-debt-note { display: flex; max-width: 220px; flex-direction: column; gap: 3px; margin-top: 7px; padding: 7px 8px; color: #b42318; border: 1px solid #f4c7c3; border-radius: 8px; background: #fff7f6; }
 .customer-debt-note strong { display: flex; align-items: center; gap: 5px; font-size: 11px; }
 .customer-debt-note small { color: #c05a50; font-size: 10px; line-height: 1.4; }
@@ -857,7 +873,7 @@ table tbody tr:hover { background: #fafaff; }
   .customer-workspace-table { table-layout: auto; }
   /* Let the data tab use the same full-width mobile card layout as other customer tabs. */
   .customer-data-table { min-width: 0; }
-  .customer-action-group, .customer-payment-menu, .customer-payment-actions { width: 100%; }
+  .customer-action-group { width: 100%; }
   .customer-action-group button { min-width: 0; flex: 1; }
   .customer-data-actions { display: grid; grid-template-columns: 1fr; }
   .customer-data-actions button { flex: none; min-height: 40px; font-size: 11px !important; }
@@ -866,10 +882,10 @@ table tbody tr:hover { background: #fafaff; }
   .hotspot-schedule-time-grid { grid-template-columns: 1fr; }
   .customer-amount-editor { width: 100%; min-width: 0; }
   .customer-amount-editor .currency-input-group { min-width: 0; flex: 1; }
-  .customer-payment-menu summary { min-height: 42px; font-size: 12px; }
-  .panel-shell .customer-row-actions button, .customer-row-actions .customer-payment-menu summary { min-height: 44px !important; font-size: 11px !important; }
+  .panel-shell .customer-row-actions button { min-height: 44px !important; font-size: 11px !important; }
   .customer-arrears-payment-form .currency-input-group, .customer-arrears-payment-form input { min-height: 44px; }
   .customer-arrears-payment-form input { font-size: 16px; }
+  .billing-action-option, .billing-action-submit, .billing-action-footer button { min-height: 44px; }
   .customer-debt-note { width: 100%; max-width: none; }
   .customer-pagination { align-items: flex-start; }
   .customer-panel .table-scroll { max-height: none; overflow: visible; }
@@ -997,8 +1013,6 @@ input:focus, textarea:focus, select:focus, .currency-input-group:focus-within {
 .customer-tabs > button:hover { color: var(--primary-dark); background: #eff6ff; }
 .customer-tabs > button.active { color: var(--primary-dark); border-color: #bfdbfe !important; box-shadow: none; }
 .customer-tabs > button.active .customer-tab-icon { background: var(--primary); }
-.customer-payment-menu summary { color: var(--primary-dark); border-color: #bfdbfe; background: #f8fbff; }
-
 .dashboard-modal-overlay { background: rgba(15,23,42,.58) !important; backdrop-filter: blur(2px) !important; }
 .dashboard-modal-overlay > div { border: 1px solid var(--border) !important; border-radius: 12px !important; box-shadow: 0 24px 60px rgba(15,23,42,.18) !important; }
 
@@ -1055,7 +1069,7 @@ input:focus, textarea:focus, select:focus, .currency-input-group:focus-within {
   .dashboard-content { padding: 0 10px 26px; }
   .filter-inline { flex-wrap: wrap; }
   .filter-inline > * { width: 100%; min-width: 0; flex: 1 1 100% !important; }
-  .panel-shell button, .customer-payment-menu summary { min-height: 44px; }
+  .panel-shell button { min-height: 44px; }
   .service-card > a { width: 44px; height: 44px; }
   .customer-tabs > button { min-height: 56px; }
   .login-page { align-items: start; padding: 14px 10px; }
@@ -1092,6 +1106,14 @@ input:focus, textarea:focus, select:focus, .currency-input-group:focus-within {
   color: #1e40af !important;
   border-color: #60a5fa !important;
   background: #dbeafe !important;
+}
+.panel-shell button.billing-action-trigger,
+.dashboard-modal-overlay .billing-action-footer button.ui-secondary-button {
+  border-color: #2563eb !important;
+}
+.panel-shell button.billing-action-trigger:hover,
+.dashboard-modal-overlay .billing-action-footer button.ui-secondary-button:hover {
+  border-color: #1d4ed8 !important;
 }
 .panel-shell button.ui-primary-button i,
 .panel-shell button.ui-secondary-button i,
