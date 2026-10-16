@@ -412,15 +412,23 @@
                             <button x-show="contact.subscriptionActive !== false && contact.currentPaymentStatus !== 'PAID'" type="button" @click="togglePayment(contact.id, 'PAID', 'CURRENT-ONLY')" class="customer-billing-primary px-3 py-2 text-xs font-semibold"><i class="fa-solid fa-calendar-check"></i>Bayar bulan ini</button>
                             <button x-show="hasDebt(contact) && (contact.subscriptionActive === false || contact.currentPaymentStatus === 'PAID')" type="button" @click="togglePayment(contact.id, 'PAID', 'FULL-PAID')" class="customer-billing-primary px-3 py-2 text-xs font-semibold"><i class="fa-solid fa-sack-dollar"></i>Lunasi tunggakan</button>
                             <button x-show="canSendBillingReminder(contact)" type="button" @click="sendBillingReminder(contact)" class="customer-billing-reminder border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"><i class="fa-solid fa-paper-plane"></i>Kirim pengingat</button>
-                            <details x-show="contact.subscriptionActive !== false && (contact.currentPaymentStatus === 'PAID' || hasDebt(contact))" class="customer-payment-menu">
+                            <details x-show="contact.currentPaymentStatus === 'PAID' || hasDebt(contact)" class="customer-payment-menu">
                               <summary>
-                                <span><i class="fa-solid fa-ellipsis"></i><span x-text="contact.currentPaymentStatus === 'PAID' ? 'Ubah status' : 'Opsi lain'"></span></span>
+                                <span><i class="fa-solid fa-ellipsis"></i><span x-text="hasDebt(contact) ? 'Pembayaran lain' : 'Ubah status'"></span></span>
                                 <i class="fa-solid fa-chevron-down"></i>
                               </summary>
                               <div class="customer-payment-actions">
-                                <template x-if="contact.currentPaymentStatus !== 'PAID' && hasDebt(contact)">
+                                <template x-if="hasDebt(contact)">
                                   <div class="customer-payment-action-list">
-                                    <button type="button" @click="$el.closest('details').removeAttribute('open'); togglePayment(contact.id, 'UNPAID', 'ARREARS-ONLY')" class="border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink"><i class="fa-solid fa-circle-check"></i>Bayar tunggakan</button>
+                                    <form class="customer-arrears-payment-form" @submit.prevent="payArrears(contact, $el.closest('details'))">
+                                      <label :for="'arrears-payment-' + contact.id">Nominal pembayaran</label>
+                                      <div class="currency-input-group">
+                                        <span class="currency-prefix">Rp</span>
+                                        <input :id="'arrears-payment-' + contact.id" x-model.number="arrearsPaymentAmounts[contact.id]" type="number" inputmode="numeric" min="1" :max="getDebtAmount(contact)" step="1" :aria-describedby="'arrears-help-' + contact.id" placeholder="Masukkan nominal" required>
+                                      </div>
+                                      <small :id="'arrears-help-' + contact.id" x-text="'Sisa tunggakan ' + formatRupiah(getDebtAmount(contact))"></small>
+                                      <button type="submit" class="border border-ink/10 bg-white px-3 py-2 text-xs font-semibold text-ink"><i class="fa-solid fa-money-bill-wave"></i>Catat pembayaran</button>
+                                    </form>
                                     <button type="button" @click="$el.closest('details').removeAttribute('open'); togglePayment(contact.id, 'PAID', 'FULL-PAID')" class="border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay"><i class="fa-solid fa-sack-dollar"></i>Lunas semua</button>
                                   </div>
                                 </template>
@@ -861,11 +869,11 @@
                 <label class="notification-template-card tone-amber">
                   <span class="notification-template-header">
                     <span class="notification-template-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
-                    <span class="notification-template-copy"><strong>Pembayaran tunggakan</strong><small>Konfirmasi pembayaran yang hanya melunasi tunggakan.</small></span>
-                    <span class="notification-template-badge">Arrears only</span>
+                    <span class="notification-template-copy"><strong>Pembayaran tunggakan</strong><small>Konfirmasi pembayaran tunggakan penuh atau sebagian.</small></span>
+                    <span class="notification-template-badge">Tunggakan</span>
                   </span>
                   <textarea x-model="forms.settings.paymentMessageTemplateArrearsOnly" placeholder="Tulis konfirmasi pembayaran tunggakan..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{paymentAmount}}</code><code>{{remainingDebtAmount}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-violet">
                   <span class="notification-template-header">

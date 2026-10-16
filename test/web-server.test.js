@@ -1876,6 +1876,60 @@ test("admin dapat menonaktifkan akun hotspot di MikroTik tanpa menghapus data", 
   ]);
 });
 
+test("endpoint pembayaran meneruskan nominal tunggakan custom", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  let updateArguments = null;
+  let notificationArguments = null;
+  const contact = {
+    id: "contact-partial-api",
+    name: "Pelanggan Cicilan",
+    phoneNumber: "6281234567803",
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentType: null,
+    paymentAppliedAmount: 100_000,
+    debtAmount: 100_000,
+  };
+  const baseUrl = await startServer({
+    updatePaymentStatus: async (...args) => {
+      updateArguments = args;
+      return contact;
+    },
+    toPublicContact: (value) => value,
+  }, {
+    sendPaymentNotification: async (...args) => {
+      notificationArguments = args;
+      return { phoneNumber: contact.phoneNumber, transactionId: args[1] };
+    },
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/payment`, {
+    method: "POST",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({
+      status: PAYMENT_STATUS.UNPAID,
+      paymentType: PAYMENT_TYPES.ARREARS_ONLY,
+      paymentAmount: 100_000,
+    }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(updateArguments, [
+    contact.id,
+    PAYMENT_STATUS.UNPAID,
+    PAYMENT_TYPES.ARREARS_ONLY,
+    100_000,
+  ]);
+  assert.equal(notificationArguments[2], PAYMENT_TYPES.ARREARS_ONLY);
+  assert.deepEqual(notificationArguments[3], {
+    paymentAmount: 100_000,
+    remainingDebtAmount: 100_000,
+  });
+  assert.equal(payload.data.paymentAmount, 100_000);
+  assert.equal(payload.data.remainingDebtAmount, 100_000);
+  assert.equal(payload.data.notificationSent, true);
+});
+
 test("endpoint pengingat tagihan mengirim untuk pelanggan belum bayar yang memiliki tunggakan", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   let sentContact = null;

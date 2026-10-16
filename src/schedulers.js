@@ -75,7 +75,9 @@ class ReminderScheduler {
     ).toUpperCase() === "PAID";
     const monthlyAmount = Math.max(0, Number(contactState?.monthlyPaymentAmount) || 0);
     const currentAmount = currentPaid ? 0 : monthlyAmount;
-    const debtAmount = monthlyAmount * debtCount;
+    const debtAmount = contactState?.debtAmount === undefined
+      ? monthlyAmount * debtCount
+      : Math.max(0, Number(contactState.debtAmount) || 0);
 
     return {
       contact: contactState,

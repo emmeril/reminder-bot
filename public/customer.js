@@ -132,6 +132,26 @@ function customerPortalApp() {
       return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(parsed);
     },
 
+    paymentHistoryNote(item) {
+      const paidAmount = Math.max(0, Number(item?.paidAmount) || 0);
+      const remainingAmount = Math.max(0, Number(item?.remainingAmount) || 0);
+      const paymentDate = item?.lastPaymentDate || item?.paidDate;
+      if (paidAmount > 0 && remainingAmount > 0) {
+        return `Sudah dibayar ${this.currency(paidAmount)}, sisa ${this.currency(remainingAmount)}${paymentDate ? ` pada ${this.date(paymentDate)}` : ""}`;
+      }
+      return item?.paidDate ? `Dibayar ${this.date(item.paidDate)}` : "Belum ada pembayaran tercatat";
+    },
+
+    paymentHistoryStatusLabel(item) {
+      if (item?.status === "PAID") return "Lunas";
+      return Number(item?.paidAmount) > 0 ? "Sebagian" : "Belum Lunas";
+    },
+
+    paymentHistoryStatusClass(item) {
+      if (item?.status === "PAID") return "is-paid";
+      return Number(item?.paidAmount) > 0 ? "is-partial" : "is-unpaid";
+    },
+
     isPaid() { return this.data?.billing?.currentPaymentStatus === "PAID"; },
     currentStatusLabel() {
       if (this.data?.billing?.subscriptionActive === false) return "Tidak Ada Tagihan Baru";

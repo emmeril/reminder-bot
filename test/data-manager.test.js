@@ -110,6 +110,153 @@ test("pembayaran tunggakan saja tidak menandai bulan berjalan lunas", async () =
   );
 });
 
+test("pembayaran tunggakan dapat dicatat sebagian lalu memulihkan reminder setelah lunas", async () => {
+  const current = getBillingPeriodParts();
+  const previous = getPreviousBillingPeriod(current.year, current.month);
+  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
+  const currentKey = makeBillingPeriodKey(current.year, current.month);
+  const schedule = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const contact = {
+    id: "contact-partial-arrears",
+    name: "Pelanggan Cicilan",
+    phoneNumber: "6281234567801",
+    createdAt: `${previousKey}-01T00:00:00.000Z`,
+    subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
+    subscriptionChangedByArrears: true,
+    arrearsSubscriptionDebtPeriods: [previousKey],
+    monthlyPaymentAmount: 200_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentDate: null,
+    paymentType: null,
+    paymentMonths: {
+      [previousKey]: { status: PAYMENT_STATUS.UNPAID, paidDate: null, paymentType: null },
+      [currentKey]: { status: PAYMENT_STATUS.UNPAID, paidDate: null, paymentType: null },
+    },
+    hotspotReactivationEnabled: false,
+    hotspotReactivationAt: schedule,
+  };
+  const manager = createManager(contact);
+
+  await assert.rejects(
+    () => manager.updatePaymentStatus(
+      contact.id,
+      PAYMENT_STATUS.UNPAID,
+      PAYMENT_TYPES.ARREARS_ONLY,
+      200_001
+    ),
+    /melebihi sisa tunggakan/
+  );
+
+  const partial = await manager.updatePaymentStatus(
+    contact.id,
+    PAYMENT_STATUS.UNPAID,
+    PAYMENT_TYPES.ARREARS_ONLY,
+    100_000
+  );
+
+  let storedContact = manager.getContact(contact.id);
+  assert.equal(partial.paymentAppliedAmount, 100_000);
+  assert.equal(partial.debtAmount, 100_000);
+  assert.equal(storedContact.paymentMonths[previousKey].status, PAYMENT_STATUS.UNPAID);
+  assert.equal(storedContact.paymentMonths[previousKey].paidAmount, 100_000);
+  assert.equal(storedContact.subscriptionType, SUBSCRIPTION_TYPES.ONE_TIME);
+  assert.equal(manager.reminders.size, 0);
+
+  const paid = await manager.updatePaymentStatus(
+    contact.id,
+    PAYMENT_STATUS.UNPAID,
+    PAYMENT_TYPES.ARREARS_ONLY,
+    100_000
+  );
+
+  storedContact = manager.getContact(contact.id);
+  assert.equal(paid.paymentAppliedAmount, 100_000);
+  assert.equal(paid.debtAmount, 0);
+  assert.equal(storedContact.paymentMonths[previousKey].status, PAYMENT_STATUS.PAID);
+  assert.equal(storedContact.paymentMonths[previousKey].paidAmount, 200_000);
+  assert.equal(storedContact.subscriptionType, SUBSCRIPTION_TYPES.RECURRING);
+  assert.equal(manager.reminders.size, 1);
+});
+
+test("pembayaran tunggakan mempertahankan bulan berjalan yang sudah lunas", async () => {
+  const current = getBillingPeriodParts();
+  const previous = getPreviousBillingPeriod(current.year, current.month);
+  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
+  const currentKey = makeBillingPeriodKey(current.year, current.month);
+  const paidDate = new Date().toISOString();
+  const contact = {
+    id: "contact-current-paid-partial-arrears",
+    name: "Pelanggan Bulan Berjalan Lunas",
+    phoneNumber: "6281234567803",
+    createdAt: `${previousKey}-01T00:00:00.000Z`,
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    monthlyPaymentAmount: 200_000,
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentDate: paidDate,
+    paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+    paymentMonths: {
+      [previousKey]: { status: PAYMENT_STATUS.UNPAID, paidDate: null, paymentType: null },
+      [currentKey]: {
+        status: PAYMENT_STATUS.PAID,
+        paidDate,
+        paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+        paidAmount: 200_000,
+      },
+    },
+  };
+  const manager = createManager(contact);
+
+  const updated = await manager.updatePaymentStatus(
+    contact.id,
+    PAYMENT_STATUS.UNPAID,
+    PAYMENT_TYPES.ARREARS_ONLY,
+    100_000
+  );
+
+  assert.equal(updated.currentPaymentStatus, PAYMENT_STATUS.PAID);
+  assert.equal(contact.paymentMonths[currentKey].status, PAYMENT_STATUS.PAID);
+  assert.equal(contact.paymentMonths[currentKey].paymentType, PAYMENT_TYPES.CURRENT_ONLY);
+  assert.equal(contact.paymentMonths[previousKey].paidAmount, 100_000);
+  assert.equal(updated.debtAmount, 100_000);
+});
+
+test("pembayaran tunggakan dialokasikan dari periode paling lama", async () => {
+  const current = getBillingPeriodParts();
+  const previous = getPreviousBillingPeriod(current.year, current.month);
+  const oldest = getPreviousBillingPeriod(previous.year, previous.month);
+  const oldestKey = makeBillingPeriodKey(oldest.year, oldest.month);
+  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
+  const contact = {
+    id: "contact-multiple-partial-arrears",
+    name: "Pelanggan Dua Bulan",
+    phoneNumber: "6281234567802",
+    createdAt: `${oldestKey}-01T00:00:00.000Z`,
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {
+      [oldestKey]: { status: PAYMENT_STATUS.UNPAID },
+      [previousKey]: { status: PAYMENT_STATUS.UNPAID },
+    },
+  };
+  const manager = createManager(contact);
+
+  const updated = await manager.updatePaymentStatus(
+    contact.id,
+    PAYMENT_STATUS.UNPAID,
+    PAYMENT_TYPES.ARREARS_ONLY,
+    150_000
+  );
+
+  assert.equal(contact.paymentMonths[oldestKey].status, PAYMENT_STATUS.PAID);
+  assert.equal(contact.paymentMonths[oldestKey].paidAmount, 100_000);
+  assert.equal(contact.paymentMonths[previousKey].status, PAYMENT_STATUS.UNPAID);
+  assert.equal(contact.paymentMonths[previousKey].paidAmount, 50_000);
+  assert.equal(updated.debtAmount, 50_000);
+  assert.equal(updated.debtPeriods[0].key, previousKey);
+  assert.equal(updated.debtPeriods[0].remainingAmount, 50_000);
+});
+
 test("pembayaran lunas tanpa jenis eksplisit default ke bulan berjalan", async () => {
   const contact = {
     id: "contact-2",

@@ -111,8 +111,8 @@
         <div class="portal-history-list">
           <template x-for="item in data?.billing?.history || []" :key="item.period">
             <div class="portal-history-row">
-              <div><strong x-text="item.label"></strong><small x-text="item.paidDate ? `Dibayar ${date(item.paidDate)}` : 'Belum ada pembayaran tercatat'"></small></div>
-              <span :class="item.status === 'PAID' ? 'is-paid' : 'is-unpaid'" x-text="item.status === 'PAID' ? 'Lunas' : 'Belum Lunas'"></span>
+              <div><strong x-text="item.label"></strong><small x-text="paymentHistoryNote(item)"></small></div>
+              <span :class="paymentHistoryStatusClass(item)" x-text="paymentHistoryStatusLabel(item)"></span>
             </div>
           </template>
           <p class="portal-empty" x-show="!(data?.billing?.history || []).length">Belum ada riwayat pembayaran.</p>

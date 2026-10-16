@@ -786,6 +786,12 @@ table tbody tr:hover { background: #fafaff; }
 .customer-payment-actions { padding-top: 6px; }
 .customer-payment-action-list { display: grid; gap: 5px; }
 .customer-payment-action-list button { display: inline-flex; width: 100%; min-height: 38px !important; align-items: center; justify-content: center; gap: 7px; white-space: normal; }
+.customer-arrears-payment-form { display: grid; min-width: 0; gap: 7px; padding: 9px; border: 1px solid #e1e5ec; border-radius: 9px; background: #fbfcfd; }
+.customer-arrears-payment-form label { color: #344054; font-size: 11px; font-weight: 700; }
+.customer-arrears-payment-form .currency-input-group { min-width: 0; min-height: 40px; }
+.customer-arrears-payment-form .currency-prefix { min-width: 38px; flex-basis: 38px; font-size: 11px; }
+.customer-arrears-payment-form input { font-size: 12px; }
+.customer-arrears-payment-form small { color: #667085; font-size: 10px; line-height: 1.4; }
 .customer-billing-actions { display: grid; width: 100%; gap: 6px; }
 .customer-billing-actions > button { display: inline-flex; width: 100%; min-height: 38px !important; align-items: center; justify-content: center; gap: 7px; border-radius: 8px !important; }
 .customer-billing-primary { color: #fff; border: 1px solid #2563eb; background: #2563eb; }
@@ -862,6 +868,8 @@ table tbody tr:hover { background: #fafaff; }
   .customer-amount-editor .currency-input-group { min-width: 0; flex: 1; }
   .customer-payment-menu summary { min-height: 42px; font-size: 12px; }
   .panel-shell .customer-row-actions button, .customer-row-actions .customer-payment-menu summary { min-height: 44px !important; font-size: 11px !important; }
+  .customer-arrears-payment-form .currency-input-group, .customer-arrears-payment-form input { min-height: 44px; }
+  .customer-arrears-payment-form input { font-size: 16px; }
   .customer-debt-note { width: 100%; max-width: none; }
   .customer-pagination { align-items: flex-start; }
   .customer-panel .table-scroll { max-height: none; overflow: visible; }

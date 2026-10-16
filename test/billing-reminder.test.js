@@ -134,3 +134,22 @@ test("pengingat tagihan menolak pelanggan lunas atau tagihan yang belum jatuh te
   );
   assert.equal(sent.length, 0);
 });
+
+test("notifikasi pembayaran sebagian menyebut nominal dan sisa tunggakan", async () => {
+  const { bot, sent } = createBot({
+    paymentMessageTemplateArrearsOnly: "{{name}}\n{{paymentAmount}}\n{{remainingDebtAmount}}\n{{statusText}}\n{{noteText}}",
+  });
+
+  await bot.sendPaymentNotification(
+    createContact(),
+    "TRX-PARTIAL-1",
+    "ARREARS-ONLY",
+    { paymentAmount: 100_000, remainingDebtAmount: 100_000 }
+  );
+
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /Rp 100\.000/);
+  assert.match(sent[0].message, /TUNGGAKAN DIBAYAR SEBAGIAN/);
+  assert.match(sent[0].message, /Sisa tunggakan Rp 100\.000/);
+  assert.doesNotMatch(sent[0].message, /{{|}}/);
+});

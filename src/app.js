@@ -1650,6 +1650,7 @@ class DataManager {
               status: PAYMENT_STATUS.PAID,
               paidDate: paidDate.toISOString(),
               paymentType: contact.paymentType,
+              paidAmount: Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0)),
             };
           }
         }
@@ -1861,17 +1862,23 @@ class DataManager {
     const monthlyAmount = Math.max(0, Number(hydrated.monthlyPaymentAmount) || 0);
     const currentPaymentStatus = hydrated.currentPaymentStatus || hydrated.paymentStatus || PAYMENT_STATUS.UNPAID;
     const currentAmount = currentPaymentStatus === PAYMENT_STATUS.PAID ? 0 : monthlyAmount;
-    const debtAmount = hydrated.debtCount * monthlyAmount;
+    const debtAmount = Math.max(0, Number(hydrated.debtAmount) || 0);
     const historyByPeriod = new Map(
       Object.entries(hydrated.paymentMonths || {})
         .filter(([period]) => /^\d{4}-\d{2}$/.test(period))
-        .map(([period, payment]) => [period, {
-          period,
-          label: formatBillingPeriodLabel(Number(period.slice(0, 4)), Number(period.slice(5, 7))),
-          status: payment?.status || PAYMENT_STATUS.UNPAID,
-          paidDate: payment?.paidDate || null,
-          paymentType: payment?.paymentType || null,
-        }])
+        .map(([period, payment]) => {
+          const paidAmount = this.getPaymentPaidAmount(payment, monthlyAmount);
+          return [period, {
+            period,
+            label: formatBillingPeriodLabel(Number(period.slice(0, 4)), Number(period.slice(5, 7))),
+            status: payment?.status || PAYMENT_STATUS.UNPAID,
+            paidDate: payment?.paidDate || null,
+            lastPaymentDate: payment?.lastPaymentDate || payment?.paidDate || null,
+            paymentType: payment?.paymentType || null,
+            paidAmount,
+            remainingAmount: this.getPaymentRemainingAmount(payment, monthlyAmount),
+          }];
+        })
     );
     for (const debtPeriod of hydrated.debtPeriods || []) {
       if (!historyByPeriod.has(debtPeriod.key)) {
@@ -1880,7 +1887,10 @@ class DataManager {
           label: debtPeriod.label,
           status: PAYMENT_STATUS.UNPAID,
           paidDate: null,
+          lastPaymentDate: null,
           paymentType: null,
+          paidAmount: debtPeriod.paidAmount || 0,
+          remainingAmount: debtPeriod.remainingAmount ?? monthlyAmount,
         });
       }
     }
@@ -1894,7 +1904,10 @@ class DataManager {
         label: formatBillingPeriodLabel(year, month),
         status: currentPaymentStatus,
         paidDate: hydrated.paymentDate || null,
+        lastPaymentDate: hydrated.paymentDate || null,
         paymentType: hydrated.paymentType || null,
+        paidAmount: currentPaymentStatus === PAYMENT_STATUS.PAID ? monthlyAmount : 0,
+        remainingAmount: currentAmount,
       });
     }
     const paymentHistory = Array.from(historyByPeriod.values())
@@ -2150,10 +2163,14 @@ class DataManager {
       const now = new Date().toISOString();
       if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") contact.paymentMonths = {};
       for (const period of transaction.periods) {
+        const previousPayment = contact.paymentMonths[period] || {};
         contact.paymentMonths[period] = {
+          ...previousPayment,
           status: PAYMENT_STATUS.PAID,
           paidDate: now,
           paymentType: PAYMENT_TYPES.FULL_PAID,
+          paidAmount: Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0)),
+          previousPaidAmount: this.getPaymentPaidAmount(previousPayment, contact.monthlyPaymentAmount),
           transactionId: transaction.orderId,
           paymentProvider: "midtrans",
         };
@@ -2225,11 +2242,13 @@ class DataManager {
         if (payment?.paymentProvider !== "midtrans" || String(payment.transactionId) !== String(orderId)) {
           continue;
         }
+        const restoredPaidAmount = Math.max(0, Math.floor(Number(payment.previousPaidAmount) || 0));
         contact.paymentMonths[period] = {
           ...payment,
           status: PAYMENT_STATUS.UNPAID,
           paidDate: null,
-          paymentType: null,
+          paymentType: restoredPaidAmount > 0 ? PAYMENT_TYPES.ARREARS_ONLY : null,
+          paidAmount: restoredPaidAmount,
           refundedAt: gatewayData.refund_time || now,
           refundedTransactionId: transaction.transactionId || null,
         };
@@ -2539,6 +2558,23 @@ class DataManager {
     };
   }
 
+  getPaymentPaidAmount(payment, monthlyAmount) {
+    const normalizedMonthlyAmount = Math.max(0, Math.floor(Number(monthlyAmount) || 0));
+    if (!payment || normalizedMonthlyAmount <= 0) return 0;
+    if (String(payment.status || "").toUpperCase() === PAYMENT_STATUS.PAID) {
+      return normalizedMonthlyAmount;
+    }
+    return Math.min(
+      normalizedMonthlyAmount,
+      Math.max(0, Math.floor(Number(payment.paidAmount) || 0))
+    );
+  }
+
+  getPaymentRemainingAmount(payment, monthlyAmount) {
+    const normalizedMonthlyAmount = Math.max(0, Math.floor(Number(monthlyAmount) || 0));
+    return Math.max(0, normalizedMonthlyAmount - this.getPaymentPaidAmount(payment, normalizedMonthlyAmount));
+  }
+
   buildDebtInfo(contact, options = {}) {
     const timeZone = this.getTimezone();
     const { year, month } = options.year && options.month
@@ -2546,6 +2582,7 @@ class DataManager {
       : getBillingPeriodParts(new Date(), timeZone);
     const currentKey = makeBillingPeriodKey(year, month);
     const paymentMonths = contact.paymentMonths || {};
+    const monthlyAmount = Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0));
     const currentPayment = paymentMonths[currentKey] || null;
     const currentType = String(currentPayment?.paymentType || contact.paymentType || "").toUpperCase();
     const previous = getPreviousBillingPeriod(year, month);
@@ -2572,13 +2609,21 @@ class DataManager {
           const key = makeBillingPeriodKey(period.year, period.month);
           return paymentMonths[key]?.status !== PAYMENT_STATUS.PAID;
         })
-        .map((period) => ({
-          key: makeBillingPeriodKey(period.year, period.month),
-          label: formatBillingPeriodLabel(period.year, period.month),
-          status: paymentMonths[makeBillingPeriodKey(period.year, period.month)]?.status || PAYMENT_STATUS.UNPAID,
-        }));
+        .map((period) => {
+          const key = makeBillingPeriodKey(period.year, period.month);
+          const payment = paymentMonths[key] || null;
+          const paidAmount = this.getPaymentPaidAmount(payment, monthlyAmount);
+          return {
+            key,
+            label: formatBillingPeriodLabel(period.year, period.month),
+            status: payment?.status || PAYMENT_STATUS.UNPAID,
+            paidAmount,
+            remainingAmount: this.getPaymentRemainingAmount(payment, monthlyAmount),
+          };
+        });
     const hasDebt = debtPeriods.length > 0;
     const firstDebt = debtPeriods[0] || null;
+    const debtAmount = debtPeriods.reduce((total, period) => total + period.remainingAmount, 0);
     const subscriptionEnded = isOneTimeSubscriptionEnded(contact, { year, month }, timeZone);
     const effectivePaymentStatus = subscriptionEnded
       ? PAYMENT_STATUS.PAID
@@ -2590,8 +2635,9 @@ class DataManager {
       debtPeriodLabel: firstDebt?.label || formatBillingPeriodLabel(previous.year, previous.month),
       debtPeriods,
       debtCount: debtPeriods.length,
+      debtAmount,
       debtNote: hasDebt
-        ? `Masih ada hutang ${debtPeriods.map((period) => period.label).join(", ")}.`
+        ? `Sisa tunggakan ${this.formatPaymentAmount(debtAmount)} untuk ${debtPeriods.map((period) => period.label).join(", ")}.`
         : "",
       previousPaymentStatus: paymentMonths[makeBillingPeriodKey(previous.year, previous.month)]?.status || PAYMENT_STATUS.UNPAID,
       paymentStatus: effectivePaymentStatus,
@@ -2895,7 +2941,8 @@ class DataManager {
     const debtCount = Math.max(0, Number(debtInfo.debtCount) || 0);
     const currentPaid = String(debtInfo.currentPaymentStatus || contact.paymentStatus || "UNPAID").toUpperCase() === PAYMENT_STATUS.PAID;
     const totalPeriods = (currentPaid ? 0 : 1) + debtCount;
-    const totalAmount = monthlyAmount * totalPeriods;
+    const currentAmount = currentPaid ? 0 : monthlyAmount;
+    const totalAmount = currentAmount + Math.max(0, Number(debtInfo.debtAmount) || 0);
     const hasBillingVariables = /{{\s*(?:monthlyAmount|currentAmount|debtAmount|totalAmount|debtCount|debtPeriods|totalPeriods)\s*}}/i.test(sourceMessage);
 
     let nextMessage;
@@ -4360,6 +4407,7 @@ class DataManager {
       { header: "Jenis Pembayaran", key: "paymentType" },
       { header: "Tanggal Pembayaran", key: "paymentDate" },
       { header: "Jumlah Tunggakan (Bulan)", key: "debtCount" },
+      { header: "Sisa Tunggakan", key: "debtAmount" },
       { header: "Periode Tunggakan", key: "debtPeriods" },
       { header: "Jatuh Tempo", key: "dueDate" },
       { header: "Status Jatuh Tempo", key: "dueStatus" },
@@ -4375,6 +4423,7 @@ class DataManager {
       paymentType: PAYMENT_TYPE_LABELS[contact.paymentType] || "-",
       paymentDate: formatReportDate(contact.paymentDate, true, timeZone),
       debtCount: contact.debtCount || 0,
+      debtAmount: Math.max(0, Number(contact.debtAmount) || 0),
       debtPeriods: (contact.debtPeriods || []).map((period) => period.label).join(", ") || "-",
       dueDate: formatReportDate(contact.dueDate, false, timeZone),
       dueStatus: {
@@ -4408,6 +4457,8 @@ class DataManager {
       { header: "Nomor WhatsApp", key: "phoneNumber" },
       { header: "Status", key: "status" },
       { header: "Jenis Pembayaran", key: "paymentType" },
+      { header: "Nominal Dibayar", key: "paidAmount" },
+      { header: "Sisa Tagihan", key: "remainingAmount" },
       { header: "Tanggal Dibayar", key: "paidDate" },
     ];
     const historyRows = [];
@@ -4420,7 +4471,9 @@ class DataManager {
           phoneNumber: contact.phoneNumber || "-",
           status: payment.status === PAYMENT_STATUS.PAID ? "Lunas" : "Belum Lunas",
           paymentType: PAYMENT_TYPE_LABELS[payment.paymentType] || "-",
-          paidDate: formatReportDate(payment.paidDate, true, timeZone),
+          paidAmount: this.getPaymentPaidAmount(payment, contact.monthlyPaymentAmount),
+          remainingAmount: this.getPaymentRemainingAmount(payment, contact.monthlyPaymentAmount),
+          paidDate: formatReportDate(payment.lastPaymentDate || payment.paidDate, true, timeZone),
         });
       }
     }
@@ -4464,11 +4517,12 @@ class DataManager {
     return { status: normalizedStatus, paymentType: normalizedType };
   }
 
-  async updatePaymentStatus(contactId, status, paymentType = null) {
+  async updatePaymentStatus(contactId, status, paymentType = null, paymentAmount = null) {
     return this.withDataMutation(async () => {
       const contact = this.getContact(contactId);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
       ({ status, paymentType } = this.normalizePaymentSelection(status, paymentType));
+      let appliedPaymentAmount = 0;
 
       const now = new Date();
       const timeZone = this.getTimezone();
@@ -4492,15 +4546,46 @@ class DataManager {
       if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") {
         contact.paymentMonths = {};
       }
-      const arrearsDebtPeriod = paymentType === PAYMENT_TYPES.ARREARS_ONLY
-        ? this.buildDebtInfo(contact, { year, month }).debtPeriods?.[0]
+      const currentPaymentBeforeUpdate = contact.paymentMonths[currentKey] || null;
+      const currentStatusBeforeUpdate = currentPaymentBeforeUpdate?.status
+        || String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase();
+      const arrearsDebtInfo = paymentType === PAYMENT_TYPES.ARREARS_ONLY
+        ? this.buildDebtInfo(contact, { year, month })
         : null;
-      if (paymentType === PAYMENT_TYPES.ARREARS_ONLY && !arrearsDebtPeriod) {
-        throw new Error("Kontak tidak memiliki tunggakan yang belum dibayar.");
+      const arrearsDebtPeriod = arrearsDebtInfo?.debtPeriods?.[0] || null;
+      if (paymentType === PAYMENT_TYPES.ARREARS_ONLY) {
+        if (!arrearsDebtPeriod) {
+          throw new Error("Kontak tidak memiliki tunggakan yang belum dibayar.");
+        }
+        const hasExplicitPaymentAmount = paymentAmount !== null
+          && paymentAmount !== undefined
+          && paymentAmount !== "";
+        const monthlyAmount = Math.max(0, Number(contact.monthlyPaymentAmount) || 0);
+        if (hasExplicitPaymentAmount && monthlyAmount <= 0) {
+          throw new Error("Nominal bulanan harus diisi sebelum mencatat pembayaran tunggakan.");
+        }
+
+        if (monthlyAmount > 0) {
+          const requestedAmount = hasExplicitPaymentAmount
+            ? Number(paymentAmount)
+            : arrearsDebtPeriod.remainingAmount;
+          if (!Number.isSafeInteger(requestedAmount) || requestedAmount <= 0) {
+            throw new Error("Nominal pembayaran tunggakan harus berupa angka bulat lebih dari 0.");
+          }
+          if (requestedAmount > arrearsDebtInfo.debtAmount) {
+            throw new Error(`Nominal pembayaran melebihi sisa tunggakan ${this.formatPaymentAmount(arrearsDebtInfo.debtAmount)}.`);
+          }
+          appliedPaymentAmount = requestedAmount;
+        }
       }
 
-      contact.paymentStatus = status;
-      contact.paymentDate = status === PAYMENT_STATUS.PAID ? now.toISOString() : null;
+      const nextCurrentStatus = paymentType === PAYMENT_TYPES.ARREARS_ONLY
+        ? currentStatusBeforeUpdate
+        : status;
+      contact.paymentStatus = nextCurrentStatus;
+      contact.paymentDate = nextCurrentStatus === PAYMENT_STATUS.PAID
+        ? currentPaymentBeforeUpdate?.paidDate || contact.paymentDate || now.toISOString()
+        : null;
       contact.paymentType = paymentType || null;
 
       if (paymentType === PAYMENT_TYPES.FULL_PAID) {
@@ -4513,22 +4598,62 @@ class DataManager {
             status: PAYMENT_STATUS.PAID,
             paidDate: now.toISOString(),
             paymentType,
+            paidAmount: Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0)),
           };
         }
       } else if (paymentType === PAYMENT_TYPES.ARREARS_ONLY) {
-        contact.paymentMonths[arrearsDebtPeriod.key] = {
-          status: PAYMENT_STATUS.PAID,
-          paidDate: now.toISOString(),
-          paymentType,
-        };
+        const monthlyAmount = Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0));
+        if (monthlyAmount <= 0) {
+          contact.paymentMonths[arrearsDebtPeriod.key] = {
+            ...(contact.paymentMonths[arrearsDebtPeriod.key] || {}),
+            status: PAYMENT_STATUS.PAID,
+            paidDate: now.toISOString(),
+            lastPaymentDate: now.toISOString(),
+            paymentType,
+            paidAmount: 0,
+          };
+        } else {
+          let remainingPayment = appliedPaymentAmount;
+          for (const debtPeriod of arrearsDebtInfo.debtPeriods) {
+            if (remainingPayment <= 0) break;
+            const previousPayment = contact.paymentMonths[debtPeriod.key] || {};
+            const recordedAmount = this.getPaymentPaidAmount(previousPayment, monthlyAmount);
+            const amountForPeriod = Math.min(debtPeriod.remainingAmount, remainingPayment);
+            const nextPaidAmount = recordedAmount + amountForPeriod;
+            const isPeriodPaid = nextPaidAmount >= monthlyAmount;
+            contact.paymentMonths[debtPeriod.key] = {
+              ...previousPayment,
+              status: isPeriodPaid ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.UNPAID,
+              paidDate: isPeriodPaid ? now.toISOString() : previousPayment.paidDate || null,
+              lastPaymentDate: now.toISOString(),
+              paymentType,
+              paidAmount: nextPaidAmount,
+            };
+            remainingPayment -= amountForPeriod;
+          }
+        }
       }
 
       if (!subscriptionEnded) {
-        contact.paymentMonths[currentKey] = {
-          status,
-          paidDate: status === PAYMENT_STATUS.PAID ? now.toISOString() : null,
-          paymentType: paymentType || null,
-        };
+        if (paymentType !== PAYMENT_TYPES.ARREARS_ONLY) {
+          const existingCurrentPayment = contact.paymentMonths[currentKey] || {};
+          contact.paymentMonths[currentKey] = {
+            ...existingCurrentPayment,
+            status,
+            paidDate: status === PAYMENT_STATUS.PAID ? now.toISOString() : null,
+            paymentType: paymentType || null,
+            paidAmount: status === PAYMENT_STATUS.PAID
+              ? Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0))
+              : this.getPaymentPaidAmount(existingCurrentPayment, contact.monthlyPaymentAmount),
+          };
+        } else if (!currentPaymentBeforeUpdate) {
+          contact.paymentMonths[currentKey] = {
+            status: currentStatusBeforeUpdate,
+            paidDate: currentStatusBeforeUpdate === PAYMENT_STATUS.PAID ? contact.paymentDate : null,
+            paymentType: null,
+            paidAmount: 0,
+          };
+        }
       } else {
         contact.paymentStatus = PAYMENT_STATUS.PAID;
         contact.paymentDate = null;
@@ -4542,7 +4667,11 @@ class DataManager {
       const remindersChanged = arrearsPolicy.remindersAdded + arrearsPolicy.remindersRemoved
         + this.updateContactReminderMessages(contact);
       await this.savePaymentAndReminderChanges(remindersChanged);
-      return this.hydrateContact(contact);
+      const hydrated = this.hydrateContact(contact);
+      if (appliedPaymentAmount > 0) {
+        hydrated.paymentAppliedAmount = appliedPaymentAmount;
+      }
+      return hydrated;
     });
   }
 
@@ -4589,6 +4718,7 @@ class DataManager {
             status: PAYMENT_STATUS.PAID,
             paidDate: now.toISOString(),
             paymentType,
+            paidAmount: Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0)),
           };
         }
       } else if (paymentType === PAYMENT_TYPES.ARREARS_ONLY) {
@@ -4596,6 +4726,7 @@ class DataManager {
           status: PAYMENT_STATUS.PAID,
           paidDate: now.toISOString(),
           paymentType,
+          paidAmount: Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0)),
         };
       }
 
@@ -4603,6 +4734,9 @@ class DataManager {
         status,
         paidDate: status === PAYMENT_STATUS.PAID ? now.toISOString() : null,
         paymentType: paymentType || null,
+        paidAmount: status === PAYMENT_STATUS.PAID
+          ? Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0))
+          : 0,
       };
 
       const { year: currentYear, month: currentMonth } = getBillingPeriodParts(now, timeZone);
@@ -4691,6 +4825,7 @@ class DataManager {
         status: PAYMENT_STATUS.UNPAID,
         paidDate: null,
         paymentType: null,
+        paidAmount: 0,
       };
       contact.updatedAt = new Date().toISOString();
       remindersChanged += this.updateContactReminderMessages(contact);
@@ -4922,10 +5057,14 @@ class NotificationBot {
 
     let statusText = "LUNAS";
     let noteText = "Pembayaran Anda telah berhasil kami terima.";
+    const paymentAmount = Math.max(0, Math.floor(Number(options.paymentAmount) || 0));
+    const remainingDebtAmount = Math.max(0, Math.floor(Number(options.remainingDebtAmount) || 0));
 
     if (paymentType === "ARREARS-ONLY") {
-      statusText = "TUNGGAKAN TERBAYAR";
-      noteText = "Pembayaran tunggakan bulan sebelumnya telah kami terima. Catatan: Bulan ini masih belum lunas.";
+      statusText = remainingDebtAmount > 0 ? "TUNGGAKAN DIBAYAR SEBAGIAN" : "TUNGGAKAN TERBAYAR";
+      noteText = paymentAmount > 0
+        ? `Pembayaran tunggakan sebesar ${this.dataManager.formatPaymentAmount(paymentAmount)} telah kami terima. Sisa tunggakan ${this.dataManager.formatPaymentAmount(remainingDebtAmount)}. Tagihan bulan berjalan tidak termasuk dalam pembayaran ini.`
+        : "Pembayaran tunggakan bulan sebelumnya telah kami terima. Tagihan bulan berjalan tidak termasuk dalam pembayaran ini.";
     } else if (paymentType === "CURRENT-ONLY") {
       statusText = "LUNAS (BULAN INI)";
       noteText = "Pembayaran bulan ini telah kami terima dan riwayat bulan sebelumnya sudah lunas.";
@@ -4951,6 +5090,8 @@ class NotificationBot {
       .replace(/{{\s*name\s*}}/gi, contact.name || "-")
       .replace(/{{\s*transactionId\s*}}/gi, transactionId || "-")
       .replace(/{{\s*paymentDate\s*}}/gi, formattedDate)
+      .replace(/{{\s*paymentAmount\s*}}/gi, this.dataManager.formatPaymentAmount(paymentAmount))
+      .replace(/{{\s*remainingDebtAmount\s*}}/gi, this.dataManager.formatPaymentAmount(remainingDebtAmount))
       .replace(/{{\s*statusText\s*}}/gi, statusText)
       .replace(/{{\s*noteText\s*}}/gi, noteText)
       .replace(/{{\s*companyName\s*}}/gi, companyName)
@@ -4984,7 +5125,9 @@ class NotificationBot {
 
     const monthlyAmount = Math.max(0, Number(contactState.monthlyPaymentAmount) || 0);
     const currentAmount = currentStatus === PAYMENT_STATUS.UNPAID ? monthlyAmount : 0;
-    const debtAmount = monthlyAmount * debtCount;
+    const debtAmount = contactState.debtAmount === undefined
+      ? monthlyAmount * debtCount
+      : Math.max(0, Number(contactState.debtAmount) || 0);
     const totalAmount = currentAmount + debtAmount;
     const settings = this.dataManager.getSettings();
     const messageTemplate = sanitizeMultilineText(settings.billingReminderMessageTemplate)
@@ -6709,8 +6852,18 @@ class WebServer {
       const status = sanitizeInput(req.body.status).toUpperCase();
       const requestedPaymentType = sanitizeInput(req.body.paymentType).toUpperCase();
       const paymentType = requestedPaymentType || null;
-      const updatedContact = await this.dataManager.updatePaymentStatus(req.params.id, status, paymentType);
-      const effectivePaymentType = updatedContact.paymentType;
+      const paymentAmount = req.body.paymentAmount === undefined || req.body.paymentAmount === null || req.body.paymentAmount === ""
+        ? null
+        : Number(req.body.paymentAmount);
+      const updatedContact = await this.dataManager.updatePaymentStatus(
+        req.params.id,
+        status,
+        paymentType,
+        paymentAmount
+      );
+      const effectivePaymentType = paymentType || updatedContact.paymentType;
+      const appliedPaymentAmount = Math.max(0, Number(updatedContact.paymentAppliedAmount) || 0);
+      const remainingDebtAmount = Math.max(0, Number(updatedContact.debtAmount) || 0);
       const shouldSendPaymentNotification = status === PAYMENT_STATUS.PAID || effectivePaymentType === PAYMENT_TYPES.ARREARS_ONLY;
 
       if (!shouldSendPaymentNotification) {
@@ -6722,11 +6875,16 @@ class WebServer {
 
       const transactionId = `TRX-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
       try {
-        await this.notificationBot.sendPaymentNotification(updatedContact, transactionId, effectivePaymentType);
+        await this.notificationBot.sendPaymentNotification(updatedContact, transactionId, effectivePaymentType, {
+          paymentAmount: appliedPaymentAmount,
+          remainingDebtAmount,
+        });
         return {
           contact: this.dataManager.toPublicContact(updatedContact),
           transactionId,
           paymentType: effectivePaymentType,
+          paymentAmount: appliedPaymentAmount,
+          remainingDebtAmount,
           notificationSent: true,
         };
       } catch (error) {
@@ -6739,6 +6897,9 @@ class WebServer {
         return {
           contact: this.dataManager.toPublicContact(updatedContact),
           transactionId,
+          paymentType: effectivePaymentType,
+          paymentAmount: appliedPaymentAmount,
+          remainingDebtAmount,
           notificationSent: false,
           notificationError: error.message,
         };

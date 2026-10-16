@@ -101,10 +101,57 @@ test("aksi tagihan menampilkan tindakan utama langsung dan menyimpan tindakan ja
 
   assert.match(html, /customer-billing-primary[^>]*>[\s\S]*?Bayar bulan ini<\/button>/);
   assert.match(html, /customer-billing-reminder[^>]*>[\s\S]*?Kirim pengingat<\/button>/);
-  assert.match(html, /contact\.currentPaymentStatus === 'PAID' \? 'Ubah status' : 'Opsi lain'/);
+  assert.match(html, /hasDebt\(contact\) \? 'Pembayaran lain' : 'Ubah status'/);
   assert.match(html, /Lunasi tunggakan/);
   assert.match(html, /Tandai belum bayar/);
-  assert.doesNotMatch(html, /Kelola pembayaran|Kelola tunggakan|Catat pembayaran/);
+  assert.match(html, /Nominal pembayaran/);
+  assert.match(html, /Catat pembayaran/);
+  assert.doesNotMatch(html, /Kelola pembayaran|Kelola tunggakan/);
+});
+
+test("pembayaran tunggakan mengirim nominal custom admin", async () => {
+  const app = createDashboardApp();
+  const contact = {
+    id: "contact-partial-payment",
+    debtAmount: 200_000,
+    paymentStatus: "UNPAID",
+    currentPaymentStatus: "UNPAID",
+  };
+  let request = null;
+  let notification = "";
+  let detailsClosed = false;
+  app.contacts = [contact];
+  app.arrearsPaymentAmounts = { [contact.id]: 100_000 };
+  app.withProcessing = async (_message, action) => action();
+  app.api = async (url, options) => {
+    request = { url, payload: JSON.parse(options.body) };
+    return {
+      paymentAmount: 100_000,
+      remainingDebtAmount: 100_000,
+      notificationSent: false,
+    };
+  };
+  app.notify = (message) => { notification = message; };
+  app.loadContacts = async () => {};
+  app.loadReminders = async () => {};
+  app.loadStatus = async () => {};
+
+  await app.payArrears(contact, {
+    removeAttribute(attribute) {
+      detailsClosed = attribute === "open";
+    },
+  });
+
+  assert.equal(request.url, "/api/contacts/contact-partial-payment/payment");
+  assert.deepEqual(request.payload, {
+    status: "UNPAID",
+    paymentType: "ARREARS-ONLY",
+    paymentAmount: 100_000,
+  });
+  assert.match(notification, /Pembayaran Rp\s?100\.000 dicatat/);
+  assert.match(notification, /Sisa tunggakan Rp\s?100\.000/);
+  assert.equal(detailsClosed, true);
+  assert.equal(app.arrearsPaymentAmounts[contact.id], undefined);
 });
 
 test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {

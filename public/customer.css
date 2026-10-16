@@ -172,6 +172,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .portal-history-row small { margin-top: 5px; color: #667085; font-size: 10px; }
 .portal-history-row > span { padding: 6px 9px; border-radius: 999px; font-size: 10px; font-weight: 750; white-space: nowrap; }
 .portal-history-row > span.is-paid { color: #14733a; background: #eaf8ef; }
+.portal-history-row > span.is-partial { color: #805600; background: #fff7e6; }
 .portal-history-row > span.is-unpaid { color: #a33d36; background: #fff0ef; }
 .portal-empty { margin: 20px 0 4px; color: #667085; font-size: 12px; text-align: center; }
 

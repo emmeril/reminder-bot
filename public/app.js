@@ -114,6 +114,7 @@
         isMobile: window.matchMedia("(max-width: 768px)").matches,
         pollers: [],
         paymentTypeSelection: {},
+        arrearsPaymentAmounts: {},
         expandedMessages: {},
         billingPeriod: "",
         pageSizes: [10, 25, 50, 100],
@@ -875,6 +876,15 @@
           return contact.debtNote || `Masih ada hutang ${periods.map((period) => period.label).join(", ") || contact.debtPeriodLabel || this.getPreviousBillingPeriodLabel()}.`;
         },
 
+        getDebtAmount(contact) {
+          if (contact?.debtAmount !== undefined) {
+            return Math.max(0, Number(contact.debtAmount) || 0);
+          }
+          return this.getDebtPeriods(contact).reduce((total, period) => (
+            total + Math.max(0, Number(period.remainingAmount ?? contact?.monthlyPaymentAmount) || 0)
+          ), 0);
+        },
+
         getDebtCountLabel(contact) {
           const count = Number(contact.debtCount || this.getDebtPeriods(contact).length || 0);
           return `Hutang ${count || 1} bulan`;
@@ -1569,24 +1579,46 @@
           }
         },
 
-        async togglePayment(id, status, paymentType = "") {
+        async payArrears(contact, detailsElement = null) {
+          const paymentAmount = Number(this.arrearsPaymentAmounts[contact.id]);
+          const debtAmount = this.getDebtAmount(contact);
+          if (!Number.isSafeInteger(paymentAmount) || paymentAmount <= 0) {
+            this.notify("Masukkan nominal pembayaran tunggakan lebih dari Rp0.");
+            return;
+          }
+          if (paymentAmount > debtAmount) {
+            this.notify(`Nominal pembayaran tidak boleh melebihi sisa tunggakan ${this.formatRupiah(debtAmount)}.`);
+            return;
+          }
+
+          await this.togglePayment(contact.id, "UNPAID", "ARREARS-ONLY", paymentAmount);
+          delete this.arrearsPaymentAmounts[contact.id];
+          detailsElement?.removeAttribute("open");
+        },
+
+        async togglePayment(id, status, paymentType = "", paymentAmount = null) {
           await this.withProcessing("Memperbarui status pembayaran...", async () => {
             const contact = this.contacts.find((item) => String(item.id) === String(id));
             const payload = { status };
             if (paymentType && contact) {
               payload.paymentType = paymentType || contact.paymentType || this.inferPaymentType(contact);
             }
+            if (payload.paymentType === "ARREARS-ONLY" && paymentAmount !== null) {
+              payload.paymentAmount = paymentAmount;
+            }
             const result = await this.api(`/api/contacts/${id}/payment`, {
               method: "POST",
               body: JSON.stringify(payload),
             });
             if (status === "UNPAID" && payload.paymentType === "ARREARS-ONLY") {
+              const paidText = this.formatRupiah(result.paymentAmount || paymentAmount);
+              const remainingText = this.formatRupiah(result.remainingDebtAmount);
               if (result.notificationSent) {
-                this.notify(`Tunggakan dicatat. Notifikasi terkirim (${result.transactionId}).`);
+                this.notify(`Pembayaran ${paidText} dicatat. Sisa tunggakan ${remainingText}. Notifikasi terkirim (${result.transactionId}).`);
               } else if (result.notificationError) {
-                this.notify(`Tunggakan dicatat, tapi notifikasi gagal: ${result.notificationError}`);
+                this.notify(`Pembayaran ${paidText} dicatat dengan sisa ${remainingText}, tapi notifikasi gagal: ${result.notificationError}`);
               } else {
-                this.notify("Tunggakan dicatat.");
+                this.notify(`Pembayaran ${paidText} dicatat. Sisa tunggakan ${remainingText}.`);
               }
             } else if (status === "PAID") {
               if (result.notificationSent) {
