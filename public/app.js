@@ -97,6 +97,7 @@
         navMenus: [
           { key: "overview", group: "workspace", label: "Ringkasan", icon: "fa-solid fa-table-cells-large", description: "Kondisi layanan dan pekerjaan penting hari ini." },
           { key: "contacts", group: "operations", label: "Pelanggan", icon: "fa-solid fa-users", description: "Kelola data, tagihan, dan layanan hotspot pelanggan dalam tab terpisah." },
+          { key: "revenue", group: "operations", label: "Laporan Pendapatan", icon: "fa-solid fa-chart-line", description: "Lihat pendapatan yang tercatat pada setiap periode tagihan." },
           { key: "reminders", group: "operations", label: "Jadwal Reminder", icon: "fa-solid fa-calendar-check", description: "Atur jadwal dan isi pesan reminder pelanggan." },
           { key: "monitor-ap", group: "operations", label: "Monitor Jaringan", icon: "fa-solid fa-tower-broadcast", description: "Pantau konektivitas dan kondisi access point." },
           { key: "notifications", group: "messages", label: "Kirim Pesan", icon: "fa-solid fa-paper-plane", description: "Kirim pesan personal, broadcast, dan kelola penerima admin." },
@@ -122,11 +123,13 @@
         arrearsPaymentAmounts: {},
         expandedMessages: {},
         billingPeriod: "",
+        revenuePeriod: "",
         pageSizes: [10, 25, 50, 100],
         filters: {
           contacts: { search: "", page: 1, pageSize: 10 },
           contactBilling: { search: "", status: "ALL", dueStatus: "ALL", page: 1, pageSize: 10 },
           contactHotspot: { search: "", status: "ALL", page: 1, pageSize: 10 },
+          revenue: { search: "", status: "ALL", page: 1, pageSize: 10 },
           monitorAp: { search: "", status: "ALL", page: 1, pageSize: 10 },
           reminders: { search: "", schedule: "ALL", page: 1, pageSize: 10 },
           sent: { search: "", status: "ALL", page: 1, pageSize: 10 },
@@ -799,7 +802,7 @@
             "CURRENT-ONLY": "Bulan Ini Saja",
             "FULL-PAID": "Lunas Semua"
           };
-          return labels[type] || type;
+          return labels[type] || type || "-";
         },
 
         getPaymentTypeOptions() {
@@ -908,6 +911,109 @@
             currency: "IDR",
             maximumFractionDigits: 0,
           }).format(Math.max(0, Number(value) || 0));
+        },
+
+        getRevenuePeriodLabel(period = this.revenuePeriod) {
+          const [year, month] = String(period || "").split("-").map(Number);
+          if (!year || month < 1 || month > 12) return "Periode belum dipilih";
+          return this.getBillingPeriodLabel(year, month);
+        },
+
+        get revenueEntries() {
+          const period = this.revenuePeriod || this.billingPeriod;
+          if (!/^\d{4}-\d{2}$/.test(String(period || ""))) return [];
+
+          return this.contacts
+            .map((contact) => {
+              const payment = contact.paymentMonths?.[period];
+              if (!payment || payment.billingPaused) return null;
+              const monthlyAmount = Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0));
+              const status = String(payment.status || "UNPAID").toUpperCase();
+              const recordedAmount = Math.max(0, Math.floor(Number(payment.paidAmount) || 0));
+              const amount = status === "PAID"
+                ? recordedAmount || monthlyAmount
+                : recordedAmount;
+              if (amount <= 0) return null;
+              return {
+                contactId: contact.id,
+                name: contact.name || "-",
+                phoneNumber: contact.phoneNumber || "-",
+                period,
+                status: status === "PAID" ? "PAID" : "PARTIAL",
+                paymentType: payment.paymentType || null,
+                amount,
+                paymentDate: payment.lastPaymentDate || payment.paidDate || null,
+              };
+            })
+            .filter(Boolean)
+            .sort((a, b) => {
+              const dateDifference = new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime();
+              return dateDifference || a.name.localeCompare(b.name, "id-ID");
+            });
+        },
+
+        get filteredRevenueEntries() {
+          const selectedStatus = String(this.filters.revenue.status || "ALL").toUpperCase();
+          return this.revenueEntries.filter((entry) => {
+            if (selectedStatus !== "ALL" && entry.status !== selectedStatus) return false;
+            return this.searchMatches(
+              entry,
+              ["name", "phoneNumber", "paymentType", "status", "amount"],
+              this.filters.revenue.search
+            );
+          });
+        },
+
+        get paginatedRevenueEntries() {
+          return this.paginate(this.filteredRevenueEntries, "revenue");
+        },
+
+        get revenueTotal() {
+          return this.revenueEntries.reduce((total, entry) => total + entry.amount, 0);
+        },
+
+        get revenuePaidCount() {
+          return this.revenueEntries.filter((entry) => entry.status === "PAID").length;
+        },
+
+        get revenuePartialTotal() {
+          return this.revenueEntries
+            .filter((entry) => entry.status === "PARTIAL")
+            .reduce((total, entry) => total + entry.amount, 0);
+        },
+
+        get revenueAverage() {
+          return this.revenueEntries.length ? Math.round(this.revenueTotal / this.revenueEntries.length) : 0;
+        },
+
+        exportRevenueReport() {
+          const rows = [
+            ["Periode", "Pelanggan", "Nomor WhatsApp", "Status", "Jenis Pembayaran", "Pendapatan Tercatat", "Tanggal Pembayaran"],
+            ...this.filteredRevenueEntries.map((entry) => [
+              this.getRevenuePeriodLabel(entry.period),
+              entry.name,
+              entry.phoneNumber,
+              entry.status === "PAID" ? "Lunas" : "Sebagian",
+              this.getPaymentTypeLabel(entry.paymentType),
+              entry.amount,
+              entry.paymentDate ? this.formatDateTime(entry.paymentDate) : "Belum tercatat",
+            ]),
+          ];
+          const csvCell = (value) => {
+            let text = String(value ?? "");
+            if (/^[=+\-@]/.test(text)) text = `'${text}`;
+            return `"${text.replace(/"/g, '""')}"`;
+          };
+          const csv = `\uFEFF${rows.map((row) => row.map(csvCell).join(",")).join("\n")}`;
+          const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `laporan-pendapatan-${this.revenuePeriod || "periode"}.csv`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+          this.notify("Laporan pendapatan sedang diunduh dalam format CSV.");
         },
 
         getDueStatusLabel(status) {
@@ -1123,6 +1229,7 @@
             contacts: this.filteredContacts.length,
             contactBilling: this.filteredBillingContacts.length,
             contactHotspot: this.filteredHotspotContacts.length,
+            revenue: this.filteredRevenueEntries.length,
             monitorAp: this.filteredApMonitors.length,
             reminders: this.filteredReminders.length,
             sent: this.filteredSent.length,
@@ -1162,6 +1269,7 @@
           try {
             const data = await this.api("/api/status", { silent: Boolean(options.silent) });
             this.billingPeriod = data.billingPeriod || this.billingPeriod;
+            if (!this.revenuePeriod) this.revenuePeriod = this.billingPeriod;
             this.statusCards = [
               { label: `WhatsApp ${data.bot.selectedProvider || "Provider"}`, value: data.bot.deviceReady ? "Ready" : "Not ready", icon: data.bot.deviceReady ? "fa-solid fa-plug-circle-check" : "fa-solid fa-plug-circle-xmark" },
               { label: "Telegram", value: data.bot.telegramEnabled ? "Ready" : "Not ready", icon: "fa-brands fa-telegram" },

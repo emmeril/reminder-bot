@@ -164,6 +164,120 @@ test("pembayaran tunggakan mengirim nominal custom admin", async () => {
   assert.equal(app.arrearsPaymentAmounts[contact.id], undefined);
 });
 
+test("laporan pendapatan menghitung pembayaran lunas dan sebagian tanpa bulan jeda", () => {
+  const app = createDashboardApp();
+  app.revenuePeriod = "2026-10";
+  app.contacts = [
+    {
+      id: "revenue-paid",
+      name: "Pelanggan Lunas",
+      phoneNumber: "628111111111",
+      monthlyPaymentAmount: 100000,
+      paymentMonths: {
+        "2026-10": { status: "PAID", paidDate: "2026-10-10T03:00:00.000Z", paymentType: "CURRENT-ONLY" },
+      },
+    },
+    {
+      id: "revenue-partial",
+      name: "Pelanggan Sebagian",
+      phoneNumber: "628222222222",
+      monthlyPaymentAmount: 100000,
+      paymentMonths: {
+        "2026-10": { status: "UNPAID", paidAmount: 40000, lastPaymentDate: "2026-10-11T03:00:00.000Z", paymentType: "ARREARS-ONLY" },
+      },
+    },
+    {
+      id: "revenue-recorded-amount",
+      name: "Pelanggan Tarif Berubah",
+      phoneNumber: "628333333333",
+      monthlyPaymentAmount: 150000,
+      paymentMonths: {
+        "2026-10": { status: "PAID", paidAmount: 120000, paidDate: "2026-10-12T03:00:00.000Z", paymentType: "CURRENT-ONLY" },
+      },
+    },
+    {
+      id: "revenue-paused",
+      name: "Periode Jeda",
+      phoneNumber: "628444444444",
+      monthlyPaymentAmount: 100000,
+      paymentMonths: {
+        "2026-10": { status: "PAID", paidAmount: 100000, billingPaused: true },
+      },
+    },
+  ];
+
+  assert.equal(app.revenueEntries.length, 3);
+  assert.equal(app.revenueTotal, 260000);
+  assert.equal(app.revenuePaidCount, 2);
+  assert.equal(app.revenuePartialTotal, 40000);
+  assert.equal(app.revenueAverage, 86667);
+  assert.equal(app.revenueEntries.find((entry) => entry.contactId === "revenue-recorded-amount").amount, 120000);
+
+  app.filters.revenue.status = "PARTIAL";
+  assert.equal(app.filteredRevenueEntries.length, 1);
+  assert.equal(app.filteredRevenueEntries[0].name, "Pelanggan Sebagian");
+});
+
+test("ekspor laporan pendapatan membuat CSV aman dari formula spreadsheet", async () => {
+  let downloaded = false;
+  let removed = false;
+  let revokedUrl = "";
+  let createdBlob = null;
+  const link = {
+    href: "",
+    download: "",
+    click() { downloaded = true; },
+    remove() { removed = true; },
+  };
+  const app = createDashboardApp({
+    Blob,
+    URL: {
+      createObjectURL(blob) {
+        createdBlob = blob;
+        return "blob:revenue-report";
+      },
+      revokeObjectURL(url) { revokedUrl = url; },
+    },
+    document: {
+      createElement: () => link,
+      body: { appendChild: () => {} },
+    },
+  });
+  app.revenuePeriod = "2026-10";
+  app.contacts = [{
+    id: "revenue-export",
+    name: "=Pelanggan Formula",
+    phoneNumber: "628555555555",
+    monthlyPaymentAmount: 100000,
+    paymentMonths: {
+      "2026-10": { status: "PAID", paidAmount: 100000, paidDate: "2026-10-13T03:00:00.000Z", paymentType: "CURRENT-ONLY" },
+    },
+  }];
+  app.notify = () => {};
+
+  app.exportRevenueReport();
+
+  const csv = await createdBlob.text();
+  assert.equal(downloaded, true);
+  assert.equal(removed, true);
+  assert.equal(revokedUrl, "blob:revenue-report");
+  assert.equal(link.download, "laporan-pendapatan-2026-10.csv");
+  assert.match(csv, /"'=Pelanggan Formula"/);
+  assert.match(csv, /"100000"/);
+});
+
+test("sidebar dan panel laporan pendapatan tersedia dengan filter serta ekspor", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
+
+  assert.match(script, /key: "revenue"[^\n]*label: "Laporan Pendapatan"/);
+  assert.match(html, /activeMenu === 'revenue'/);
+  assert.match(html, /Pendapatan tercatat/);
+  assert.match(html, /x-model="revenuePeriod"/);
+  assert.match(html, /exportRevenueReport\(\)/);
+  assert.match(html, /Belum ada pendapatan tercatat pada periode ini/);
+});
+
 test("modal aksi tagihan hanya aktif ketika pelanggan memiliki tindakan", () => {
   const app = createDashboardApp();
 

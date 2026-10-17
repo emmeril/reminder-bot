@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>__DASHBOARD_TITLE__</title>
-  <link rel="stylesheet" href="/public/tailwind.css?v=20261014-5">
+  <link rel="stylesheet" href="/public/tailwind.css?v=20261017-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20261016-8">
-  <script defer src="/public/app.js?v=20261016-2"></script>
+  <link rel="stylesheet" href="/public/styles.css?v=20261017-1">
+  <script defer src="/public/app.js?v=20261017-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -514,6 +514,104 @@
                 <span x-text="filters.contactHotspot.page + ' / ' + totalPages('contactHotspot', filteredHotspotContacts.length)"></span>
                 <button type="button" aria-label="Halaman berikutnya" @click="setPage('contactHotspot', filters.contactHotspot.page + 1)" :disabled="filters.contactHotspot.page >= totalPages('contactHotspot', filteredHotspotContacts.length)" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section x-show="activeMenu === 'revenue'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
+          <div class="mb-5 customer-heading">
+            <div>
+              <h2 class="font-display text-2xl"><i class="fa-solid fa-chart-line mr-2 text-moss"></i>Pendapatan tercatat</h2>
+              <p class="mt-1 text-sm text-ink/70">Nominal pembayaran yang sudah masuk pada periode tagihan terpilih.</p>
+            </div>
+            <div class="customer-heading-actions">
+              <button type="button" @click="exportRevenueReport()" :disabled="!filteredRevenueEntries.length" class="ui-secondary-button border border-moss/20 bg-white px-4 py-2 text-sm font-semibold text-moss transition hover:bg-moss hover:text-white disabled:cursor-not-allowed disabled:opacity-40">
+                <i class="fa-solid fa-file-csv mr-2"></i>Unduh CSV
+              </button>
+              <button type="button" @click="withProcessing('Memuat laporan...', () => loadContacts())" class="ui-secondary-button border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
+                <i class="fa-solid fa-rotate mr-2"></i>Muat ulang
+              </button>
+            </div>
+          </div>
+
+          <div class="summary-metric-grid revenue-summary-grid mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <article class="metric-card revenue-metric tone-green">
+              <span class="icon-chip"><i class="fa-solid fa-money-bill-trend-up"></i></span>
+              <span class="metric-copy"><span class="metric-label">Total pendapatan</span><strong class="metric-value" x-text="formatRupiah(revenueTotal)"></strong></span>
+            </article>
+            <article class="metric-card revenue-metric tone-cyan">
+              <span class="icon-chip"><i class="fa-solid fa-receipt"></i></span>
+              <span class="metric-copy"><span class="metric-label">Pembayaran tercatat</span><strong class="metric-value" x-text="revenueEntries.length"></strong></span>
+            </article>
+            <article class="metric-card revenue-metric tone-violet">
+              <span class="icon-chip"><i class="fa-solid fa-circle-check"></i></span>
+              <span class="metric-copy"><span class="metric-label">Pembayaran lunas</span><strong class="metric-value" x-text="revenuePaidCount"></strong></span>
+            </article>
+            <article class="metric-card revenue-metric tone-amber">
+              <span class="icon-chip"><i class="fa-solid fa-coins"></i></span>
+              <span class="metric-copy"><span class="metric-label">Pembayaran sebagian</span><strong class="metric-value" x-text="formatRupiah(revenuePartialTotal)"></strong></span>
+            </article>
+            <article class="metric-card revenue-metric tone-slate">
+              <span class="icon-chip"><i class="fa-solid fa-calculator"></i></span>
+              <span class="metric-copy"><span class="metric-label">Rata-rata pembayaran</span><strong class="metric-value" x-text="formatRupiah(revenueAverage)"></strong></span>
+            </article>
+          </div>
+
+          <div class="filter-inline">
+            <label class="filter-field">
+              <span class="sr-only">Periode laporan</span>
+              <input type="month" x-model="revenuePeriod" @change="resetPage('revenue')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Periode laporan pendapatan">
+            </label>
+            <input x-model="filters.revenue.search" @input="resetPage('revenue')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari pelanggan, nomor WA, atau nominal" aria-label="Cari laporan pendapatan">
+            <select x-model="filters.revenue.status" @change="resetPage('revenue')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Filter status pembayaran">
+              <option value="ALL">Semua pembayaran</option>
+              <option value="PAID">Lunas</option>
+              <option value="PARTIAL">Sebagian</option>
+            </select>
+            <select x-model.number="filters.revenue.pageSize" @change="resetPage('revenue')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Jumlah laporan per halaman">
+              <template x-for="size in pageSizes" :key="'revenue-size-' + size">
+                <option :value="size" x-text="size + ' per halaman'"></option>
+              </template>
+            </select>
+          </div>
+
+          <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
+            <div class="table-scroll" tabindex="0" role="region" aria-label="Rincian laporan pendapatan">
+              <table class="customer-workspace-table revenue-table min-w-full text-sm">
+                <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
+                  <tr>
+                    <th class="px-4 py-3">Pelanggan</th>
+                    <th class="px-4 py-3">Periode</th>
+                    <th class="px-4 py-3">Status</th>
+                    <th class="px-4 py-3">Jenis pembayaran</th>
+                    <th class="px-4 py-3">Pendapatan</th>
+                    <th class="px-4 py-3">Tanggal tercatat</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-ink/6 bg-white/70">
+                  <template x-if="!filteredRevenueEntries.length">
+                    <tr><td colspan="6" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Belum ada pendapatan tercatat pada periode ini.' : 'Belum ada data pelanggan.'"></td></tr>
+                  </template>
+                  <template x-for="entry in paginatedRevenueEntries" :key="'revenue-' + entry.contactId + '-' + entry.period">
+                    <tr>
+                      <td class="px-4 py-4" data-label="Pelanggan"><strong class="customer-name" x-text="entry.name"></strong><small class="customer-meta" x-text="entry.phoneNumber"></small></td>
+                      <td class="px-4 py-4" data-label="Periode"><strong x-text="getRevenuePeriodLabel(entry.period)"></strong></td>
+                      <td class="px-4 py-4" data-label="Status"><span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="entry.status === 'PAID' ? 'bg-moss/10 text-moss' : 'bg-amber-100 text-amber-800'" x-text="entry.status === 'PAID' ? 'Lunas' : 'Sebagian'"></span></td>
+                      <td class="px-4 py-4" data-label="Jenis pembayaran"><span x-text="getPaymentTypeLabel(entry.paymentType)"></span></td>
+                      <td class="px-4 py-4" data-label="Pendapatan"><strong x-text="formatRupiah(entry.amount)"></strong></td>
+                      <td class="px-4 py-4" data-label="Tanggal tercatat"><span x-text="entry.paymentDate ? formatDateTime(entry.paymentDate) : 'Belum tercatat'"></span></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="customer-pagination">
+            <div x-text="paginationLabel('revenue', filteredRevenueEntries.length)"></div>
+            <div class="customer-pagination-controls">
+              <button type="button" aria-label="Halaman laporan sebelumnya" @click="setPage('revenue', filters.revenue.page - 1)" :disabled="filters.revenue.page <= 1" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
+              <span x-text="filters.revenue.page + ' / ' + totalPages('revenue', filteredRevenueEntries.length)"></span>
+              <button type="button" aria-label="Halaman laporan berikutnya" @click="setPage('revenue', filters.revenue.page + 1)" :disabled="filters.revenue.page >= totalPages('revenue', filteredRevenueEntries.length)" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
           </div>
         </section>

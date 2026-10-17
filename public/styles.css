@@ -187,6 +187,8 @@ aside > section:hover, main > section:hover { transform: none; box-shadow: 0 2px
 .status-panel, .summary-panel { width: 100%; }
 .status-card-grid { align-items: stretch; }
 .summary-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+.filter-field { display: flex; min-width: 170px; }
+.filter-field > input { width: 100%; }
 
 /* Info boxes and dashboard metrics */
 .metric-card {
@@ -1147,4 +1149,21 @@ input:focus, textarea:focus, select:focus, .currency-input-group:focus-within {
 
 @media (max-width: 767px) {
   .panel-shell button.pagination-button { width: 44px; height: 44px; min-height: 44px; }
+}
+
+.revenue-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+.metric-card.revenue-metric { cursor: default; }
+.metric-card.revenue-metric:hover {
+  border-color: #eceef3 !important;
+  box-shadow: none !important;
+  transform: none;
+}
+
+@media (max-width: 1199px) {
+  .revenue-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+
+@media (max-width: 767px) {
+  .customer-heading-actions button { min-height: 44px; }
+  .revenue-summary-grid { grid-template-columns: minmax(0, 1fr) !important; }
 }
