@@ -4,6 +4,7 @@ const {
   addMonthsSafely,
   formatDate,
   formatDateTime,
+  getBillingPeriodParts,
   getDateTimePartsInTimezone,
   isValidTimeZone,
   parseNetwatchSinceDate,
@@ -64,9 +65,20 @@ class ReminderScheduler {
 
   getReminderBilling(reminder) {
     const contact = this.dataManager.getResolvedReminderContact(reminder);
-    const contactState = contact && typeof this.dataManager.hydrateContact === "function"
-      ? this.dataManager.hydrateContact(contact)
-      : contact;
+    const scheduledAt = new Date(reminder?.reminderDateTime || Date.now());
+    const periodDate = Number.isNaN(scheduledAt.getTime()) ? new Date() : scheduledAt;
+    const timeZone = typeof this.dataManager.getTimezone === "function"
+      ? this.dataManager.getTimezone()
+      : "Asia/Jakarta";
+    const period = getBillingPeriodParts(periodDate, timeZone);
+    const periodBilling = contact && typeof this.dataManager.buildDebtInfo === "function"
+      ? this.dataManager.buildDebtInfo(contact, period)
+      : null;
+    const contactState = periodBilling
+      ? { ...contact, ...periodBilling }
+      : (contact && typeof this.dataManager.hydrateContact === "function"
+        ? this.dataManager.hydrateContact(contact)
+        : contact);
     const debtCount = Math.max(0, Number(
       contactState?.debtCount ?? contactState?.debtPeriods?.length ?? 0
     ) || 0);

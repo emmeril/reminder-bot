@@ -75,6 +75,39 @@ test("reminder hutang tetap dikirim ketika bulan berjalan sudah dibayar", () => 
   assert.match(scheduler.buildReminderMessage({ message: "Tagihan" }), /Total tagihan: Rp\s?150\.000/);
 });
 
+test("reminder bulan depan membaca status periode jadwal, bukan status bulan ini", () => {
+  let requestedPeriod = null;
+  const contact = {
+    id: "contact-next-period",
+    paymentStatus: "PAID",
+    currentPaymentStatus: "PAID",
+    monthlyPaymentAmount: 100_000,
+  };
+  const dataManager = {
+    getSettings: () => ({}),
+    getTimezone: () => "Asia/Jakarta",
+    getResolvedReminderContact: () => contact,
+    buildDebtInfo: (_contact, period) => {
+      requestedPeriod = period;
+      return {
+        paymentStatus: "UNPAID",
+        currentPaymentStatus: "UNPAID",
+        debtCount: 0,
+        debtAmount: 0,
+      };
+    },
+  };
+  const scheduler = new ReminderScheduler({}, dataManager, { push() {} });
+  const reminder = {
+    reminderDateTime: "2026-11-17T01:00:00.000Z",
+    message: "Tagihan November",
+  };
+
+  assert.equal(scheduler.isPaidReminder(reminder), false);
+  assert.deepEqual(requestedPeriod, { year: 2026, month: 11 });
+  assert.match(scheduler.buildReminderMessage(reminder), /Rp\s?100\.000/);
+});
+
 test("placeholder nominal pada template diganti tanpa menambah blok rincian kedua", () => {
   const dataManager = {
     getSettings: () => ({}),

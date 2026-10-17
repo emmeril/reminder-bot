@@ -2596,9 +2596,10 @@ class DataManager {
 
   buildDebtInfo(contact, options = {}) {
     const timeZone = this.getTimezone();
+    const activePeriod = getBillingPeriodParts(new Date(), timeZone);
     const { year, month } = options.year && options.month
       ? { year: options.year, month: options.month }
-      : getBillingPeriodParts(new Date(), timeZone);
+      : activePeriod;
     const currentKey = makeBillingPeriodKey(year, month);
     const paymentMonths = contact.paymentMonths || {};
     const monthlyAmount = Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0));
@@ -2657,9 +2658,12 @@ class DataManager {
     const firstDebt = debtPeriods[0] || null;
     const debtAmount = debtPeriods.reduce((total, period) => total + period.remainingAmount, 0);
     const subscriptionEnded = isOneTimeSubscriptionEnded(contact, { year, month }, timeZone);
+    const isActivePeriod = year === activePeriod.year && month === activePeriod.month;
     const effectivePaymentStatus = subscriptionEnded || billingPausedForArrears
       ? PAYMENT_STATUS.PAID
-      : (currentPayment?.status || String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase());
+      : (currentPayment?.status || (isActivePeriod
+        ? String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase()
+        : PAYMENT_STATUS.UNPAID));
 
     return {
       hasDebt,
@@ -3007,7 +3011,12 @@ class DataManager {
       changed = true;
     }
 
-    const debtInfo = this.buildDebtInfo(contact);
+    const scheduledAt = new Date(reminder.reminderDateTime || Date.now());
+    const periodDate = Number.isNaN(scheduledAt.getTime()) ? new Date() : scheduledAt;
+    const debtInfo = this.buildDebtInfo(
+      contact,
+      getBillingPeriodParts(periodDate, this.getTimezone())
+    );
     const debtCount = Math.max(0, Number(debtInfo.debtCount) || 0);
     const currentPaid = String(debtInfo.currentPaymentStatus || contact.paymentStatus || "UNPAID").toUpperCase() === PAYMENT_STATUS.PAID;
     const totalPeriods = (currentPaid ? 0 : 1) + debtCount;

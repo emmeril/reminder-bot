@@ -665,6 +665,50 @@ test("reset pembayaran bulanan juga menyegarkan pesan reminder aktif", async () 
   assert.match(reminder.message, /belum kami terima/);
 });
 
+test("reminder periode berikutnya tidak mewarisi status lunas bulan berjalan", () => {
+  const now = new Date();
+  const timeZone = "Asia/Jakarta";
+  const current = getBillingPeriodParts(now, timeZone);
+  const currentKey = makeBillingPeriodKey(current.year, current.month);
+  const nextDate = addMonthsSafely(now, 1, timeZone);
+  const next = getBillingPeriodParts(nextDate, timeZone);
+  const contact = {
+    id: "contact-future-reminder",
+    name: "Dinal",
+    phoneNumber: "6281234567897",
+    createdAt: now.toISOString(),
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentDate: now.toISOString(),
+    paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+    paymentMonths: {
+      [currentKey]: {
+        status: PAYMENT_STATUS.PAID,
+        paidDate: now.toISOString(),
+        paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+        paidAmount: 100_000,
+      },
+    },
+  };
+  const manager = createManager(contact);
+  const reminder = {
+    id: "future-reminder",
+    contactId: contact.id,
+    reminderDateTime: nextDate.toISOString(),
+    message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+    messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+  };
+
+  const futureBilling = manager.buildDebtInfo(contact, next);
+  manager.rewriteReminderPaymentMessage(reminder, contact);
+
+  assert.equal(futureBilling.currentPaymentStatus, PAYMENT_STATUS.UNPAID);
+  assert.equal(futureBilling.debtCount, 0);
+  assert.doesNotMatch(reminder.message, /Status pembayaran: LUNAS/);
+  assert.match(reminder.message, /tagihan Wifi/);
+});
+
 test("status lunas tetap mengubah pesan reminder tanpa nominal pembayaran", async () => {
   const contact = {
     id: "contact-no-amount",
