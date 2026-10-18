@@ -874,6 +874,16 @@
           return this.hasDebt(contact) || (status === "UNPAID" && dueStatus === "OVERDUE");
         },
 
+        canPayCurrentBilling(contact) {
+          const status = String(contact?.currentPaymentStatus || contact?.paymentStatus || "UNPAID").toUpperCase();
+          return contact?.subscriptionActive !== false && status !== "PAID";
+        },
+
+        getCurrentBillingActionLabel(contact) {
+          if (contact?.subscriptionActive === false) return "Tidak ada tagihan bulan ini";
+          return this.canPayCurrentBilling(contact) ? "Bayar bulan ini" : "Bulan ini sudah lunas";
+        },
+
         getSubscriptionTypeLabel(contact) {
           return String(contact?.subscriptionType || "RECURRING").toUpperCase() === "ONE_TIME"
             ? "Sekali berlangganan"

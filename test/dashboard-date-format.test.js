@@ -107,8 +107,11 @@ test("aksi tagihan memakai satu tombol dan menampilkan pilihan di modal", () => 
   assert.match(html, /@keydown\.escape\.window="closeBillingActionModal\(\)"/);
   assert.match(html, /@keydown\.tab="trapModalFocus\(\$event, 'billing-action-dialog'\)"/);
   assert.match(html, /billing-action-section-heading[\s\S]*?Pilih tindakan/);
-  assert.match(html, /Bayar bulan ini/);
-  assert.match(html, /billing-action-primary-row[\s\S]*?>Bayar bulan ini<[\s\S]*?aria-label="Kirim pengingat WhatsApp"[\s\S]*?>Kirim WhatsApp</);
+  const currentBillingButton = html.match(/billing-action-primary-row">[\s\S]*?(<button[\s\S]*?<\/button>)/)?.[1] || "";
+  assert.doesNotMatch(currentBillingButton, /x-show=/);
+  assert.match(currentBillingButton, /:disabled="!canPayCurrentBilling\(billingActionModal\.contact\)"/);
+  assert.match(currentBillingButton, /getCurrentBillingActionLabel\(billingActionModal\.contact\)/);
+  assert.match(html, /billing-action-primary-row[\s\S]*?aria-label="Kirim pengingat WhatsApp"[\s\S]*?>Kirim WhatsApp</);
   assert.match(html, /billing-action-quick-row[\s\S]*?aria-label="Lunasi semua tagihan"[\s\S]*?>Lunasi semua</);
   assert.match(html, /Tandai belum bayar/);
   assert.match(html, /Bayar sebagian tunggakan/);
@@ -117,9 +120,21 @@ test("aksi tagihan memakai satu tombol dan menampilkan pilihan di modal", () => 
   assert.match(styles, /\.billing-action-option \{[^}]*width: fit-content;[^}]*justify-self: end;[^}]*border-radius: 999px;/);
   assert.match(styles, /\.billing-action-submit \{[^}]*width: fit-content;[^}]*justify-self: end;[^}]*border-radius: 999px;/);
   assert.match(styles, /\.billing-action-option:hover > i \{ color: #fff; \}/);
+  assert.match(styles, /\.billing-action-option:disabled, \.billing-action-option:disabled:hover \{[^}]*cursor: not-allowed;/);
   assert.match(styles, /\.billing-action-submit > i, \.billing-action-submit:hover > i \{ color: #fff; \}/);
   assert.match(styles, /\.billing-action-option-reminder \{[^}]*background: #15803d;/);
   assert.match(styles, /\.billing-action-quick-row \{[^}]*justify-content: flex-end;/);
+});
+
+test("tombol tagihan bulan ini tetap tampil dengan status tindakan yang sesuai", () => {
+  const app = createDashboardApp();
+
+  assert.equal(app.canPayCurrentBilling({ subscriptionActive: true, currentPaymentStatus: "UNPAID" }), true);
+  assert.equal(app.getCurrentBillingActionLabel({ subscriptionActive: true, currentPaymentStatus: "UNPAID" }), "Bayar bulan ini");
+  assert.equal(app.canPayCurrentBilling({ subscriptionActive: true, currentPaymentStatus: "PAID" }), false);
+  assert.equal(app.getCurrentBillingActionLabel({ subscriptionActive: true, currentPaymentStatus: "PAID" }), "Bulan ini sudah lunas");
+  assert.equal(app.canPayCurrentBilling({ subscriptionActive: false, currentPaymentStatus: "PAID" }), false);
+  assert.equal(app.getCurrentBillingActionLabel({ subscriptionActive: false, currentPaymentStatus: "PAID" }), "Tidak ada tagihan bulan ini");
 });
 
 test("pembayaran tunggakan mengirim nominal custom admin", async () => {

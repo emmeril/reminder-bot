@@ -807,6 +807,8 @@ table tbody tr:hover { background: #fafaff; }
 .billing-action-option:hover { color: #fff; border-color: #1d4ed8; background: #1d4ed8; }
 .billing-action-option > i { display: inline-flex; width: 18px; height: 18px; flex: 0 0 18px; align-items: center; justify-content: center; color: #fff; border-radius: 50%; background: transparent; }
 .billing-action-option:hover > i { color: #fff; }
+.billing-action-option:disabled, .billing-action-option:disabled:hover { color: #475569; border-color: #cbd5e1; background: #f1f5f9; box-shadow: none; cursor: not-allowed; }
+.billing-action-option:disabled > i, .billing-action-option:disabled:hover > i { color: #64748b; }
 .billing-action-option > span { min-width: 0; line-height: 1.35; }
 .billing-action-option-reminder { color: #fff; border-color: #15803d; background: #15803d; box-shadow: 0 2px 5px rgba(21,128,61,.22); }
 .billing-action-option-reminder:hover { color: #fff; border-color: #166534; background: #166534; }
