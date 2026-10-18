@@ -852,6 +852,7 @@
             <div class="settings-tabs" role="tablist" aria-label="Bagian pengaturan">
               <button id="settings-general-tab" type="button" role="tab" aria-controls="settings-general-panel" :aria-selected="activeSettingsTab === 'general'" :tabindex="activeSettingsTab === 'general' ? 0 : -1" @click="selectSettingsTab('general')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'general' ? 'active' : ''"><span><i class="fa-solid fa-building"></i></span><strong>Umum</strong></button>
               <button id="settings-rates-tab" type="button" role="tab" aria-controls="settings-rates-panel" :aria-selected="activeSettingsTab === 'rates'" :tabindex="activeSettingsTab === 'rates' ? 0 : -1" @click="selectSettingsTab('rates')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'rates' ? 'active' : ''"><span><i class="fa-solid fa-tags"></i></span><strong>Tarif</strong></button>
+              <button id="settings-isolation-tab" type="button" role="tab" aria-controls="settings-isolation-panel" :aria-selected="activeSettingsTab === 'isolation'" :tabindex="activeSettingsTab === 'isolation' ? 0 : -1" @click="selectSettingsTab('isolation')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'isolation' ? 'active' : ''"><span><i class="fa-solid fa-user-lock"></i></span><strong>Isolir</strong></button>
               <button id="settings-backup-tab" type="button" role="tab" aria-controls="settings-backup-panel" :aria-selected="activeSettingsTab === 'backup'" :tabindex="activeSettingsTab === 'backup' ? 0 : -1" @click="selectSettingsTab('backup')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'backup' ? 'active' : ''"><span><i class="fa-solid fa-database"></i></span><strong>Backup</strong></button>
               <button id="settings-messages-tab" type="button" role="tab" aria-controls="settings-messages-panel" :aria-selected="activeSettingsTab === 'messages'" :tabindex="activeSettingsTab === 'messages' ? 0 : -1" @click="selectSettingsTab('messages')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'messages' ? 'active' : ''"><span><i class="fa-solid fa-message"></i></span><strong>Template Pesan</strong></button>
               <button id="settings-automation-tab" type="button" role="tab" aria-controls="settings-automation-panel" :aria-selected="activeSettingsTab === 'automation'" :tabindex="activeSettingsTab === 'automation' ? 0 : -1" @click="selectSettingsTab('automation')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'automation' ? 'active' : ''"><span><i class="fa-solid fa-bell"></i></span><strong>Otomasi</strong></button>
@@ -892,6 +893,19 @@
                 </template>
               </div>
               <p x-show="!mikrotikProfiles.length" class="rounded-2xl border border-dashed border-ink/15 px-4 py-6 text-center text-sm text-ink/45">Muat profile MikroTik untuk mengatur nominal bulanan.</p>
+            </section>
+            <section id="settings-isolation-panel" role="tabpanel" aria-labelledby="settings-isolation-tab" x-cloak x-show="activeSettingsTab === 'isolation'" x-transition.opacity class="settings-section">
+              <div class="settings-section-heading"><span><i class="fa-solid fa-user-lock"></i></span><div><strong>Jeda isolir pelanggan</strong><small>Tentukan masa tenggang setelah tanggal jatuh tempo</small></div></div>
+              <div class="grid gap-4 md:grid-cols-2">
+                <label class="block text-sm text-ink/75">
+                  Jeda setelah jatuh tempo (hari)
+                  <input x-model.number="forms.settings.hotspotIsolationGraceDays" type="number" min="0" max="30" step="1" inputmode="numeric" required class="mt-2 h-11 w-full rounded-2xl border border-ink/55 bg-white px-4 py-3 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/20" aria-describedby="hotspot-isolation-help">
+                </label>
+                <div id="hotspot-isolation-help" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
+                  <strong class="block">Contoh</strong>
+                  Jika jatuh tempo hari ini dan jeda diatur <strong>3 hari</strong>, akun yang belum lunas baru diisolir tiga hari lagi. Isi <strong>0</strong> untuk isolir tepat saat jatuh tempo.
+                </div>
+              </div>
             </section>
             <section id="settings-backup-panel" role="tabpanel" aria-labelledby="settings-backup-tab" x-cloak x-show="activeSettingsTab === 'backup'" x-transition.opacity class="settings-section">
               <div class="settings-section-heading"><span><i class="fa-solid fa-database"></i></span><div><strong>Backup dan pengiriman</strong><small>Jadwal backup serta jeda aman WhatsApp</small></div></div>

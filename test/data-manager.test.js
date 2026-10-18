@@ -949,6 +949,65 @@ test("menolak timezone aplikasi yang tidak dikenal", async () => {
   );
 });
 
+test("menunda isolir pelanggan belum lunas sesuai masa tenggang", async () => {
+  const contact = {
+    id: "contact-isolation-grace",
+    name: "Pelanggan Masa Tenggang",
+    phoneNumber: "6281234567801",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+    mikrotikUsername: "pelanggan_grace",
+    mikrotikProfile: "default",
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: "2026-10-18T01:00:00.000Z",
+  };
+  const manager = createManager(contact);
+  await manager.updateSettings({ hotspotIsolationGraceDays: 3 });
+
+  assert.equal(manager.getDueHotspotReactivationContacts(new Date("2026-10-21T00:59:59.000Z")).length, 0);
+  assert.deepEqual(
+    manager.getDueHotspotReactivationContacts(new Date("2026-10-21T01:00:00.000Z")).map(({ id }) => id),
+    [contact.id]
+  );
+});
+
+test("masa tenggang isolir tidak menunda siklus pelanggan yang sudah lunas", async () => {
+  const contact = {
+    id: "contact-paid-cycle",
+    name: "Pelanggan Lunas",
+    phoneNumber: "6281234567802",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentMonths: {},
+    mikrotikUsername: "pelanggan_lunas",
+    mikrotikProfile: "default",
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: "2026-10-18T01:00:00.000Z",
+  };
+  const manager = createManager(contact);
+  manager.hydrateContact = (value) => ({
+    ...value,
+    hasDebt: false,
+    currentPaymentStatus: PAYMENT_STATUS.PAID,
+  });
+  await manager.updateSettings({ hotspotIsolationGraceDays: 3 });
+
+  assert.deepEqual(
+    manager.getDueHotspotReactivationContacts(new Date("2026-10-18T01:00:00.000Z")).map(({ id }) => id),
+    [contact.id]
+  );
+});
+
+test("masa tenggang isolir dibatasi antara 0 sampai 30 hari", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.saveSettings = async () => {};
+
+  assert.equal((await manager.updateSettings({ hotspotIsolationGraceDays: 3 })).hotspotIsolationGraceDays, 3);
+  assert.equal((await manager.updateSettings({ hotspotIsolationGraceDays: 31 })).hotspotIsolationGraceDays, 3);
+  assert.equal((await manager.updateSettings({ hotspotIsolationGraceDays: 0 })).hotspotIsolationGraceDays, 0);
+});
+
 test("menyimpan template pengingat tagihan dari menu pengaturan", async () => {
   const manager = new DataManager({ push() {} });
   manager.saveSettings = async () => {};

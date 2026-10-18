@@ -571,7 +571,7 @@ table tbody tr:hover { background: #fafaff; }
 .notify-manual-card, .notify-broadcast-card, .notify-recipient-card { border-top: 1px solid #e8eaf0 !important; }
 .notify-manual-card form > button, .notify-broadcast-card form > button { background: #4f46e5 !important; }
 .settings-section { display: grid; gap: 14px; padding: 17px; border: 1px solid #eceef3; border-radius: 12px; background: #fbfcfd; }
-.settings-tabs { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 7px; padding: 7px; border: 1px solid #e6e9ef; border-radius: 10px; background: #f7f8fa; }
+.settings-tabs { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 7px; padding: 7px; border: 1px solid #e6e9ef; border-radius: 10px; background: #f7f8fa; }
 .settings-tabs > button { display: flex; min-width: 0; min-height: 48px; align-items: center; justify-content: center; gap: 8px; padding: 9px 10px; color: #667085; border: 1px solid transparent; border-radius: 8px; background: transparent; font-size: 12px; cursor: pointer; }
 .settings-tabs > button > span { display: inline-flex; width: 28px; height: 28px; flex: 0 0 28px; align-items: center; justify-content: center; color: #2563eb; border-radius: 7px; background: #eaf2ff; }
 .settings-tabs > button strong { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
@@ -663,7 +663,7 @@ table tbody tr:hover { background: #fafaff; }
   .settings-tabs { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .settings-tabs > button { min-height: 48px; justify-content: flex-start; }
   .settings-tabs > button strong { overflow: visible; line-height: 1.25; text-overflow: clip; white-space: normal; }
-  .settings-tabs > button:last-child { grid-column: 1 / -1; }
+  .settings-tabs > button:last-child { grid-column: auto; }
   .notification-template-grid { grid-template-columns: 1fr; }
   .notification-template-header { align-items: flex-start; flex-wrap: wrap; }
   .notification-template-copy { min-width: calc(100% - 44px); }

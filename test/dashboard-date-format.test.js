@@ -137,6 +137,17 @@ test("tombol tagihan bulan ini tetap tampil dengan status tindakan yang sesuai",
   assert.equal(app.getCurrentBillingActionLabel({ subscriptionActive: false, currentPaymentStatus: "PAID" }), "Tidak ada tagihan bulan ini");
 });
 
+test("pengaturan memiliki tab masa tenggang isolir", () => {
+  const app = createDashboardApp();
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+
+  app.selectSettingsTab("isolation");
+  assert.equal(app.activeSettingsTab, "isolation");
+  assert.match(html, /id="settings-isolation-tab"/);
+  assert.match(html, /x-model\.number="forms\.settings\.hotspotIsolationGraceDays"/);
+  assert.match(html, /Jeda setelah jatuh tempo \(hari\)/);
+});
+
 test("pembayaran tunggakan mengirim nominal custom admin", async () => {
   const app = createDashboardApp();
   const contact = {

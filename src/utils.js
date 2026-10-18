@@ -429,7 +429,34 @@ function addMonthsSafely(dateValue, monthsToAdd, timeZone = "Asia/Jakarta") {
   }, timeZone);
 }
 
+function addDaysSafely(dateValue, daysToAdd, timeZone = "Asia/Jakarta") {
+  const source = new Date(dateValue);
+  if (Number.isNaN(source.getTime())) return new Date(NaN);
+
+  const sourceParts = getDateTimePartsInTimezone(source, timeZone);
+  const target = new Date(Date.UTC(
+    Number(sourceParts.year),
+    Number(sourceParts.month) - 1,
+    Number(sourceParts.day) + Number(daysToAdd || 0),
+    Number(sourceParts.hour),
+    Number(sourceParts.minute),
+    Number(sourceParts.second),
+    source.getMilliseconds()
+  ));
+
+  return zonedDateTimeToDate({
+    year: target.getUTCFullYear(),
+    month: target.getUTCMonth() + 1,
+    day: target.getUTCDate(),
+    hour: target.getUTCHours(),
+    minute: target.getUTCMinutes(),
+    second: target.getUTCSeconds(),
+    millisecond: target.getUTCMilliseconds(),
+  }, timeZone) || new Date(NaN);
+}
+
 module.exports = {
+  addDaysSafely,
   addMonthsSafely,
   assertSecureConfiguration,
   buildHotspotEmailFromPhone,

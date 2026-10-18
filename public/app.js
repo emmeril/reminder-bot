@@ -194,6 +194,7 @@
             paymentMessageTemplateFullPaid: "",
             billingReminderMessageTemplate: "",
             timezone: "",
+            hotspotIsolationGraceDays: 0,
             autoRescheduleMonthly: false,
             notifyContactsOnApDown: true,
             notifyAdminsOnDelivery: false,
@@ -225,7 +226,7 @@
           if (savedMenu !== "payment-amount" && ["data", "billing", "hotspot"].includes(savedContactTab)) {
             this.activeContactTab = savedContactTab;
           }
-          if (["general", "rates", "backup", "messages", "automation"].includes(savedSettingsTab)) {
+          if (["general", "rates", "isolation", "backup", "messages", "automation"].includes(savedSettingsTab)) {
             this.activeSettingsTab = savedSettingsTab;
           }
           this.sidebarHidden = localStorage.getItem("dashboardSidebarHidden") === "true";
@@ -298,12 +299,12 @@
         },
 
         selectSettingsTab(key) {
-          if (!["general", "rates", "backup", "messages", "automation"].includes(key)) return;
+          if (!["general", "rates", "isolation", "backup", "messages", "automation"].includes(key)) return;
           this.activeSettingsTab = key;
         },
 
         selectAdjacentSettingsTab(direction) {
-          const tabs = ["general", "rates", "backup", "messages", "automation"];
+          const tabs = ["general", "rates", "isolation", "backup", "messages", "automation"];
           const currentIndex = tabs.indexOf(this.activeSettingsTab);
           const nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
           this.activeSettingsTab = tabs[nextIndex];
@@ -1306,6 +1307,7 @@
                 paymentMessageTemplateFullPaid: data.settings.paymentMessageTemplateFullPaid || "",
                 billingReminderMessageTemplate: data.settings.billingReminderMessageTemplate || "",
                 timezone: data.settings.timezone || "",
+                hotspotIsolationGraceDays: Number(data.settings.hotspotIsolationGraceDays ?? 0),
                 autoRescheduleMonthly: Boolean(data.settings.autoRescheduleMonthly),
                 notifyContactsOnApDown: data.settings.notifyContactsOnApDown !== false,
                 notifyAdminsOnDelivery: Boolean(data.settings.notifyAdminsOnDelivery),

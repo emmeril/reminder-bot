@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  addDaysSafely,
   assertSecureConfiguration,
   getBillingPeriodKey,
   getDateTimePartsInTimezone,
@@ -17,6 +18,13 @@ test("menggunakan format 00:00 untuk tengah malam di timezone aplikasi", () => {
 
   assert.equal(parts.dateKey, "2026-08-02");
   assert.equal(parts.timeKey, "00:00");
+});
+
+test("menambah hari kalender dengan mempertahankan jam di timezone aplikasi", () => {
+  const dueAt = new Date("2026-10-18T01:00:00.000Z");
+  const isolationAt = addDaysSafely(dueAt, 3, "Asia/Jakarta");
+
+  assert.equal(isolationAt.toISOString(), "2026-10-21T01:00:00.000Z");
 });
 
 test("memvalidasi nama timezone IANA", () => {

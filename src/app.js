@@ -42,6 +42,7 @@ const {
 } = require("./schedulers");
 const TemplateManager = require("./template-manager");
 const {
+  addDaysSafely,
   addMonthsSafely,
   assertSecureConfiguration,
   buildHotspotEmailFromPhone,
@@ -3646,10 +3647,26 @@ class DataManager {
     const nowTime = now.getTime();
     if (Number.isNaN(nowTime)) return [];
 
+    const settings = this.getSettings();
+    const isolationGraceDays = sanitizePositiveInteger(
+      settings.hotspotIsolationGraceDays,
+      DEFAULT_SETTINGS.hotspotIsolationGraceDays,
+      0,
+      30
+    );
+
     return this.getSortedContacts().filter((contact) => {
       if (!contact.hotspotReactivationAt || !contact.mikrotikUsername) return false;
       if (contact.hotspotReactivationEnabled && !contact.mikrotikProfile) return false;
-      const dueTime = new Date(contact.hotspotReactivationAt).getTime();
+      const recurring = isRecurringSubscription(contact);
+      const blockedByArrears = recurring
+        && Boolean(contact.hotspotReactivationEnabled)
+        && (Boolean(contact.hasDebt)
+          || String(contact.currentPaymentStatus || contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase() !== PAYMENT_STATUS.PAID);
+      const dueDate = blockedByArrears
+        ? addDaysSafely(contact.hotspotReactivationAt, isolationGraceDays, this.getTimezone())
+        : new Date(contact.hotspotReactivationAt);
+      const dueTime = dueDate.getTime();
       return Number.isFinite(dueTime) && dueTime <= nowTime;
     });
   }
@@ -4401,6 +4418,14 @@ class DataManager {
             )
           : (current.apDownMinimumDownMinutes || current.apDownConfirmationChecks || DEFAULT_SETTINGS.apDownMinimumDownMinutes),
         timezone: requestedTimezone,
+        hotspotIsolationGraceDays: payload.hotspotIsolationGraceDays !== undefined
+          ? sanitizePositiveInteger(
+              payload.hotspotIsolationGraceDays,
+              current.hotspotIsolationGraceDays,
+              0,
+              30
+            )
+          : current.hotspotIsolationGraceDays,
         autoRescheduleMonthly: payload.autoRescheduleMonthly !== undefined ? parseBoolean(payload.autoRescheduleMonthly, current.autoRescheduleMonthly) : current.autoRescheduleMonthly,
         notifyContactsOnApDown: payload.notifyContactsOnApDown !== undefined ? parseBoolean(payload.notifyContactsOnApDown, current.notifyContactsOnApDown) : current.notifyContactsOnApDown,
         notifyAdminsOnDelivery: payload.notifyAdminsOnDelivery !== undefined ? parseBoolean(payload.notifyAdminsOnDelivery, current.notifyAdminsOnDelivery) : current.notifyAdminsOnDelivery,
