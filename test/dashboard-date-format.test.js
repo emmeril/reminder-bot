@@ -148,6 +148,22 @@ test("pengaturan memiliki tab masa tenggang isolir", () => {
   assert.match(html, /Jeda setelah jatuh tempo \(hari\)/);
 });
 
+test("status jatuh tempo membedakan jadwal yang perlu dibuat dan sekali berlangganan", () => {
+  const app = createDashboardApp();
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+
+  assert.equal(app.getDueStatusLabel("NOT_SCHEDULED"), "Perlu Dijadwalkan");
+  assert.equal(app.getDueStatusLabel("NOT_APPLICABLE"), "Tidak Dijadwalkan");
+  assert.equal(app.getDueDateLabel({ dueStatus: "NOT_SCHEDULED" }), "Jadwal belum tersedia");
+  assert.equal(
+    app.getDueDateLabel({ dueStatus: "NOT_APPLICABLE" }),
+    "Tidak ada perpanjangan otomatis"
+  );
+  assert.match(html, /<option value="NOT_SCHEDULED">Perlu dijadwalkan<\/option>/);
+  assert.match(html, /<option value="NOT_APPLICABLE">Tidak dijadwalkan<\/option>/);
+  assert.match(html, /x-text="getDueDateLabel\(contact\)"/);
+});
+
 test("monitor jaringan menggabungkan AP dengan pelanggan terkait", () => {
   const app = createDashboardApp();
   app.contacts = [

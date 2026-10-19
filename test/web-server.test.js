@@ -128,6 +128,13 @@ test("JavaScript dashboard tidak disimpan di cache browser", async () => {
   assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
 });
 
+test("permintaan favicon tidak menghasilkan error 404 di browser", async () => {
+  const baseUrl = await startServer();
+  const response = await fetch(`${baseUrl}/favicon.ico`);
+
+  assert.equal(response.status, 204);
+});
+
 test("API Netwatch menggabungkan AP dengan pelanggan terkait", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   const baseUrl = await startServer({

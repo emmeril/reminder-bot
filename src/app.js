@@ -1401,6 +1401,7 @@ class DataManager {
     const portalAccountsCreated = await this.synchronizeCustomerPortalAccounts();
     await this.normalizeReminderRelations();
     await this.removeNonRecurringReminders();
+    await this.repairMissingRecurringReminders();
     await this.migrateReminderPaymentAmounts();
     await this.migrateReminderVariableTemplates();
     const migration = await migrateWhatsAppProviderMetadata(this);
@@ -2527,6 +2528,13 @@ class DataManager {
   }
 
   buildDueDateInfo(contact) {
+    if (!isRecurringSubscription(contact)) {
+      return {
+        dueDate: null,
+        dueStatus: "NOT_APPLICABLE",
+      };
+    }
+
     const timeZone = this.getTimezone();
     const { year, month } = getBillingPeriodParts(new Date(), timeZone);
     const activePeriodKey = makeBillingPeriodKey(year, month);
@@ -2535,9 +2543,14 @@ class DataManager {
       return reminder.phoneNumber && reminder.phoneNumber === contact.phoneNumber;
     };
 
+    const activeReminders = Array.from(this.reminders.values())
+      .filter(isContactReminder)
+      .map((reminder) => ({ ...reminder, active: true }));
     const reminders = [
-      ...Array.from(this.reminders.values()).filter(isContactReminder),
-      ...Array.from(this.sentReminders.values()).filter(isContactReminder),
+      ...activeReminders,
+      ...Array.from(this.sentReminders.values())
+        .filter(isContactReminder)
+        .map((reminder) => ({ ...reminder, active: false })),
     ];
 
     const parsedReminders = reminders
@@ -2559,12 +2572,19 @@ class DataManager {
     const latestInActivePeriod = activePeriodReminders.length > 0
       ? activePeriodReminders[activePeriodReminders.length - 1]
       : null;
-    const dueReminder = nextInActivePeriod || latestInActivePeriod || null;
+    const nextActiveReminder = parsedReminders.find(
+      (reminder) => reminder.active && reminder.timestamp >= nowTs
+    ) || null;
+    const dueReminder = nextInActivePeriod || latestInActivePeriod || nextActiveReminder;
     const dueDate = dueReminder ? new Date(dueReminder.timestamp).toISOString() : null;
 
     let dueStatus = "NOT_SCHEDULED";
     if (dueDate) {
-      if (String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase() === PAYMENT_STATUS.PAID) {
+      const periodPaymentStatus = String(
+        contact.paymentMonths?.[dueReminder.periodKey]?.status
+          || (dueReminder.periodKey === activePeriodKey ? contact.paymentStatus : PAYMENT_STATUS.UNPAID)
+      ).toUpperCase();
+      if (periodPaymentStatus === PAYMENT_STATUS.PAID) {
         dueStatus = "PAID";
       } else if (dueReminder.timestamp < nowTs) {
         dueStatus = "OVERDUE";
@@ -2908,6 +2928,18 @@ class DataManager {
       });
     }
     return removed.length;
+  }
+
+  async repairMissingRecurringReminders() {
+    let created = 0;
+    for (const contact of this.contacts.values()) {
+      if (this.ensureRecurringReminder(contact).created) created += 1;
+    }
+    if (created > 0) {
+      await this.saveReminders();
+      this.activityLog.push("info", "storage", `${created} reminder pelanggan bulanan dibuat ulang dari jadwal layanan`);
+    }
+    return created;
   }
 
   removeRemindersForContact(contactId) {
@@ -4581,7 +4613,8 @@ class DataManager {
         PAID: "Lunas",
         OVERDUE: "Jatuh Tempo",
         UPCOMING: "Belum Jatuh Tempo",
-        NOT_SCHEDULED: "Belum Dijadwalkan",
+        NOT_SCHEDULED: "Perlu Dijadwalkan",
+        NOT_APPLICABLE: "Tidak Dijadwalkan",
       }[contact.dueStatus] || contact.dueStatus || "-",
       mikrotikUsername: contact.mikrotikUsername || "-",
       mikrotikProfile: contact.mikrotikProfile || "-",
@@ -6203,6 +6236,8 @@ class WebServer {
         return res.status(503).json({ status: "not_ready" });
       }
     });
+
+    this.app.get("/favicon.ico", (_req, res) => res.status(204).end());
 
     this.app.use("/public", (req, res, next) => {
       if (["/app.js", "/customer.js", "/customer.css", "/customer-login.js"].includes(req.path)) {

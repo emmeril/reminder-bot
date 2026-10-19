@@ -1032,12 +1032,20 @@
 
         getDueStatusLabel(status) {
           const labels = {
-            NOT_SCHEDULED: "Belum Dijadwalkan",
+            NOT_SCHEDULED: "Perlu Dijadwalkan",
+            NOT_APPLICABLE: "Tidak Dijadwalkan",
             UPCOMING: "Belum Jatuh Tempo",
             OVERDUE: "Jatuh Tempo",
             PAID: "Lunas",
           };
-          return labels[String(status || "").toUpperCase()] || "Belum Dijadwalkan";
+          return labels[String(status || "").toUpperCase()] || "Perlu Dijadwalkan";
+        },
+
+        getDueDateLabel(contact) {
+          if (contact?.dueDate) return this.formatDateTime(contact.dueDate);
+          return String(contact?.dueStatus || "").toUpperCase() === "NOT_APPLICABLE"
+            ? "Tidak ada perpanjangan otomatis"
+            : "Jadwal belum tersedia";
         },
 
         getDueStatusClass(status) {

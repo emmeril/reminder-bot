@@ -31,6 +31,91 @@ function createManager(contact) {
   return manager;
 }
 
+test("jatuh tempo memakai reminder aktif berikutnya dan status pembayaran periodenya", () => {
+  const now = new Date();
+  const timeZone = "Asia/Jakarta";
+  const current = getBillingPeriodParts(now, timeZone);
+  const currentKey = makeBillingPeriodKey(current.year, current.month);
+  const nextDate = addMonthsSafely(now, 1, timeZone);
+  const next = getBillingPeriodParts(nextDate, timeZone);
+  const nextKey = makeBillingPeriodKey(next.year, next.month);
+  const contact = {
+    id: "contact-next-due",
+    name: "Pelanggan Bulanan",
+    phoneNumber: "6281234567800",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentMonths: {
+      [currentKey]: { status: PAYMENT_STATUS.PAID },
+    },
+  };
+  const manager = createManager(contact);
+  manager.reminders.set("next-reminder", {
+    id: "next-reminder",
+    contactId: contact.id,
+    phoneNumber: contact.phoneNumber,
+    reminderDateTime: nextDate.toISOString(),
+  });
+
+  assert.deepEqual(manager.buildDueDateInfo(contact), {
+    dueDate: nextDate.toISOString(),
+    dueStatus: "UPCOMING",
+  });
+
+  contact.paymentMonths[nextKey] = { status: PAYMENT_STATUS.PAID };
+  assert.equal(manager.buildDueDateInfo(contact).dueStatus, "PAID");
+});
+
+test("jatuh tempo membedakan jadwal bulanan yang hilang dan pelanggan sekali berlangganan", () => {
+  const recurring = createManager({
+    id: "contact-needs-schedule",
+    phoneNumber: "6281234567801",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  });
+  assert.deepEqual(recurring.buildDueDateInfo(recurring.getContact("contact-needs-schedule")), {
+    dueDate: null,
+    dueStatus: "NOT_SCHEDULED",
+  });
+
+  const oneTime = createManager({
+    id: "contact-one-time",
+    phoneNumber: "6281234567802",
+    subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentMonths: {},
+  });
+  assert.deepEqual(oneTime.buildDueDateInfo(oneTime.getContact("contact-one-time")), {
+    dueDate: null,
+    dueStatus: "NOT_APPLICABLE",
+  });
+});
+
+test("reminder bulanan yang hilang dibuat ulang dari jadwal layanan", async () => {
+  const nextDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const contact = {
+    id: "contact-repair-reminder",
+    name: "Pelanggan Bulanan",
+    phoneNumber: "6281234567803",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+    hotspotReactivationAt: nextDate,
+  };
+  const manager = createManager(contact);
+  let saves = 0;
+  manager.saveReminders = async () => { saves += 1; };
+
+  assert.equal(await manager.repairMissingRecurringReminders(), 1);
+  assert.equal(manager.reminders.size, 1);
+  assert.equal(manager.getSortedReminders()[0].reminderDateTime, nextDate);
+  assert.equal(saves, 1);
+  assert.equal(await manager.repairMissingRecurringReminders(), 0);
+  assert.equal(saves, 1);
+});
+
 test("transaksi Midtrans not_found yang masih baru tetap masuk antrean rekonsiliasi", () => {
   CONFIG.MIDTRANS_NOT_FOUND_RETRY_WINDOW = 30 * 60 * 1000;
   const manager = createManager({ id: "contact-midtrans-retry" });

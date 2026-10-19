@@ -359,7 +359,8 @@
               </select>
               <select x-model="filters.contactBilling.dueStatus" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
                 <option value="ALL">Semua jatuh tempo</option>
-                <option value="NOT_SCHEDULED">Belum dijadwalkan</option>
+                <option value="NOT_SCHEDULED">Perlu dijadwalkan</option>
+                <option value="NOT_APPLICABLE">Tidak dijadwalkan</option>
                 <option value="UPCOMING">Belum jatuh tempo</option>
                 <option value="OVERDUE">Jatuh tempo</option>
                 <option value="PAID">Lunas</option>
@@ -390,7 +391,7 @@
                       <tr>
                         <td class="px-4 py-4" data-label="Pelanggan"><strong class="customer-name" x-text="contact.name"></strong><small class="customer-meta" x-text="contact.phoneNumber"></small><small class="customer-meta" x-text="getSubscriptionTypeLabel(contact)"></small></td>
                         <td class="px-4 py-4" data-label="Jatuh Tempo">
-                          <span class="customer-due-date" x-text="contact.dueDate ? formatDateTime(contact.dueDate) : 'Belum dijadwalkan'"></span>
+                          <span class="customer-due-date" x-text="getDueDateLabel(contact)"></span>
                           <span class="customer-due-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getDueStatusClass(contact.dueStatus)" x-text="getDueStatusLabel(contact.dueStatus)"></span>
                         </td>
                         <td class="px-4 py-4" data-label="Nominal Bulanan">
@@ -1225,7 +1226,7 @@
         <div class="billing-action-summary" aria-label="Ringkasan tagihan pelanggan">
           <div><span>Status bulan ini</span><strong x-text="getCurrentPaymentLabel(billingActionModal.contact)"></strong></div>
           <div><span>Sisa tunggakan</span><strong x-text="formatRupiah(getDebtAmount(billingActionModal.contact))"></strong></div>
-          <div><span>Jatuh tempo</span><strong x-text="billingActionModal.contact?.dueDate ? formatDateTime(billingActionModal.contact.dueDate) : 'Belum dijadwalkan'"></strong></div>
+          <div><span>Jatuh tempo</span><strong x-text="getDueDateLabel(billingActionModal.contact)"></strong></div>
         </div>
 
         <div class="billing-action-list">
