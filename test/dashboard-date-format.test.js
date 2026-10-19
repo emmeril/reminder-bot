@@ -148,6 +148,62 @@ test("pengaturan memiliki tab masa tenggang isolir", () => {
   assert.match(html, /Jeda setelah jatuh tempo \(hari\)/);
 });
 
+test("monitor jaringan menggabungkan AP dengan pelanggan terkait", () => {
+  const app = createDashboardApp();
+  app.contacts = [
+    { id: "one", name: "Satu", linkedApHost: "ap-a.local" },
+    { id: "two", name: "Dua", linkedApHost: "" },
+  ];
+  app.apMonitors = [
+    {
+      id: "*1",
+      host: "ap-a.local",
+      status: "UP",
+      availableInNetwatch: true,
+      linkStatus: "LINKED",
+      customerCount: 1,
+      linkedContacts: [{ id: "one", name: "Satu", phoneNumber: "628111111111" }],
+    },
+    {
+      id: "*2",
+      host: "ap-b.local",
+      status: "DOWN",
+      availableInNetwatch: true,
+      linkStatus: "UNLINKED",
+      customerCount: 0,
+      linkedContacts: [],
+    },
+  ];
+
+  assert.deepEqual(JSON.parse(JSON.stringify(app.networkMonitorSummary)), {
+    netwatch: 2,
+    unlinkedMonitors: 1,
+    linkedCustomers: 1,
+    unlinkedCustomers: 1,
+    missingReferences: 0,
+  });
+  assert.equal(app.getApCustomerSummary(app.apMonitors[0]), "Satu");
+  app.filters.monitorAp.linkStatus = "LINKED";
+  assert.deepEqual(app.filteredApMonitors.map(({ host }) => host), ["ap-a.local"]);
+
+  app.selectMenu = (key) => { app.activeMenu = key; };
+  app.showApCustomers(app.apMonitors[0]);
+  assert.equal(app.activeMenu, "contacts");
+  assert.equal(app.activeContactTab, "data");
+  assert.equal(app.filters.contacts.search, "ap-a.local");
+});
+
+test("tampilan monitor jaringan menyediakan ringkasan dan filter sinkronisasi", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+
+  assert.match(html, /Ringkasan sinkronisasi jaringan/);
+  assert.match(html, /AP tanpa pelanggan/);
+  assert.match(html, /x-model="filters\.monitorAp\.linkStatus"/);
+  assert.match(html, /getApCustomerSummary\(ap\)/);
+  assert.match(html, /Tabel status AP dan pelanggan terkait/);
+  assert.match(html, /x-for="ap in selectableApMonitors"/);
+});
+
 test("pembayaran tunggakan mengirim nominal custom admin", async () => {
   const app = createDashboardApp();
   const contact = {

@@ -7,6 +7,7 @@ const {
   getBillingPeriodKey,
   getDateTimePartsInTimezone,
   isValidTimeZone,
+  normalizeNetworkHost,
   parseDateTimeInput,
   parseNetwatchSinceDate,
 } = require("../src/utils");
@@ -30,6 +31,11 @@ test("menambah hari kalender dengan mempertahankan jam di timezone aplikasi", ()
 test("memvalidasi nama timezone IANA", () => {
   assert.equal(isValidTimeZone("Asia/Jakarta"), true);
   assert.equal(isValidTimeZone("timezone-tidak-valid"), false);
+});
+
+test("menormalkan host jaringan untuk pencocokan pelanggan", () => {
+  assert.equal(normalizeNetworkHost("  AP-Pelanggan.Local  "), "ap-pelanggan.local");
+  assert.equal(normalizeNetworkHost(null), "");
 });
 
 test("mem-parsing jadwal berdasarkan timezone aplikasi, bukan timezone proses", () => {

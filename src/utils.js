@@ -324,6 +324,10 @@ function normalizePhoneNumber(value) {
   return sanitizeInput(String(value || "")).replace(/[^0-9]/g, "");
 }
 
+function normalizeNetworkHost(value) {
+  return sanitizeInput(String(value || "")).toLowerCase();
+}
+
 function isValidPhoneNumber(value) {
   return /^628\d{7,13}$/.test(value);
 }
@@ -474,6 +478,7 @@ module.exports = {
   isValidPhoneNumber,
   isValidTimeZone,
   makeBillingPeriodKey,
+  normalizeNetworkHost,
   normalizePhoneNumber,
   parseBoolean,
   parseCookies,

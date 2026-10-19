@@ -7,6 +7,7 @@ const {
   getBillingPeriodParts,
   getDateTimePartsInTimezone,
   isValidTimeZone,
+  normalizeNetworkHost,
   parseNetwatchSinceDate,
   sanitizeInput,
   sanitizePositiveInteger,
@@ -870,13 +871,14 @@ class ApDownNotifier {
 
       if (!this.isInitialized) {
         for (const monitor of monitors) {
-          const host = String(monitor.host || "");
-          if (!host) continue;
+          const host = sanitizeInput(String(monitor.host || ""));
+          const hostKey = normalizeNetworkHost(host);
+          if (!hostKey) continue;
 
           const status = this.normalizeStatus(monitor.status);
           const currentSince = sanitizeInput(monitor.since || "");
-          currentStatuses.set(host, status);
-          this.monitorStates.set(host, {
+          currentStatuses.set(hostKey, status);
+          this.monitorStates.set(hostKey, {
             alertAttempted: false,
             lastStatus: status,
             lastSince: currentSince,
@@ -892,13 +894,14 @@ class ApDownNotifier {
       const minimumDownMinutes = this.getMinimumDownMinutes();
 
       for (const monitor of monitors) {
-        const host = String(monitor.host || "");
-        if (!host) continue;
+        const host = sanitizeInput(String(monitor.host || ""));
+        const hostKey = normalizeNetworkHost(host);
+        if (!hostKey) continue;
 
         const currentStatus = this.normalizeStatus(monitor.status);
-        currentStatuses.set(host, currentStatus);
+        currentStatuses.set(hostKey, currentStatus);
 
-        const state = this.syncMonitorState(host, monitor);
+        const state = this.syncMonitorState(hostKey, monitor);
         if (currentStatus !== "DOWN") continue;
         if (settings.notifyContactsOnApDown === false) continue;
 
@@ -923,7 +926,7 @@ class ApDownNotifier {
 
         const linkedContacts = this.dataManager
           .getContacts()
-          .filter((contact) => String(contact.linkedApHost || "") === host);
+          .filter((contact) => normalizeNetworkHost(contact.linkedApHost) === hostKey);
         const attemptedContactIds = new Set(state.attemptedContactIds || []);
 
         for (const contact of linkedContacts) {
@@ -952,7 +955,7 @@ class ApDownNotifier {
           }
         }
 
-        this.monitorStates.set(host, {
+        this.monitorStates.set(hostKey, {
           ...state,
           alertAttempted: linkedContacts.length > 0
             && linkedContacts.every((contact) => attemptedContactIds.has(String(contact.id))),

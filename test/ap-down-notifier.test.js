@@ -4,10 +4,10 @@ const test = require("node:test");
 const { ApDownNotifier } = require("../src/schedulers");
 
 function createFixture() {
-  let monitors = [{ host: "10.0.0.1", status: "UP", since: "" }];
+  let monitors = [{ host: "ap-pelanggan.local", status: "UP", since: "" }];
   const contacts = [
-    { id: "one", name: "Satu", phoneNumber: "628111111111", linkedApHost: "10.0.0.1" },
-    { id: "two", name: "Dua", phoneNumber: "628222222222", linkedApHost: "10.0.0.1" },
+    { id: "one", name: "Satu", phoneNumber: "628111111111", linkedApHost: "AP-PELANGGAN.LOCAL" },
+    { id: "two", name: "Dua", phoneNumber: "628222222222", linkedApHost: "ap-pelanggan.local" },
   ];
   const sendCalls = [];
   const attempts = new Map();
@@ -48,7 +48,7 @@ test("tidak mencoba ulang kontak AP DOWN yang gagal dikirimi", async () => {
   await fixture.notifier.processNetwatchChanges();
 
   const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-  fixture.setMonitors([{ host: "10.0.0.1", status: "DOWN", since }]);
+  fixture.setMonitors([{ host: "ap-pelanggan.local", status: "DOWN", since }]);
   await fixture.notifier.processNetwatchChanges();
   await fixture.notifier.processNetwatchChanges();
 
@@ -56,9 +56,9 @@ test("tidak mencoba ulang kontak AP DOWN yang gagal dikirimi", async () => {
     "628111111111",
     "628222222222",
   ]);
-  assert.equal(fixture.notifier.monitorStates.get("10.0.0.1").alertAttempted, true);
+  assert.equal(fixture.notifier.monitorStates.get("ap-pelanggan.local").alertAttempted, true);
   assert.deepEqual(
-    Array.from(fixture.notifier.monitorStates.get("10.0.0.1").attemptedContactIds),
+    Array.from(fixture.notifier.monitorStates.get("ap-pelanggan.local").attemptedContactIds),
     ["one", "two"]
   );
 });

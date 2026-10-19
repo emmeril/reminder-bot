@@ -57,6 +57,7 @@ const {
   isValidPhoneNumber,
   isValidTimeZone,
   makeBillingPeriodKey,
+  normalizeNetworkHost,
   normalizePhoneNumber,
   parseBoolean,
   parseCookies,
@@ -5454,6 +5455,84 @@ class WebServer {
     this.setupRoutes();
   }
 
+  buildNetworkMonitorView(monitors) {
+    const contactsByHost = new Map();
+    for (const contact of this.dataManager.getContacts()) {
+      const hostKey = normalizeNetworkHost(contact.linkedApHost);
+      if (!hostKey) continue;
+      if (!contactsByHost.has(hostKey)) contactsByHost.set(hostKey, []);
+      contactsByHost.get(hostKey).push({
+        id: String(contact.id),
+        name: contact.name || "-",
+        phoneNumber: contact.phoneNumber || "",
+        linkedApHost: contact.linkedApHost || "",
+      });
+    }
+
+    const monitoredHosts = new Set();
+    const rows = (Array.isArray(monitors) ? monitors : []).map((monitor) => {
+      const hostKey = normalizeNetworkHost(monitor.host);
+      if (hostKey) monitoredHosts.add(hostKey);
+      const linkedContacts = [...(contactsByHost.get(hostKey) || [])]
+        .sort((a, b) => a.name.localeCompare(b.name, "id-ID"));
+      return {
+        ...monitor,
+        availableInNetwatch: true,
+        linkedContacts,
+        customerCount: linkedContacts.length,
+        linkStatus: linkedContacts.length > 0 ? "LINKED" : "UNLINKED",
+      };
+    });
+
+    for (const [hostKey, linkedContacts] of contactsByHost.entries()) {
+      if (monitoredHosts.has(hostKey)) continue;
+      rows.push({
+        id: `missing:${hostKey}`,
+        host: linkedContacts[0]?.linkedApHost || hostKey,
+        status: "MISSING",
+        since: "",
+        comment: "AP tersimpan pada pelanggan tetapi tidak ditemukan di Netwatch.",
+        interval: "",
+        timeout: "",
+        type: "",
+        upScript: "",
+        downScript: "",
+        availableInNetwatch: false,
+        linkedContacts: [...linkedContacts].sort((a, b) => a.name.localeCompare(b.name, "id-ID")),
+        customerCount: linkedContacts.length,
+        linkStatus: "MISSING",
+      });
+    }
+
+    return rows.sort((a, b) => String(a.host || "").localeCompare(String(b.host || ""), "id-ID"));
+  }
+
+  async resolveContactNetworkLink(payload, currentContact = null) {
+    if (!payload || payload.linkedApHost === undefined) return payload;
+
+    const requestedHost = sanitizeInput(String(payload.linkedApHost || ""));
+    if (!requestedHost) return { ...payload, linkedApHost: "" };
+    if (currentContact
+      && normalizeNetworkHost(requestedHost) === normalizeNetworkHost(currentContact.linkedApHost)) {
+      return { ...payload, linkedApHost: currentContact.linkedApHost || requestedHost };
+    }
+
+    const monitors = await this.mikrotikService.getNetwatchStatus();
+    const matchedMonitor = (Array.isArray(monitors) ? monitors : []).find(
+      (monitor) => normalizeNetworkHost(monitor.host) === normalizeNetworkHost(requestedHost)
+    );
+    if (!matchedMonitor) {
+      const error = new Error(`AP "${requestedHost}" tidak ditemukan di Netwatch. Muat ulang daftar AP lalu pilih kembali.`);
+      error.statusCode = 409;
+      throw error;
+    }
+
+    return {
+      ...payload,
+      linkedApHost: sanitizeInput(String(matchedMonitor.host || requestedHost)),
+    };
+  }
+
   async provisionHotspotContact(contact, options = {}) {
     return this.hotspotProvisioningLock.runExclusive(String(contact.id), async () => {
       const current = this.dataManager.getContact(contact.id);
@@ -6770,7 +6849,8 @@ class WebServer {
     this.app.get("/api/contacts", requireApiAuth, handleApi(async () => this.dataManager.getSortedContacts().map((contact) => this.dataManager.toPublicContact(contact))));
     this.app.post("/api/contacts", requireApiAuth, handleApi(async (req) => {
       await requireRegisteredWhatsAppNumber(req.body.phoneNumber);
-      return this.dataManager.toPublicContact(await this.dataManager.addContact(req.body));
+      const payload = await this.resolveContactNetworkLink(req.body);
+      return this.dataManager.toPublicContact(await this.dataManager.addContact(payload));
     }));
     this.app.put("/api/contacts/:id", requireApiAuth, handleApi(async (req) => {
       const current = this.dataManager.getContact(req.params.id);
@@ -6779,7 +6859,8 @@ class WebServer {
         && normalizePhoneNumber(req.body.phoneNumber) !== current.phoneNumber) {
         await requireRegisteredWhatsAppNumber(req.body.phoneNumber);
       }
-      const prepared = await this.dataManager.prepareContactUpdate(req.params.id, req.body);
+      const payload = await this.resolveContactNetworkLink(req.body, current);
+      const prepared = await this.dataManager.prepareContactUpdate(req.params.id, payload);
       if (prepared.hotspotSyncRequired) {
         const result = await this.provisionHotspotContact(prepared.contact, { sendCredentials: false });
         return { ...result.contact, hotspotSynced: true };
@@ -6911,7 +6992,9 @@ class WebServer {
 
     this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotProfiles()));
     this.app.get("/api/mikrotik/hotspot-users", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotUsers()));
-    this.app.get("/api/mikrotik/netwatch", requireApiAuth, handleApi(async () => this.mikrotikService.getNetwatchStatus()));
+    this.app.get("/api/mikrotik/netwatch", requireApiAuth, handleApi(async () => (
+      this.buildNetworkMonitorView(await this.mikrotikService.getNetwatchStatus())
+    )));
     this.app.post("/api/contacts/:id/hotspot/provision", requireApiAuth, handleApi(async (req) => {
       const contact = this.dataManager.getContact(req.params.id);
       if (!contact) throw new Error("Kontak tidak ditemukan.");

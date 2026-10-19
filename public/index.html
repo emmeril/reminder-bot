@@ -625,13 +625,27 @@
               <i class="fa-solid fa-rotate mr-2"></i>Reload
             </button>
           </div>
+          <div class="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5" aria-label="Ringkasan sinkronisasi jaringan">
+            <div class="rounded-2xl border border-ink/10 bg-haze/50 px-4 py-3"><strong class="block text-xl text-ink" x-text="networkMonitorSummary.netwatch"></strong><span class="text-xs font-medium text-ink/75">AP Netwatch</span></div>
+            <div class="rounded-2xl border border-ink/10 bg-haze/50 px-4 py-3"><strong class="block text-xl text-ink" x-text="networkMonitorSummary.unlinkedMonitors"></strong><span class="text-xs font-medium text-ink/75">AP tanpa pelanggan</span></div>
+            <div class="rounded-2xl border border-moss/20 bg-moss/5 px-4 py-3"><strong class="block text-xl text-ink" x-text="networkMonitorSummary.linkedCustomers"></strong><span class="text-xs font-medium text-ink/75">Pelanggan terhubung</span></div>
+            <div class="rounded-2xl border border-ink/10 bg-haze/50 px-4 py-3"><strong class="block text-xl text-ink" x-text="networkMonitorSummary.unlinkedCustomers"></strong><span class="text-xs font-medium text-ink/75">Belum memilih AP</span></div>
+            <div class="rounded-2xl border px-4 py-3" :class="networkMonitorSummary.missingReferences ? 'border-clay/20 bg-clay/5' : 'border-moss/20 bg-moss/5'"><strong class="block text-xl text-ink" x-text="networkMonitorSummary.missingReferences"></strong><span class="text-xs font-medium text-ink/75">Referensi AP hilang</span></div>
+          </div>
           <div class="filter-inline mb-5">
-            <input x-model="filters.monitorAp.search" @input="resetPage('monitorAp')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari host, status, comment, interval">
+            <input x-model="filters.monitorAp.search" @input="resetPage('monitorAp')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari host atau pelanggan">
             <select x-model="filters.monitorAp.status" @change="resetPage('monitorAp')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <option value="ALL">Semua status</option>
               <option value="UP">UP</option>
               <option value="DOWN">DOWN</option>
               <option value="UNKNOWN">UNKNOWN</option>
+              <option value="MISSING">MISSING</option>
+            </select>
+            <select x-model="filters.monitorAp.linkStatus" @change="resetPage('monitorAp')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+              <option value="ALL">Semua hubungan</option>
+              <option value="LINKED">Memiliki pelanggan</option>
+              <option value="UNLINKED">Tanpa pelanggan</option>
+              <option value="MISSING">Referensi AP hilang</option>
             </select>
             <select x-model.number="filters.monitorAp.pageSize" @change="resetPage('monitorAp')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <template x-for="size in pageSizes" :key="'ap-size-' + size">
@@ -640,12 +654,14 @@
             </select>
           </div>
           <div class="overflow-hidden rounded-[1.5rem] border border-ink/8">
-            <div class="table-scroll" tabindex="0" role="region" aria-label="Tabel reminder berikutnya">
+            <div class="table-scroll" tabindex="0" role="region" aria-label="Tabel status AP dan pelanggan terkait">
               <table class="dashboard-table min-w-full text-sm">
                 <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
                   <tr>
                     <th class="px-4 py-3">Host AP</th>
                     <th class="px-4 py-3">Status</th>
+                    <th class="px-4 py-3">Pelanggan</th>
+                    <th class="px-4 py-3">Sinkronisasi</th>
                     <th class="px-4 py-3">Since</th>
                     <th class="px-4 py-3">Interval</th>
                     <th class="px-4 py-3">Timeout</th>
@@ -654,7 +670,7 @@
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white/70">
                   <template x-if="!filteredApMonitors.length">
-                    <tr><td colspan="6" class="px-4 py-8 text-center text-ink/45">Belum ada data Netwatch.</td></tr>
+                    <tr><td colspan="8" class="px-4 py-8 text-center text-ink/55">Tidak ada AP yang sesuai dengan filter.</td></tr>
                   </template>
                   <template x-for="ap in paginatedApMonitors" :key="'ap-' + ap.id + '-' + ap.host">
                     <tr>
@@ -662,6 +678,16 @@
                       <td class="px-4 py-4" data-label="Status">
                         <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getApStatusClass(ap.status)" x-text="ap.status || 'UNKNOWN'"></span>
                       </td>
+                      <td class="px-4 py-4" data-label="Pelanggan">
+                        <template x-if="Number(ap.customerCount || 0) > 0">
+                          <button type="button" @click="showApCustomers(ap)" class="ap-customer-link" :aria-label="'Lihat ' + ap.customerCount + ' pelanggan pada AP ' + ap.host">
+                            <strong x-text="ap.customerCount + ' pelanggan'"></strong>
+                            <small x-text="getApCustomerSummary(ap)"></small>
+                          </button>
+                        </template>
+                        <template x-if="!Number(ap.customerCount || 0)"><span class="text-ink/55">Belum ada</span></template>
+                      </td>
+                      <td class="px-4 py-4" data-label="Sinkronisasi"><span class="inline-flex rounded-lg px-2.5 py-1 text-xs font-semibold" :class="getApLinkStatusClass(ap.linkStatus)" x-text="getApLinkStatusLabel(ap.linkStatus)"></span></td>
                       <td class="px-4 py-4 text-ink/65" data-label="Since" x-text="ap.since || '-'"></td>
                       <td class="px-4 py-4 text-ink/65" data-label="Interval" x-text="ap.interval || '-'"></td>
                       <td class="px-4 py-4 text-ink/65" data-label="Timeout" x-text="ap.timeout || '-'"></td>
@@ -1302,7 +1328,7 @@
             AP tujuan (opsional)
             <select x-model="forms.contact.linkedApHost" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               <option value="">-- Tidak di-link ke AP --</option>
-              <template x-for="ap in apMonitors" :key="'contact-ap-' + ap.id + '-' + ap.host">
+              <template x-for="ap in selectableApMonitors" :key="'contact-ap-' + ap.id + '-' + ap.host">
                 <option :value="ap.host" x-text="ap.host + ' (' + (ap.comment || 'Tanpa comment') + ')'"></option>
               </template>
             </select>
@@ -1591,7 +1617,7 @@
             AP tujuan (opsional)
             <select x-model="forms.contactEdit.linkedApHost" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               <option value="">-- Tidak di-link ke AP --</option>
-              <template x-for="ap in apMonitors" :key="'contact-edit-ap-' + ap.id + '-' + ap.host">
+              <template x-for="ap in selectableApMonitors" :key="'contact-edit-ap-' + ap.id + '-' + ap.host">
                 <option :value="ap.host" x-text="ap.host + ' (' + (ap.comment || 'Tanpa comment') + ')'"></option>
               </template>
             </select>

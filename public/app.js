@@ -130,7 +130,7 @@
           contactBilling: { search: "", status: "ALL", dueStatus: "ALL", page: 1, pageSize: 10 },
           contactHotspot: { search: "", status: "ALL", page: 1, pageSize: 10 },
           revenue: { search: "", status: "ALL", page: 1, pageSize: 10 },
-          monitorAp: { search: "", status: "ALL", page: 1, pageSize: 10 },
+          monitorAp: { search: "", status: "ALL", linkStatus: "ALL", page: 1, pageSize: 10 },
           reminders: { search: "", schedule: "ALL", page: 1, pageSize: 10 },
           sent: { search: "", status: "ALL", page: 1, pageSize: 10 },
           logs: { page: 1, pageSize: 10 },
@@ -267,6 +267,9 @@
               const requests = [this.loadStatus({ silent: true })];
               if (this.activeMenu === "contacts" && this.activeContactTab === "hotspot") {
                 requests.push(this.loadContacts({ silent: true }));
+              }
+              if (this.activeMenu === "monitor-ap") {
+                requests.push(this.loadContacts({ silent: true }), this.loadApMonitors({ silent: true }));
               }
               void Promise.allSettled(requests);
             }
@@ -1048,8 +1051,56 @@
         getApStatusClass(status) {
           const normalized = String(status || "").toUpperCase();
           if (["UP", "ONLINE", "OK"].includes(normalized)) return "bg-moss/10 text-moss";
-          if (["DOWN", "OFFLINE", "FAIL"].includes(normalized)) return "bg-clay/10 text-clay";
+          if (["DOWN", "OFFLINE", "FAIL", "MISSING"].includes(normalized)) return "bg-clay/10 text-clay";
           return "bg-slate-200/70 text-slate-700";
+        },
+
+        getApLinkStatusLabel(status) {
+          const labels = {
+            LINKED: "Terhubung",
+            UNLINKED: "Tanpa pelanggan",
+            MISSING: "AP tidak ditemukan",
+          };
+          return labels[String(status || "").toUpperCase()] || "Belum diketahui";
+        },
+
+        getApLinkStatusClass(status) {
+          const normalized = String(status || "").toUpperCase();
+          if (normalized === "LINKED") return "bg-moss/10 text-[#0b5f50]";
+          if (normalized === "MISSING") return "bg-clay/10 text-[#9a3412]";
+          return "bg-slate-200/70 text-[#475467]";
+        },
+
+        getApCustomerSummary(ap) {
+          const names = (ap?.linkedContacts || []).map((contact) => contact.name).filter(Boolean);
+          if (!names.length) return "Belum ada pelanggan";
+          if (names.length <= 2) return names.join(", ");
+          return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+        },
+
+        showApCustomers(ap) {
+          if (!ap?.host || !Number(ap.customerCount || 0)) return;
+          this.filters.contacts.search = ap.host;
+          this.filters.contacts.page = 1;
+          this.activeContactTab = "data";
+          this.selectMenu("contacts");
+        },
+
+        get selectableApMonitors() {
+          return this.apMonitors.filter((ap) => ap.availableInNetwatch !== false);
+        },
+
+        get networkMonitorSummary() {
+          return {
+            netwatch: this.apMonitors.filter((ap) => ap.availableInNetwatch !== false).length,
+            unlinkedMonitors: this.apMonitors.filter((ap) => (
+              ap.availableInNetwatch !== false
+              && String(ap.linkStatus || "").toUpperCase() === "UNLINKED"
+            )).length,
+            linkedCustomers: this.contacts.filter((contact) => this.normalizeHost(contact.linkedApHost)).length,
+            unlinkedCustomers: this.contacts.filter((contact) => !this.normalizeHost(contact.linkedApHost)).length,
+            missingReferences: this.apMonitors.filter((ap) => String(ap.linkStatus || "").toUpperCase() === "MISSING").length,
+          };
         },
 
         normalizeHost(value) {
@@ -1156,13 +1207,27 @@
         get filteredApMonitors() {
           return this.apMonitors.filter((ap) => {
             const selectedStatus = String(this.filters.monitorAp.status || "ALL").toUpperCase();
+            const selectedLinkStatus = String(this.filters.monitorAp.linkStatus || "ALL").toUpperCase();
             const status = String(ap.status || "UNKNOWN").toUpperCase();
             if (selectedStatus !== "ALL" && status !== selectedStatus) return false;
-            return this.searchMatches(
-              ap,
-              ["host", "status", "since", "comment", "interval", "timeout", "type"],
-              this.filters.monitorAp.search
-            );
+            if (selectedLinkStatus !== "ALL" && String(ap.linkStatus || "UNLINKED").toUpperCase() !== selectedLinkStatus) return false;
+            const searchableAp = {
+              ...ap,
+              linkedCustomerNames: (ap.linkedContacts || []).map((contact) => contact.name).join(" "),
+              linkedCustomerPhones: (ap.linkedContacts || []).map((contact) => contact.phoneNumber).join(" "),
+            };
+            return this.searchMatches(searchableAp, [
+              "host",
+              "status",
+              "since",
+              "comment",
+              "interval",
+              "timeout",
+              "type",
+              "linkStatus",
+              "linkedCustomerNames",
+              "linkedCustomerPhones",
+            ], this.filters.monitorAp.search);
           });
         },
 
@@ -1409,8 +1474,8 @@
           }
         },
 
-        async loadApMonitors() {
-          this.apMonitors = await this.api("/api/mikrotik/netwatch");
+        async loadApMonitors(options = {}) {
+          this.apMonitors = await this.api("/api/mikrotik/netwatch", { silent: Boolean(options.silent) });
           this.updateApSummaryMetrics();
           this.clampPage("monitorAp", this.filteredApMonitors.length);
         },

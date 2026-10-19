@@ -128,6 +128,82 @@ test("JavaScript dashboard tidak disimpan di cache browser", async () => {
   assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
 });
 
+test("API Netwatch menggabungkan AP dengan pelanggan terkait", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const baseUrl = await startServer({
+    getContacts: () => [
+      { id: "one", name: "Satu", phoneNumber: "628111111111", linkedApHost: "AP-A.LOCAL" },
+      { id: "two", name: "Dua", phoneNumber: "628222222222", linkedApHost: "ap-a.local" },
+      { id: "missing", name: "Hilang", phoneNumber: "628333333333", linkedApHost: "ap-hilang.local" },
+      { id: "none", name: "Belum Terhubung", phoneNumber: "628444444444", linkedApHost: "" },
+    ],
+  }, {}, {
+    getNetwatchStatus: async () => [
+      { id: "*1", host: "ap-a.local", status: "UP" },
+      { id: "*2", host: "ap-kosong.local", status: "DOWN" },
+    ],
+  });
+
+  const response = await fetch(`${baseUrl}/api/mikrotik/netwatch`, {
+    headers: { "x-api-key": CONFIG.WEB_API_KEY },
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  const linked = payload.data.find((monitor) => monitor.host === "ap-a.local");
+  const unlinked = payload.data.find((monitor) => monitor.host === "ap-kosong.local");
+  const missing = payload.data.find((monitor) => monitor.host === "ap-hilang.local");
+  assert.equal(linked.customerCount, 2);
+  assert.equal(linked.linkStatus, "LINKED");
+  assert.deepEqual(linked.linkedContacts.map((contact) => contact.name), ["Dua", "Satu"]);
+  assert.equal(unlinked.linkStatus, "UNLINKED");
+  assert.equal(missing.status, "MISSING");
+  assert.equal(missing.linkStatus, "MISSING");
+  assert.equal(missing.availableInNetwatch, false);
+});
+
+test("API pelanggan memvalidasi AP tujuan terhadap Netwatch", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const savedPayloads = [];
+  const baseUrl = await startServer({
+    addContact: async (payload) => {
+      savedPayloads.push(payload);
+      return { id: "contact-network", ...payload };
+    },
+    toPublicContact: (contact) => contact,
+  }, {}, {
+    getNetwatchStatus: async () => [{ id: "*1", host: "ap-a.local", status: "UP" }],
+  });
+  const headers = { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" };
+
+  const validResponse = await fetch(`${baseUrl}/api/contacts`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      name: "Pelanggan",
+      phoneNumber: "628111111111",
+      linkedApHost: "AP-A.LOCAL",
+    }),
+  });
+  const validPayload = await validResponse.json();
+  assert.equal(validResponse.status, 200);
+  assert.equal(validPayload.data.linkedApHost, "ap-a.local");
+
+  const invalidResponse = await fetch(`${baseUrl}/api/contacts`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      name: "Pelanggan Salah",
+      phoneNumber: "628222222222",
+      linkedApHost: "ap-tidak-ada.local",
+    }),
+  });
+  const invalidPayload = await invalidResponse.json();
+  assert.equal(invalidResponse.status, 409);
+  assert.match(invalidPayload.error, /tidak ditemukan di Netwatch/);
+  assert.equal(savedPayloads.length, 1);
+});
+
 test("health check publik tidak membocorkan framework dan membawa request ID", async () => {
   const baseUrl = await startServer();
   const response = await fetch(`${baseUrl}/healthz`, {

@@ -273,6 +273,11 @@ table td button { min-height: 30px !important; padding: 5px 9px !important; font
 .filter-inline-search { width: 100%; min-width: 240px; flex: 1 1 auto !important; }
 .filter-inline-select { min-width: 170px; }
 .filter-inline-size { min-width: 115px; }
+.ap-customer-link { display: flex; min-width: 150px; min-height: 44px; flex-direction: column; justify-content: center; gap: 2px; padding: 7px 9px; color: #344054; border: 1px solid #667085; border-radius: 9px; background: #fff; text-align: left; }
+.ap-customer-link:hover { color: #1d4ed8; border-color: #2563eb; background: #eff6ff; }
+.ap-customer-link:focus-visible { outline: 3px solid rgba(37,99,235,.32); outline-offset: 2px; }
+.ap-customer-link strong { font-size: 12px; }
+.ap-customer-link small { max-width: 210px; overflow: hidden; color: #667085; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .panel-shell > .filter-inline { padding: 1px; }
 .panel-shell > .filter-inline + div { margin-top: 16px !important; }
 
