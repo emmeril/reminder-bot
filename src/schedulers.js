@@ -155,6 +155,9 @@ class ReminderScheduler {
       debtCount: String(billing.debtCount),
       debtPeriods,
       totalPeriods: String(billing.totalPeriods),
+      renewalStatusInfo: billing.debtCount > 0
+        ? "\n\n*Informasi layanan*\nSelama masih ada tunggakan, masa aktif akun Anda tidak akan diperpanjang otomatis. Perpanjangan otomatis kembali aktif setelah seluruh tunggakan dilunasi."
+        : "",
       companyName,
       companyNameUpper: companyName.toUpperCase(),
       supportSignature,

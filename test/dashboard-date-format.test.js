@@ -153,6 +153,7 @@ test("form template reminder menampilkan variabel masa tenggang dan tanggal isol
 
   assert.match(html, /\{\{graceDays\}\}/);
   assert.match(html, /\{\{isolationDate\}\}/);
+  assert.match(html, /\{\{renewalStatusInfo\}\}/);
 });
 
 test("status jatuh tempo membedakan jadwal yang perlu dibuat dan sekali berlangganan", () => {

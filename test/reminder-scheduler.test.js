@@ -46,8 +46,31 @@ test("template reminder dirender dari variabel saat pesan akan dikirim", () => {
   assert.match(message, /Tanggal jatuh tempo: 2026-08-15/);
   assert.match(message, /Masa tenggang: 3 hari/);
   assert.match(message, /Tanggal isolir layanan: 2026-08-18/);
+  assert.match(message, /Informasi layanan/);
+  assert.match(message, /masa aktif akun Anda tidak akan diperpanjang otomatis/);
   assert.match(message, /CS Emmeril Hotspot$/);
   assert.doesNotMatch(message, /{{|}}/);
+});
+
+test("informasi perpanjangan otomatis tidak ditampilkan tanpa tunggakan", () => {
+  const scheduler = new ReminderScheduler({}, {
+    getSettings: () => ({ hotspotIsolationGraceDays: 3 }),
+    getTimezone: () => "Asia/Jakarta",
+    getResolvedReminderContact: () => ({
+      paymentStatus: "UNPAID",
+      currentPaymentStatus: "UNPAID",
+      debtCount: 0,
+      monthlyPaymentAmount: 100_000,
+    }),
+  }, { push() {} });
+
+  const message = scheduler.buildReminderMessage({
+    reminderDateTime: "2026-08-15T01:00:00.000Z",
+    message: "Tagihan {{totalAmount}}{{renewalStatusInfo}}",
+  });
+
+  assert.match(message, /^Tagihan Rp\s?100\.000$/);
+  assert.doesNotMatch(message, /Informasi layanan|tidak akan diperpanjang otomatis|{{|}}/);
 });
 
 test("variabel masa tenggang nol memakai tanggal jatuh tempo sebagai tanggal isolir", () => {

@@ -4,7 +4,7 @@ Kami ingin menginformasikan bahwa tagihan Wifi {{companyName}} Anda sebesar {{to
 
 Tanggal jatuh tempo: {{date}}
 Masa tenggang: {{graceDays}} hari setelah tanggal jatuh tempo
-Tanggal isolir layanan: {{isolationDate}}
+Tanggal isolir layanan: {{isolationDate}}{{renewalStatusInfo}}
 
 Mohon selesaikan pembayaran sebelum tanggal isolir agar layanan tetap aktif.
 
