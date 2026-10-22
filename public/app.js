@@ -4,6 +4,7 @@
           status: false,
           mikrotikBackup: false,
           hotspotOptions: false,
+          templates: false,
         },
         toast: {
           show: false,
@@ -83,6 +84,13 @@
           open: false,
           loading: false,
         },
+        templateModal: {
+          open: false,
+          loading: false,
+          mode: "create",
+          originalName: "",
+          returnFocusId: "",
+        },
         activeMenu: "overview",
         activeContactTab: "data",
         activeSettingsTab: "general",
@@ -113,6 +121,7 @@
         reminders: [],
         sent: [],
         templates: [],
+        templateLoadError: "",
         logs: [],
         statusCards: [],
         summaryMetrics: [],
@@ -1523,7 +1532,17 @@
         },
 
         async loadTemplates() {
-          this.templates = await this.api("/api/templates");
+          this.loading.templates = true;
+          this.templateLoadError = "";
+          try {
+            this.templates = await this.api("/api/templates", { silent: true });
+            return true;
+          } catch (error) {
+            this.templateLoadError = error instanceof Error ? error.message : "Template gagal dimuat.";
+            return false;
+          } finally {
+            this.loading.templates = false;
+          }
         },
 
         async loadRecipients() {
@@ -2247,20 +2266,88 @@
           });
         },
 
-        async createTemplate() {
+        openTemplateCreateModal(trigger = null) {
+          this.forms.template = { name: "", content: "" };
+          this.clearFormError("template");
+          this.templateModal = {
+            open: true,
+            loading: false,
+            mode: "create",
+            originalName: "",
+            returnFocusId: trigger?.id || "template-add-button",
+          };
+          document.body.classList.add("overflow-hidden");
+          this.$nextTick(() => document.getElementById("template-name-input")?.focus());
+        },
+
+        openTemplateEditModal(template, trigger = null) {
+          if (!template?.name) return;
+          this.forms.template = {
+            name: template.name,
+            content: template.content || "",
+          };
+          this.clearFormError("template");
+          this.templateModal = {
+            open: true,
+            loading: false,
+            mode: "edit",
+            originalName: template.name,
+            returnFocusId: trigger?.id || "",
+          };
+          document.body.classList.add("overflow-hidden");
+          this.$nextTick(() => document.getElementById("template-content-input")?.focus());
+        },
+
+        closeTemplateModal() {
+          if (!this.templateModal.open || this.templateModal.loading) return;
+          const returnFocusId = this.templateModal.returnFocusId;
+          this.templateModal = {
+            open: false,
+            loading: false,
+            mode: "create",
+            originalName: "",
+            returnFocusId: "",
+          };
+          this.forms.template = { name: "", content: "" };
+          this.clearFormError("template");
+          document.body.classList.remove("overflow-hidden");
+          this.$nextTick(() => document.getElementById(returnFocusId)?.focus());
+        },
+
+        async saveTemplate() {
+          if (this.templateModal.loading) return;
+          const isEditing = this.templateModal.mode === "edit";
+          const name = String(this.forms.template.name || "").trim();
+          const content = String(this.forms.template.content || "");
+          if (!name) {
+            this.setFormError("template", "Nama file template wajib diisi.");
+            return;
+          }
+          if (!content.trim()) {
+            this.setFormError("template", "Isi template wajib diisi.");
+            return;
+          }
+
+          this.templateModal.loading = true;
           this.clearFormError("template");
           try {
-            await this.withProcessing("Menyimpan template...", async () => {
-              await this.api("/api/templates", {
-                method: "POST",
-                body: JSON.stringify(this.forms.template),
+            await this.withProcessing(isEditing ? "Memperbarui template..." : "Menyimpan template...", async () => {
+              const endpoint = isEditing
+                ? `/api/templates/${encodeURIComponent(this.templateModal.originalName)}`
+                : "/api/templates";
+              await this.api(endpoint, {
+                method: isEditing ? "PUT" : "POST",
+                body: JSON.stringify(isEditing ? { content } : { name, content }),
               });
-              this.forms.template = { name: "", content: "" };
-              this.notify("Template disimpan.");
               await this.loadTemplates();
+              this.notify(isEditing ? "Template diperbarui." : "Template ditambahkan.");
+              this.templateModal.loading = false;
+              this.closeTemplateModal();
             });
           } catch (error) {
             this.setFormError("template", error);
+          } finally {
+            this.templateModal.loading = false;
           }
         },
 

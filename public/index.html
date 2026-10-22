@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>__DASHBOARD_TITLE__</title>
-  <link rel="stylesheet" href="/public/tailwind.css?v=20261017-1">
+  <link rel="stylesheet" href="/public/tailwind.css?v=20261022-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20261018-1">
-  <script defer src="/public/app.js?v=20261018-1"></script>
+  <link rel="stylesheet" href="/public/styles.css?v=20261022-1">
+  <script defer src="/public/app.js?v=20261022-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -817,29 +817,20 @@
         </section>
 
         <section x-show="activeMenu === 'templates'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-5">
-            <h2 class="font-display text-2xl"><i class="fa-solid fa-file-pen mr-2 text-moss"></i>Template pesan</h2>
-            <!-- <p class="mt-1 text-sm text-ink/60">Kelola format pesan tanpa masuk ke kode bot.</p> -->
+          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 class="font-display text-2xl"><i class="fa-solid fa-file-pen mr-2 text-moss"></i>Template pesan</h2>
+              <p class="card-description mt-1">Kelola isi pesan yang dapat dipakai kembali pada reminder dan pengiriman manual.</p>
+            </div>
+            <button id="template-add-button" type="button" @click="openTemplateCreateModal($event.currentTarget)" class="template-add-button ui-primary-button inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              <i class="fa-solid fa-plus"></i><span>Tambah template</span>
+            </button>
           </div>
-          <form class="space-y-4" @submit.prevent="createTemplate()">
-            <label class="block text-sm text-ink/60">
-              Nama file template
-              <input x-model="forms.template.name" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="billing_juni.txt" required>
-            </label>
-            <label class="block text-sm text-ink/60">
-              Isi template
-              <textarea x-model="forms.template.content" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Gunakan placeholder seperti {{name}} atau {{date}}" required></textarea>
-              <span class="notification-template-variables mt-3">
-                <strong>Variabel Reminder yang bisa digunakan</strong>
-                <span class="template-variable-list">
-                  <code>{{name}}</code><code>{{date}}</code><code>{{monthlyAmount}}</code><code>{{currentAmount}}</code><code>{{debtAmount}}</code><code>{{totalAmount}}</code><code>{{debtCount}}</code>
-                </span>
-              </span>
-            </label>
-            <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Template Baru</button>
-            <p x-cloak x-show="formErrors.template" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.template"></p>
-          </form>
-          <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
+          <div x-cloak x-show="templateLoadError" role="alert" class="mb-4 flex flex-col gap-3 rounded-xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm text-clay sm:flex-row sm:items-center sm:justify-between">
+            <span x-text="'Template gagal dimuat: ' + templateLoadError"></span>
+            <button type="button" @click="loadTemplates()" class="min-h-11 shrink-0 rounded-lg border border-clay/30 bg-white px-3 py-2 font-semibold">Coba lagi</button>
+          </div>
+          <div class="overflow-hidden rounded-[1.5rem] border border-ink/8">
             <div class="table-scroll" tabindex="0" role="region" aria-label="Tabel template">
               <table class="dashboard-table min-w-full text-sm">
                 <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
@@ -851,16 +842,22 @@
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white/70">
-                  <template x-if="!templates.length">
-                    <tr><td colspan="4" class="px-4 py-8 text-center text-ink/45">Belum ada template.</td></tr>
+                  <template x-if="loading.templates">
+                    <tr><td colspan="4" class="px-4 py-8 text-center text-ink/60"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memuat template...</td></tr>
                   </template>
-                  <template x-for="template in templates" :key="template.name">
+                  <template x-if="!loading.templates && !templateLoadError && !templates.length">
+                    <tr><td colspan="4" class="px-4 py-8 text-center text-ink/60">Belum ada template. Gunakan tombol Tambah template untuk membuatnya.</td></tr>
+                  </template>
+                  <template x-for="(template, index) in templates" :key="template.name">
                     <tr>
                       <td class="px-4 py-4 font-medium" data-label="Template" x-text="template.name"></td>
                       <td class="px-4 py-4 text-ink/65" data-label="Update" x-text="formatDateTime(template.updatedAt)"></td>
                       <td class="px-4 py-4 text-ink/65" data-label="Preview" x-text="(template.content || '').slice(0, 120)"></td>
                       <td class="px-4 py-4" data-label="Aksi">
-                        <button @click="removeTemplate(template)" class="rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Delete</button>
+                        <div class="flex flex-wrap gap-2">
+                          <button :id="'template-edit-' + index" type="button" @click="openTemplateEditModal(template, $event.currentTarget)" class="template-edit-button ui-secondary-button inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition"><i class="fa-solid fa-pen"></i>Edit</button>
+                          <button type="button" @click="removeTemplate(template)" class="template-delete-button inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition"><i class="fa-solid fa-trash"></i>Hapus</button>
+                        </div>
                       </td>
                     </tr>
                   </template>
@@ -1188,6 +1185,62 @@
         </section>
       </main>
         </div>
+      </div>
+    </div>
+
+    <div
+      x-cloak
+      x-show="templateModal.open"
+      x-transition.opacity
+      @keydown.escape.window="closeTemplateModal()"
+      @click.self="closeTemplateModal()"
+      class="dashboard-modal-overlay fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+    >
+      <div
+        id="template-dialog"
+        x-show="templateModal.open"
+        x-transition.scale.origin.center
+        @keydown.tab="trapModalFocus($event, 'template-dialog')"
+        class="w-full max-w-2xl rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="template-modal-title"
+        aria-describedby="template-modal-description"
+      >
+        <div class="mb-4 flex items-start justify-between gap-4">
+          <div class="min-w-0">
+            <h3 id="template-modal-title" class="text-lg font-semibold text-ink" x-text="templateModal.mode === 'edit' ? 'Edit template pesan' : 'Tambah template pesan'"></h3>
+            <p id="template-modal-description" class="mt-1 text-sm text-ink/60" x-text="templateModal.mode === 'edit' ? 'Perbarui isi template yang sudah tersimpan.' : 'Buat template baru untuk reminder dan pesan manual.'"></p>
+          </div>
+          <button type="button" @click="closeTemplateModal()" :disabled="templateModal.loading" class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-ink/10 text-ink transition hover:bg-haze disabled:opacity-50" aria-label="Tutup modal template">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <form class="space-y-4" @submit.prevent="saveTemplate()">
+          <label class="block text-sm text-ink/60">
+            Nama file template
+            <input id="template-name-input" x-model="forms.template.name" :disabled="templateModal.mode === 'edit'" aria-describedby="template-name-help" autocomplete="off" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="tagihan-bulanan.txt" required>
+            <span id="template-name-help" class="mt-1.5 block text-xs text-ink/60" x-text="templateModal.mode === 'edit' ? 'Nama file tetap agar template yang dipakai jadwal lama tidak terputus.' : 'Ekstensi .txt akan ditambahkan otomatis jika belum ditulis.'"></span>
+          </label>
+          <label class="block text-sm text-ink/60">
+            Isi template
+            <textarea id="template-content-input" x-model="forms.template.content" class="mt-2 min-h-44 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Tulis isi pesan dan gunakan variabel yang tersedia." required></textarea>
+            <span class="notification-template-variables mt-3">
+              <strong>Variabel reminder yang bisa digunakan</strong>
+              <span class="template-variable-list">
+                <code>{{name}}</code><code>{{date}}</code><code>{{monthlyAmount}}</code><code>{{currentAmount}}</code><code>{{debtAmount}}</code><code>{{totalAmount}}</code><code>{{debtCount}}</code>
+              </span>
+            </span>
+          </label>
+          <p x-cloak x-show="formErrors.template" x-transition role="alert" class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.template"></p>
+          <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" @click="closeTemplateModal()" :disabled="templateModal.loading" class="template-modal-secondary ui-secondary-button min-h-11 rounded-lg border px-4 py-2.5 text-sm font-semibold transition">Batal</button>
+            <button type="submit" :disabled="templateModal.loading" class="ui-primary-button min-h-11 rounded-lg border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60">
+              <span x-show="!templateModal.loading" x-text="templateModal.mode === 'edit' ? 'Simpan perubahan' : 'Simpan template'"></span>
+              <span x-show="templateModal.loading" class="inline-flex items-center gap-2"><i class="fa-solid fa-circle-notch fa-spin"></i>Menyimpan...</span>
+            </button>
+          </div>
+        </form>
       </div>
     </div>
 

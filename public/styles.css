@@ -1094,12 +1094,14 @@ input:focus, textarea:focus, select:focus, .currency-input-group:focus-within {
 }
 
 /* Explicit action colors keep labels readable across utility-class overrides. */
-.panel-shell button.ui-primary-button {
+.panel-shell button.ui-primary-button,
+.dashboard-modal-overlay button.ui-primary-button {
   color: #fff !important;
   border-color: var(--primary) !important;
   background: var(--primary) !important;
 }
-.panel-shell button.ui-primary-button:hover {
+.panel-shell button.ui-primary-button:hover,
+.dashboard-modal-overlay button.ui-primary-button:hover {
   color: #fff !important;
   border-color: var(--primary-dark) !important;
   background: var(--primary-dark) !important;
@@ -1125,9 +1127,24 @@ input:focus, textarea:focus, select:focus, .currency-input-group:focus-within {
   border-color: #1d4ed8 !important;
 }
 .panel-shell button.ui-primary-button i,
+.dashboard-modal-overlay button.ui-primary-button i,
 .panel-shell button.ui-secondary-button i,
 .dashboard-modal-overlay button.ui-secondary-button i,
 .panel-shell button.pagination-button i { color: currentColor !important; }
+.template-add-button { min-height: 44px; }
+.panel-shell button.template-edit-button,
+.dashboard-modal-overlay button.template-modal-secondary { border-color: var(--primary) !important; }
+.panel-shell button.template-delete-button {
+  color: var(--danger) !important;
+  border-color: #f0c7c3 !important;
+  background: #fff !important;
+}
+.panel-shell button.template-delete-button:hover {
+  color: #fff !important;
+  border-color: var(--danger) !important;
+  background: var(--danger) !important;
+}
+.panel-shell button.template-delete-button i { color: currentColor !important; }
 .panel-shell button.pagination-button {
   display: inline-flex;
   width: 40px;

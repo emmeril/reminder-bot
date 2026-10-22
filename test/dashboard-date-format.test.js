@@ -440,6 +440,108 @@ test("modal aksi tagihan memindahkan fokus lalu mengembalikannya saat ditutup", 
   assert.equal(triggerFocused, true);
 });
 
+test("menu template memakai modal bersama untuk tambah dan edit", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+
+  assert.match(html, /id="template-add-button"[^>]*@click="openTemplateCreateModal\(\$event\.currentTarget\)"/);
+  assert.match(html, /@click="openTemplateEditModal\(template, \$event\.currentTarget\)"/);
+  assert.match(html, /id="template-dialog"[\s\S]*?role="dialog"[\s\S]*?aria-modal="true"/);
+  assert.match(html, /@keydown\.escape\.window="closeTemplateModal\(\)"/);
+  assert.match(html, /@keydown\.tab="trapModalFocus\(\$event, 'template-dialog'\)"/);
+  assert.match(html, /@submit\.prevent="saveTemplate\(\)"/);
+  assert.match(html, /templateModal\.mode === 'edit' \? 'Simpan perubahan' : 'Simpan template'/);
+  assert.doesNotMatch(html, /@submit\.prevent="createTemplate\(\)"/);
+});
+
+test("modal template mengisi data edit, memindahkan fokus, dan mengembalikan fokus", () => {
+  let bodyLocked = false;
+  let contentFocused = false;
+  let triggerFocused = false;
+  const trigger = { id: "template-edit-0", focus() { triggerFocused = true; } };
+  const document = {
+    body: {
+      classList: {
+        add() { bodyLocked = true; },
+        remove() { bodyLocked = false; },
+      },
+    },
+    getElementById(id) {
+      if (id === "template-content-input") return { focus() { contentFocused = true; } };
+      if (id === trigger.id) return trigger;
+      return null;
+    },
+  };
+  const app = createDashboardApp({ document });
+  app.$nextTick = (callback) => callback();
+
+  app.openTemplateEditModal({ name: "Tagihan.txt", content: "Halo {{name}}" }, trigger);
+  assert.equal(app.templateModal.open, true);
+  assert.equal(app.templateModal.mode, "edit");
+  assert.equal(app.forms.template.name, "Tagihan.txt");
+  assert.equal(app.forms.template.content, "Halo {{name}}");
+  assert.equal(contentFocused, true);
+  assert.equal(bodyLocked, true);
+
+  app.closeTemplateModal();
+  assert.equal(app.templateModal.open, false);
+  assert.equal(bodyLocked, false);
+  assert.equal(triggerFocused, true);
+});
+
+test("simpan template memilih endpoint tambah dan edit yang sesuai", async () => {
+  const app = createDashboardApp();
+  const requests = [];
+  const notifications = [];
+  let closed = 0;
+  app.withProcessing = async (_message, action) => action();
+  app.api = async (url, options) => {
+    requests.push({ url, method: options.method, body: JSON.parse(options.body) });
+    return {};
+  };
+  app.loadTemplates = async () => true;
+  app.notify = (message) => notifications.push(message);
+  app.closeTemplateModal = () => { closed += 1; };
+
+  app.templateModal = { open: true, loading: false, mode: "create", originalName: "", returnFocusId: "" };
+  app.forms.template = { name: " Info pelanggan ", content: " Halo {{name}} " };
+  await app.saveTemplate();
+
+  app.templateModal = { open: true, loading: false, mode: "edit", originalName: "Info pelanggan.txt", returnFocusId: "" };
+  app.forms.template = { name: "Info pelanggan.txt", content: " Pesan diperbarui " };
+  await app.saveTemplate();
+
+  assert.deepEqual(requests, [
+    {
+      url: "/api/templates",
+      method: "POST",
+      body: { name: "Info pelanggan", content: " Halo {{name}} " },
+    },
+    {
+      url: "/api/templates/Info%20pelanggan.txt",
+      method: "PUT",
+      body: { content: " Pesan diperbarui " },
+    },
+  ]);
+  assert.deepEqual(notifications, ["Template ditambahkan.", "Template diperbarui."]);
+  assert.equal(closed, 2);
+});
+
+test("simpan template menolak nama atau isi yang kosong", async () => {
+  const app = createDashboardApp();
+  let apiCalled = false;
+  app.api = async () => { apiCalled = true; };
+  app.setFormError = (key, message) => { app.formErrors[key] = message; };
+
+  app.forms.template = { name: "", content: "Pesan" };
+  await app.saveTemplate();
+  assert.equal(app.formErrors.template, "Nama file template wajib diisi.");
+
+  app.forms.template = { name: "Tagihan", content: "   " };
+  await app.saveTemplate();
+  assert.equal(app.formErrors.template, "Isi template wajib diisi.");
+  assert.equal(apiCalled, false);
+});
+
 test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
