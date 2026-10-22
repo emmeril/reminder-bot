@@ -2992,8 +2992,8 @@ class DataManager {
   async migrateReminderVariableTemplates() {
     return this.withDataMutation(async () => {
       const settings = this.getSettings();
-      if (Number(settings.reminderVariableTemplateMigrationVersion) >= 1) {
-        return { migrated: 0, version: 1 };
+      if (Number(settings.reminderVariableTemplateMigrationVersion) >= 2) {
+        return { migrated: 0, version: 2 };
       }
 
       let migrated = 0;
@@ -3008,7 +3008,7 @@ class DataManager {
 
       this.settings = {
         ...settings,
-        reminderVariableTemplateMigrationVersion: 1,
+        reminderVariableTemplateMigrationVersion: 2,
       };
       await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
         const options = { transaction };
@@ -3016,10 +3016,10 @@ class DataManager {
         await this.saveSettings(options);
       }));
       this.activityLog.push("info", "storage", `Template variabel diterapkan ke ${migrated} reminder aktif`, {
-        migration: "reminder-variable-template-v1",
+        migration: "reminder-variable-template-v2",
         migrated,
       });
-      return { migrated, version: 1 };
+      return { migrated, version: 2 };
     });
   }
 
@@ -3088,6 +3088,52 @@ class DataManager {
       }
     }
     return changed;
+  }
+
+  async syncActiveRemindersWithTemplates(templates) {
+    const latestTemplates = new Map(
+      (Array.isArray(templates) ? templates : [])
+        .map((template) => [
+          sanitizeInput(String(template?.name || "")).toLowerCase(),
+          sanitizeMultilineText(template?.content),
+        ])
+        .filter(([name, content]) => name && content)
+    );
+
+    if (latestTemplates.size === 0) {
+      return { matched: 0, updated: 0 };
+    }
+
+    return this.withDataMutation(async () => {
+      let matched = 0;
+      let updated = 0;
+
+      for (const reminder of this.reminders.values()) {
+        const templateName = sanitizeInput(String(reminder.templateName || "")).toLowerCase();
+        const latestContent = latestTemplates.get(templateName);
+        if (!latestContent) continue;
+        matched += 1;
+
+        if (sanitizeMultilineText(reminder.messageSource || reminder.message) === latestContent) continue;
+
+        reminder.messageSource = latestContent;
+        reminder.message = latestContent;
+        const contact = this.getResolvedReminderContact(reminder);
+        if (contact) this.rewriteReminderPaymentMessage(reminder, contact);
+        updated += 1;
+      }
+
+      if (updated > 0) {
+        await this.saveReminders();
+        this.activityLog.push("info", "templates", `${updated} jadwal reminder disinkronkan dengan template terbaru`, {
+          templates: Array.from(latestTemplates.keys()),
+          matched,
+          updated,
+        });
+      }
+
+      return { matched, updated };
+    });
   }
 
   ensureRecurringReminder(contact) {
@@ -7293,7 +7339,11 @@ class WebServer {
 
     this.app.get("/api/templates", requireApiAuth, handleApi(async () => this.templateManager.listTemplates()));
     this.app.post("/api/templates", requireApiAuth, handleApi(async (req) => this.templateManager.createTemplate(req.body.name, req.body.content)));
-    this.app.put("/api/templates/:name", requireApiAuth, handleApi(async (req) => this.templateManager.updateTemplate(req.params.name, req.body.content)));
+    this.app.put("/api/templates/:name", requireApiAuth, handleApi(async (req) => {
+      const template = await this.templateManager.updateTemplate(req.params.name, req.body.content);
+      const sync = await this.dataManager.syncActiveRemindersWithTemplates([template]);
+      return { ...template, remindersMatched: sync.matched, remindersUpdated: sync.updated };
+    }));
     this.app.delete("/api/templates/:name", requireApiAuth, handleApi(async (req) => this.templateManager.deleteTemplate(req.params.name)));
 
     this.app.get("/api/settings", requireApiAuth, handleApi(async () => this.dataManager.getSettings()));
@@ -7643,6 +7693,7 @@ async function bootstrap() {
   );
 
   await dataManager.loadAll();
+  await dataManager.syncActiveRemindersWithTemplates(await templateManager.listTemplates());
 
   const reminderScheduler = new ReminderScheduler(notificationBot, dataManager, activityLog);
   const webServer = new WebServer(

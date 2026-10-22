@@ -1187,7 +1187,7 @@ test("pengaturan tidak lagi menyimpan template notifikasi reaktivasi hotspot", a
   assert.equal("hotspotReactivationMessageTemplate" in manager.settings, false);
 });
 
-test("migration mengganti reminder Penagihan existing dengan template variabel satu kali", async () => {
+test("migration mengganti reminder Penagihan existing dengan template masa tenggang satu kali", async () => {
   const contact = {
     id: "contact-reminder-migration",
     name: "Nouval",
@@ -1199,7 +1199,7 @@ test("migration mengganti reminder Penagihan existing dengan template variabel s
   };
   const manager = createManager(contact);
   manager.saveSettings = async () => {};
-  manager.settings.reminderVariableTemplateMigrationVersion = 0;
+  manager.settings.reminderVariableTemplateMigrationVersion = 1;
   manager.reminders.set("billing", {
     id: "billing",
     contactId: contact.id,
@@ -1227,7 +1227,66 @@ test("migration mengganti reminder Penagihan existing dengan template variabel s
   assert.equal(manager.reminders.get("billing").messageSource, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
   assert.equal(manager.reminders.get("billing").message, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
   assert.equal(manager.reminders.get("custom").message, "Pesan khusus pelanggan.");
-  assert.equal(manager.settings.reminderVariableTemplateMigrationVersion, 1);
+  assert.equal(manager.settings.reminderVariableTemplateMigrationVersion, 2);
+});
+
+test("perubahan template menyinkronkan semua jadwal reminder aktif yang terkait", async () => {
+  const contact = {
+    id: "contact-template-sync",
+    name: "Nouval",
+    phoneNumber: "6287728972090",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+  let saveCount = 0;
+  manager.saveReminders = async () => { saveCount += 1; };
+  manager.reminders.set("billing-one", {
+    id: "billing-one",
+    contactId: contact.id,
+    message: "Template lama satu",
+    messageSource: "Template lama satu",
+    reminderDateTime: "2026-11-15T01:00:00.000Z",
+    templateName: "Penagihan.txt",
+  });
+  manager.reminders.set("billing-two", {
+    id: "billing-two",
+    contactId: contact.id,
+    message: "Template lama dua",
+    messageSource: "Template lama dua",
+    reminderDateTime: "2026-12-15T01:00:00.000Z",
+    templateName: "penagihan.TXT",
+  });
+  manager.reminders.set("other", {
+    id: "other",
+    contactId: contact.id,
+    message: "Pesan lain",
+    messageSource: "Pesan lain",
+    reminderDateTime: "2026-11-16T01:00:00.000Z",
+    templateName: "Info.txt",
+  });
+
+  const result = await manager.syncActiveRemindersWithTemplates([{
+    name: "Penagihan.txt",
+    content: "Tagihan terbaru untuk {{name}} sebesar {{totalAmount}}.",
+  }]);
+
+  assert.deepEqual(result, { matched: 2, updated: 2 });
+  assert.equal(manager.reminders.get("billing-one").messageSource, "Tagihan terbaru untuk {{name}} sebesar {{totalAmount}}.");
+  assert.equal(manager.reminders.get("billing-two").messageSource, "Tagihan terbaru untuk {{name}} sebesar {{totalAmount}}.");
+  assert.equal(manager.reminders.get("other").messageSource, "Pesan lain");
+  assert.equal(saveCount, 1);
+
+  assert.deepEqual(
+    await manager.syncActiveRemindersWithTemplates([{
+      name: "Penagihan.txt",
+      content: "Tagihan terbaru untuk {{name}} sebesar {{totalAmount}}.",
+    }]),
+    { matched: 2, updated: 0 }
+  );
+  assert.equal(saveCount, 1);
 });
 
 test("registrasi pelanggan MikroTik membuat jadwal sebulan dari waktu registrasi", async () => {

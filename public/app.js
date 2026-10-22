@@ -2335,12 +2335,16 @@
               const endpoint = isEditing
                 ? `/api/templates/${encodeURIComponent(this.templateModal.originalName)}`
                 : "/api/templates";
-              await this.api(endpoint, {
+              const result = await this.api(endpoint, {
                 method: isEditing ? "PUT" : "POST",
                 body: JSON.stringify(isEditing ? { content } : { name, content }),
               });
               await this.loadTemplates();
-              this.notify(isEditing ? "Template diperbarui." : "Template ditambahkan.");
+              if (isEditing) await this.loadReminders();
+              const syncedCount = Math.max(0, Number(result?.remindersUpdated) || 0);
+              this.notify(isEditing && syncedCount > 0
+                ? `Template diperbarui. ${syncedCount} jadwal reminder disinkronkan.`
+                : (isEditing ? "Template diperbarui." : "Template ditambahkan."));
               this.templateModal.loading = false;
               this.closeTemplateModal();
             });

@@ -200,7 +200,7 @@ const SUBSCRIPTION_TYPES = {
   ONE_TIME: "ONE_TIME",
 };
 
-const DEFAULT_REMINDER_MESSAGE_TEMPLATE = "Yth. {{name}},\n\nKami ingin menginformasikan bahwa tagihan Wifi {{companyName}} Anda sebesar {{totalAmount}} belum kami terima. Mohon melakukan pembayaran paling lambat {{date}} agar layanan tetap aktif.\n\nMetode pembayaran yang tersedia:\n\nTransfer Bank: BCA 134-266-9497 a/n Hafriyanto\nE-Wallet: DANA 087728972090\n\nJika Anda sudah melakukan pembayaran, silakan abaikan pesan ini.\n\nTerima kasih atas perhatian dan kerjasamanya.\nHormat kami,\n{{supportSignature}}";
+const DEFAULT_REMINDER_MESSAGE_TEMPLATE = "Yth. {{name}},\n\nKami ingin menginformasikan bahwa tagihan Wifi {{companyName}} Anda sebesar {{totalAmount}} belum kami terima.\n\nTanggal jatuh tempo: {{date}}\nMasa tenggang: {{graceDays}} hari setelah tanggal jatuh tempo\nTanggal isolir layanan: {{isolationDate}}\n\nMohon selesaikan pembayaran sebelum tanggal isolir agar layanan tetap aktif.\n\nMetode pembayaran yang tersedia:\n\nTransfer Bank: BCA 134-266-9497 a/n Hafriyanto\nE-Wallet: DANA 087728972090\n\nJika Anda sudah melakukan pembayaran, silakan abaikan pesan ini.\n\nTerima kasih atas perhatian dan kerja samanya.\nHormat kami,\n{{supportSignature}}";
 
 const DEFAULT_SETTINGS = {
   dashboardTitle: "Reminder Bot Control Center",

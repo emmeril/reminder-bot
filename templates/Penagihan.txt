@@ -1,6 +1,12 @@
 Yth. {{name}},
 
-Kami ingin menginformasikan bahwa tagihan Wifi {{companyName}} Anda sebesar {{totalAmount}} belum kami terima. Mohon melakukan pembayaran paling lambat {{date}} agar layanan tetap aktif.
+Kami ingin menginformasikan bahwa tagihan Wifi {{companyName}} Anda sebesar {{totalAmount}} belum kami terima.
+
+Tanggal jatuh tempo: {{date}}
+Masa tenggang: {{graceDays}} hari setelah tanggal jatuh tempo
+Tanggal isolir layanan: {{isolationDate}}
+
+Mohon selesaikan pembayaran sebelum tanggal isolir agar layanan tetap aktif.
 
 Metode pembayaran yang tersedia:
 
@@ -9,6 +15,6 @@ E-Wallet: DANA 087728972090
 
 Jika Anda sudah melakukan pembayaran, silakan abaikan pesan ini.
 
-Terima kasih atas perhatian dan kerjasamanya.
+Terima kasih atas perhatian dan kerja samanya.
 Hormat kami,
 {{supportSignature}}

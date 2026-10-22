@@ -1,9 +1,17 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 
 const { ReminderScheduler } = require("../src/schedulers");
 const { DEFAULT_REMINDER_MESSAGE_TEMPLATE } = require("../src/config");
 const { formatDate } = require("../src/utils");
+
+test("Penagihan.txt sama dengan template reminder bawaan", () => {
+  const template = fs.readFileSync(path.join(__dirname, "../templates/Penagihan.txt"), "utf8").trimEnd();
+
+  assert.equal(template, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
+});
 
 test("template reminder dirender dari variabel saat pesan akan dikirim", () => {
   const reminder = {
@@ -17,6 +25,7 @@ test("template reminder dirender dari variabel saat pesan akan dikirim", () => {
     getSettings: () => ({
       companyName: "Emmeril Hotspot",
       supportSignature: "CS Emmeril Hotspot",
+      hotspotIsolationGraceDays: 3,
     }),
     getTimezone: () => "Asia/Jakarta",
     getResolvedReminderContact: () => ({
@@ -34,8 +43,30 @@ test("template reminder dirender dari variabel saat pesan akan dikirim", () => {
 
   assert.match(message, /^Yth\. Nouval,/);
   assert.match(message, /Wifi Emmeril Hotspot Anda sebesar Rp\s?200\.000/);
-  assert.match(message, /paling lambat 2026-08-15/);
+  assert.match(message, /Tanggal jatuh tempo: 2026-08-15/);
+  assert.match(message, /Masa tenggang: 3 hari/);
+  assert.match(message, /Tanggal isolir layanan: 2026-08-18/);
   assert.match(message, /CS Emmeril Hotspot$/);
+  assert.doesNotMatch(message, /{{|}}/);
+});
+
+test("variabel masa tenggang nol memakai tanggal jatuh tempo sebagai tanggal isolir", () => {
+  const scheduler = new ReminderScheduler({}, {
+    getSettings: () => ({ hotspotIsolationGraceDays: 0 }),
+    getTimezone: () => "Asia/Jakarta",
+    getResolvedReminderContact: () => ({
+      paymentStatus: "UNPAID",
+      currentPaymentStatus: "UNPAID",
+      monthlyPaymentAmount: 100_000,
+    }),
+  }, { push() {} });
+
+  const message = scheduler.buildReminderMessage({
+    reminderDateTime: "2026-08-15T01:00:00.000Z",
+    message: "Tenggang {{graceDays}} hari. Isolir {{isolationDate}}.",
+  });
+
+  assert.match(message, /^Tenggang 0 hari\. Isolir 2026-08-15\./);
   assert.doesNotMatch(message, /{{|}}/);
 });
 

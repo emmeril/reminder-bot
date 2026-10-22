@@ -1,6 +1,7 @@
 const { CONFIG, DEFAULT_SETTINGS } = require("./config");
 const TelegramManager = require("./telegram-manager");
 const {
+  addDaysSafely,
   addMonthsSafely,
   formatDate,
   formatDateTime,
@@ -121,6 +122,13 @@ class ReminderScheduler {
       ? this.dataManager.getTimezone()
       : "Asia/Jakarta";
     const scheduledAt = reminder.reminderDateTime || new Date();
+    const graceDays = sanitizePositiveInteger(
+      settings.hotspotIsolationGraceDays,
+      DEFAULT_SETTINGS.hotspotIsolationGraceDays,
+      0,
+      30
+    );
+    const isolationDate = addDaysSafely(scheduledAt, graceDays, timeZone);
     const companyName = sanitizeInput(settings.companyName) || "Emmeril Hotspot";
     const supportSignature = sanitizeInput(settings.supportSignature) || "CS Emmeril Hotspot";
     const debtPeriods = (billing.contact?.debtPeriods || [])
@@ -133,6 +141,8 @@ class ReminderScheduler {
       phoneNumber: billing.contact?.phoneNumber || reminder.phoneNumber || "-",
       date: formatDate(scheduledAt, timeZone),
       dateTime: formatDateTime(scheduledAt, timeZone),
+      graceDays: String(graceDays),
+      isolationDate: formatDate(isolationDate, timeZone),
       billingPeriod: new Date(scheduledAt).toLocaleString("id-ID", {
         month: "long",
         year: "numeric",

@@ -148,6 +148,13 @@ test("pengaturan memiliki tab masa tenggang isolir", () => {
   assert.match(html, /Jeda setelah jatuh tempo \(hari\)/);
 });
 
+test("form template reminder menampilkan variabel masa tenggang dan tanggal isolir", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+
+  assert.match(html, /\{\{graceDays\}\}/);
+  assert.match(html, /\{\{isolationDate\}\}/);
+});
+
 test("status jatuh tempo membedakan jadwal yang perlu dibuat dan sekali berlangganan", () => {
   const app = createDashboardApp();
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
@@ -493,12 +500,14 @@ test("simpan template memilih endpoint tambah dan edit yang sesuai", async () =>
   const requests = [];
   const notifications = [];
   let closed = 0;
+  let reminderLoads = 0;
   app.withProcessing = async (_message, action) => action();
   app.api = async (url, options) => {
     requests.push({ url, method: options.method, body: JSON.parse(options.body) });
-    return {};
+    return options.method === "PUT" ? { remindersUpdated: 2 } : {};
   };
   app.loadTemplates = async () => true;
+  app.loadReminders = async () => { reminderLoads += 1; };
   app.notify = (message) => notifications.push(message);
   app.closeTemplateModal = () => { closed += 1; };
 
@@ -522,7 +531,8 @@ test("simpan template memilih endpoint tambah dan edit yang sesuai", async () =>
       body: { content: " Pesan diperbarui " },
     },
   ]);
-  assert.deepEqual(notifications, ["Template ditambahkan.", "Template diperbarui."]);
+  assert.deepEqual(notifications, ["Template ditambahkan.", "Template diperbarui. 2 jadwal reminder disinkronkan."]);
+  assert.equal(reminderLoads, 1);
   assert.equal(closed, 2);
 });
 
