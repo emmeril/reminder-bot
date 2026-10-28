@@ -169,7 +169,7 @@ class ReminderScheduler {
       debtPeriods,
       totalPeriods: String(billing.totalPeriods),
       renewalStatusInfo: billing.debtCount > 0
-        ? "\n\n*Informasi layanan*\nSelama masih ada tunggakan, masa aktif akun Anda tidak akan diperpanjang otomatis. Perpanjangan otomatis kembali aktif setelah seluruh tunggakan dilunasi."
+        ? "\n\n*Informasi layanan*\nPerpanjangan otomatis dijeda selama masih ada tunggakan. Perpanjangan otomatis akan kembali aktif setelah seluruh tunggakan dilunasi."
         : "",
       companyName,
       companyNameUpper: companyName.toUpperCase(),
@@ -880,6 +880,7 @@ class ApDownNotifier {
       .replace(/{{\s*host\s*}}/gi, context.host || "")
       .replace(/{{\s*status\s*}}/gi, context.status || "")
       .replace(/{{\s*supportSignature\s*}}/gi, context.supportSignature || "CS Emmeril Hotspot")
+      .replace(/{{\s*companyNameUpper\s*}}/gi, String(context.companyName || "").toUpperCase())
       .replace(/{{\s*companyName\s*}}/gi, context.companyName || "");
   }
 

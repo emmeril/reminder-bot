@@ -150,7 +150,7 @@ test("notifikasi pembayaran sebagian menyebut nominal dan sisa tunggakan", async
   assert.equal(sent.length, 1);
   assert.match(sent[0].message, /Rp 100\.000/);
   assert.match(sent[0].message, /TUNGGAKAN DIBAYAR SEBAGIAN/);
-  assert.match(sent[0].message, /Sisa tunggakan Rp 100\.000/);
+  assert.match(sent[0].message, /Sisa tunggakan Anda adalah Rp 100\.000/);
   assert.doesNotMatch(sent[0].message, /{{|}}/);
 });
 
@@ -176,5 +176,23 @@ test("notifikasi pembelian masa aktif menyebut nominal dan batas aktif", async (
   assert.match(sent[0].message, /28\/11\/2026/);
   assert.match(sent[0].message, /MASA AKTIF DIBELI/);
   assert.match(sent[0].message, /Tunggakan lama tetap tersimpan/);
+  assert.doesNotMatch(sent[0].message, /{{|}}/);
+});
+
+test("template pembayaran bawaan menggunakan bahasa formal dan mudah dipahami", async () => {
+  const { bot, sent } = createBot();
+
+  await bot.sendPaymentNotification(
+    createContact(),
+    "TRX-FORMAL-1",
+    "FULL-PAID",
+    { paymentDate: "2026-10-28T03:00:00.000Z" }
+  );
+
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /^\*BUKTI PELUNASAN TAGIHAN EMMERIL HOTSPOT\*/);
+  assert.match(sent[0].message, /Yth\. Bapak\/Ibu Pelanggan Tunggakan/);
+  assert.match(sent[0].message, /Seluruh tagihan yang tercatat telah lunas/);
+  assert.match(sent[0].message, /ID transaksi: TRX-FORMAL-1/);
   assert.doesNotMatch(sent[0].message, /{{|}}/);
 });

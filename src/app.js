@@ -1406,6 +1406,7 @@ class DataManager {
     await this.repairMissingRecurringReminders();
     await this.migrateReminderPaymentAmounts();
     await this.migrateReminderVariableTemplates();
+    await this.migrateFormalNotificationTemplates();
     const migration = await migrateWhatsAppProviderMetadata(this);
     if (migration.remindersChanged || migration.sentChanged) {
       this.activityLog.push("info", "storage", "WhatsApp provider metadata migration selesai", migration);
@@ -3133,6 +3134,60 @@ class DataManager {
         migrated,
       });
       return { migrated, version: 2 };
+    });
+  }
+
+  async migrateFormalNotificationTemplates() {
+    return this.withDataMutation(async () => {
+      const settings = this.getSettings();
+      if (Number(settings.notificationTemplateCopyMigrationVersion) >= 1) {
+        return { migrated: false, remindersUpdated: 0, version: 1 };
+      }
+
+      const templateKeys = [
+        "apDownMessageTemplate",
+        "customerAccountMessageTemplate",
+        "billingReminderMessageTemplate",
+        "paymentMessageTemplateArrearsOnly",
+        "paymentMessageTemplateCurrentOnly",
+        "paymentMessageTemplateFullPaid",
+        "paymentMessageTemplateActivePeriod",
+        "activePeriodReminderMessageTemplate",
+      ];
+      this.settings = { ...settings };
+      for (const key of templateKeys) {
+        this.settings[key] = DEFAULT_SETTINGS[key];
+      }
+      this.settings.notificationTemplateCopyMigrationVersion = 1;
+
+      let remindersUpdated = 0;
+      for (const reminder of this.reminders.values()) {
+        const templateName = String(reminder.templateName || "").toLowerCase();
+        let messageTemplate = null;
+        if (templateName === "penagihan.txt") {
+          messageTemplate = DEFAULT_REMINDER_MESSAGE_TEMPLATE;
+        } else if (reminder.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY) {
+          messageTemplate = DEFAULT_SETTINGS.activePeriodReminderMessageTemplate;
+        }
+        if (!messageTemplate) continue;
+
+        reminder.message = messageTemplate;
+        reminder.messageSource = messageTemplate;
+        const contact = this.getResolvedReminderContact(reminder);
+        if (contact) this.rewriteReminderPaymentMessage(reminder, contact);
+        remindersUpdated += 1;
+      }
+
+      await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+        const options = { transaction };
+        await this.saveSettings(options);
+        if (remindersUpdated > 0) await this.saveReminders(options);
+      }));
+      this.activityLog.push("info", "storage", "Template notifikasi diperbarui dengan bahasa formal", {
+        migration: "formal-notification-copy-v1",
+        remindersUpdated,
+      });
+      return { migrated: true, remindersUpdated, version: 1 };
     });
   }
 
@@ -5544,7 +5599,7 @@ class NotificationBot {
     });
 
     let statusText = "LUNAS";
-    let noteText = "Pembayaran Anda telah berhasil kami terima.";
+    let noteText = "Pembayaran telah kami terima dan dicatat pada sistem.";
     const paymentAmount = Math.max(0, Math.floor(Number(options.paymentAmount) || 0));
     const remainingDebtAmount = Math.max(0, Math.floor(Number(options.remainingDebtAmount) || 0));
     const activeUntilDate = options.activeUntil ? new Date(options.activeUntil) : null;
@@ -5562,14 +5617,14 @@ class NotificationBot {
     if (paymentType === "ARREARS-ONLY") {
       statusText = remainingDebtAmount > 0 ? "TUNGGAKAN DIBAYAR SEBAGIAN" : "TUNGGAKAN TERBAYAR";
       noteText = paymentAmount > 0
-        ? `Pembayaran tunggakan sebesar ${this.dataManager.formatPaymentAmount(paymentAmount)} telah kami terima. Sisa tunggakan ${this.dataManager.formatPaymentAmount(remainingDebtAmount)}. Tagihan bulan berjalan tidak termasuk dalam pembayaran ini.`
-        : "Pembayaran tunggakan bulan sebelumnya telah kami terima. Tagihan bulan berjalan tidak termasuk dalam pembayaran ini.";
+        ? `Pembayaran sebesar ${this.dataManager.formatPaymentAmount(paymentAmount)} telah dialokasikan ke tunggakan paling lama. Sisa tunggakan Anda adalah ${this.dataManager.formatPaymentAmount(remainingDebtAmount)}. Tagihan bulan berjalan tidak termasuk dalam pembayaran ini.`
+        : "Pembayaran tunggakan telah kami terima. Tagihan bulan berjalan tidak termasuk dalam pembayaran ini.";
     } else if (paymentType === "CURRENT-ONLY") {
       statusText = "LUNAS (BULAN INI)";
-      noteText = "Pembayaran bulan ini telah kami terima dan riwayat bulan sebelumnya sudah lunas.";
+      noteText = "Tagihan bulan berjalan telah lunas. Tidak ada tunggakan dari periode sebelumnya.";
     } else if (paymentType === "FULL-PAID") {
       statusText = "LUNAS";
-      noteText = "Semua tagihan (bulan sebelumnya dan bulan ini) telah lunas. Terima kasih atas kelancarannya!";
+      noteText = "Seluruh tagihan periode sebelumnya dan bulan berjalan telah lunas.";
     } else if (paymentType === PAYMENT_TYPES.ACTIVE_PERIOD) {
       statusText = "MASA AKTIF DIBELI";
       noteText = `Akun hotspot aktif sampai ${formattedActiveUntil}. Tunggakan lama tetap tersimpan dan perpanjangan otomatis masih dijeda.`;

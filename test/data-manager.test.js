@@ -5,6 +5,7 @@ const { DataManager } = require("../src/app");
 const {
   CONFIG,
   DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+  DEFAULT_SETTINGS,
   PAYMENT_STATUS,
   PAYMENT_TYPES,
   REMINDER_KINDS,
@@ -793,7 +794,7 @@ test("reminder periode berikutnya tidak mewarisi status lunas bulan berjalan", (
   assert.equal(futureBilling.currentPaymentStatus, PAYMENT_STATUS.UNPAID);
   assert.equal(futureBilling.debtCount, 0);
   assert.doesNotMatch(reminder.message, /Status pembayaran: LUNAS/);
-  assert.match(reminder.message, /tagihan Wifi/);
+  assert.match(reminder.message, /tagihan layanan WiFi/);
 });
 
 test("status lunas tetap mengubah pesan reminder tanpa nominal pembayaran", async () => {
@@ -1393,6 +1394,53 @@ test("migration mengganti reminder Penagihan existing dengan template masa tengg
   assert.equal(manager.reminders.get("billing").message, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
   assert.equal(manager.reminders.get("custom").message, "Pesan khusus pelanggan.");
   assert.equal(manager.settings.reminderVariableTemplateMigrationVersion, 2);
+});
+
+test("migration menerapkan bahasa formal pada template notifikasi dan reminder aktif", async () => {
+  const contact = {
+    id: "contact-formal-copy-migration",
+    name: "Pelanggan Formal",
+    phoneNumber: "6281234567898",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+  manager.settings.apDownMessageTemplate = "Pesan lama";
+  manager.settings.notificationTemplateCopyMigrationVersion = 0;
+  manager.reminders.set("formal-billing", {
+    id: "formal-billing",
+    contactId: contact.id,
+    reminderDateTime: "2026-11-30T01:00:00.000Z",
+    templateName: "Penagihan.txt",
+    message: "Pesan tagihan lama",
+    messageSource: "Pesan tagihan lama",
+  });
+  manager.reminders.set("formal-active-period", {
+    id: "formal-active-period",
+    contactId: contact.id,
+    reminderDateTime: "2026-11-27T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    activePeriodUntil: "2026-11-30T01:00:00.000Z",
+    templateName: "MasaAktifSementara",
+    message: "Pesan masa aktif lama",
+    messageSource: "Pesan masa aktif lama",
+  });
+
+  const first = await manager.migrateFormalNotificationTemplates();
+  const second = await manager.migrateFormalNotificationTemplates();
+
+  assert.deepEqual(first, { migrated: true, remindersUpdated: 2, version: 1 });
+  assert.deepEqual(second, { migrated: false, remindersUpdated: 0, version: 1 });
+  assert.equal(manager.settings.apDownMessageTemplate, DEFAULT_SETTINGS.apDownMessageTemplate);
+  assert.equal(manager.settings.billingReminderMessageTemplate, DEFAULT_SETTINGS.billingReminderMessageTemplate);
+  assert.equal(manager.settings.notificationTemplateCopyMigrationVersion, 1);
+  assert.equal(manager.reminders.get("formal-billing").messageSource, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
+  assert.equal(
+    manager.reminders.get("formal-active-period").messageSource,
+    DEFAULT_SETTINGS.activePeriodReminderMessageTemplate
+  );
 });
 
 test("perubahan template menyinkronkan semua jadwal reminder aktif yang terkait", async () => {

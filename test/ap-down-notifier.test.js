@@ -1,7 +1,24 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+const { DEFAULT_SETTINGS } = require("../src/config");
 const { ApDownNotifier } = require("../src/schedulers");
+
+test("template perangkat tidak aktif dirender formal tanpa variabel tersisa", () => {
+  const notifier = new ApDownNotifier({}, {}, {}, { push() {} });
+  const message = notifier.renderApDownMessage(DEFAULT_SETTINGS.apDownMessageTemplate, {
+    name: "Pelanggan Satu",
+    host: "ap-pelanggan.local",
+    status: "DOWN",
+    companyName: "Emmeril Hotspot",
+    supportSignature: "CS Emmeril Hotspot",
+  });
+
+  assert.match(message, /^\*PEMBERITAHUAN PERANGKAT EMMERIL HOTSPOT\*/);
+  assert.match(message, /Yth\. Bapak\/Ibu Pelanggan Satu/);
+  assert.match(message, /Perangkat terpantau: ap-pelanggan\.local/);
+  assert.doesNotMatch(message, /{{|}}/);
+});
 
 function createFixture() {
   let monitors = [{ host: "ap-pelanggan.local", status: "UP", since: "" }];

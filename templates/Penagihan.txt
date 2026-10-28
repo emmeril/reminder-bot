@@ -1,20 +1,21 @@
-Yth. {{name}},
+*PENGINGAT TAGIHAN {{companyNameUpper}}*
 
-Kami ingin menginformasikan bahwa tagihan Wifi {{companyName}} Anda sebesar {{totalAmount}} belum kami terima.
+Yth. Bapak/Ibu {{name}},
 
-Tanggal jatuh tempo: {{date}}
-Masa tenggang: {{graceDays}} hari setelah tanggal jatuh tempo
-Tanggal isolir layanan: {{isolationDate}}{{renewalStatusInfo}}
+Berdasarkan catatan kami, tagihan layanan WiFi Anda sebesar {{totalAmount}} belum lunas.
 
-Mohon selesaikan pembayaran sebelum tanggal isolir agar layanan tetap aktif.
+*Rincian tagihan*
+Jatuh tempo: {{date}}
+Masa tenggang: {{graceDays}} hari
+Batas layanan aktif: {{isolationDate}}{{renewalStatusInfo}}
 
-Metode pembayaran yang tersedia:
+Mohon selesaikan pembayaran sebelum batas layanan aktif agar layanan tidak dinonaktifkan.
 
-Transfer Bank: BCA 134-266-9497 a/n Hafriyanto
-E-Wallet: DANA 087728972090
+*Metode pembayaran*
+BCA 134-266-9497 a.n. Hafriyanto
+DANA 087728972090
 
-Jika Anda sudah melakukan pembayaran, silakan abaikan pesan ini.
+Jika pembayaran sudah dilakukan, pesan ini dapat diabaikan.
 
-Terima kasih atas perhatian dan kerja samanya.
 Hormat kami,
 {{supportSignature}}
