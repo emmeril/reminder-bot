@@ -7,9 +7,11 @@ const {
   DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   PAYMENT_STATUS,
   PAYMENT_TYPES,
+  REMINDER_KINDS,
   SUBSCRIPTION_TYPES,
 } = require("../src/config");
 const {
+  addDaysSafely,
   addMonthsSafely,
   getBillingPeriodParts,
   getPreviousBillingPeriod,
@@ -920,6 +922,7 @@ test("pembelian masa aktif mengaktifkan hotspot satu bulan tanpa mengurangi tung
     mikrotikProfile: "default",
   };
   const manager = createManager(contact);
+  manager.settings.hotspotIsolationGraceDays = 3;
 
   const updated = await manager.markHotspotEnabled(contact.id, {}, {
     at: purchasedAt,
@@ -940,6 +943,13 @@ test("pembelian masa aktif mengaktifkan hotspot satu bulan tanpa mengurangi tung
   assert.equal(updated.activePeriodPurchases[0].amount, 100000);
   assert.equal(updated.activePeriodPurchases[0].paymentType, PAYMENT_TYPES.ACTIVE_PERIOD);
   assert.equal(contact.paymentMonths[debtKey].status, PAYMENT_STATUS.UNPAID);
+  const expiryReminder = manager.getSortedReminders()[0];
+  assert.equal(expiryReminder.reminderKind, REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY);
+  assert.equal(expiryReminder.activePeriodUntil, activeUntil.toISOString());
+  assert.equal(
+    expiryReminder.reminderDateTime,
+    addDaysSafely(activeUntil, -3, "Asia/Jakarta").toISOString()
+  );
   manager.customerAccounts.set(contact.id, { username: "active_period", password: "portal-pass" });
   const portal = manager.getCustomerPortalData(contact.id);
   const purchaseHistory = portal.billing.history.find((item) => item.paymentType === PAYMENT_TYPES.ACTIVE_PERIOD);
@@ -983,6 +993,18 @@ test("pembelian masa aktif berikutnya memperpanjang jadwal dari batas aktif tera
     }],
   };
   const manager = createManager(contact);
+  manager.settings.hotspotIsolationGraceDays = 3;
+  manager.reminders.set("active-period-reminder", {
+    id: "active-period-reminder",
+    contactId: contact.id,
+    contactName: contact.name,
+    phoneNumber: contact.phoneNumber,
+    reminderDateTime: addDaysSafely(firstActiveUntil, -3, "Asia/Jakarta").toISOString(),
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    activePeriodUntil: firstActiveUntil.toISOString(),
+    message: manager.settings.activePeriodReminderMessageTemplate,
+    messageSource: manager.settings.activePeriodReminderMessageTemplate,
+  });
 
   const result = await manager.recordActivePeriodPurchase(contact.id, {
     id: "ACT-TEST-2",
@@ -995,6 +1017,12 @@ test("pembelian masa aktif berikutnya memperpanjang jadwal dari batas aktif tera
   assert.equal(result.contact.hotspotReactivationAt, secondActiveUntil.toISOString());
   assert.equal(result.contact.debtAmount, 100000);
   assert.equal(contact.paymentMonths[debtKey].status, PAYMENT_STATUS.UNPAID);
+  const expiryReminder = manager.getReminder("active-period-reminder");
+  assert.equal(expiryReminder.activePeriodUntil, secondActiveUntil.toISOString());
+  assert.equal(
+    expiryReminder.reminderDateTime,
+    addDaysSafely(secondActiveUntil, -3, "Asia/Jakarta").toISOString()
+  );
 });
 
 test("reset bulanan tidak membuat tagihan baru saat billing dijeda karena tunggakan", async () => {
@@ -1030,6 +1058,7 @@ test("perpanjangan otomatis pulih hanya setelah seluruh tunggakan lunas", async 
   const { year, month } = getBillingPeriodParts();
   const previous = getPreviousBillingPeriod(year, month);
   const frozenKey = makeBillingPeriodKey(previous.year, previous.month);
+  const activeUntil = addMonthsSafely(new Date(), 1, "Asia/Jakarta");
   const contact = {
     id: "contact-resume-after-paid",
     name: "Pelanggan Pulih",
@@ -1044,10 +1073,23 @@ test("perpanjangan otomatis pulih hanya setelah seluruh tunggakan lunas", async 
     billingPausedForArrears: true,
     billingPausedAfterPeriod: frozenKey,
     hotspotSuspendedForArrears: true,
+    hotspotManualActivationWithArrears: true,
+    hotspotProvisioningStatus: "ACTIVE",
     hotspotReactivationEnabled: false,
-    hotspotReactivationAt: null,
+    hotspotReactivationAt: activeUntil.toISOString(),
   };
   const manager = createManager(contact);
+  manager.reminders.set("active-period-reminder-paid", {
+    id: "active-period-reminder-paid",
+    contactId: contact.id,
+    contactName: contact.name,
+    phoneNumber: contact.phoneNumber,
+    reminderDateTime: addDaysSafely(activeUntil, -3, "Asia/Jakarta").toISOString(),
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    activePeriodUntil: activeUntil.toISOString(),
+    message: manager.settings.activePeriodReminderMessageTemplate,
+    messageSource: manager.settings.activePeriodReminderMessageTemplate,
+  });
 
   const partial = await manager.updatePaymentStatus(
     contact.id,
@@ -1058,6 +1100,7 @@ test("perpanjangan otomatis pulih hanya setelah seluruh tunggakan lunas", async 
   assert.equal(partial.billingPausedForArrears, true);
   assert.equal(partial.hotspotReactivationEnabled, false);
   assert.equal(partial.debtAmount, 50000);
+  assert.equal(manager.getReminder("active-period-reminder-paid").reminderKind, REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY);
 
   const paid = await manager.updatePaymentStatus(
     contact.id,
@@ -1068,8 +1111,13 @@ test("perpanjangan otomatis pulih hanya setelah seluruh tunggakan lunas", async 
   assert.equal(paid.hasDebt, false);
   assert.equal(paid.billingPausedForArrears, false);
   assert.equal(paid.hotspotReactivationEnabled, true);
-  assert.equal(new Date(paid.hotspotReactivationAt).getTime() > Date.now(), true);
+  assert.equal(paid.hotspotReactivationAt, activeUntil.toISOString());
   assert.equal(paid.hotspotSuspendedForArrears, true);
+  const restoredReminder = manager.getReminder("active-period-reminder-paid");
+  assert.equal(restoredReminder.reminderKind, REMINDER_KINDS.BILLING);
+  assert.equal(restoredReminder.reminderDateTime, activeUntil.toISOString());
+  assert.equal(restoredReminder.activePeriodUntil, undefined);
+  assert.equal(restoredReminder.templateName, "Penagihan.txt");
 });
 
 test("bulan selama billing dijeda tidak berubah menjadi tunggakan setelah layanan pulih", async () => {
@@ -1207,6 +1255,20 @@ test("menyimpan template pengingat tagihan dari menu pengaturan", async () => {
   assert.equal(
     settings.billingReminderMessageTemplate,
     "Halo {{name}}, total tagihan {{totalAmount}}."
+  );
+});
+
+test("menyimpan template pengingat berakhirnya masa aktif", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.saveSettings = async () => {};
+
+  const settings = await manager.updateSettings({
+    activePeriodReminderMessageTemplate: "Halo {{name}}, masa aktif berakhir {{activeUntil}}.",
+  });
+
+  assert.equal(
+    settings.activePeriodReminderMessageTemplate,
+    "Halo {{name}}, masa aktif berakhir {{activeUntil}}."
   );
 });
 

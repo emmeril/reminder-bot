@@ -18,6 +18,7 @@ const {
   MONTH_NAMES,
   PAYMENT_STATUS,
   PAYMENT_TYPES,
+  REMINDER_KINDS,
   SUBSCRIPTION_TYPES,
 } = require("./config");
 const ActivityLog = require("./activity-log");
@@ -2255,8 +2256,9 @@ class DataManager {
       const arrearsPolicy = contact.subscriptionChangedByArrears
         ? this.applyArrearsSubscriptionPolicy(contact)
         : { remindersAdded: 0, remindersRemoved: 0 };
-      this.resumeAutomaticRenewalIfArrearsSettled(contact, { at: now });
+      const automaticRenewalResumed = this.resumeAutomaticRenewalIfArrearsSettled(contact, { at: now });
       const remindersChanged = arrearsPolicy.remindersAdded + arrearsPolicy.remindersRemoved
+        + (automaticRenewalResumed ? this.restoreBillingReminderAfterActivePeriod(contact) : 0)
         + this.updateContactReminderMessages(contact);
       await this.withDatabaseWrite(() => this.sequelize.transaction(async (databaseTransaction) => {
         const options = { transaction: databaseTransaction };
@@ -2840,7 +2842,10 @@ class DataManager {
       const contact = this.getContact(contactId);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
       const result = this.applyActivePeriodPurchase(contact, payload);
-      if (result.added) await this.saveContacts();
+      if (result.added) {
+        const reminderResult = this.syncActivePeriodExpiryReminder(contact, result.purchase);
+        await this.savePaymentAndReminderChanges(reminderResult.changed);
+      }
       return {
         ...result,
         contact: this.hydrateContact(contact),
@@ -3267,6 +3272,7 @@ class DataManager {
       phoneNumber: contact.phoneNumber,
       paymentAmount: Math.max(0, Number(contact.monthlyPaymentAmount) || 0),
       reminderDateTime,
+      reminderKind: REMINDER_KINDS.BILLING,
       message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
       messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
       templateName: "Penagihan.txt",
@@ -3280,6 +3286,98 @@ class DataManager {
       reminderDateTime,
     });
     return { created: true, reminder };
+  }
+
+  syncActivePeriodExpiryReminder(contact, purchase) {
+    if (!contact || !purchase?.activeUntil) return { changed: 0, created: false, reminder: null };
+
+    const activeUntil = new Date(purchase.activeUntil);
+    const purchasedAt = new Date(purchase.purchasedAt || Date.now());
+    if (Number.isNaN(activeUntil.getTime()) || Number.isNaN(purchasedAt.getTime())) {
+      throw new Error("Jadwal reminder masa aktif tidak valid.");
+    }
+
+    const graceDays = sanitizePositiveInteger(
+      this.getSettings().hotspotIsolationGraceDays,
+      DEFAULT_SETTINGS.hotspotIsolationGraceDays,
+      0,
+      30
+    );
+    const warningAt = addDaysSafely(activeUntil, -graceDays, this.getTimezone());
+    const reminderDate = warningAt.getTime() < purchasedAt.getTime() ? purchasedAt : warningAt;
+    const existing = Array.from(this.reminders.values()).find((reminder) => {
+      const resolvedContact = this.getResolvedReminderContact(reminder);
+      return String(resolvedContact?.id || reminder.contactId || "") === String(contact.id)
+        && !reminder.processingAt;
+    });
+    const created = !existing;
+    const reminder = existing || {
+      id: generateId(),
+      contactId: String(contact.id),
+      contactName: contact.name,
+      phoneNumber: contact.phoneNumber,
+      createdAt: new Date().toISOString(),
+    };
+    const messageTemplate = sanitizeMultilineText(this.getSettings().activePeriodReminderMessageTemplate)
+      || DEFAULT_SETTINGS.activePeriodReminderMessageTemplate;
+
+    Object.assign(reminder, {
+      contactId: String(contact.id),
+      contactName: contact.name,
+      phoneNumber: contact.phoneNumber,
+      paymentAmount: Math.max(0, Number(contact.monthlyPaymentAmount) || 0),
+      reminderDateTime: reminderDate.toISOString(),
+      reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+      activePeriodUntil: activeUntil.toISOString(),
+      message: messageTemplate,
+      messageSource: messageTemplate,
+      templateName: "MasaAktifSementara",
+    });
+    delete reminder.nextDeliveryAttemptAt;
+    delete reminder.deliveryAttemptedAt;
+    delete reminder.lastDeliveryAttemptAt;
+    delete reminder.lastDeliveryError;
+    delete reminder.deliveryAttempts;
+    this.rewriteReminderPaymentMessage(reminder, contact);
+    this.reminders.set(String(reminder.id), reminder);
+    this.activityLog.push("info", "billing", `Reminder masa aktif diselaraskan untuk ${contact.name || contact.id}`, {
+      contactId: contact.id,
+      reminderId: reminder.id,
+      reminderDateTime: reminder.reminderDateTime,
+      activeUntil: reminder.activePeriodUntil,
+      created,
+    });
+    return { changed: 1, created, reminder };
+  }
+
+  restoreBillingReminderAfterActivePeriod(contact) {
+    if (!contact) return 0;
+    const reminderDateTime = this.normalizeOptionalDate(
+      contact.hotspotReactivationAt || this.getNextServiceScheduleFromRegistration(contact)
+    );
+    if (!reminderDateTime) return 0;
+
+    let changed = 0;
+    for (const reminder of this.reminders.values()) {
+      const resolvedContact = this.getResolvedReminderContact(reminder);
+      if (String(resolvedContact?.id || reminder.contactId || "") !== String(contact.id)) continue;
+      if (reminder.reminderKind !== REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY) continue;
+
+      reminder.reminderDateTime = reminderDateTime;
+      reminder.reminderKind = REMINDER_KINDS.BILLING;
+      reminder.message = DEFAULT_REMINDER_MESSAGE_TEMPLATE;
+      reminder.messageSource = DEFAULT_REMINDER_MESSAGE_TEMPLATE;
+      reminder.templateName = "Penagihan.txt";
+      delete reminder.activePeriodUntil;
+      delete reminder.nextDeliveryAttemptAt;
+      delete reminder.deliveryAttemptedAt;
+      delete reminder.lastDeliveryAttemptAt;
+      delete reminder.lastDeliveryError;
+      delete reminder.deliveryAttempts;
+      this.rewriteReminderPaymentMessage(reminder, contact);
+      changed += 1;
+    }
+    return changed;
   }
 
   async savePaymentAndReminderChanges(remindersChanged) {
@@ -4173,9 +4271,12 @@ class DataManager {
       } else {
         contact.hotspotManualActivationWithArrears = false;
       }
-      if (options.activePeriodPurchase) {
-        this.applyActivePeriodPurchase(contact, options.activePeriodPurchase);
-      }
+      const activePeriodResult = options.activePeriodPurchase
+        ? this.applyActivePeriodPurchase(contact, options.activePeriodPurchase)
+        : null;
+      const remindersChanged = activePeriodResult?.added
+        ? this.syncActivePeriodExpiryReminder(contact, activePeriodResult.purchase).changed
+        : 0;
       contact.updatedAt = now;
       const pelanggan = this.pelanggan.get(contact.mikrotikUsername) || Array.from(this.pelanggan.values()).find(
         (item) => String(item.contactId || "") === String(contact.id)
@@ -4193,11 +4294,13 @@ class DataManager {
       if (options.transaction) {
         await this.saveContacts(options);
         await this.savePelanggan(options);
+        if (remindersChanged) await this.saveReminders(options);
       } else {
         await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
           const saveOptions = { transaction };
           await this.saveContacts(saveOptions);
           await this.savePelanggan(saveOptions);
+          if (remindersChanged) await this.saveReminders(saveOptions);
         }));
       }
       return this.hydrateContact(contact);
@@ -4601,6 +4704,9 @@ class DataManager {
         paymentMessageTemplateActivePeriod: payload.paymentMessageTemplateActivePeriod !== undefined
           ? sanitizeMultilineText(payload.paymentMessageTemplateActivePeriod) || current.paymentMessageTemplateActivePeriod
           : current.paymentMessageTemplateActivePeriod,
+        activePeriodReminderMessageTemplate: payload.activePeriodReminderMessageTemplate !== undefined
+          ? sanitizeMultilineText(payload.activePeriodReminderMessageTemplate) || current.activePeriodReminderMessageTemplate
+          : current.activePeriodReminderMessageTemplate,
         billingReminderMessageTemplate: payload.billingReminderMessageTemplate !== undefined
           ? sanitizeMultilineText(payload.billingReminderMessageTemplate) || current.billingReminderMessageTemplate
           : current.billingReminderMessageTemplate,
@@ -5030,8 +5136,9 @@ class DataManager {
       const arrearsPolicy = contact.subscriptionChangedByArrears
         ? this.applyArrearsSubscriptionPolicy(contact)
         : { remindersAdded: 0, remindersRemoved: 0 };
-      this.resumeAutomaticRenewalIfArrearsSettled(contact, { at: now });
+      const automaticRenewalResumed = this.resumeAutomaticRenewalIfArrearsSettled(contact, { at: now });
       const remindersChanged = arrearsPolicy.remindersAdded + arrearsPolicy.remindersRemoved
+        + (automaticRenewalResumed ? this.restoreBillingReminderAfterActivePeriod(contact) : 0)
         + this.updateContactReminderMessages(contact);
       await this.savePaymentAndReminderChanges(remindersChanged);
       const hydrated = this.hydrateContact(contact);
@@ -5117,8 +5224,9 @@ class DataManager {
       const arrearsPolicy = contact.subscriptionChangedByArrears
         ? this.applyArrearsSubscriptionPolicy(contact)
         : { remindersAdded: 0, remindersRemoved: 0 };
-      this.resumeAutomaticRenewalIfArrearsSettled(contact, { at: now });
+      const automaticRenewalResumed = this.resumeAutomaticRenewalIfArrearsSettled(contact, { at: now });
       const remindersChanged = arrearsPolicy.remindersAdded + arrearsPolicy.remindersRemoved
+        + (automaticRenewalResumed ? this.restoreBillingReminderAfterActivePeriod(contact) : 0)
         + this.updateContactReminderMessages(contact);
       await this.savePaymentAndReminderChanges(remindersChanged);
       return this.hydrateContact(contact);

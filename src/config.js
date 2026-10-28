@@ -196,6 +196,11 @@ const PAYMENT_TYPES = {
   ACTIVE_PERIOD: "ACTIVE-PERIOD",
 };
 
+const REMINDER_KINDS = {
+  BILLING: "BILLING",
+  ACTIVE_PERIOD_EXPIRY: "ACTIVE_PERIOD_EXPIRY",
+};
+
 const SUBSCRIPTION_TYPES = {
   RECURRING: "RECURRING",
   ONE_TIME: "ONE_TIME",
@@ -214,6 +219,7 @@ const DEFAULT_SETTINGS = {
   paymentMessageTemplateCurrentOnly: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nTerima kasih. Pembayaran bulan ini telah kami terima.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
   paymentMessageTemplateFullPaid: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nTerima kasih. Semua tagihan Anda sudah lunas.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
   paymentMessageTemplateActivePeriod: "*BUKTI PEMBELIAN MASA AKTIF {{companyNameUpper}}*\n\nHalo {{name}},\n\nPembelian masa aktif satu bulan telah kami terima.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Nominal Pembayaran*\n{{paymentAmount}}\n\n*Aktif Sampai*\n{{activeUntil}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
+  activePeriodReminderMessageTemplate: "*PENGINGAT MASA AKTIF {{companyNameUpper}}*\n\nHalo {{name}},\n\nMasa aktif sementara akun hotspot Anda akan berakhir pada {{activeUntil}}.\n\n*Sisa tunggakan*\n{{debtCount}} bulan ({{debtAmount}})\n\n*Periode tunggakan*\n{{debtPeriods}}\n\n*Total tunggakan*\n{{totalAmount}}\n\nPerpanjangan otomatis masih dijeda. Lunasi seluruh tunggakan agar perpanjangan otomatis kembali aktif, atau beli masa aktif lagi agar layanan tetap dapat digunakan.\n\nHormat kami,\n{{supportSignature}}",
   billingReminderMessageTemplate: "*PENGINGAT TAGIHAN {{companyNameUpper}}*\n\nHalo {{name}},\n\nKami mengingatkan bahwa tagihan layanan Anda masih belum lunas.\n\n*Periode berjalan:* {{billingPeriod}}\n*Tagihan bulan berjalan:* {{currentAmount}}\n*Tunggakan:* {{debtCount}} bulan ({{debtAmount}})\n*Periode tunggakan:* {{debtPeriods}}\n*Total tagihan:* {{totalAmount}}\n*Jatuh tempo:* {{dueDate}}\n\nMohon melakukan pembayaran. Jika sudah membayar, abaikan pesan ini.\n\n{{supportSignature}}",
   timezone: "Asia/Jakarta",
   hotspotIsolationGraceDays: 0,
@@ -242,6 +248,7 @@ module.exports = {
   MONTH_NAMES,
   PAYMENT_STATUS,
   PAYMENT_TYPES,
+  REMINDER_KINDS,
   SUBSCRIPTION_TYPES,
   ROOT_DIR,
 };

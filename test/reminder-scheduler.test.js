@@ -4,7 +4,11 @@ const path = require("node:path");
 const test = require("node:test");
 
 const { ReminderScheduler } = require("../src/schedulers");
-const { DEFAULT_REMINDER_MESSAGE_TEMPLATE } = require("../src/config");
+const {
+  DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+  DEFAULT_SETTINGS,
+  REMINDER_KINDS,
+} = require("../src/config");
 const { formatDate } = require("../src/utils");
 
 test("Penagihan.txt sama dengan template reminder bawaan", () => {
@@ -50,6 +54,68 @@ test("template reminder dirender dari variabel saat pesan akan dikirim", () => {
   assert.match(message, /masa aktif akun Anda tidak akan diperpanjang otomatis/);
   assert.match(message, /CS Emmeril Hotspot$/);
   assert.doesNotMatch(message, /{{|}}/);
+});
+
+test("reminder masa aktif menampilkan batas aktif dan tunggakan yang masih tersimpan", () => {
+  const reminder = {
+    contactId: "contact-active-period-reminder",
+    reminderDateTime: "2026-11-25T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    activePeriodUntil: "2026-11-28T01:00:00.000Z",
+    message: DEFAULT_SETTINGS.activePeriodReminderMessageTemplate,
+    messageSource: DEFAULT_SETTINGS.activePeriodReminderMessageTemplate,
+  };
+  const dataManager = {
+    getSettings: () => ({
+      companyName: "Emmeril Hotspot",
+      supportSignature: "CS Emmeril Hotspot",
+      hotspotIsolationGraceDays: 3,
+    }),
+    getTimezone: () => "Asia/Jakarta",
+    getResolvedReminderContact: () => ({
+      name: "Pelanggan Masa Aktif",
+      phoneNumber: "6281234567890",
+      paymentStatus: "PAID",
+      currentPaymentStatus: "PAID",
+      debtCount: 2,
+      debtAmount: 200_000,
+      debtPeriods: [
+        { key: "2026-09", label: "September 2026" },
+        { key: "2026-10", label: "Oktober 2026" },
+      ],
+      monthlyPaymentAmount: 100_000,
+    }),
+  };
+
+  const message = new ReminderScheduler({}, dataManager, { push() {} }).buildReminderMessage(reminder);
+
+  assert.match(message, /Masa aktif sementara akun hotspot Anda akan berakhir pada 28 November 2026 pukul 08\.00/);
+  assert.match(message, /2 bulan \(Rp\s?200\.000\)/);
+  assert.match(message, /September 2026, Oktober 2026/);
+  assert.match(message, /Perpanjangan otomatis masih dijeda/);
+  assert.doesNotMatch(message, /{{|}}/);
+});
+
+test("reminder berikutnya kembali menjadi reminder tagihan setelah masa aktif berakhir", () => {
+  const scheduler = new ReminderScheduler({}, {
+    getTimezone: () => "Asia/Jakarta",
+  }, { push() {} });
+
+  const next = scheduler.buildNextReminder({
+    contactId: "contact-active-period-next",
+    reminderDateTime: "2026-11-25T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    activePeriodUntil: "2026-11-28T01:00:00.000Z",
+    message: DEFAULT_SETTINGS.activePeriodReminderMessageTemplate,
+    messageSource: DEFAULT_SETTINGS.activePeriodReminderMessageTemplate,
+    templateName: "MasaAktifSementara",
+  });
+
+  assert.equal(next.reminderKind, REMINDER_KINDS.BILLING);
+  assert.equal(next.reminderDateTime.toISOString(), "2026-12-25T01:00:00.000Z");
+  assert.equal(next.templateName, "Penagihan.txt");
+  assert.equal(next.message, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
+  assert.equal(next.activePeriodUntil, undefined);
 });
 
 test("informasi perpanjangan otomatis tidak ditampilkan tanpa tunggakan", () => {

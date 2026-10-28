@@ -1,4 +1,9 @@
-const { CONFIG, DEFAULT_SETTINGS } = require("./config");
+const {
+  CONFIG,
+  DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+  DEFAULT_SETTINGS,
+  REMINDER_KINDS,
+} = require("./config");
 const TelegramManager = require("./telegram-manager");
 const {
   addDaysSafely,
@@ -28,16 +33,21 @@ class ReminderScheduler {
     const nextDate = addMonthsSafely(reminder.reminderDateTime, 1, timeZone);
     const nextDateText = formatDate(nextDate, timeZone);
     const nextMonthName = nextDate.toLocaleString("id-ID", { month: "long", timeZone });
-    const nextMessage = String(reminder.messageSource || reminder.message || "")
+    const activePeriodExpired = reminder.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY;
+    const sourceMessage = activePeriodExpired
+      ? DEFAULT_REMINDER_MESSAGE_TEMPLATE
+      : String(reminder.messageSource || reminder.message || "");
+    const nextMessage = sourceMessage
       .replace(/\d{4}-\d{2}-\d{2}/, nextDateText)
       .replace(/bulan\s+\w+/gi, `bulan ${nextMonthName}`);
 
     return {
       contactId: reminder.contactId,
       reminderDateTime: nextDate,
+      reminderKind: REMINDER_KINDS.BILLING,
       message: nextMessage,
       messageSource: nextMessage,
-      templateName: reminder.templateName || null,
+      templateName: activePeriodExpired ? "Penagihan.txt" : reminder.templateName || null,
     };
   }
 
@@ -143,6 +153,9 @@ class ReminderScheduler {
       dateTime: formatDateTime(scheduledAt, timeZone),
       graceDays: String(graceDays),
       isolationDate: formatDate(isolationDate, timeZone),
+      activeUntil: reminder.activePeriodUntil
+        ? formatDateTime(reminder.activePeriodUntil, timeZone)
+        : "-",
       billingPeriod: new Date(scheduledAt).toLocaleString("id-ID", {
         month: "long",
         year: "numeric",

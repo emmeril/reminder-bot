@@ -182,6 +182,16 @@ test("aksi beli masa aktif tersedia untuk akun menunggak dan memanggil endpoint 
   assert.equal(refreshCount, 3);
 });
 
+test("pengaturan menyediakan template reminder berakhirnya masa aktif", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const app = createDashboardApp();
+
+  assert.match(html, /Masa aktif akan berakhir/);
+  assert.match(html, /x-model="forms\.settings\.activePeriodReminderMessageTemplate"/);
+  assert.match(html, /<code>{{activeUntil}}<\/code>/);
+  assert.equal(app.forms.settings.activePeriodReminderMessageTemplate, "");
+});
+
 test("tombol tagihan bulan ini tetap tampil dengan status tindakan yang sesuai", () => {
   const app = createDashboardApp();
 

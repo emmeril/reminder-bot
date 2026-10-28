@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/public/tailwind.css?v=20261028-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261028-1">
-  <script defer src="/public/app.js?v=20261028-1"></script>
+  <script defer src="/public/app.js?v=20261028-2"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -1008,6 +1008,15 @@
                   </span>
                   <textarea x-model="forms.settings.paymentMessageTemplateActivePeriod" placeholder="Tulis konfirmasi pembelian masa aktif..."></textarea>
                   <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{paymentAmount}}</code><code>{{activeUntil}}</code><code>{{remainingDebtAmount}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
+                </label>
+                <label class="notification-template-card tone-amber">
+                  <span class="notification-template-header">
+                    <span class="notification-template-icon"><i class="fa-solid fa-hourglass-end"></i></span>
+                    <span class="notification-template-copy"><strong>Masa aktif akan berakhir</strong><small>Dikirim sebelum masa aktif sementara berakhir, mengikuti pengaturan masa tenggang.</small></span>
+                    <span class="notification-template-badge">Pengingat masa aktif</span>
+                  </span>
+                  <textarea x-model="forms.settings.activePeriodReminderMessageTemplate" placeholder="Tulis pengingat berakhirnya masa aktif..."></textarea>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{activeUntil}}</code><code>{{debtCount}}</code><code>{{debtAmount}}</code><code>{{debtPeriods}}</code><code>{{totalAmount}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-success">
                   <span class="notification-template-header">
