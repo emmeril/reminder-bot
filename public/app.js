@@ -29,6 +29,7 @@
           title: "",
           description: "",
           confirmLabel: "Hapus",
+          processingMessage: "Memproses tindakan...",
           action: null,
         },
         formErrors: {
@@ -201,6 +202,7 @@
             paymentMessageTemplateArrearsOnly: "",
             paymentMessageTemplateCurrentOnly: "",
             paymentMessageTemplateFullPaid: "",
+            paymentMessageTemplateActivePeriod: "",
             billingReminderMessageTemplate: "",
             timezone: "",
             hotspotIsolationGraceDays: 0,
@@ -492,13 +494,14 @@
           }
         },
 
-        openDeleteConfirm({ title, description, confirmLabel = "Hapus", action }) {
+        openDeleteConfirm({ title, description, confirmLabel = "Hapus", processingMessage = "Memproses tindakan...", action }) {
           this.deleteConfirm = {
             open: true,
             loading: false,
             title,
             description,
             confirmLabel,
+            processingMessage,
             action,
           };
           this.clearFormError("deleteConfirm");
@@ -511,6 +514,7 @@
           this.deleteConfirm.title = "";
           this.deleteConfirm.description = "";
           this.deleteConfirm.confirmLabel = "Hapus";
+          this.deleteConfirm.processingMessage = "Memproses tindakan...";
           this.deleteConfirm.action = null;
           this.clearFormError("deleteConfirm");
           document.body.classList.remove("overflow-hidden");
@@ -521,7 +525,7 @@
           this.deleteConfirm.loading = true;
           this.clearFormError("deleteConfirm");
           try {
-            await this.withProcessing("Menghapus data...", () => this.deleteConfirm.action());
+            await this.withProcessing(this.deleteConfirm.processingMessage, () => this.deleteConfirm.action());
             this.closeDeleteConfirm();
           } catch (error) {
             this.setFormError("deleteConfirm", error);
@@ -724,6 +728,7 @@
         },
 
         canEnableHotspot(contact) {
+          if (contact?.billingPausedForArrears && contact?.hasDebt) return false;
           const status = this.getHotspotProvisioningStatus(contact);
           return status === "DISABLED"
             || (status === "CHANGED" && /akun dinonaktifkan/i.test(String(contact?.hotspotProvisioningError || "")));
@@ -813,7 +818,8 @@
             "DEFAULT": "Default (Belum dibayar)",
             "ARREARS-ONLY": "Hanya Tunggakan",
             "CURRENT-ONLY": "Bulan Ini Saja",
-            "FULL-PAID": "Lunas Semua"
+            "FULL-PAID": "Lunas Semua",
+            "ACTIVE-PERIOD": "Masa Aktif 1 Bulan"
           };
           return labels[type] || type || "-";
         },
@@ -947,28 +953,54 @@
           if (!/^\d{4}-\d{2}$/.test(String(period || ""))) return [];
 
           return this.contacts
-            .map((contact) => {
+            .flatMap((contact) => {
+              const entries = [];
               const payment = contact.paymentMonths?.[period];
-              if (!payment || payment.billingPaused) return null;
-              const monthlyAmount = Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0));
-              const status = String(payment.status || "UNPAID").toUpperCase();
-              const recordedAmount = Math.max(0, Math.floor(Number(payment.paidAmount) || 0));
-              const amount = status === "PAID"
-                ? recordedAmount || monthlyAmount
-                : recordedAmount;
-              if (amount <= 0) return null;
-              return {
-                contactId: contact.id,
-                name: contact.name || "-",
-                phoneNumber: contact.phoneNumber || "-",
-                period,
-                status: status === "PAID" ? "PAID" : "PARTIAL",
-                paymentType: payment.paymentType || null,
-                amount,
-                paymentDate: payment.lastPaymentDate || payment.paidDate || null,
-              };
+              if (payment && !payment.billingPaused) {
+                const monthlyAmount = Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0));
+                const status = String(payment.status || "UNPAID").toUpperCase();
+                const recordedAmount = Math.max(0, Math.floor(Number(payment.paidAmount) || 0));
+                const amount = status === "PAID"
+                  ? recordedAmount || monthlyAmount
+                  : recordedAmount;
+                if (amount > 0) {
+                  entries.push({
+                    id: `billing-${contact.id}-${period}`,
+                    contactId: contact.id,
+                    name: contact.name || "-",
+                    phoneNumber: contact.phoneNumber || "-",
+                    period,
+                    status: status === "PAID" ? "PAID" : "PARTIAL",
+                    paymentType: payment.paymentType || null,
+                    amount,
+                    paymentDate: payment.lastPaymentDate || payment.paidDate || null,
+                    activeUntil: null,
+                  });
+                }
+              }
+
+              for (const purchase of contact.activePeriodPurchases || []) {
+                const parts = this.getZonedParts(purchase.purchasedAt);
+                if (!parts) continue;
+                const purchasePeriod = `${parts.year}-${String(parts.month).padStart(2, "0")}`;
+                if (purchasePeriod !== period) continue;
+                const amount = Math.max(0, Math.floor(Number(purchase.amount) || 0));
+                if (amount <= 0) continue;
+                entries.push({
+                  id: `active-period-${contact.id}-${purchase.id}`,
+                  contactId: contact.id,
+                  name: contact.name || "-",
+                  phoneNumber: contact.phoneNumber || "-",
+                  period,
+                  status: "PAID",
+                  paymentType: "ACTIVE-PERIOD",
+                  amount,
+                  paymentDate: purchase.purchasedAt || null,
+                  activeUntil: purchase.activeUntil || null,
+                });
+              }
+              return entries;
             })
-            .filter(Boolean)
             .sort((a, b) => {
               const dateDifference = new Date(b.paymentDate || 0).getTime() - new Date(a.paymentDate || 0).getTime();
               return dateDifference || a.name.localeCompare(b.name, "id-ID");
@@ -1011,7 +1043,7 @@
 
         exportRevenueReport() {
           const rows = [
-            ["Periode", "Pelanggan", "Nomor WhatsApp", "Status", "Jenis Pembayaran", "Pendapatan Tercatat", "Tanggal Pembayaran"],
+            ["Periode", "Pelanggan", "Nomor WhatsApp", "Status", "Jenis Pembayaran", "Pendapatan Tercatat", "Tanggal Pembayaran", "Aktif Sampai"],
             ...this.filteredRevenueEntries.map((entry) => [
               this.getRevenuePeriodLabel(entry.period),
               entry.name,
@@ -1020,6 +1052,7 @@
               this.getPaymentTypeLabel(entry.paymentType),
               entry.amount,
               entry.paymentDate ? this.formatDateTime(entry.paymentDate) : "Belum tercatat",
+              entry.activeUntil ? this.formatDateTime(entry.activeUntil) : "-",
             ]),
           ];
           const csvCell = (value) => {
@@ -1387,6 +1420,7 @@
                 paymentMessageTemplateArrearsOnly: data.settings.paymentMessageTemplateArrearsOnly || "",
                 paymentMessageTemplateCurrentOnly: data.settings.paymentMessageTemplateCurrentOnly || "",
                 paymentMessageTemplateFullPaid: data.settings.paymentMessageTemplateFullPaid || "",
+                paymentMessageTemplateActivePeriod: data.settings.paymentMessageTemplateActivePeriod || "",
                 billingReminderMessageTemplate: data.settings.billingReminderMessageTemplate || "",
                 timezone: data.settings.timezone || "",
                 hotspotIsolationGraceDays: Number(data.settings.hotspotIsolationGraceDays ?? 0),
@@ -1878,6 +1912,54 @@
           await this.togglePayment(contact.id, "UNPAID", "ARREARS-ONLY", paymentAmount);
           delete this.arrearsPaymentAmounts[contact.id];
           this.closeBillingActionModal();
+        },
+
+        canPurchaseActivePeriod(contact) {
+          if (!contact?.id || !contact.hasDebt || !contact.billingPausedForArrears) return false;
+          if (String(contact.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") !== "RECURRING") return false;
+          if (!contact.mikrotikUsername || !contact.mikrotikProfile || Number(contact.monthlyPaymentAmount) <= 0) return false;
+          const status = this.getHotspotProvisioningStatus(contact);
+          return status === "DISABLED"
+            || (status === "ACTIVE" && Boolean(contact.hotspotManualActivationWithArrears));
+        },
+
+        getActivePeriodPurchaseLabel(contact) {
+          return contact?.hotspotManualActivationWithArrears
+            ? "Tambah masa aktif 1 bulan"
+            : "Beli masa aktif 1 bulan";
+        },
+
+        getActivePeriodPurchaseHelp(contact) {
+          if (contact?.hotspotManualActivationWithArrears && contact?.hotspotReactivationAt) {
+            return `Periode baru dimulai setelah ${this.formatDateTime(contact.hotspotReactivationAt)}. Tunggakan tidak berkurang.`;
+          }
+          return "Akun hotspot aktif selama satu bulan. Tunggakan tidak berkurang dan perpanjangan otomatis tetap dijeda.";
+        },
+
+        purchaseActivePeriod(contact) {
+          if (!this.canPurchaseActivePeriod(contact)) return;
+          const amount = this.formatRupiah(contact.monthlyPaymentAmount);
+          const extending = Boolean(contact.hotspotManualActivationWithArrears && contact.hotspotReactivationAt);
+          this.closeBillingActionModal();
+          this.openDeleteConfirm({
+            title: extending ? "Tambah masa aktif satu bulan?" : "Beli masa aktif satu bulan?",
+            description: extending
+              ? `Pembayaran ${amount} akan menambah masa aktif satu bulan setelah jadwal yang sekarang. Tunggakan tetap tersimpan.`
+              : `Pembayaran ${amount} akan mengaktifkan akun hotspot selama satu bulan. Tunggakan tetap tersimpan.`,
+            confirmLabel: extending ? "Tambah masa aktif" : "Beli dan aktifkan",
+            processingMessage: extending ? "Menambah masa aktif..." : "Mencatat pembelian masa aktif...",
+            action: async () => {
+              const result = await this.api(`/api/contacts/${contact.id}/active-period-purchase`, {
+                method: "POST",
+                body: JSON.stringify({}),
+              });
+              const notificationText = result.notificationSent
+                ? " Bukti pembayaran terkirim."
+                : (result.notificationError ? ` Bukti pembayaran gagal dikirim: ${result.notificationError}` : "");
+              this.notify(`Masa aktif tercatat sampai ${this.formatDateTime(result.purchase.activeUntil)}.${notificationText}`);
+              await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
+            },
+          });
         },
 
         async togglePayment(id, status, paymentType = "", paymentAmount = null) {

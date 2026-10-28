@@ -193,6 +193,7 @@ const PAYMENT_TYPES = {
   ARREARS_ONLY: "ARREARS-ONLY",
   CURRENT_ONLY: "CURRENT-ONLY",
   FULL_PAID: "FULL-PAID",
+  ACTIVE_PERIOD: "ACTIVE-PERIOD",
 };
 
 const SUBSCRIPTION_TYPES = {
@@ -212,6 +213,7 @@ const DEFAULT_SETTINGS = {
   paymentMessageTemplateArrearsOnly: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nTerima kasih. Pembayaran tunggakan bulan sebelumnya telah kami terima.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Nominal Pembayaran*\n{{paymentAmount}}\n\n*Sisa Tunggakan*\n{{remainingDebtAmount}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
   paymentMessageTemplateCurrentOnly: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nTerima kasih. Pembayaran bulan ini telah kami terima.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
   paymentMessageTemplateFullPaid: "*BUKTI PEMBAYARAN {{companyNameUpper}}*\n\nHalo {{name}}!\n\nTerima kasih. Semua tagihan Anda sudah lunas.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
+  paymentMessageTemplateActivePeriod: "*BUKTI PEMBELIAN MASA AKTIF {{companyNameUpper}}*\n\nHalo {{name}},\n\nPembelian masa aktif satu bulan telah kami terima.\n\n*ID Transaksi*\n{{transactionId}}\n\n*Tanggal Pembayaran*\n{{paymentDate}}\n\n*Nominal Pembayaran*\n{{paymentAmount}}\n\n*Aktif Sampai*\n{{activeUntil}}\n\n*Status*\n{{statusText}}\n\n{{noteText}}\n\nHormat kami,\n{{supportSignature}}",
   billingReminderMessageTemplate: "*PENGINGAT TAGIHAN {{companyNameUpper}}*\n\nHalo {{name}},\n\nKami mengingatkan bahwa tagihan layanan Anda masih belum lunas.\n\n*Periode berjalan:* {{billingPeriod}}\n*Tagihan bulan berjalan:* {{currentAmount}}\n*Tunggakan:* {{debtCount}} bulan ({{debtAmount}})\n*Periode tunggakan:* {{debtPeriods}}\n*Total tagihan:* {{totalAmount}}\n*Jatuh tempo:* {{dueDate}}\n\nMohon melakukan pembayaran. Jika sudah membayar, abaikan pesan ini.\n\n{{supportSignature}}",
   timezone: "Asia/Jakarta",
   hotspotIsolationGraceDays: 0,

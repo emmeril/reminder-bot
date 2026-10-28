@@ -126,6 +126,62 @@ test("aksi tagihan memakai satu tombol dan menampilkan pilihan di modal", () => 
   assert.match(styles, /\.billing-action-quick-row \{[^}]*justify-content: flex-end;/);
 });
 
+test("aksi beli masa aktif tersedia untuk akun menunggak dan memanggil endpoint khusus", async () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
+  const app = createDashboardApp();
+  const contact = {
+    id: "contact-active-period-ui",
+    subscriptionType: "RECURRING",
+    monthlyPaymentAmount: 100000,
+    hasDebt: true,
+    billingPausedForArrears: true,
+    hotspotProvisioningStatus: "DISABLED",
+    mikrotikUsername: "pelanggan_masa_aktif",
+    mikrotikProfile: "50M",
+  };
+
+  assert.match(html, /@click="purchaseActivePeriod\(billingActionModal\.contact\)"/);
+  assert.match(html, /getActivePeriodPurchaseLabel\(billingActionModal\.contact\)/);
+  assert.match(styles, /\.billing-action-active-period \.billing-action-option \{ width: 100%; \}/);
+  assert.equal(app.canPurchaseActivePeriod(contact), true);
+  assert.equal(app.canEnableHotspot(contact), false);
+
+  let confirmation = null;
+  let request = null;
+  let notification = "";
+  let refreshCount = 0;
+  app.closeBillingActionModal = () => {};
+  app.openDeleteConfirm = (options) => { confirmation = options; };
+  app.api = async (url, options) => {
+    request = { url, method: options.method, payload: JSON.parse(options.body) };
+    return {
+      purchase: { activeUntil: "2026-11-28T03:00:00.000Z" },
+      notificationSent: true,
+    };
+  };
+  app.notify = (message) => { notification = message; };
+  app.loadContacts = async () => { refreshCount += 1; };
+  app.loadStatus = async () => { refreshCount += 1; };
+  app.loadLogs = async () => { refreshCount += 1; };
+
+  app.purchaseActivePeriod(contact);
+  assert.equal(confirmation.title, "Beli masa aktif satu bulan?");
+  assert.match(confirmation.description, /Tunggakan tetap tersimpan/);
+  assert.equal(confirmation.processingMessage, "Mencatat pembelian masa aktif...");
+
+  await confirmation.action();
+
+  assert.deepEqual(request, {
+    url: "/api/contacts/contact-active-period-ui/active-period-purchase",
+    method: "POST",
+    payload: {},
+  });
+  assert.match(notification, /Masa aktif tercatat sampai/);
+  assert.match(notification, /Bukti pembayaran terkirim/);
+  assert.equal(refreshCount, 3);
+});
+
 test("tombol tagihan bulan ini tetap tampil dengan status tindakan yang sesuai", () => {
   const app = createDashboardApp();
 
@@ -322,6 +378,30 @@ test("laporan pendapatan menghitung pembayaran lunas dan sebagian tanpa bulan je
   app.filters.revenue.status = "PARTIAL";
   assert.equal(app.filteredRevenueEntries.length, 1);
   assert.equal(app.filteredRevenueEntries[0].name, "Pelanggan Sebagian");
+});
+
+test("laporan pendapatan memasukkan pembelian masa aktif pada bulan transaksi", () => {
+  const app = createDashboardApp();
+  app.revenuePeriod = "2026-10";
+  app.contacts = [{
+    id: "revenue-active-period",
+    name: "Pelanggan Masa Aktif",
+    phoneNumber: "628555555555",
+    paymentMonths: {},
+    activePeriodPurchases: [{
+      id: "ACT-REPORT-1",
+      amount: 100000,
+      purchasedAt: "2026-10-28T03:00:00.000Z",
+      activeUntil: "2026-11-28T03:00:00.000Z",
+    }],
+  }];
+
+  assert.equal(app.revenueEntries.length, 1);
+  assert.equal(app.revenueEntries[0].id, "active-period-revenue-active-period-ACT-REPORT-1");
+  assert.equal(app.revenueEntries[0].paymentType, "ACTIVE-PERIOD");
+  assert.equal(app.revenueEntries[0].amount, 100000);
+  assert.equal(app.revenueEntries[0].activeUntil, "2026-11-28T03:00:00.000Z");
+  assert.equal(app.revenueTotal, 100000);
 });
 
 test("ekspor laporan pendapatan membuat CSV aman dari formula spreadsheet", async () => {

@@ -6,7 +6,7 @@
   <title>Akun Saya - __CUSTOMER_PORTAL_TITLE__</title>
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/customer.css?v=20261014-2">
-  <script defer src="/public/customer.js?v=20261014-1"></script>
+  <script defer src="/public/customer.js?v=20261028-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -106,7 +106,7 @@
 
       <section class="portal-panel portal-history-panel">
         <div class="portal-panel-heading">
-          <div><span><i class="fa-solid fa-clock-rotate-left"></i></span><div><h2>Riwayat Pembayaran</h2><p>Status pembayaran per bulan</p></div></div>
+          <div><span><i class="fa-solid fa-clock-rotate-left"></i></span><div><h2>Riwayat Pembayaran</h2><p>Tagihan dan pembelian masa aktif</p></div></div>
         </div>
         <div class="portal-history-list">
           <template x-for="item in data?.billing?.history || []" :key="item.period">

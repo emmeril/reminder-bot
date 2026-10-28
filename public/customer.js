@@ -136,6 +136,9 @@ function customerPortalApp() {
       const paidAmount = Math.max(0, Number(item?.paidAmount) || 0);
       const remainingAmount = Math.max(0, Number(item?.remainingAmount) || 0);
       const paymentDate = item?.lastPaymentDate || item?.paidDate;
+      if (item?.paymentType === "ACTIVE-PERIOD") {
+        return `Dibeli ${this.currency(paidAmount)} pada ${this.date(paymentDate)}, aktif sampai ${this.date(item.activeUntil)}`;
+      }
       if (paidAmount > 0 && remainingAmount > 0) {
         return `Sudah dibayar ${this.currency(paidAmount)}, sisa ${this.currency(remainingAmount)}${paymentDate ? ` pada ${this.date(paymentDate)}` : ""}`;
       }

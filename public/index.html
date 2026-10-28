@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>__DASHBOARD_TITLE__</title>
-  <link rel="stylesheet" href="/public/tailwind.css?v=20261022-1">
+  <link rel="stylesheet" href="/public/tailwind.css?v=20261028-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20261022-1">
-  <script defer src="/public/app.js?v=20261022-1"></script>
+  <link rel="stylesheet" href="/public/styles.css?v=20261028-1">
+  <script defer src="/public/app.js?v=20261028-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -593,12 +593,12 @@
                   <template x-if="!filteredRevenueEntries.length">
                     <tr><td colspan="6" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Belum ada pendapatan tercatat pada periode ini.' : 'Belum ada data pelanggan.'"></td></tr>
                   </template>
-                  <template x-for="entry in paginatedRevenueEntries" :key="'revenue-' + entry.contactId + '-' + entry.period">
+                  <template x-for="entry in paginatedRevenueEntries" :key="entry.id">
                     <tr>
                       <td class="px-4 py-4" data-label="Pelanggan"><strong class="customer-name" x-text="entry.name"></strong><small class="customer-meta" x-text="entry.phoneNumber"></small></td>
                       <td class="px-4 py-4" data-label="Periode"><strong x-text="getRevenuePeriodLabel(entry.period)"></strong></td>
                       <td class="px-4 py-4" data-label="Status"><span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="entry.status === 'PAID' ? 'bg-moss/10 text-moss' : 'bg-amber-100 text-amber-800'" x-text="entry.status === 'PAID' ? 'Lunas' : 'Sebagian'"></span></td>
-                      <td class="px-4 py-4" data-label="Jenis pembayaran"><span x-text="getPaymentTypeLabel(entry.paymentType)"></span></td>
+                      <td class="px-4 py-4" data-label="Jenis pembayaran"><span x-text="getPaymentTypeLabel(entry.paymentType)"></span><small x-show="entry.activeUntil" class="customer-meta" x-text="'Aktif sampai ' + formatDateTime(entry.activeUntil)"></small></td>
                       <td class="px-4 py-4" data-label="Pendapatan"><strong x-text="formatRupiah(entry.amount)"></strong></td>
                       <td class="px-4 py-4" data-label="Tanggal tercatat"><span x-text="entry.paymentDate ? formatDateTime(entry.paymentDate) : 'Belum tercatat'"></span></td>
                     </tr>
@@ -1000,6 +1000,15 @@
                   <textarea x-model="forms.settings.paymentMessageTemplateCurrentOnly" placeholder="Tulis konfirmasi pembayaran bulan ini..."></textarea>
                   <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
+                <label class="notification-template-card tone-violet">
+                  <span class="notification-template-header">
+                    <span class="notification-template-icon"><i class="fa-solid fa-wifi"></i></span>
+                    <span class="notification-template-copy"><strong>Pembelian masa aktif</strong><small>Konfirmasi pembelian masa aktif hotspot selama satu bulan.</small></span>
+                    <span class="notification-template-badge">Masa aktif</span>
+                  </span>
+                  <textarea x-model="forms.settings.paymentMessageTemplateActivePeriod" placeholder="Tulis konfirmasi pembelian masa aktif..."></textarea>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{paymentAmount}}</code><code>{{activeUntil}}</code><code>{{remainingDebtAmount}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
+                </label>
                 <label class="notification-template-card tone-success">
                   <span class="notification-template-header">
                     <span class="notification-template-icon"><i class="fa-solid fa-circle-check"></i></span>
@@ -1316,6 +1325,17 @@
             <small :id="'arrears-help-' + billingActionModal.contact?.id" x-text="'Maksimal ' + formatRupiah(getDebtAmount(billingActionModal.contact)) + '. Pembayaran masuk ke tunggakan paling lama.'"></small>
             <button type="submit" class="billing-action-submit"><i class="fa-solid fa-money-bill-wave"></i>Catat pembayaran</button>
           </form>
+
+          <div x-show="canPurchaseActivePeriod(billingActionModal.contact)" class="billing-action-active-period">
+            <div>
+              <strong x-text="getActivePeriodPurchaseLabel(billingActionModal.contact)"></strong>
+              <small x-text="getActivePeriodPurchaseHelp(billingActionModal.contact)"></small>
+            </div>
+            <button type="button" @click="purchaseActivePeriod(billingActionModal.contact)" class="billing-action-option" :aria-label="getActivePeriodPurchaseLabel(billingActionModal.contact)" :title="getActivePeriodPurchaseLabel(billingActionModal.contact)">
+              <i class="fa-solid fa-wifi"></i>
+              <span x-text="formatRupiah(billingActionModal.contact?.monthlyPaymentAmount)"></span>
+            </button>
+          </div>
 
           <div class="billing-action-quick-row">
             <button x-show="hasDebt(billingActionModal.contact)" type="button" @click="runBillingPayment('PAID', 'FULL-PAID')" class="billing-action-option" aria-label="Lunasi semua tagihan" title="Lunasi semua tagihan">

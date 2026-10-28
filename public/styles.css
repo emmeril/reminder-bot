@@ -823,6 +823,11 @@ table tbody tr:hover { background: #fafaff; }
 .billing-action-arrears label { font-size: 12px; }
 .billing-action-arrears .currency-input-group { border-color: #64748b; background: #fff; }
 .billing-action-arrears small { font-size: 11px; }
+.billing-action-active-period { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid #64748b; border-radius: 9px; background: #f8fafc; }
+.billing-action-active-period > div { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.billing-action-active-period strong { color: #344054; font-size: 12px; line-height: 1.4; }
+.billing-action-active-period small { color: #596579; font-size: 11px; line-height: 1.45; }
+.billing-action-active-period .billing-action-option { flex: 0 0 auto; }
 .billing-action-submit { display: inline-flex; width: fit-content; max-width: 100%; min-height: 44px; align-items: center; justify-content: center; justify-self: end; gap: 8px; padding: 10px 18px; color: #fff; border: 1px solid #2563eb; border-radius: 999px; background: #2563eb; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer; box-shadow: 0 2px 5px rgba(37,99,235,.2); }
 .billing-action-submit:hover { border-color: #1d4ed8; background: #1d4ed8; }
 .billing-action-submit > i, .billing-action-submit:hover > i { color: #fff; }
@@ -895,6 +900,8 @@ table tbody tr:hover { background: #fafaff; }
   .customer-arrears-payment-form .currency-input-group, .customer-arrears-payment-form input { min-height: 44px; }
   .customer-arrears-payment-form input { font-size: 16px; }
   .billing-action-option, .billing-action-submit, .billing-action-footer button { min-height: 44px; }
+  .billing-action-active-period { align-items: stretch; flex-direction: column; }
+  .billing-action-active-period .billing-action-option { width: 100%; }
   .customer-debt-note { width: 100%; max-width: none; }
   .customer-pagination { align-items: flex-start; }
   .customer-panel .table-scroll { max-height: none; overflow: visible; }

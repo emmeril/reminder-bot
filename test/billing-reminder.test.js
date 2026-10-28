@@ -153,3 +153,28 @@ test("notifikasi pembayaran sebagian menyebut nominal dan sisa tunggakan", async
   assert.match(sent[0].message, /Sisa tunggakan Rp 100\.000/);
   assert.doesNotMatch(sent[0].message, /{{|}}/);
 });
+
+test("notifikasi pembelian masa aktif menyebut nominal dan batas aktif", async () => {
+  const { bot, sent } = createBot({
+    paymentMessageTemplateActivePeriod: "{{name}}\n{{paymentAmount}}\n{{activeUntil}}\n{{remainingDebtAmount}}\n{{statusText}}\n{{noteText}}",
+  });
+
+  await bot.sendPaymentNotification(
+    createContact(),
+    "ACT-TEST-1",
+    "ACTIVE-PERIOD",
+    {
+      paymentAmount: 100_000,
+      remainingDebtAmount: 200_000,
+      paymentDate: "2026-10-28T03:00:00.000Z",
+      activeUntil: "2026-11-28T03:00:00.000Z",
+    }
+  );
+
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /Rp 100\.000/);
+  assert.match(sent[0].message, /28\/11\/2026/);
+  assert.match(sent[0].message, /MASA AKTIF DIBELI/);
+  assert.match(sent[0].message, /Tunggakan lama tetap tersimpan/);
+  assert.doesNotMatch(sent[0].message, /{{|}}/);
+});

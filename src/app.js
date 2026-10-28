@@ -209,6 +209,7 @@ const PAYMENT_TYPE_LABELS = {
   [PAYMENT_TYPES.ARREARS_ONLY]: "Hanya Tunggakan",
   [PAYMENT_TYPES.CURRENT_ONLY]: "Bulan Ini Saja",
   [PAYMENT_TYPES.FULL_PAID]: "Lunas Semua",
+  [PAYMENT_TYPES.ACTIVE_PERIOD]: "Masa Aktif 1 Bulan",
 };
 
 function formatReportDate(value, includeTime = false, timeZone = "Asia/Jakarta") {
@@ -1598,6 +1599,28 @@ class DataManager {
         contact.hotspotManualActivationWithArrears,
         false
       );
+      contact.activePeriodPurchases = (Array.isArray(contact.activePeriodPurchases)
+        ? contact.activePeriodPurchases
+        : [])
+        .map((purchase) => {
+          const id = sanitizeInput(String(purchase?.id || ""));
+          const purchasedAt = this.normalizeOptionalDate(purchase?.purchasedAt);
+          const activeFrom = this.normalizeOptionalDate(purchase?.activeFrom);
+          const activeUntil = this.normalizeOptionalDate(purchase?.activeUntil);
+          const amount = sanitizePositiveInteger(purchase?.amount, 0, 0, 1_000_000_000);
+          if (!id || !purchasedAt || !activeFrom || !activeUntil || amount <= 0) return null;
+          return {
+            id,
+            paymentType: PAYMENT_TYPES.ACTIVE_PERIOD,
+            status: PAYMENT_STATUS.PAID,
+            amount,
+            purchasedAt,
+            activeFrom,
+            activeUntil,
+            paymentProvider: sanitizeInput(String(purchase?.paymentProvider || "manual")) || "manual",
+          };
+        })
+        .filter(Boolean);
       contact.linkedApHost = sanitizeInput(String(contact.linkedApHost || ""));
       contact.mikrotikUsername = sanitizeInput(String(contact.mikrotikUsername || ""));
       contact.mikrotikProfile = sanitizeInput(String(contact.mikrotikProfile || ""));
@@ -1926,8 +1949,23 @@ class DataManager {
         remainingAmount: currentAmount,
       });
     }
-    const paymentHistory = Array.from(historyByPeriod.values())
-      .sort((a, b) => b.period.localeCompare(a.period));
+    const activePeriodHistory = (hydrated.activePeriodPurchases || []).map((purchase) => ({
+      period: `active-${purchase.id}`,
+      label: "Masa aktif 1 bulan",
+      status: PAYMENT_STATUS.PAID,
+      paidDate: purchase.purchasedAt,
+      lastPaymentDate: purchase.purchasedAt,
+      paymentType: PAYMENT_TYPES.ACTIVE_PERIOD,
+      paidAmount: purchase.amount,
+      remainingAmount: 0,
+      activeUntil: purchase.activeUntil,
+    }));
+    const paymentHistory = [...historyByPeriod.values(), ...activePeriodHistory]
+      .sort((a, b) => {
+        const dateDifference = new Date(b.lastPaymentDate || b.paidDate || 0).getTime()
+          - new Date(a.lastPaymentDate || a.paidDate || 0).getTime();
+        return dateDifference || String(b.period).localeCompare(String(a.period));
+      });
 
     return {
       customer: {
@@ -2740,6 +2778,76 @@ class DataManager {
     return true;
   }
 
+  buildActivePeriodPurchase(contact, payload = {}) {
+    if (!contact || !isRecurringSubscription(contact)) {
+      throw new Error("Pembelian masa aktif hanya tersedia untuk pelanggan bulanan.");
+    }
+    if (!parseBoolean(contact.billingPausedForArrears, false) || !this.buildDebtInfo(contact).hasDebt) {
+      throw new Error("Pembelian masa aktif hanya tersedia saat perpanjangan dijeda karena tunggakan.");
+    }
+
+    const amount = Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0));
+    if (amount <= 0) {
+      throw new Error("Nominal bulanan harus diisi sebelum membeli masa aktif.");
+    }
+
+    const purchasedAt = new Date(payload.purchasedAt || new Date());
+    const activeFrom = new Date(payload.activeFrom || purchasedAt);
+    const activeUntil = new Date(payload.activeUntil || addMonthsSafely(activeFrom, 1, this.getTimezone()));
+    if ([purchasedAt, activeFrom, activeUntil].some((value) => Number.isNaN(value.getTime()))) {
+      throw new Error("Waktu pembelian masa aktif tidak valid.");
+    }
+    if (activeUntil.getTime() <= activeFrom.getTime()) {
+      throw new Error("Batas masa aktif harus setelah waktu mulai.");
+    }
+
+    const id = sanitizeInput(String(payload.id || ""));
+    if (!id) throw new Error("ID transaksi pembelian masa aktif tidak valid.");
+
+    return {
+      id,
+      paymentType: PAYMENT_TYPES.ACTIVE_PERIOD,
+      status: PAYMENT_STATUS.PAID,
+      amount,
+      purchasedAt: purchasedAt.toISOString(),
+      activeFrom: activeFrom.toISOString(),
+      activeUntil: activeUntil.toISOString(),
+      paymentProvider: sanitizeInput(String(payload.paymentProvider || "manual")) || "manual",
+    };
+  }
+
+  applyActivePeriodPurchase(contact, payload = {}) {
+    const purchase = this.buildActivePeriodPurchase(contact, payload);
+    if (!Array.isArray(contact.activePeriodPurchases)) contact.activePeriodPurchases = [];
+    const existing = contact.activePeriodPurchases.find((item) => String(item.id) === purchase.id);
+    if (existing) return { purchase: existing, added: false };
+
+    contact.activePeriodPurchases.push(purchase);
+    contact.billingPausedForArrears = true;
+    contact.hotspotSuspendedForArrears = false;
+    contact.hotspotManualActivationWithArrears = true;
+    contact.hotspotReactivationEnabled = false;
+    contact.hotspotReactivationAt = purchase.activeUntil;
+    contact.paymentStatus = PAYMENT_STATUS.PAID;
+    contact.paymentDate = null;
+    contact.paymentType = null;
+    contact.updatedAt = purchase.purchasedAt;
+    return { purchase, added: true };
+  }
+
+  async recordActivePeriodPurchase(contactId, payload = {}) {
+    return this.withDataMutation(async () => {
+      const contact = this.getContact(contactId);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      const result = this.applyActivePeriodPurchase(contact, payload);
+      if (result.added) await this.saveContacts();
+      return {
+        ...result,
+        contact: this.hydrateContact(contact),
+      };
+    });
+  }
+
   resumeAutomaticRenewalIfArrearsSettled(contact, options = {}) {
     if (!contact || !parseBoolean(contact.billingPausedForArrears, false)) return false;
     if (this.buildDebtInfo(contact).hasDebt) return false;
@@ -3216,6 +3324,7 @@ class DataManager {
         billingPausedAfterPeriod: null,
         hotspotSuspendedForArrears: false,
         hotspotManualActivationWithArrears: false,
+        activePeriodPurchases: [],
         // Akun baru diasumsikan sudah melunasi biaya awal pada periode pendaftaran.
         paymentStatus: PAYMENT_STATUS.PAID,
         paymentDate: now,
@@ -3321,6 +3430,7 @@ class DataManager {
           billingPausedAfterPeriod: null,
           hotspotSuspendedForArrears: false,
           hotspotManualActivationWithArrears: false,
+          activePeriodPurchases: [],
           paymentStatus: PAYMENT_STATUS.PAID,
           paymentDate: now,
           paymentType: PAYMENT_TYPES.CURRENT_ONLY,
@@ -4063,6 +4173,9 @@ class DataManager {
       } else {
         contact.hotspotManualActivationWithArrears = false;
       }
+      if (options.activePeriodPurchase) {
+        this.applyActivePeriodPurchase(contact, options.activePeriodPurchase);
+      }
       contact.updatedAt = now;
       const pelanggan = this.pelanggan.get(contact.mikrotikUsername) || Array.from(this.pelanggan.values()).find(
         (item) => String(item.contactId || "") === String(contact.id)
@@ -4485,6 +4598,9 @@ class DataManager {
         paymentMessageTemplateFullPaid: payload.paymentMessageTemplateFullPaid !== undefined
           ? sanitizeMultilineText(payload.paymentMessageTemplateFullPaid) || current.paymentMessageTemplateFullPaid
           : current.paymentMessageTemplateFullPaid,
+        paymentMessageTemplateActivePeriod: payload.paymentMessageTemplateActivePeriod !== undefined
+          ? sanitizeMultilineText(payload.paymentMessageTemplateActivePeriod) || current.paymentMessageTemplateActivePeriod
+          : current.paymentMessageTemplateActivePeriod,
         billingReminderMessageTemplate: payload.billingReminderMessageTemplate !== undefined
           ? sanitizeMultilineText(payload.billingReminderMessageTemplate) || current.billingReminderMessageTemplate
           : current.billingReminderMessageTemplate,
@@ -4690,6 +4806,7 @@ class DataManager {
       { header: "Nominal Dibayar", key: "paidAmount" },
       { header: "Sisa Tagihan", key: "remainingAmount" },
       { header: "Tanggal Dibayar", key: "paidDate" },
+      { header: "Aktif Sampai", key: "activeUntil" },
     ];
     const historyRows = [];
     for (const contact of contacts) {
@@ -4704,6 +4821,22 @@ class DataManager {
           paidAmount: this.getPaymentPaidAmount(payment, contact.monthlyPaymentAmount),
           remainingAmount: this.getPaymentRemainingAmount(payment, contact.monthlyPaymentAmount),
           paidDate: formatReportDate(payment.lastPaymentDate || payment.paidDate, true, timeZone),
+          activeUntil: "-",
+        });
+      }
+      for (const purchase of contact.activePeriodPurchases || []) {
+        const purchasedAt = new Date(purchase.purchasedAt || 0);
+        if (Number.isNaN(purchasedAt.getTime())) continue;
+        historyRows.push({
+          period: getBillingPeriodKey(purchasedAt, timeZone),
+          name: contact.name || "-",
+          phoneNumber: contact.phoneNumber || "-",
+          status: "Lunas",
+          paymentType: PAYMENT_TYPE_LABELS[PAYMENT_TYPES.ACTIVE_PERIOD],
+          paidAmount: Math.max(0, Number(purchase.amount) || 0),
+          remainingAmount: 0,
+          paidDate: formatReportDate(purchase.purchasedAt, true, timeZone),
+          activeUntil: formatReportDate(purchase.activeUntil, true, timeZone),
         });
       }
     }
@@ -4728,6 +4861,9 @@ class DataManager {
     }
     if (normalizedType && !this.getAllowedPaymentTypes().includes(normalizedType)) {
       throw new Error("Jenis pembayaran tidak valid.");
+    }
+    if (normalizedType === PAYMENT_TYPES.ACTIVE_PERIOD) {
+      throw new Error("Pembelian masa aktif harus menggunakan tindakan khusus pembelian masa aktif.");
     }
 
     if (normalizedStatus === PAYMENT_STATUS.PAID) {
@@ -5287,7 +5423,9 @@ class NotificationBot {
   }
 
   async sendPaymentNotification(contact, transactionId, paymentType = "DEFAULT", options = {}) {
-    const paymentDate = contact.paymentDate ? new Date(contact.paymentDate) : new Date();
+    const paymentDate = options.paymentDate
+      ? new Date(options.paymentDate)
+      : (contact.paymentDate ? new Date(contact.paymentDate) : new Date());
     const formattedDate = paymentDate.toLocaleString("id-ID", {
       day: "2-digit",
       month: "2-digit",
@@ -5301,6 +5439,17 @@ class NotificationBot {
     let noteText = "Pembayaran Anda telah berhasil kami terima.";
     const paymentAmount = Math.max(0, Math.floor(Number(options.paymentAmount) || 0));
     const remainingDebtAmount = Math.max(0, Math.floor(Number(options.remainingDebtAmount) || 0));
+    const activeUntilDate = options.activeUntil ? new Date(options.activeUntil) : null;
+    const formattedActiveUntil = activeUntilDate && !Number.isNaN(activeUntilDate.getTime())
+      ? activeUntilDate.toLocaleString("id-ID", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: this.dataManager.getTimezone(),
+        })
+      : "-";
 
     if (paymentType === "ARREARS-ONLY") {
       statusText = remainingDebtAmount > 0 ? "TUNGGAKAN DIBAYAR SEBAGIAN" : "TUNGGAKAN TERBAYAR";
@@ -5313,6 +5462,9 @@ class NotificationBot {
     } else if (paymentType === "FULL-PAID") {
       statusText = "LUNAS";
       noteText = "Semua tagihan (bulan sebelumnya dan bulan ini) telah lunas. Terima kasih atas kelancarannya!";
+    } else if (paymentType === PAYMENT_TYPES.ACTIVE_PERIOD) {
+      statusText = "MASA AKTIF DIBELI";
+      noteText = `Akun hotspot aktif sampai ${formattedActiveUntil}. Tunggakan lama tetap tersimpan dan perpanjangan otomatis masih dijeda.`;
     }
 
     const settings = this.dataManager.getSettings();
@@ -5324,6 +5476,9 @@ class NotificationBot {
     } else if (paymentType === PAYMENT_TYPES.FULL_PAID) {
       messageTemplate = sanitizeMultilineText(settings.paymentMessageTemplateFullPaid)
         || DEFAULT_SETTINGS.paymentMessageTemplateFullPaid;
+    } else if (paymentType === PAYMENT_TYPES.ACTIVE_PERIOD) {
+      messageTemplate = sanitizeMultilineText(settings.paymentMessageTemplateActivePeriod)
+        || DEFAULT_SETTINGS.paymentMessageTemplateActivePeriod;
     }
     const companyName = sanitizeInput(settings.companyName) || "Emmeril Hotspot";
     const supportSignature = sanitizeInput(settings.supportSignature) || "CS Emmeril Hotspot";
@@ -5334,6 +5489,7 @@ class NotificationBot {
       .replace(/{{\s*paymentDate\s*}}/gi, formattedDate)
       .replace(/{{\s*paymentAmount\s*}}/gi, this.dataManager.formatPaymentAmount(paymentAmount))
       .replace(/{{\s*remainingDebtAmount\s*}}/gi, this.dataManager.formatPaymentAmount(remainingDebtAmount))
+      .replace(/{{\s*activeUntil\s*}}/gi, formattedActiveUntil)
       .replace(/{{\s*statusText\s*}}/gi, statusText)
       .replace(/{{\s*noteText\s*}}/gi, noteText)
       .replace(/{{\s*companyName\s*}}/gi, companyName)
@@ -5528,6 +5684,7 @@ class WebServer {
     this.hotspotReactivationScheduler = hotspotReactivationScheduler;
     this.midtransService = midtransService || new MidtransService();
     this.hotspotProvisioningLock = new AsyncLock();
+    this.activePeriodPurchaseLock = new AsyncLock();
     this.paymentGatewayLock = new AsyncLock();
     this.server = null;
     this.ready = true;
@@ -5730,12 +5887,22 @@ class WebServer {
     });
   }
 
-  async setHotspotContactDisabled(contact, disabled) {
+  async setHotspotContactDisabled(contact, disabled, options = {}) {
     return this.hotspotProvisioningLock.runExclusive(String(contact.id), async () => {
       const current = this.dataManager.getContact(contact.id);
       if (!current) throw new Error("Kontak tidak ditemukan.");
       if (!current.mikrotikUsername || !current.mikrotikProfile) {
         throw new Error("Data akun hotspot pelanggan belum lengkap.");
+      }
+      if (!disabled && !options.activePeriodPurchase) {
+        const currentState = typeof this.dataManager.hydrateContact === "function"
+          ? this.dataManager.hydrateContact(current)
+          : current;
+        if (currentState.billingPausedForArrears && currentState.hasDebt) {
+          const error = new Error("Gunakan Beli masa aktif 1 bulan untuk mengaktifkan akun yang masih memiliki tunggakan.");
+          error.statusCode = 409;
+          throw error;
+        }
       }
       const operation = disabled
         ? HOTSPOT_PROVISIONING_OPERATION.DISABLE
@@ -5766,7 +5933,10 @@ class WebServer {
       try {
         persisted = disabled
           ? await this.dataManager.markHotspotDisabled(current.id, result)
-          : await this.dataManager.markHotspotEnabled(current.id, result);
+          : await this.dataManager.markHotspotEnabled(current.id, result, {
+              at: options.at,
+              activePeriodPurchase: options.activePeriodPurchase,
+            });
       } catch (error) {
         try {
           await this.mikrotikService.setHotspotUserDisabled(
@@ -5804,6 +5974,80 @@ class WebServer {
         username: result.username,
         disabled: Boolean(disabled),
         activeSessionsKilled: result.activeSessionsKilled || 0,
+      };
+    });
+  }
+
+  async purchaseActivePeriod(contactId) {
+    return this.activePeriodPurchaseLock.runExclusive(String(contactId), async () => {
+      const contact = this.dataManager.getContact(contactId);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      const hydrated = this.dataManager.hydrateContact(contact);
+      if (!isRecurringSubscription(contact)) {
+        throw new Error("Pembelian masa aktif hanya tersedia untuk pelanggan bulanan.");
+      }
+      if (!hydrated.billingPausedForArrears || !hydrated.hasDebt) {
+        throw new Error("Pembelian masa aktif hanya tersedia saat perpanjangan dijeda karena tunggakan.");
+      }
+      if (!contact.mikrotikUsername || !contact.mikrotikProfile) {
+        throw new Error("Data akun hotspot pelanggan belum lengkap.");
+      }
+
+      const now = new Date();
+      const currentStatus = normalizeHotspotProvisioningStatus(
+        contact.hotspotProvisioningStatus,
+        HOTSPOT_PROVISIONING_STATUS.NONE
+      );
+      const currentEnd = new Date(contact.hotspotReactivationAt || 0);
+      const canExtend = currentStatus === HOTSPOT_PROVISIONING_STATUS.ACTIVE
+        && parseBoolean(contact.hotspotManualActivationWithArrears, false);
+      const canActivate = currentStatus === HOTSPOT_PROVISIONING_STATUS.DISABLED;
+      if (!canExtend && !canActivate) {
+        const error = new Error("Akun hotspot harus nonaktif karena tunggakan atau sedang memakai masa aktif sementara.");
+        error.statusCode = 409;
+        throw error;
+      }
+
+      const activeFrom = canExtend && Number.isFinite(currentEnd.getTime()) && currentEnd.getTime() > now.getTime()
+        ? currentEnd
+        : now;
+      const activeUntil = addMonthsSafely(activeFrom, 1, this.dataManager.getTimezone());
+      const purchase = {
+        id: `ACT-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
+        purchasedAt: now.toISOString(),
+        activeFrom: activeFrom.toISOString(),
+        activeUntil: activeUntil.toISOString(),
+        paymentProvider: "manual",
+      };
+
+      let persisted;
+      let operation;
+      if (canExtend) {
+        const recorded = await this.dataManager.recordActivePeriodPurchase(contact.id, purchase);
+        persisted = recorded.contact;
+        operation = "EXTEND";
+      } else {
+        const enabled = await this.setHotspotContactDisabled(contact, false, {
+          at: now,
+          activePeriodPurchase: purchase,
+        });
+        persisted = enabled.contact;
+        operation = "ACTIVATE";
+      }
+
+      const storedPurchase = (persisted.activePeriodPurchases || [])
+        .find((item) => String(item.id) === purchase.id);
+      this.activityLog.push("info", "payment", `Masa aktif satu bulan ${operation === "EXTEND" ? "ditambahkan" : "dibeli"} untuk ${contact.mikrotikUsername}`, {
+        contactId: contact.id,
+        transactionId: purchase.id,
+        amount: storedPurchase?.amount || contact.monthlyPaymentAmount,
+        activeUntil: purchase.activeUntil,
+        operation,
+      });
+      return {
+        operation,
+        purchase: storedPurchase || purchase,
+        contact: persisted,
       };
     });
   }
@@ -7138,6 +7382,39 @@ class WebServer {
       return {
         ...result,
         contact: this.dataManager.toPublicContact(result.contact),
+      };
+    }));
+    this.app.post("/api/contacts/:id/active-period-purchase", requireApiAuth, handleApi(async (req) => {
+      const result = await this.purchaseActivePeriod(req.params.id);
+      const remainingDebtAmount = Math.max(0, Number(result.contact.debtAmount) || 0);
+      let notificationSent = false;
+      let notificationError = null;
+      try {
+        await this.notificationBot.sendPaymentNotification(
+          result.contact,
+          result.purchase.id,
+          PAYMENT_TYPES.ACTIVE_PERIOD,
+          {
+            paymentAmount: result.purchase.amount,
+            paymentDate: result.purchase.purchasedAt,
+            activeUntil: result.purchase.activeUntil,
+            remainingDebtAmount,
+          }
+        );
+        notificationSent = true;
+      } catch (error) {
+        notificationError = error.message;
+        this.activityLog.push("error", "payment", `Masa aktif tersimpan tetapi notifikasi gagal dikirim ke ${result.contact.phoneNumber}`, {
+          contactId: result.contact.id,
+          transactionId: result.purchase.id,
+          error: error.message,
+        });
+      }
+      return {
+        ...result,
+        contact: this.dataManager.toPublicContact(result.contact),
+        notificationSent,
+        notificationError,
       };
     }));
     this.app.post("/api/hotspot/reactivations/run", requireApiAuth, handleApi(async () => this.hotspotReactivationScheduler.processDueReactivations()));

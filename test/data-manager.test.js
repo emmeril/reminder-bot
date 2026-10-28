@@ -894,6 +894,109 @@ test("aktivasi manual saat masih menunggak memberi masa aktif satu bulan tanpa m
   assert.deepEqual(updated.debtPeriods.map(({ key }) => key), ["2026-09"]);
 });
 
+test("pembelian masa aktif mengaktifkan hotspot satu bulan tanpa mengurangi tunggakan", async () => {
+  const purchasedAt = new Date();
+  const current = getBillingPeriodParts(purchasedAt);
+  const previous = getPreviousBillingPeriod(current.year, current.month);
+  const debtKey = makeBillingPeriodKey(previous.year, previous.month);
+  const activeUntil = addMonthsSafely(purchasedAt, 1, "Asia/Jakarta");
+  const contact = {
+    id: "contact-active-period-purchase",
+    name: "Pelanggan Masa Aktif",
+    phoneNumber: "6281234567815",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    createdAt: `${debtKey}-01T00:00:00.000Z`,
+    monthlyPaymentAmount: 100000,
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentMonths: {
+      [debtKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
+    },
+    billingPausedForArrears: true,
+    billingPausedAfterPeriod: debtKey,
+    hotspotSuspendedForArrears: true,
+    hotspotReactivationEnabled: false,
+    hotspotReactivationAt: null,
+    mikrotikUsername: "active_period",
+    mikrotikProfile: "default",
+  };
+  const manager = createManager(contact);
+
+  const updated = await manager.markHotspotEnabled(contact.id, {}, {
+    at: purchasedAt,
+    activePeriodPurchase: {
+      id: "ACT-TEST-1",
+      purchasedAt,
+      activeFrom: purchasedAt,
+      activeUntil,
+    },
+  });
+
+  assert.equal(updated.hotspotProvisioningStatus, "ACTIVE");
+  assert.equal(updated.hotspotManualActivationWithArrears, true);
+  assert.equal(updated.hotspotReactivationEnabled, false);
+  assert.equal(updated.hotspotReactivationAt, activeUntil.toISOString());
+  assert.equal(updated.debtAmount, 100000);
+  assert.equal(updated.activePeriodPurchases.length, 1);
+  assert.equal(updated.activePeriodPurchases[0].amount, 100000);
+  assert.equal(updated.activePeriodPurchases[0].paymentType, PAYMENT_TYPES.ACTIVE_PERIOD);
+  assert.equal(contact.paymentMonths[debtKey].status, PAYMENT_STATUS.UNPAID);
+  manager.customerAccounts.set(contact.id, { username: "active_period", password: "portal-pass" });
+  const portal = manager.getCustomerPortalData(contact.id);
+  const purchaseHistory = portal.billing.history.find((item) => item.paymentType === PAYMENT_TYPES.ACTIVE_PERIOD);
+  assert.equal(purchaseHistory.paidAmount, 100000);
+  assert.equal(purchaseHistory.activeUntil, activeUntil.toISOString());
+});
+
+test("pembelian masa aktif berikutnya memperpanjang jadwal dari batas aktif terakhir", async () => {
+  const purchasedAt = new Date();
+  const current = getBillingPeriodParts(purchasedAt);
+  const previous = getPreviousBillingPeriod(current.year, current.month);
+  const debtKey = makeBillingPeriodKey(previous.year, previous.month);
+  const firstActiveUntil = addMonthsSafely(purchasedAt, 1, "Asia/Jakarta");
+  const secondActiveUntil = addMonthsSafely(firstActiveUntil, 1, "Asia/Jakarta");
+  const contact = {
+    id: "contact-active-period-extension",
+    name: "Pelanggan Perpanjangan Masa Aktif",
+    phoneNumber: "6281234567816",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    createdAt: `${debtKey}-01T00:00:00.000Z`,
+    monthlyPaymentAmount: 100000,
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentMonths: {
+      [debtKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
+    },
+    billingPausedForArrears: true,
+    billingPausedAfterPeriod: debtKey,
+    hotspotManualActivationWithArrears: true,
+    hotspotProvisioningStatus: "ACTIVE",
+    hotspotReactivationEnabled: false,
+    hotspotReactivationAt: firstActiveUntil.toISOString(),
+    activePeriodPurchases: [{
+      id: "ACT-TEST-1",
+      paymentType: PAYMENT_TYPES.ACTIVE_PERIOD,
+      status: PAYMENT_STATUS.PAID,
+      amount: 100000,
+      purchasedAt: purchasedAt.toISOString(),
+      activeFrom: purchasedAt.toISOString(),
+      activeUntil: firstActiveUntil.toISOString(),
+      paymentProvider: "manual",
+    }],
+  };
+  const manager = createManager(contact);
+
+  const result = await manager.recordActivePeriodPurchase(contact.id, {
+    id: "ACT-TEST-2",
+    purchasedAt,
+    activeFrom: firstActiveUntil,
+    activeUntil: secondActiveUntil,
+  });
+
+  assert.equal(result.contact.activePeriodPurchases.length, 2);
+  assert.equal(result.contact.hotspotReactivationAt, secondActiveUntil.toISOString());
+  assert.equal(result.contact.debtAmount, 100000);
+  assert.equal(contact.paymentMonths[debtKey].status, PAYMENT_STATUS.UNPAID);
+});
+
 test("reset bulanan tidak membuat tagihan baru saat billing dijeda karena tunggakan", async () => {
   const { year, month } = getBillingPeriodParts();
   const currentKey = makeBillingPeriodKey(year, month);

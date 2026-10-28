@@ -1172,6 +1172,127 @@ test("riwayat pembayaran bulanan memakai metadata periode yang diminta", async (
   assert.equal(payload.data[0].paymentType, PAYMENT_TYPES.CURRENT_ONLY);
 });
 
+test("pembelian masa aktif mengaktifkan hotspot tanpa mengubah tunggakan", async () => {
+  Object.assign(CONFIG, {
+    AUTH_USERNAME: "operator",
+    AUTH_PASSWORD: "test-password",
+    SESSION_SECRET: "test-session-secret",
+  });
+  const calls = [];
+  const contact = {
+    id: "contact-active-period-route",
+    name: "Pelanggan Masa Aktif",
+    phoneNumber: "6281234567890",
+    subscriptionType: "RECURRING",
+    monthlyPaymentAmount: 100000,
+    mikrotikUsername: "pelanggan_masa_aktif",
+    mikrotikProfile: "50M",
+    hotspotProvisioningStatus: "DISABLED",
+    billingPausedForArrears: true,
+    hotspotSuspendedForArrears: true,
+    activePeriodPurchases: [],
+  };
+  const baseUrl = await startServer({
+    getContact: (id) => String(id) === contact.id ? contact : null,
+    hydrateContact: (value) => ({
+      ...value,
+      hasDebt: true,
+      debtAmount: 200000,
+      billingPausedForArrears: true,
+    }),
+    prepareHotspotLifecycleOperation: async () => { calls.push("prepare"); },
+    updateHotspotProvisioningStatus: async () => { calls.push("status"); },
+    markHotspotEnabled: async (id, result, options) => {
+      calls.push("persist");
+      const purchase = {
+        ...options.activePeriodPurchase,
+        amount: contact.monthlyPaymentAmount,
+        paymentType: PAYMENT_TYPES.ACTIVE_PERIOD,
+        status: PAYMENT_STATUS.PAID,
+        paymentProvider: "manual",
+      };
+      Object.assign(contact, {
+        hotspotProvisioningStatus: "ACTIVE",
+        hotspotSuspendedForArrears: false,
+        hotspotManualActivationWithArrears: true,
+        hotspotReactivationEnabled: false,
+        hotspotReactivationAt: purchase.activeUntil,
+        activePeriodPurchases: [purchase],
+      });
+      return { ...contact, hasDebt: true, debtAmount: 200000 };
+    },
+    toPublicContact: (value) => value,
+  }, {
+    sendPaymentNotification: async (value, transactionId, paymentType, options) => {
+      calls.push(`notify:${paymentType}:${options.paymentAmount}`);
+      assert.equal(value.debtAmount, 200000);
+      assert.equal(transactionId.startsWith("ACT-"), true);
+    },
+  }, {
+    setHotspotUserDisabled: async (username, phoneNumber, disabled) => {
+      calls.push(`router:${disabled}`);
+      return { username, disabled };
+    },
+  });
+  const cookie = await login(baseUrl);
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/active-period-purchase`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.operation, "ACTIVATE");
+  assert.equal(payload.data.purchase.amount, 100000);
+  assert.equal(payload.data.contact.debtAmount, 200000);
+  assert.equal(payload.data.contact.hotspotManualActivationWithArrears, true);
+  assert.equal(payload.data.notificationSent, true);
+  assert.deepEqual(calls, [
+    "prepare",
+    "status",
+    "router:false",
+    "persist",
+    "notify:ACTIVE-PERIOD:100000",
+  ]);
+});
+
+test("aktivasi biasa ditolak ketika akun masih memiliki tunggakan", async () => {
+  Object.assign(CONFIG, {
+    AUTH_USERNAME: "operator",
+    AUTH_PASSWORD: "test-password",
+    SESSION_SECRET: "test-session-secret",
+  });
+  let routerCalls = 0;
+  const contact = {
+    id: "contact-arrears-enable-rejected",
+    subscriptionType: "RECURRING",
+    mikrotikUsername: "pelanggan_menunggak",
+    mikrotikProfile: "50M",
+    hotspotProvisioningStatus: "DISABLED",
+    billingPausedForArrears: true,
+  };
+  const baseUrl = await startServer({
+    getContact: () => contact,
+    hydrateContact: (value) => ({ ...value, billingPausedForArrears: true, hasDebt: true }),
+  }, {}, {
+    setHotspotUserDisabled: async () => { routerCalls += 1; },
+  });
+  const cookie = await login(baseUrl);
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/hotspot/enable`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.match(payload.error, /Beli masa aktif 1 bulan/);
+  assert.equal(routerCalls, 0);
+});
+
 test("API WhatsApp status memakai auth existing dan endpoint pemilih provider dihapus", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   let settings = { dashboardTitle: "Test" };
