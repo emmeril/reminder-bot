@@ -1229,6 +1229,48 @@ test("pembayaran per bulan mengirim notifikasi akun WiFi", async () => {
   assert.equal(notificationArguments[3].activeUntil, contact.hotspotReactivationAt);
 });
 
+test("pembayaran per bulan yang sudah tercatat tidak mengirim notifikasi kedua", async () => {
+  const contact = {
+    id: "contact-duplicate-payment-month",
+    name: "Pelanggan Pembayaran Ganda",
+    phoneNumber: "6281234567890",
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentRecorded: false,
+    monthlyPaymentAmount: 75_000,
+    hotspotProvisioningStatus: "ACTIVE",
+    hotspotReactivationAt: "2026-12-08T01:00:00.000Z",
+  };
+  let notificationCalls = 0;
+  const baseUrl = await startServer({
+    getContact: (id) => id === contact.id ? contact : null,
+    hydrateContact: (value) => value,
+    setPaymentForMonth: async () => contact,
+    toPublicContact: (value) => ({ ...value }),
+  }, {
+    sendPaymentNotification: async () => {
+      notificationCalls += 1;
+    },
+  });
+  const cookie = await login(baseUrl);
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/payment-month`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({
+      year: 2026,
+      month: 10,
+      status: PAYMENT_STATUS.PAID,
+      paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+    }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.paymentRecorded, false);
+  assert.equal(payload.data.notificationSent, false);
+  assert.equal(notificationCalls, 0);
+});
+
 test("pembelian masa aktif mengaktifkan hotspot tanpa mengubah tunggakan", async () => {
   Object.assign(CONFIG, {
     AUTH_USERNAME: "operator",

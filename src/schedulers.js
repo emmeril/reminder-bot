@@ -14,6 +14,7 @@ const {
   getDateTimePartsInTimezone,
   isValidTimeZone,
   normalizeNetworkHost,
+  parseBoolean,
   parseNetwatchSinceDate,
   sanitizeInput,
   sanitizePositiveInteger,
@@ -64,6 +65,13 @@ class ReminderScheduler {
     }
 
     const nextReminder = this.buildNextReminder(reminder);
+    const currentSchedule = new Date(contact?.hotspotReactivationAt || 0);
+    if (contact
+      && !parseBoolean(contact.billingPausedForArrears, false)
+      && Number.isFinite(currentSchedule.getTime())
+      && currentSchedule.getTime() > Date.now()) {
+      nextReminder.reminderDateTime = currentSchedule;
+    }
     const createdReminder = await this.dataManager.addReminder(nextReminder);
     this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} dijadwalkan ulang bulanan`, {
       reminderId: reminder.id,

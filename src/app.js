@@ -2272,9 +2272,11 @@ class DataManager {
         transaction.serviceScheduleEnabledBeforePayment = serviceScheduleEnabledBeforePayment;
         transaction.serviceScheduleAfterPayment = serviceSchedule.activeUntil;
       }
+      const reminderScheduleChanged = automaticRenewalResumed || serviceSchedule.changed
+        ? this.syncRecurringReminderSchedule(contact)
+        : 0;
       const remindersChanged = arrearsPolicy.remindersAdded + arrearsPolicy.remindersRemoved
-        + (automaticRenewalResumed ? this.restoreBillingReminderAfterActivePeriod(contact) : 0)
-        + (serviceSchedule.changed ? this.syncRecurringReminderSchedule(contact) : 0)
+        + reminderScheduleChanged
         + this.updateContactReminderMessages(contact);
       await this.withDatabaseWrite(() => this.sequelize.transaction(async (databaseTransaction) => {
         const options = { transaction: databaseTransaction };
@@ -3222,14 +3224,14 @@ class DataManager {
   async migrateExistingPaidServiceSchedules(options = {}) {
     return this.withDataMutation(async () => {
       const settings = this.getSettings();
-      if (Number(settings.prepaidScheduleMigrationVersion) >= 1) {
+      if (Number(settings.prepaidScheduleMigrationVersion) >= 3) {
         return {
           migrated: false,
           contactsUpdated: 0,
           remindersUpdated: 0,
           alreadyAligned: 0,
           skipped: 0,
-          version: 1,
+          version: 3,
         };
       }
 
@@ -3267,38 +3269,38 @@ class DataManager {
           continue;
         }
 
-        const [paymentPeriodKey, payment] = latestPaidEntry;
-        const paymentPeriod = {
-          year: Number(paymentPeriodKey.slice(0, 4)),
-          month: Number(paymentPeriodKey.slice(5, 7)),
-        };
+        const [, payment] = latestPaidEntry;
+        const expectedSchedule = addMonthsSafely(payment.paidDate, 1, this.getTimezone());
+        if (!Number.isFinite(expectedSchedule.getTime())
+          || expectedSchedule.getTime() <= migrationTime.getTime()) {
+          skipped += 1;
+          continue;
+        }
         const currentSchedule = new Date(contact.hotspotReactivationAt || 0);
         const scheduleIsValid = Number.isFinite(currentSchedule.getTime());
-        const schedulePeriod = scheduleIsValid
-          ? getBillingPeriodParts(currentSchedule, this.getTimezone())
-          : null;
-        const scheduleAlreadyAdvanced = schedulePeriod
-          && compareBillingPeriods(schedulePeriod, paymentPeriod) > 0;
+        const scheduleAlreadyAdvanced = scheduleIsValid
+          && currentSchedule.getTime() === expectedSchedule.getTime()
+          && parseBoolean(contact.hotspotReactivationEnabled, false);
 
         if (scheduleAlreadyAdvanced) {
           alreadyAligned += 1;
         } else {
-          const serviceSchedule = this.advanceServiceScheduleAfterPayment(contact, {
-            at: payment.paidDate,
-            previousSchedule: scheduleIsValid ? currentSchedule : null,
-            paymentPeriodKey,
-          });
-          if (serviceSchedule.changed) {
-            contact.updatedAt = updatedAt;
-            contactsUpdated += 1;
-          }
+          contact.hotspotReactivationAt = expectedSchedule.toISOString();
+          contact.hotspotReactivationEnabled = true;
+          contact.hotspotManualActivationWithArrears = false;
+          contact.updatedAt = updatedAt;
+          contactsUpdated += 1;
         }
-        remindersUpdated += this.syncRecurringReminderSchedule(contact);
+        const alignedSchedule = new Date(contact.hotspotReactivationAt || 0);
+        if (Number.isFinite(alignedSchedule.getTime())
+          && alignedSchedule.getTime() > migrationTime.getTime()) {
+          remindersUpdated += this.syncRecurringReminderSchedule(contact);
+        }
       }
 
       this.settings = {
         ...settings,
-        prepaidScheduleMigrationVersion: 1,
+        prepaidScheduleMigrationVersion: 3,
       };
       await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
         const saveOptions = { transaction };
@@ -3307,7 +3309,7 @@ class DataManager {
         await this.saveSettings(saveOptions);
       }));
       this.activityLog.push("info", "storage", "Jadwal pembayaran lama diselaraskan dengan sistem masa aktif", {
-        migration: "prepaid-schedule-v1",
+        migration: "prepaid-schedule-v3",
         contactsUpdated,
         remindersUpdated,
         alreadyAligned,
@@ -3319,7 +3321,7 @@ class DataManager {
         remindersUpdated,
         alreadyAligned,
         skipped,
-        version: 1,
+        version: 3,
       };
     });
   }
@@ -3405,14 +3407,7 @@ class DataManager {
       return { changed: false, activeFrom: null, activeUntil: null };
     }
 
-    const previousValue = options.previousSchedule !== undefined
-      ? options.previousSchedule
-      : contact.hotspotReactivationAt;
-    const previousSchedule = new Date(previousValue || 0);
-    const activeFrom = Number.isFinite(previousSchedule.getTime())
-      && previousSchedule.getTime() > paidAt.getTime()
-      ? previousSchedule
-      : paidAt;
+    const activeFrom = paidAt;
     const activeUntil = addMonthsSafely(activeFrom, 1, this.getTimezone());
     const nextSchedule = activeUntil.toISOString();
     const changed = contact.hotspotReactivationAt !== nextSchedule
@@ -5287,6 +5282,12 @@ class DataManager {
       const currentPaymentBeforeUpdate = contact.paymentMonths[currentKey] || null;
       const currentStatusBeforeUpdate = currentPaymentBeforeUpdate?.status
         || String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase();
+      const currentPeriodNewlyPaid = status === PAYMENT_STATUS.PAID
+        && currentStatusBeforeUpdate !== PAYMENT_STATUS.PAID;
+      const hadDebtBeforeUpdate = this.buildDebtInfo(contact, { year, month }).hasDebt;
+      const paymentRecorded = paymentType === PAYMENT_TYPES.ARREARS_ONLY
+        || currentPeriodNewlyPaid
+        || (paymentType === PAYMENT_TYPES.FULL_PAID && hadDebtBeforeUpdate);
       const arrearsDebtInfo = paymentType === PAYMENT_TYPES.ARREARS_ONLY
         ? this.buildDebtInfo(contact, { year, month })
         : null;
@@ -5378,7 +5379,9 @@ class DataManager {
           contact.paymentMonths[currentKey] = {
             ...existingCurrentPayment,
             status,
-            paidDate: status === PAYMENT_STATUS.PAID ? now.toISOString() : null,
+            paidDate: status === PAYMENT_STATUS.PAID
+              ? existingCurrentPayment.paidDate || now.toISOString()
+              : null,
             paymentType: paymentType || null,
             paidAmount: status === PAYMENT_STATUS.PAID
               ? Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0))
@@ -5403,22 +5406,25 @@ class DataManager {
         ? this.applyArrearsSubscriptionPolicy(contact)
         : { remindersAdded: 0, remindersRemoved: 0 };
       const automaticRenewalResumed = this.resumeAutomaticRenewalIfArrearsSettled(contact, { at: now });
-      const serviceSchedule = status === PAYMENT_STATUS.PAID
+      const serviceSchedule = currentPeriodNewlyPaid
         && paymentType !== PAYMENT_TYPES.ARREARS_ONLY
         ? this.advanceServiceScheduleAfterPayment(contact, {
             at: now,
             previousSchedule: serviceScheduleBeforePayment,
           })
         : { changed: false, activeFrom: null, activeUntil: null };
+      const reminderScheduleChanged = automaticRenewalResumed || serviceSchedule.changed
+        ? this.syncRecurringReminderSchedule(contact)
+        : 0;
       const remindersChanged = arrearsPolicy.remindersAdded + arrearsPolicy.remindersRemoved
-        + (automaticRenewalResumed ? this.restoreBillingReminderAfterActivePeriod(contact) : 0)
-        + (serviceSchedule.changed ? this.syncRecurringReminderSchedule(contact) : 0)
+        + reminderScheduleChanged
         + this.updateContactReminderMessages(contact);
       await this.savePaymentAndReminderChanges(remindersChanged);
       const hydrated = this.hydrateContact(contact);
       if (appliedPaymentAmount > 0) {
         hydrated.paymentAppliedAmount = appliedPaymentAmount;
       }
+      hydrated.paymentRecorded = paymentRecorded;
       if (serviceSchedule.activeUntil) {
         hydrated.serviceActiveFrom = serviceSchedule.activeFrom;
         hydrated.serviceActiveUntil = serviceSchedule.activeUntil;
@@ -5445,6 +5451,14 @@ class DataManager {
       const serviceScheduleBeforePayment = contact.hotspotReactivationAt || null;
       const timeZone = this.getTimezone();
       const previous = getPreviousBillingPeriod(year, month);
+      const existingPeriodBeforeUpdate = contact.paymentMonths[key] || null;
+      const periodWasPaid = existingPeriodBeforeUpdate?.status === PAYMENT_STATUS.PAID;
+      const hadDebtBeforeUpdate = this.buildDebtInfo(contact, { year, month }).hasDebt;
+      const paymentRecorded = status === PAYMENT_STATUS.PAID && (
+        !periodWasPaid
+        || paymentType === PAYMENT_TYPES.ARREARS_ONLY
+        || (paymentType === PAYMENT_TYPES.FULL_PAID && hadDebtBeforeUpdate)
+      );
       if (!this.usesRecurringBilling(contact)) {
         const startPeriod = getContactBillingStartPeriod(contact, timeZone);
         const existingPeriod = contact.paymentMonths[key];
@@ -5485,7 +5499,9 @@ class DataManager {
 
       contact.paymentMonths[key] = {
         status,
-        paidDate: status === PAYMENT_STATUS.PAID ? now.toISOString() : null,
+        paidDate: status === PAYMENT_STATUS.PAID
+          ? existingPeriodBeforeUpdate?.paidDate || now.toISOString()
+          : null,
         paymentType: paymentType || null,
         paidAmount: status === PAYMENT_STATUS.PAID
           ? Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0))
@@ -5495,7 +5511,9 @@ class DataManager {
       const { year: currentYear, month: currentMonth } = getBillingPeriodParts(now, timeZone);
       if (year === currentYear && month === currentMonth) {
         contact.paymentStatus = status;
-        contact.paymentDate = status === PAYMENT_STATUS.PAID ? now.toISOString() : null;
+        contact.paymentDate = status === PAYMENT_STATUS.PAID
+          ? contact.paymentMonths[key].paidDate
+          : null;
         contact.paymentType = paymentType || null;
       }
       contact.updatedAt = now.toISOString();
@@ -5506,19 +5524,23 @@ class DataManager {
       const automaticRenewalResumed = this.resumeAutomaticRenewalIfArrearsSettled(contact, { at: now });
       const serviceSchedule = year === currentYear
         && month === currentMonth
-        && status === PAYMENT_STATUS.PAID
+        && paymentRecorded
+        && !periodWasPaid
         && paymentType !== PAYMENT_TYPES.ARREARS_ONLY
         ? this.advanceServiceScheduleAfterPayment(contact, {
             at: now,
             previousSchedule: serviceScheduleBeforePayment,
           })
         : { changed: false, activeFrom: null, activeUntil: null };
+      const reminderScheduleChanged = automaticRenewalResumed || serviceSchedule.changed
+        ? this.syncRecurringReminderSchedule(contact)
+        : 0;
       const remindersChanged = arrearsPolicy.remindersAdded + arrearsPolicy.remindersRemoved
-        + (automaticRenewalResumed ? this.restoreBillingReminderAfterActivePeriod(contact) : 0)
-        + (serviceSchedule.changed ? this.syncRecurringReminderSchedule(contact) : 0)
+        + reminderScheduleChanged
         + this.updateContactReminderMessages(contact);
       await this.savePaymentAndReminderChanges(remindersChanged);
       const hydrated = this.hydrateContact(contact);
+      hydrated.paymentRecorded = paymentRecorded;
       if (serviceSchedule.activeUntil) {
         hydrated.serviceActiveFrom = serviceSchedule.activeFrom;
         hydrated.serviceActiveUntil = serviceSchedule.activeUntil;
@@ -7967,6 +7989,7 @@ class WebServer {
         paymentType,
         paymentAmount
       );
+      const paymentRecorded = updatedContact.paymentRecorded !== false;
       let hotspotRecovery = { attempted: false, reason: "outstanding_balance" };
       try {
         hotspotRecovery = await this.recoverHotspotAfterPayment(updatedContact);
@@ -7981,11 +8004,13 @@ class WebServer {
       const effectivePaymentType = paymentType || updatedContact.paymentType;
       const appliedPaymentAmount = Math.max(0, Number(updatedContact.paymentAppliedAmount) || 0);
       const remainingDebtAmount = Math.max(0, Number(updatedContact.debtAmount) || 0);
-      const shouldSendPaymentNotification = status === PAYMENT_STATUS.PAID || effectivePaymentType === PAYMENT_TYPES.ARREARS_ONLY;
+      const shouldSendPaymentNotification = paymentRecorded
+        && (status === PAYMENT_STATUS.PAID || effectivePaymentType === PAYMENT_TYPES.ARREARS_ONLY);
 
       if (!shouldSendPaymentNotification) {
         return {
           contact: this.dataManager.toPublicContact(updatedContact),
+          paymentRecorded,
           notificationSent: false,
           hotspotRecovery,
         };
@@ -8003,6 +8028,7 @@ class WebServer {
           paymentType: effectivePaymentType,
           paymentAmount: appliedPaymentAmount,
           remainingDebtAmount,
+          paymentRecorded,
           notificationSent: true,
           hotspotRecovery,
         };
@@ -8019,6 +8045,7 @@ class WebServer {
           paymentType: effectivePaymentType,
           paymentAmount: appliedPaymentAmount,
           remainingDebtAmount,
+          paymentRecorded,
           notificationSent: false,
           notificationError: error.message,
           hotspotRecovery,
@@ -8067,6 +8094,7 @@ class WebServer {
         status,
         paymentType || null
       );
+      const paymentRecorded = updated.paymentRecorded !== false;
       let hotspotRecovery = { attempted: false, reason: "outstanding_balance" };
       try {
         hotspotRecovery = await this.recoverHotspotAfterPayment(updated);
@@ -8078,9 +8106,12 @@ class WebServer {
           error: error.message,
         });
       }
-      if (status !== PAYMENT_STATUS.PAID || typeof this.notificationBot.sendPaymentNotification !== "function") {
+      if (!paymentRecorded
+        || status !== PAYMENT_STATUS.PAID
+        || typeof this.notificationBot.sendPaymentNotification !== "function") {
         return {
           ...this.dataManager.toPublicContact(updated),
+          paymentRecorded,
           notificationSent: false,
           hotspotRecovery,
         };
@@ -8097,6 +8128,7 @@ class WebServer {
         return {
           ...this.dataManager.toPublicContact(updated),
           transactionId,
+          paymentRecorded,
           notificationSent: true,
           hotspotRecovery,
         };
@@ -8109,6 +8141,7 @@ class WebServer {
         return {
           ...this.dataManager.toPublicContact(updated),
           transactionId,
+          paymentRecorded,
           notificationSent: false,
           notificationError: error.message,
           hotspotRecovery,
