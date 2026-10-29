@@ -239,6 +239,7 @@ const DEFAULT_SETTINGS = {
   databaseBackupLastRunDate: "",
   reminderVariableTemplateMigrationVersion: 0,
   notificationTemplateCopyMigrationVersion: 0,
+  prepaidScheduleMigrationVersion: 0,
   serviceScheduleAnchorMigrationVersion: 0,
 };
 

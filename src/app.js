@@ -1407,6 +1407,7 @@ class DataManager {
     await this.migrateReminderPaymentAmounts();
     await this.migrateReminderVariableTemplates();
     await this.migrateFormalNotificationTemplates();
+    await this.migrateExistingPaidServiceSchedules();
     const migration = await migrateWhatsAppProviderMetadata(this);
     if (migration.remindersChanged || migration.sentChanged) {
       this.activityLog.push("info", "storage", "WhatsApp provider metadata migration selesai", migration);
@@ -3217,6 +3218,111 @@ class DataManager {
     });
   }
 
+  async migrateExistingPaidServiceSchedules(options = {}) {
+    return this.withDataMutation(async () => {
+      const settings = this.getSettings();
+      if (Number(settings.prepaidScheduleMigrationVersion) >= 1) {
+        return {
+          migrated: false,
+          contactsUpdated: 0,
+          remindersUpdated: 0,
+          alreadyAligned: 0,
+          skipped: 0,
+          version: 1,
+        };
+      }
+
+      let contactsUpdated = 0;
+      let remindersUpdated = 0;
+      let alreadyAligned = 0;
+      let skipped = 0;
+      const migrationTime = options.now ? new Date(options.now) : new Date();
+      const updatedAt = Number.isNaN(migrationTime.getTime())
+        ? new Date().toISOString()
+        : migrationTime.toISOString();
+
+      for (const contact of this.contacts.values()) {
+        if (!isRecurringSubscription(contact)
+          || parseBoolean(contact.billingPausedForArrears, false)) {
+          skipped += 1;
+          continue;
+        }
+
+        const latestPaidEntry = Object.entries(contact.paymentMonths || {})
+          .filter(([period, payment]) => (
+            /^\d{4}-\d{2}$/.test(period)
+            && payment?.status === PAYMENT_STATUS.PAID
+            && payment?.paidDate
+            && !parseBoolean(payment?.billingPaused, false)
+            && !Number.isNaN(new Date(payment.paidDate).getTime())
+          ))
+          .sort((left, right) => {
+            const paidDateDifference = new Date(right[1].paidDate).getTime()
+              - new Date(left[1].paidDate).getTime();
+            return paidDateDifference || right[0].localeCompare(left[0]);
+          })[0] || null;
+        if (!latestPaidEntry || this.buildDebtInfo(contact).hasDebt) {
+          skipped += 1;
+          continue;
+        }
+
+        const [paymentPeriodKey, payment] = latestPaidEntry;
+        const paymentPeriod = {
+          year: Number(paymentPeriodKey.slice(0, 4)),
+          month: Number(paymentPeriodKey.slice(5, 7)),
+        };
+        const currentSchedule = new Date(contact.hotspotReactivationAt || 0);
+        const scheduleIsValid = Number.isFinite(currentSchedule.getTime());
+        const schedulePeriod = scheduleIsValid
+          ? getBillingPeriodParts(currentSchedule, this.getTimezone())
+          : null;
+        const scheduleAlreadyAdvanced = schedulePeriod
+          && compareBillingPeriods(schedulePeriod, paymentPeriod) > 0;
+
+        if (scheduleAlreadyAdvanced) {
+          alreadyAligned += 1;
+        } else {
+          const serviceSchedule = this.advanceServiceScheduleAfterPayment(contact, {
+            at: payment.paidDate,
+            previousSchedule: scheduleIsValid ? currentSchedule : null,
+            paymentPeriodKey,
+          });
+          if (serviceSchedule.changed) {
+            contact.updatedAt = updatedAt;
+            contactsUpdated += 1;
+          }
+        }
+        remindersUpdated += this.syncRecurringReminderSchedule(contact);
+      }
+
+      this.settings = {
+        ...settings,
+        prepaidScheduleMigrationVersion: 1,
+      };
+      await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+        const saveOptions = { transaction };
+        if (contactsUpdated > 0) await this.saveContacts(saveOptions);
+        if (remindersUpdated > 0) await this.saveReminders(saveOptions);
+        await this.saveSettings(saveOptions);
+      }));
+      this.activityLog.push("info", "storage", "Jadwal pembayaran lama diselaraskan dengan sistem masa aktif", {
+        migration: "prepaid-schedule-v1",
+        contactsUpdated,
+        remindersUpdated,
+        alreadyAligned,
+        skipped,
+      });
+      return {
+        migrated: true,
+        contactsUpdated,
+        remindersUpdated,
+        alreadyAligned,
+        skipped,
+        version: 1,
+      };
+    });
+  }
+
   formatPaymentAmount(amount) {
     return new Intl.NumberFormat("id-ID", {
       style: "currency",
@@ -3291,7 +3397,8 @@ class DataManager {
 
     const requestedAt = options.at ? new Date(options.at) : new Date();
     const paidAt = Number.isNaN(requestedAt.getTime()) ? new Date() : requestedAt;
-    const currentPeriod = getBillingPeriodKey(paidAt, this.getTimezone());
+    const currentPeriod = options.paymentPeriodKey
+      || getBillingPeriodKey(paidAt, this.getTimezone());
     const currentPayment = contact.paymentMonths?.[currentPeriod];
     if (currentPayment?.status !== PAYMENT_STATUS.PAID || this.buildDebtInfo(contact).hasDebt) {
       return { changed: false, activeFrom: null, activeUntil: null };
@@ -3342,11 +3449,17 @@ class DataManager {
       delete reminder.activePeriodUntil;
       changed += 1;
     }
-    delete reminder.nextDeliveryAttemptAt;
-    delete reminder.deliveryAttemptedAt;
-    delete reminder.lastDeliveryAttemptAt;
-    delete reminder.lastDeliveryError;
-    delete reminder.deliveryAttempts;
+    for (const field of [
+      "nextDeliveryAttemptAt",
+      "deliveryAttemptedAt",
+      "lastDeliveryAttemptAt",
+      "lastDeliveryError",
+      "deliveryAttempts",
+    ]) {
+      if (!Object.hasOwn(reminder, field)) continue;
+      delete reminder[field];
+      changed += 1;
+    }
     if (this.rewriteReminderPaymentMessage(reminder, contact)) changed += 1;
     return changed;
   }

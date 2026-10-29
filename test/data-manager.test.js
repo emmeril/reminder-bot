@@ -1528,6 +1528,71 @@ test("migration menerapkan bahasa formal pada template notifikasi dan reminder a
   );
 });
 
+test("migration menyelaraskan pembayaran lama tanpa memperpanjang jadwal dua kali", async () => {
+  const paidAt = new Date();
+  const current = getBillingPeriodParts(paidAt, "Asia/Jakarta");
+  const currentKey = makeBillingPeriodKey(current.year, current.month);
+  const alignedDueDate = addMonthsSafely(paidAt, 1, "Asia/Jakarta");
+  const createPaidContact = (id, dueDate) => ({
+    id,
+    name: `Pelanggan ${id}`,
+    phoneNumber: id === "stale" ? "6281234567805" : "6281234567806",
+    createdAt: paidAt.toISOString(),
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentDate: paidAt.toISOString(),
+    paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+    paymentMonths: {
+      [currentKey]: {
+        status: PAYMENT_STATUS.PAID,
+        paidDate: paidAt.toISOString(),
+        paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+        paidAmount: 100_000,
+      },
+    },
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: dueDate.toISOString(),
+  });
+  const staleContact = createPaidContact("stale", paidAt);
+  const alignedContact = createPaidContact("aligned", alignedDueDate);
+  const manager = createManager(staleContact);
+  manager.contacts.set(alignedContact.id, alignedContact);
+  manager.settings.prepaidScheduleMigrationVersion = 0;
+  for (const contact of [staleContact, alignedContact]) {
+    manager.reminders.set(`reminder-${contact.id}`, {
+      id: `reminder-${contact.id}`,
+      contactId: contact.id,
+      phoneNumber: contact.phoneNumber,
+      reminderDateTime: paidAt.toISOString(),
+      reminderKind: REMINDER_KINDS.BILLING,
+      message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+      messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+      templateName: "Penagihan.txt",
+    });
+  }
+
+  const first = await manager.migrateExistingPaidServiceSchedules({ now: paidAt });
+  const second = await manager.migrateExistingPaidServiceSchedules({ now: paidAt });
+
+  assert.equal(first.migrated, true);
+  assert.equal(first.contactsUpdated, 1);
+  assert.equal(first.alreadyAligned, 1);
+  assert.equal(first.remindersUpdated >= 2, true);
+  assert.equal(second.migrated, false);
+  assert.equal(staleContact.hotspotReactivationAt, alignedDueDate.toISOString());
+  assert.equal(alignedContact.hotspotReactivationAt, alignedDueDate.toISOString());
+  assert.equal(
+    manager.getReminder("reminder-stale").reminderDateTime,
+    alignedDueDate.toISOString()
+  );
+  assert.equal(
+    manager.getReminder("reminder-aligned").reminderDateTime,
+    alignedDueDate.toISOString()
+  );
+  assert.equal(manager.settings.prepaidScheduleMigrationVersion, 1);
+});
+
 test("perubahan template menyinkronkan semua jadwal reminder aktif yang terkait", async () => {
   const contact = {
     id: "contact-template-sync",
