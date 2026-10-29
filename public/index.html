@@ -973,6 +973,15 @@
                   <textarea x-model="forms.settings.customerAccountMessageTemplate" placeholder="Tulis pesan pengiriman akun pelanggan..."></textarea>
                   <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{phoneNumber}}</code><code>{{portalAccountDetails}}</code><code>{{hotspotAccountDetails}}</code><code>{{portalAccessGuide}}</code><code>{{portalLoginUrl}}</code><code>{{portalUsername}}</code><code>{{portalPassword}}</code><code>{{hotspotUsername}}</code><code>{{hotspotPassword}}</code><code>{{hotspotProfile}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
+                <label class="notification-template-card tone-success">
+                  <span class="notification-template-header">
+                    <span class="notification-template-icon"><i class="fa-solid fa-key"></i></span>
+                    <span class="notification-template-copy"><strong>Akun WiFi setelah pembayaran</strong><small>Ditambahkan otomatis ke setiap konfirmasi pembayaran jika akun hotspot tersedia.</small></span>
+                    <span class="notification-template-badge">Akun WiFi</span>
+                  </span>
+                  <textarea x-model="forms.settings.paymentHotspotAccountMessageTemplate" placeholder="Tulis informasi akun WiFi setelah pembayaran..."></textarea>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{hotspotUsername}}</code><code>{{hotspotPassword}}</code><code>{{hotspotProfile}}</code><code>{{hotspotStatus}}</code><code>{{activeUntil}}</code></span></span>
+                </label>
                 <label class="notification-template-card tone-amber">
                   <span class="notification-template-header">
                     <span class="notification-template-icon"><i class="fa-solid fa-file-invoice-dollar"></i></span>
@@ -989,7 +998,7 @@
                     <span class="notification-template-badge">Tunggakan</span>
                   </span>
                   <textarea x-model="forms.settings.paymentMessageTemplateArrearsOnly" placeholder="Tulis konfirmasi pembayaran tunggakan..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{paymentAmount}}</code><code>{{remainingDebtAmount}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{paymentAmount}}</code><code>{{remainingDebtAmount}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-violet">
                   <span class="notification-template-header">
@@ -998,7 +1007,7 @@
                     <span class="notification-template-badge">Current only</span>
                   </span>
                   <textarea x-model="forms.settings.paymentMessageTemplateCurrentOnly" placeholder="Tulis konfirmasi pembayaran bulan ini..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-violet">
                   <span class="notification-template-header">
@@ -1007,7 +1016,7 @@
                     <span class="notification-template-badge">Masa aktif</span>
                   </span>
                   <textarea x-model="forms.settings.paymentMessageTemplateActivePeriod" placeholder="Tulis konfirmasi pembelian masa aktif..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{paymentAmount}}</code><code>{{activeUntil}}</code><code>{{remainingDebtAmount}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{paymentAmount}}</code><code>{{activeUntil}}</code><code>{{remainingDebtAmount}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-amber">
                   <span class="notification-template-header">
@@ -1025,7 +1034,7 @@
                     <span class="notification-template-badge">Full paid</span>
                   </span>
                   <textarea x-model="forms.settings.paymentMessageTemplateFullPaid" placeholder="Tulis konfirmasi pembayaran lunas..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
               </div>
             </section>

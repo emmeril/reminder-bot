@@ -1372,6 +1372,18 @@ test("menyimpan template pengiriman akun pelanggan dari menu pengaturan", async 
   );
 });
 
+test("menyimpan template akun WiFi setelah pembayaran dari menu pengaturan", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.saveSettings = async () => {};
+
+  const template = "Akun WiFi\n{{hotspotUsername}}\n{{hotspotPassword}}\n{{hotspotStatus}}";
+  const settings = await manager.updateSettings({
+    paymentHotspotAccountMessageTemplate: template,
+  });
+
+  assert.equal(settings.paymentHotspotAccountMessageTemplate, template);
+});
+
 test("tarif profile MikroTik memperbarui nominal pelanggan dan reminder", async () => {
   const contact = {
     id: "contact-profile-tariff",

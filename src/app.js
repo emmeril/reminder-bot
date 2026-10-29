@@ -4965,6 +4965,9 @@ class DataManager {
         paymentMessageTemplateActivePeriod: payload.paymentMessageTemplateActivePeriod !== undefined
           ? sanitizeMultilineText(payload.paymentMessageTemplateActivePeriod) || current.paymentMessageTemplateActivePeriod
           : current.paymentMessageTemplateActivePeriod,
+        paymentHotspotAccountMessageTemplate: payload.paymentHotspotAccountMessageTemplate !== undefined
+          ? sanitizeMultilineText(payload.paymentHotspotAccountMessageTemplate) || current.paymentHotspotAccountMessageTemplate
+          : current.paymentHotspotAccountMessageTemplate,
         activePeriodReminderMessageTemplate: payload.activePeriodReminderMessageTemplate !== undefined
           ? sanitizeMultilineText(payload.activePeriodReminderMessageTemplate) || current.activePeriodReminderMessageTemplate
           : current.activePeriodReminderMessageTemplate,
@@ -5820,6 +5823,75 @@ class NotificationBot {
     return results;
   }
 
+  getPaymentHotspotStatusText(contact) {
+    const status = normalizeHotspotProvisioningStatus(
+      contact?.hotspotProvisioningStatus,
+      contact?.mikrotikUsername
+        ? HOTSPOT_PROVISIONING_STATUS.ACTIVE
+        : HOTSPOT_PROVISIONING_STATUS.NONE
+    );
+    const labels = {
+      [HOTSPOT_PROVISIONING_STATUS.NONE]: "Belum tersedia",
+      [HOTSPOT_PROVISIONING_STATUS.PENDING]: "Menunggu aktivasi",
+      [HOTSPOT_PROVISIONING_STATUS.PROVISIONING]: "Sedang diaktifkan",
+      [HOTSPOT_PROVISIONING_STATUS.ACTIVE]: "Aktif",
+      [HOTSPOT_PROVISIONING_STATUS.FAILED]: "Aktivasi perlu diperiksa",
+      [HOTSPOT_PROVISIONING_STATUS.DEACTIVATED]: "Nonaktif",
+      [HOTSPOT_PROVISIONING_STATUS.DISABLED]: "Nonaktif",
+      [HOTSPOT_PROVISIONING_STATUS.MISSING]: "Tidak tersedia di MikroTik",
+      [HOTSPOT_PROVISIONING_STATUS.CHANGED]: "Perlu sinkronisasi",
+    };
+    return labels[status] || "Belum tersedia";
+  }
+
+  buildPaymentHotspotAccountDetails(contact, options = {}, settings = {}) {
+    const storedContact = contact?.id && typeof this.dataManager.getContact === "function"
+      ? this.dataManager.getContact(contact.id)
+      : null;
+    const account = { ...(contact || {}), ...(storedContact || {}) };
+    const portalHotspot = contact?.id && typeof this.dataManager.getCustomerPortalData === "function"
+      ? this.dataManager.getCustomerPortalData(contact.id)?.hotspot
+      : null;
+    const username = sanitizeInput(String(account.mikrotikUsername || portalHotspot?.username || ""));
+    const password = sanitizeInput(String(account.mikrotikPassword || portalHotspot?.password || ""));
+    if (!username || !password) return "";
+
+    const profile = sanitizeInput(String(account.mikrotikProfile || portalHotspot?.profile || "")) || "-";
+    const status = this.getPaymentHotspotStatusText({
+      ...account,
+      mikrotikUsername: username,
+      hotspotProvisioningStatus: account.hotspotProvisioningStatus || portalHotspot?.status,
+    });
+    const activeUntilValue = (
+      options.activeUntil
+      || contact?.serviceActiveUntil
+      || account.hotspotReactivationAt
+      || portalHotspot?.activeUntil
+    );
+    const activeUntilDate = activeUntilValue ? new Date(activeUntilValue) : null;
+    const activeUntil = !activeUntilDate || Number.isNaN(activeUntilDate.getTime())
+      ? "-"
+      : activeUntilDate.toLocaleString("id-ID", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: this.dataManager.getTimezone(),
+        });
+    const template = sanitizeMultilineText(settings.paymentHotspotAccountMessageTemplate)
+      || DEFAULT_SETTINGS.paymentHotspotAccountMessageTemplate;
+
+    return template
+      .replace(/{{\s*hotspotUsername\s*}}/gi, () => username)
+      .replace(/{{\s*hotspotPassword\s*}}/gi, () => password)
+      .replace(/{{\s*hotspotProfile\s*}}/gi, () => profile)
+      .replace(/{{\s*hotspotStatus\s*}}/gi, () => status)
+      .replace(/{{\s*activeUntil\s*}}/gi, () => activeUntil)
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
   async sendPaymentNotification(contact, transactionId, paymentType = "DEFAULT", options = {}) {
     const paymentDate = options.paymentDate
       ? new Date(options.paymentDate)
@@ -5880,19 +5952,26 @@ class NotificationBot {
     }
     const companyName = sanitizeInput(settings.companyName) || "Emmeril Hotspot";
     const supportSignature = sanitizeInput(settings.supportSignature) || "CS Emmeril Hotspot";
+    const hotspotAccountDetails = this.buildPaymentHotspotAccountDetails(contact, options, settings);
+    const placesHotspotAccount = /{{\s*hotspotAccountDetails\s*}}/i.test(messageTemplate);
 
-    const message = messageTemplate
-      .replace(/{{\s*name\s*}}/gi, contact.name || "-")
-      .replace(/{{\s*transactionId\s*}}/gi, transactionId || "-")
-      .replace(/{{\s*paymentDate\s*}}/gi, formattedDate)
-      .replace(/{{\s*paymentAmount\s*}}/gi, this.dataManager.formatPaymentAmount(paymentAmount))
-      .replace(/{{\s*remainingDebtAmount\s*}}/gi, this.dataManager.formatPaymentAmount(remainingDebtAmount))
-      .replace(/{{\s*activeUntil\s*}}/gi, formattedActiveUntil)
-      .replace(/{{\s*statusText\s*}}/gi, statusText)
-      .replace(/{{\s*noteText\s*}}/gi, noteText)
-      .replace(/{{\s*companyName\s*}}/gi, companyName)
-      .replace(/{{\s*companyNameUpper\s*}}/gi, companyName.toUpperCase())
-      .replace(/{{\s*supportSignature\s*}}/gi, supportSignature);
+    let message = messageTemplate
+      .replace(/{{\s*name\s*}}/gi, () => contact.name || "-")
+      .replace(/{{\s*transactionId\s*}}/gi, () => transactionId || "-")
+      .replace(/{{\s*paymentDate\s*}}/gi, () => formattedDate)
+      .replace(/{{\s*paymentAmount\s*}}/gi, () => this.dataManager.formatPaymentAmount(paymentAmount))
+      .replace(/{{\s*remainingDebtAmount\s*}}/gi, () => this.dataManager.formatPaymentAmount(remainingDebtAmount))
+      .replace(/{{\s*activeUntil\s*}}/gi, () => formattedActiveUntil)
+      .replace(/{{\s*statusText\s*}}/gi, () => statusText)
+      .replace(/{{\s*noteText\s*}}/gi, () => noteText)
+      .replace(/{{\s*companyName\s*}}/gi, () => companyName)
+      .replace(/{{\s*companyNameUpper\s*}}/gi, () => companyName.toUpperCase())
+      .replace(/{{\s*supportSignature\s*}}/gi, () => supportSignature)
+      .replace(/{{\s*hotspotAccountDetails\s*}}/gi, () => hotspotAccountDetails);
+    if (hotspotAccountDetails && !placesHotspotAccount) {
+      message = `${message}\n\n${hotspotAccountDetails}`;
+    }
+    message = message.replace(/\n{3,}/g, "\n\n").trim();
 
     await this.sendMessage(contact.phoneNumber, message, options);
     this.activityLog.push("info", "payment", `Notifikasi pembayaran terkirim ke ${contact.phoneNumber}`, {
@@ -6767,18 +6846,6 @@ class WebServer {
       const result = await this.paymentGatewayLock.runExclusive(String(orderId), () => (
         this.dataManager.completeMidtransPayment(orderId, gatewayData)
       ));
-      if (!result.alreadyProcessed && typeof this.notificationBot.sendPaymentNotification === "function") {
-        await this.notificationBot.sendPaymentNotification(
-          result.contact,
-          orderId,
-          PAYMENT_TYPES.FULL_PAID
-        ).catch((error) => {
-          this.activityLog.push("error", "payment", `Pembayaran ${orderId} lunas tetapi notifikasi WhatsApp gagal`, {
-            error: error.message,
-            contactId: result.contact.id,
-          });
-        });
-      }
       let hotspotRecovery = { attempted: false, reason: "incomplete_account" };
       try {
         hotspotRecovery = await this.recoverHotspotAfterPayment(result.contact);
@@ -6793,6 +6860,29 @@ class WebServer {
         this.activityLog.push("error", "payment", `Pembayaran ${orderId} lunas tetapi pemulihan hotspot gagal`, {
           contactId: result.contact.id,
           error: error.message,
+        });
+      }
+      const notificationContact = hotspotRecovery.contact
+        || (typeof this.dataManager.getContact === "function" ? this.dataManager.getContact(result.contact.id) : null)
+        || result.contact;
+      if (!result.alreadyProcessed && typeof this.notificationBot.sendPaymentNotification === "function") {
+        await this.notificationBot.sendPaymentNotification(
+          notificationContact,
+          orderId,
+          PAYMENT_TYPES.FULL_PAID,
+          {
+            paymentAmount: Math.max(0, Number(result.transaction?.amount || localTransaction.amount) || 0),
+            paymentDate: result.transaction?.paidAt || new Date().toISOString(),
+            remainingDebtAmount: Math.max(0, Number(notificationContact?.debtAmount) || 0),
+            activeUntil: notificationContact?.serviceActiveUntil
+              || notificationContact?.hotspotReactivationAt
+              || null,
+          }
+        ).catch((error) => {
+          this.activityLog.push("error", "payment", `Pembayaran ${orderId} lunas tetapi notifikasi WhatsApp gagal`, {
+            error: error.message,
+            contactId: result.contact.id,
+          });
         });
       }
       this.activityLog.push("info", "payment", `Pembayaran Midtrans ${orderId} terverifikasi lunas`, {
@@ -7976,16 +8066,53 @@ class WebServer {
         status,
         paymentType || null
       );
+      let hotspotRecovery = { attempted: false, reason: "outstanding_balance" };
       try {
-        const recovery = await this.recoverHotspotAfterPayment(updated);
-        if (recovery.contact) updated = recovery.contact;
+        hotspotRecovery = await this.recoverHotspotAfterPayment(updated);
+        if (hotspotRecovery.contact) updated = hotspotRecovery.contact;
       } catch (error) {
+        hotspotRecovery = { attempted: true, action: "failed", error: error.message };
         this.activityLog.push("error", "payment", "Pembayaran per bulan tersimpan tetapi pemulihan hotspot gagal", {
           contactId: updated.id,
           error: error.message,
         });
       }
-      return this.dataManager.toPublicContact(updated);
+      if (status !== PAYMENT_STATUS.PAID || typeof this.notificationBot.sendPaymentNotification !== "function") {
+        return {
+          ...this.dataManager.toPublicContact(updated),
+          notificationSent: false,
+          hotspotRecovery,
+        };
+      }
+
+      const transactionId = `TRX-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+      const effectivePaymentType = paymentType || updated.paymentType || PAYMENT_TYPES.CURRENT_ONLY;
+      try {
+        await this.notificationBot.sendPaymentNotification(updated, transactionId, effectivePaymentType, {
+          paymentAmount: Math.max(0, Number(updated.monthlyPaymentAmount) || 0),
+          remainingDebtAmount: Math.max(0, Number(updated.debtAmount) || 0),
+          activeUntil: updated.serviceActiveUntil || updated.hotspotReactivationAt || null,
+        });
+        return {
+          ...this.dataManager.toPublicContact(updated),
+          transactionId,
+          notificationSent: true,
+          hotspotRecovery,
+        };
+      } catch (error) {
+        this.activityLog.push("error", "payment", "Pembayaran per bulan tersimpan tetapi notifikasi WhatsApp gagal", {
+          contactId: updated.id,
+          transactionId,
+          error: error.message,
+        });
+        return {
+          ...this.dataManager.toPublicContact(updated),
+          transactionId,
+          notificationSent: false,
+          notificationError: error.message,
+          hotspotRecovery,
+        };
+      }
     }));
 
     this.app.get("/api/reminders", requireApiAuth, handleApi(async () => this.dataManager.getSortedReminders()));

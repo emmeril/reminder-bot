@@ -179,6 +179,43 @@ test("notifikasi pembelian masa aktif menyebut nominal dan batas aktif", async (
   assert.doesNotMatch(sent[0].message, /{{|}}/);
 });
 
+test("notifikasi pembayaran menyertakan akun WiFi dari template pengaturan", async () => {
+  const { bot, sent } = createBot({
+    paymentMessageTemplateFullPaid: "Pembayaran {{transactionId}}",
+    paymentHotspotAccountMessageTemplate: [
+      "AKUN WIFI",
+      "User: {{hotspotUsername}}",
+      "Sandi: {{hotspotPassword}}",
+      "Profil: {{hotspotProfile}}",
+      "Status: {{hotspotStatus}}",
+      "Aktif sampai: {{activeUntil}}",
+    ].join("\n"),
+  });
+
+  await bot.sendPaymentNotification(
+    createContact({
+      mikrotikUsername: "wifi_pelanggan",
+      mikrotikPassword: "sandi$wifi",
+      mikrotikProfile: "50M",
+      hotspotProvisioningStatus: "ACTIVE",
+      hotspotReactivationAt: "2026-11-28T03:00:00.000Z",
+    }),
+    "TRX-WIFI-1",
+    "FULL-PAID",
+    { paymentDate: "2026-10-28T03:00:00.000Z" }
+  );
+
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /Pembayaran TRX-WIFI-1/);
+  assert.match(sent[0].message, /User: wifi_pelanggan/);
+  assert.match(sent[0].message, /Sandi: sandi\$wifi/);
+  assert.match(sent[0].message, /Profil: 50M/);
+  assert.match(sent[0].message, /Status: Aktif/);
+  assert.match(sent[0].message, /Aktif sampai: 28\/11\/2026/);
+  assert.equal((sent[0].message.match(/AKUN WIFI/g) || []).length, 1);
+  assert.doesNotMatch(sent[0].message, /{{|}}/);
+});
+
 test("template pembayaran bawaan menggunakan bahasa formal dan mudah dipahami", async () => {
   const { bot, sent } = createBot();
 

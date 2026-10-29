@@ -192,6 +192,17 @@ test("pengaturan menyediakan template reminder berakhirnya masa aktif", () => {
   assert.equal(app.forms.settings.activePeriodReminderMessageTemplate, "");
 });
 
+test("pengaturan menyediakan template akun WiFi setelah pembayaran", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const app = createDashboardApp();
+
+  assert.match(html, /Akun WiFi setelah pembayaran/);
+  assert.match(html, /x-model="forms\.settings\.paymentHotspotAccountMessageTemplate"/);
+  assert.match(html, /<code>{{hotspotStatus}}<\/code>/);
+  assert.match(html, /<code>{{hotspotAccountDetails}}<\/code>/);
+  assert.equal(app.forms.settings.paymentHotspotAccountMessageTemplate, "");
+});
+
 test("tombol tagihan bulan ini tetap tampil dengan status tindakan yang sesuai", () => {
   const app = createDashboardApp();
 

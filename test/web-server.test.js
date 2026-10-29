@@ -1172,6 +1172,63 @@ test("riwayat pembayaran bulanan memakai metadata periode yang diminta", async (
   assert.equal(payload.data[0].paymentType, PAYMENT_TYPES.CURRENT_ONLY);
 });
 
+test("pembayaran per bulan mengirim notifikasi akun WiFi", async () => {
+  const contact = {
+    id: "contact-payment-month-notification",
+    name: "Pelanggan Bulanan",
+    phoneNumber: "6281234567890",
+    paymentStatus: PAYMENT_STATUS.PAID,
+    currentPaymentStatus: PAYMENT_STATUS.PAID,
+    paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+    monthlyPaymentAmount: 100_000,
+    debtAmount: 0,
+    hasDebt: false,
+    mikrotikUsername: "wifi_bulanan",
+    mikrotikPassword: "wifi-123",
+    mikrotikProfile: "50M",
+    hotspotProvisioningStatus: "ACTIVE",
+    hotspotReactivationAt: "2026-11-29T01:00:00.000Z",
+  };
+  let notificationArguments = null;
+  const baseUrl = await startServer({
+    getContact: (id) => id === contact.id ? contact : null,
+    hydrateContact: (value) => value,
+    setPaymentForMonth: async () => contact,
+    toPublicContact: (value) => {
+      const result = { ...value };
+      delete result.mikrotikPassword;
+      return result;
+    },
+  }, {
+    sendPaymentNotification: async (...args) => {
+      notificationArguments = args;
+    },
+  });
+  const cookie = await login(baseUrl);
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/payment-month`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({
+      year: 2026,
+      month: 10,
+      status: PAYMENT_STATUS.PAID,
+      paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+    }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.notificationSent, true);
+  assert.equal(payload.data.mikrotikUsername, contact.mikrotikUsername);
+  assert.equal(payload.data.mikrotikPassword, undefined);
+  assert.equal(notificationArguments[0], contact);
+  assert.match(notificationArguments[1], /^TRX-/);
+  assert.equal(notificationArguments[2], PAYMENT_TYPES.CURRENT_ONLY);
+  assert.equal(notificationArguments[3].paymentAmount, 100_000);
+  assert.equal(notificationArguments[3].activeUntil, contact.hotspotReactivationAt);
+});
+
 test("pembelian masa aktif mengaktifkan hotspot tanpa mengubah tunggakan", async () => {
   Object.assign(CONFIG, {
     AUTH_USERNAME: "operator",
