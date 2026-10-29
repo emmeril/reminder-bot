@@ -877,7 +877,7 @@ test("reminder periode berikutnya tidak mewarisi status lunas bulan berjalan", (
   assert.equal(futureBilling.currentPaymentStatus, PAYMENT_STATUS.UNPAID);
   assert.equal(futureBilling.debtCount, 0);
   assert.doesNotMatch(reminder.message, /Status pembayaran: LUNAS/);
-  assert.match(reminder.message, /tagihan layanan WiFi/);
+  assert.match(reminder.message, /Tagihan WiFi/);
 });
 
 test("pembayaran tanpa nominal tetap memindahkan reminder ke periode berikutnya", async () => {
@@ -1493,7 +1493,7 @@ test("migration mengganti reminder Penagihan existing dengan template masa tengg
   assert.equal(manager.settings.reminderVariableTemplateMigrationVersion, 2);
 });
 
-test("migration menerapkan bahasa formal pada template notifikasi dan reminder aktif", async () => {
+test("migration menerapkan bahasa ringkas pada template notifikasi dan reminder aktif", async () => {
   const contact = {
     id: "contact-formal-copy-migration",
     name: "Pelanggan Formal",
@@ -1528,11 +1528,12 @@ test("migration menerapkan bahasa formal pada template notifikasi dan reminder a
   const first = await manager.migrateFormalNotificationTemplates();
   const second = await manager.migrateFormalNotificationTemplates();
 
-  assert.deepEqual(first, { migrated: true, remindersUpdated: 2, version: 1 });
-  assert.deepEqual(second, { migrated: false, remindersUpdated: 0, version: 1 });
+  assert.deepEqual(first, { migrated: true, remindersUpdated: 2, version: 2 });
+  assert.deepEqual(second, { migrated: false, remindersUpdated: 0, version: 2 });
   assert.equal(manager.settings.apDownMessageTemplate, DEFAULT_SETTINGS.apDownMessageTemplate);
   assert.equal(manager.settings.billingReminderMessageTemplate, DEFAULT_SETTINGS.billingReminderMessageTemplate);
-  assert.equal(manager.settings.notificationTemplateCopyMigrationVersion, 1);
+  assert.equal(manager.settings.paymentHotspotAccountMessageTemplate, DEFAULT_SETTINGS.paymentHotspotAccountMessageTemplate);
+  assert.equal(manager.settings.notificationTemplateCopyMigrationVersion, 2);
   assert.equal(manager.reminders.get("formal-billing").messageSource, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
   assert.equal(
     manager.reminders.get("formal-active-period").messageSource,

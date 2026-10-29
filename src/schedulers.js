@@ -169,7 +169,7 @@ class ReminderScheduler {
       debtPeriods,
       totalPeriods: String(billing.totalPeriods),
       renewalStatusInfo: billing.debtCount > 0
-        ? "\n\n*Informasi layanan*\nPerpanjangan otomatis dijeda selama masih ada tunggakan. Perpanjangan otomatis akan kembali aktif setelah seluruh tunggakan dilunasi."
+        ? "\nPerpanjangan otomatis: Dijeda sampai tunggakan lunas."
         : "",
       companyName,
       companyNameUpper: companyName.toUpperCase(),

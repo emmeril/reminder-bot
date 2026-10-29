@@ -1,1 +1,12 @@
-Hai {{nama}}, jangan lupa bayar tagihan Emmeril Hotspot untuk bulan {{bulan}}, tanggal {{tanggal}} sebesar Rp 75.000, pembayaran bisa melalui transfer ke BCA 134-266-9497 a/n Hafriyanto. Abaikan pesan ini jika sudah melakukan pembayaran. Terima kasih.
+*Pengingat Tagihan*
+
+Yth. Bapak/Ibu {{nama}},
+Tagihan WiFi bulan {{bulan}} sebesar Rp 75.000 belum lunas.
+
+Jatuh tempo: {{tanggal}}
+Pembayaran: BCA 134-266-9497 a.n. Hafriyanto
+
+Mohon lakukan pembayaran sesuai jumlah tagihan. Abaikan pesan ini jika Anda sudah membayar.
+
+Terima kasih,
+CS Emmeril Hotspot

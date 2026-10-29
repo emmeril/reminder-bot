@@ -4,7 +4,7 @@ const test = require("node:test");
 const { DEFAULT_SETTINGS } = require("../src/config");
 const { ApDownNotifier } = require("../src/schedulers");
 
-test("template perangkat tidak aktif dirender formal tanpa variabel tersisa", () => {
+test("template perangkat tidak aktif dirender ringkas tanpa variabel tersisa", () => {
   const notifier = new ApDownNotifier({}, {}, {}, { push() {} });
   const message = notifier.renderApDownMessage(DEFAULT_SETTINGS.apDownMessageTemplate, {
     name: "Pelanggan Satu",
@@ -14,9 +14,9 @@ test("template perangkat tidak aktif dirender formal tanpa variabel tersisa", ()
     supportSignature: "CS Emmeril Hotspot",
   });
 
-  assert.match(message, /^\*PEMBERITAHUAN PERANGKAT EMMERIL HOTSPOT\*/);
+  assert.match(message, /^\*Pemberitahuan Perangkat\*/);
   assert.match(message, /Yth\. Bapak\/Ibu Pelanggan Satu/);
-  assert.match(message, /Perangkat terpantau: ap-pelanggan\.local/);
+  assert.match(message, /Perangkat WiFi ap-pelanggan\.local terdeteksi tidak aktif/);
   assert.doesNotMatch(message, /{{|}}/);
 });
 

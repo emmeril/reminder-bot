@@ -1608,12 +1608,12 @@ test("admin dapat mengirim akun portal dan hotspot pelanggan lewat WhatsApp", as
   assert.match(sentMessages[0].message, /Akun Portal Pelanggan/);
   assert.match(sentMessages[0].message, /Username: akun_portal/);
   assert.match(sentMessages[0].message, /Password: portal-123/);
-  assert.match(sentMessages[0].message, /Akun Hotspot/);
+  assert.match(sentMessages[0].message, /Akun WiFi/);
   assert.match(sentMessages[0].message, /Username: akun_hotspot/);
   assert.match(sentMessages[0].message, /Password: hotspot-123/);
   assert.match(sentMessages[0].message, new RegExp(`${baseUrl}/pelanggan/login`));
-  assert.match(sentMessages[0].message, /memeriksa tagihan/);
-  assert.match(sentMessages[0].message, /mengganti password hotspot secara mandiri/);
+  assert.match(sentMessages[0].message, /melihat tagihan/);
+  assert.match(sentMessages[0].message, /mengganti password/);
   assert.match(sentMessages[0].message, /Salam, Admin Test ISP/);
   assert.equal(sentMessages[0].options.context.type, "customer-account-credentials");
 });

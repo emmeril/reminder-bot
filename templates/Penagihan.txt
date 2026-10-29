@@ -1,21 +1,17 @@
-*PENGINGAT TAGIHAN {{companyNameUpper}}*
+*Pengingat Tagihan*
 
 Yth. Bapak/Ibu {{name}},
+Tagihan WiFi Anda sebesar {{totalAmount}} belum lunas.
 
-Berdasarkan catatan kami, tagihan layanan WiFi Anda sebesar {{totalAmount}} belum lunas.
-
-*Rincian tagihan*
 Jatuh tempo: {{date}}
 Masa tenggang: {{graceDays}} hari
-Batas layanan aktif: {{isolationDate}}{{renewalStatusInfo}}
+Layanan aktif sampai: {{isolationDate}}{{renewalStatusInfo}}
 
-Mohon selesaikan pembayaran sebelum batas layanan aktif agar layanan tidak dinonaktifkan.
+Mohon lakukan pembayaran sebelum layanan dinonaktifkan. Abaikan pesan ini jika Anda sudah membayar.
 
-*Metode pembayaran*
+Pembayaran:
 BCA 134-266-9497 a.n. Hafriyanto
 DANA 087728972090
 
-Jika pembayaran sudah dilakukan, pesan ini dapat diabaikan.
-
-Hormat kami,
+Terima kasih,
 {{supportSignature}}

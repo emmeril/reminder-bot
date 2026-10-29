@@ -3167,8 +3167,8 @@ class DataManager {
   async migrateFormalNotificationTemplates() {
     return this.withDataMutation(async () => {
       const settings = this.getSettings();
-      if (Number(settings.notificationTemplateCopyMigrationVersion) >= 1) {
-        return { migrated: false, remindersUpdated: 0, version: 1 };
+      if (Number(settings.notificationTemplateCopyMigrationVersion) >= 2) {
+        return { migrated: false, remindersUpdated: 0, version: 2 };
       }
 
       const templateKeys = [
@@ -3179,13 +3179,14 @@ class DataManager {
         "paymentMessageTemplateCurrentOnly",
         "paymentMessageTemplateFullPaid",
         "paymentMessageTemplateActivePeriod",
+        "paymentHotspotAccountMessageTemplate",
         "activePeriodReminderMessageTemplate",
       ];
       this.settings = { ...settings };
       for (const key of templateKeys) {
         this.settings[key] = DEFAULT_SETTINGS[key];
       }
-      this.settings.notificationTemplateCopyMigrationVersion = 1;
+      this.settings.notificationTemplateCopyMigrationVersion = 2;
 
       let remindersUpdated = 0;
       for (const reminder of this.reminders.values()) {
@@ -3210,11 +3211,11 @@ class DataManager {
         await this.saveSettings(options);
         if (remindersUpdated > 0) await this.saveReminders(options);
       }));
-      this.activityLog.push("info", "storage", "Template notifikasi diperbarui dengan bahasa formal", {
-        migration: "formal-notification-copy-v1",
+      this.activityLog.push("info", "storage", "Template notifikasi diperbarui dengan bahasa yang ringkas", {
+        migration: "concise-notification-copy-v2",
         remindersUpdated,
       });
-      return { migrated: true, remindersUpdated, version: 1 };
+      return { migrated: true, remindersUpdated, version: 2 };
     });
   }
 
@@ -5905,8 +5906,8 @@ class NotificationBot {
       timeZone: this.dataManager.getTimezone(),
     });
 
-    let statusText = "LUNAS";
-    let noteText = "Pembayaran telah kami terima dan dicatat pada sistem.";
+    let statusText = "Lunas";
+    let noteText = "Pembayaran sudah dicatat.";
     const paymentAmount = Math.max(0, Math.floor(Number(options.paymentAmount) || 0));
     const remainingDebtAmount = Math.max(0, Math.floor(Number(options.remainingDebtAmount) || 0));
     const activeUntilDate = options.activeUntil ? new Date(options.activeUntil) : null;
@@ -5922,19 +5923,19 @@ class NotificationBot {
       : "-";
 
     if (paymentType === "ARREARS-ONLY") {
-      statusText = remainingDebtAmount > 0 ? "TUNGGAKAN DIBAYAR SEBAGIAN" : "TUNGGAKAN TERBAYAR";
+      statusText = remainingDebtAmount > 0 ? "Tunggakan dibayar sebagian" : "Tunggakan lunas";
       noteText = paymentAmount > 0
-        ? `Pembayaran sebesar ${this.dataManager.formatPaymentAmount(paymentAmount)} telah dialokasikan ke tunggakan paling lama. Sisa tunggakan Anda adalah ${this.dataManager.formatPaymentAmount(remainingDebtAmount)}. Tagihan bulan berjalan tidak termasuk dalam pembayaran ini.`
-        : "Pembayaran tunggakan telah kami terima. Tagihan bulan berjalan tidak termasuk dalam pembayaran ini.";
+        ? `Pembayaran ${this.dataManager.formatPaymentAmount(paymentAmount)} digunakan untuk tunggakan paling lama. Sisa tunggakan: ${this.dataManager.formatPaymentAmount(remainingDebtAmount)}.`
+        : "Pembayaran tunggakan sudah dicatat.";
     } else if (paymentType === "CURRENT-ONLY") {
-      statusText = "LUNAS (BULAN INI)";
-      noteText = "Tagihan bulan berjalan telah lunas. Tidak ada tunggakan dari periode sebelumnya.";
+      statusText = "Lunas bulan ini";
+      noteText = "Tagihan bulan ini sudah lunas.";
     } else if (paymentType === "FULL-PAID") {
-      statusText = "LUNAS";
-      noteText = "Seluruh tagihan periode sebelumnya dan bulan berjalan telah lunas.";
+      statusText = "Lunas";
+      noteText = "Semua tagihan sudah lunas.";
     } else if (paymentType === PAYMENT_TYPES.ACTIVE_PERIOD) {
-      statusText = "MASA AKTIF DIBELI";
-      noteText = `Akun hotspot aktif sampai ${formattedActiveUntil}. Tunggakan lama tetap tersimpan dan perpanjangan otomatis masih dijeda.`;
+      statusText = "Masa aktif ditambahkan";
+      noteText = `WiFi aktif sampai ${formattedActiveUntil}. Tunggakan tetap tercatat dan perpanjangan otomatis masih dijeda.`;
     }
 
     const settings = this.dataManager.getSettings();
@@ -7744,7 +7745,7 @@ class WebServer {
       if (includePortal) {
         portalAccountDetails = [
           "*Akun Portal Pelanggan*",
-          `Alamat: ${portalLoginUrl}`,
+          `Alamat portal: ${portalLoginUrl}`,
           `Username: ${customerAccount.account.username}`,
           `Password: ${customerAccount.account.password}`,
         ].join("\n");
@@ -7752,10 +7753,10 @@ class WebServer {
       }
       if (includeHotspot) {
         hotspotAccountDetails = [
-          "*Akun Hotspot*",
+          "*Akun WiFi*",
           `Username: ${portalData.hotspot.username}`,
           `Password: ${portalData.hotspot.password}`,
-          `Profile: ${portalData.hotspot.profile || "-"}`,
+          `Profil: ${portalData.hotspot.profile || "-"}`,
         ].join("\n");
         sentAccounts.push("hotspot");
       }
@@ -7764,7 +7765,7 @@ class WebServer {
       const companyName = sanitizeInput(settings.companyName) || "Emmeril Hotspot";
       const supportSignature = sanitizeInput(settings.supportSignature) || companyName;
       const portalAccessGuide = includePortal
-        ? "Silakan masuk ke portal pelanggan melalui tautan di atas. Di portal tersebut, Anda dapat memeriksa tagihan, melihat informasi akun hotspot yang aktif, serta mengganti password hotspot secara mandiri."
+        ? "Gunakan portal untuk melihat tagihan, memeriksa akun WiFi, atau mengganti password."
         : "";
       const messageTemplate = sanitizeMultilineText(settings.customerAccountMessageTemplate)
         || DEFAULT_SETTINGS.customerAccountMessageTemplate;
