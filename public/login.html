@@ -7,11 +7,12 @@
   <link rel="stylesheet" href="/public/tailwind.css">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261014-1">
+  <link rel="stylesheet" href="/public/interface.css?v=20261030-1">
   <script defer src="/public/login.js?v=20261013-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="font-body">
-  <main class="login-page" x-data="loginApp()">
+  <main id="main-content" class="login-page" x-data="loginApp()">
     <section class="login-shell">
       <div class="login-intro">
         <div class="login-brand">
@@ -45,8 +46,8 @@
           </label>
           <div class="login-error" role="alert" aria-live="polite" x-text="error"></div>
           <button type="submit" class="login-submit" :disabled="submitting">
-            <span x-show="!submitting"><i class="fa-solid fa-right-to-bracket mr-2"></i>Masuk ke Dashboard</span>
-            <span x-cloak x-show="submitting"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memproses...</span>
+            <span x-show="!submitting"><i class="fa-solid fa-right-to-bracket mr-2"></i>Masuk ke dashboard</span>
+            <span x-cloak x-show="submitting"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Sedang masuk...</span>
           </button>
         </form>
         <div class="login-role-note"><i class="fa-solid fa-circle-info"></i><span>Gunakan akun administrator untuk mengakses pengaturan dan data seluruh pelanggan.</span></div>

@@ -6,6 +6,7 @@
   <title>Login Pelanggan - __CUSTOMER_PORTAL_TITLE__</title>
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/customer.css?v=20261014-1">
+  <link rel="stylesheet" href="/public/interface.css?v=20261030-1">
   <script defer src="/public/customer-login.js?v=20260819-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
@@ -13,7 +14,7 @@
   <main class="portal-login" x-data="customerLoginApp()">
     <section class="portal-login-card">
       <div class="portal-login-mark"><i class="fa-solid fa-wifi"></i></div>
-      <p class="portal-kicker"><i class="fa-solid fa-user"></i> Login Pelanggan</p>
+      <p class="portal-kicker"><i class="fa-solid fa-user"></i> Login pelanggan</p>
       <h1>Masuk ke portal pelanggan</h1>
       <p class="portal-login-company">__CUSTOMER_PORTAL_TITLE__</p>
       <p class="portal-login-lead">Lihat tagihan, status layanan, dan akun hotspot Anda dengan mudah.</p>
@@ -36,8 +37,8 @@
 
         <p class="portal-form-error" role="alert" aria-live="polite" x-text="error"></p>
         <button type="submit" class="portal-primary-button" :disabled="submitting">
-          <span x-show="!submitting"><i class="fa-solid fa-right-to-bracket"></i> Masuk ke Akun Saya</span>
-          <span x-cloak x-show="submitting"><i class="fa-solid fa-circle-notch fa-spin"></i> Memproses...</span>
+          <span x-show="!submitting"><i class="fa-solid fa-right-to-bracket"></i> Masuk ke akun saya</span>
+          <span x-cloak x-show="submitting"><i class="fa-solid fa-circle-notch fa-spin"></i> Sedang masuk...</span>
         </button>
       </form>
 

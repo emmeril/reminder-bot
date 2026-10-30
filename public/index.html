@@ -7,10 +7,12 @@
   <link rel="stylesheet" href="/public/tailwind.css?v=20261028-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261028-1">
+  <link rel="stylesheet" href="/public/interface.css?v=20261030-1">
   <script defer src="/public/app.js?v=20261028-2"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
+  <a class="skip-link" href="#main-content">Langsung ke konten</a>
   <div
     x-data="dashboardApp()"
     x-init="init()"
@@ -55,7 +57,7 @@
 
     <button type="button" class="sidebar-overlay" @click="mobileSidebarOpen = false" aria-label="Tutup navigasi"></button>
 
-    <div class="content-wrapper">
+    <div id="main-content" class="content-wrapper" tabindex="-1">
       <header class="main-header">
         <div class="header-left">
           <button type="button" class="navbar-button desktop-menu-toggle" @click="toggleSidebar()" :aria-label="sidebarHidden ? 'Tampilkan sidebar' : 'Ciutkan sidebar'">
@@ -101,7 +103,7 @@
       >
         <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell status-panel rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-4 flex items-center justify-between">
-            <div><h2 class="font-display text-2xl">Kondisi layanan</h2><p class="card-description">Koneksi kanal pengiriman saat ini</p></div>
+            <div><h2 class="font-display text-2xl">Status layanan</h2><p class="card-description">Koneksi yang dipakai untuk operasional</p></div>
             <template x-if="loading.status">
               <span class="loading-label"><i class="fa-solid fa-circle-notch fa-spin"></i> Memuat</span>
             </template>
@@ -122,7 +124,7 @@
 
         <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell attention-panel">
           <div class="mb-4 flex items-center justify-between">
-            <div><h2>Perlu perhatian</h2><p class="card-description">Prioritas yang sebaiknya ditindaklanjuti</p></div>
+            <div><h2>Perlu ditangani</h2><p class="card-description">Pekerjaan yang membutuhkan tindakan</p></div>
             <span class="attention-count" x-text="summaryValue('Belum bayar') + summaryValue('AP bermasalah')"></span>
           </div>
           <div class="attention-list">
@@ -140,7 +142,7 @@
         </section>
 
         <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell quick-panel">
-          <div class="mb-4"><div><h2>Aksi cepat</h2><p class="card-description">Pekerjaan rutin tanpa banyak langkah</p></div></div>
+          <div class="mb-4"><div><h2>Aksi cepat</h2><p class="card-description">Buka pekerjaan yang paling sering digunakan</p></div></div>
           <div class="quick-grid">
             <button type="button" @click="openContactCreateModal()"><span><i class="fa-solid fa-user-plus"></i></span><span class="quick-copy"><strong>Tambah pelanggan</strong><small>Daftarkan pelanggan baru</small></span></button>
             <button type="button" @click="openReminderCreateModal()"><span><i class="fa-solid fa-calendar-plus"></i></span><span class="quick-copy"><strong>Buat reminder</strong><small>Jadwalkan pesan tagihan</small></span></button>
@@ -231,7 +233,7 @@
       <main class="space-y-6 w-full max-w-none">
         <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell summary-panel rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
-            <div><h2 class="font-display text-2xl">Ringkasan operasional</h2><p class="card-description">Angka penting dari seluruh aktivitas</p></div>
+            <div><h2 class="font-display text-2xl">Hari ini</h2><p class="card-description">Ringkasan pelanggan, pembayaran, dan jaringan</p></div>
           </div>
           <div class="summary-metric-grid grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <template x-for="metric in summaryMetrics" :key="metric.label">

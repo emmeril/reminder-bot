@@ -6,10 +6,12 @@
   <title>Akun Saya - __CUSTOMER_PORTAL_TITLE__</title>
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/customer.css?v=20261014-2">
+  <link rel="stylesheet" href="/public/interface.css?v=20261030-1">
   <script defer src="/public/customer.js?v=20261028-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body>
+  <a class="skip-link" href="#portal-content">Langsung ke konten</a>
   <main class="customer-portal" x-data="customerPortalApp()" x-init="load()">
     <header class="portal-header">
       <a href="/pelanggan" class="portal-brand">
@@ -28,10 +30,10 @@
       <div><strong>Data belum dapat dimuat</strong><p x-text="error"></p><button type="button" @click="load()">Coba lagi</button></div>
     </section>
 
-    <div class="portal-content" x-cloak x-show="data && !loading">
+    <div id="portal-content" class="portal-content" x-cloak x-show="data && !loading" tabindex="-1">
       <section class="portal-welcome">
         <div>
-          <p class="portal-kicker">Akun Saya</p>
+          <p class="portal-kicker">Akun saya</p>
           <h1>Halo, <span x-text="data?.customer?.name"></span></h1>
           <p>Lihat status layanan dan tagihan Anda dalam satu tempat.</p>
           <div class="portal-account-actions">
@@ -66,7 +68,7 @@
       <section class="portal-main-grid" :class="{ 'portal-main-grid-single': !data?.hotspot }">
         <article class="portal-panel portal-hotspot-panel" x-show="data?.hotspot">
           <div class="portal-panel-heading">
-            <div><span><i class="fa-solid fa-wifi"></i></span><div><h2>Akun Hotspot</h2><p>Kredensial untuk tersambung ke layanan</p></div></div>
+            <div><span><i class="fa-solid fa-wifi"></i></span><div><h2>Akun hotspot</h2><p>Username dan password untuk tersambung</p></div></div>
             <span class="portal-service-badge" :class="hotspotIsActive() ? 'is-active' : 'is-inactive'"><i class="fa-solid fa-circle"></i><span x-text="hotspotStatusLabel()"></span></span>
           </div>
           <div class="portal-credential-list">
@@ -75,14 +77,14 @@
             <div><small>Profil layanan</small><strong x-text="data?.hotspot?.profile || '-'"></strong></div>
           </div>
           <button x-ref="hotspotPasswordTrigger" class="portal-change-password-button" type="button" @click="openPasswordModal('hotspot')">
-            <i class="fa-solid fa-key"></i> Ganti Password Hotspot
+            <i class="fa-solid fa-key"></i> Ganti password hotspot
           </button>
           <p class="portal-security-note"><i class="fa-solid fa-shield-halved"></i> Jangan bagikan username dan password kepada orang lain.</p>
         </article>
 
         <article class="portal-panel">
           <div class="portal-panel-heading">
-            <div><span><i class="fa-solid fa-receipt"></i></span><div><h2>Detail Tagihan</h2><p>Rincian periode berjalan</p></div></div>
+            <div><span><i class="fa-solid fa-receipt"></i></span><div><h2>Rincian tagihan</h2><p>Nominal yang tercatat saat ini</p></div></div>
           </div>
           <dl class="portal-bill-details">
             <div><dt>Biaya bulanan</dt><dd x-text="currency(data?.billing?.monthlyAmount)"></dd></div>
@@ -96,8 +98,8 @@
               <div><strong>Pembayaran online</strong><small>Diproses aman melalui Midtrans <em x-show="data?.paymentGateway?.environment === 'sandbox'">Sandbox</em></small></div>
             </div>
             <button type="button" @click="payWithMidtrans()" :disabled="paying || Number(data?.billing?.totalAmount) <= 0">
-              <span x-show="!paying"><i class="fa-solid fa-credit-card"></i> Bayar Sekarang</span>
-              <span x-cloak x-show="paying"><i class="fa-solid fa-circle-notch fa-spin"></i> Membuka pembayaran...</span>
+              <span x-show="!paying"><i class="fa-solid fa-credit-card"></i> Bayar tagihan</span>
+              <span x-cloak x-show="paying"><i class="fa-solid fa-circle-notch fa-spin"></i> Menyiapkan pembayaran...</span>
             </button>
           </div>
           <p class="portal-payment-message" x-show="paymentMessage" x-text="paymentMessage"></p>
@@ -106,7 +108,7 @@
 
       <section class="portal-panel portal-history-panel">
         <div class="portal-panel-heading">
-          <div><span><i class="fa-solid fa-clock-rotate-left"></i></span><div><h2>Riwayat Pembayaran</h2><p>Tagihan dan pembelian masa aktif</p></div></div>
+          <div><span><i class="fa-solid fa-clock-rotate-left"></i></span><div><h2>Riwayat pembayaran</h2><p>Tagihan dan pembelian masa aktif</p></div></div>
         </div>
         <div class="portal-history-list">
           <template x-for="item in data?.billing?.history || []" :key="item.period">
