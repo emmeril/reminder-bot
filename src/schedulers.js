@@ -1,4 +1,5 @@
 const {
+  BILLING_REMINDER_STOP_DEBT_COUNT,
   CONFIG,
   DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   DEFAULT_SETTINGS,
@@ -61,6 +62,21 @@ class ReminderScheduler {
       this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} tidak dijadwalkan ulang karena pelanggan sekali berlangganan`, {
         reminderId: reminder.id,
         contactId: contact.id || null,
+        sourceStatus,
+      });
+      return null;
+    }
+    const contactDebt = contact && typeof this.dataManager.buildDebtInfo === "function"
+      ? this.dataManager.buildDebtInfo(contact)
+      : contact;
+    const debtCount = Math.max(0, Number(
+      contactDebt?.debtCount ?? contactDebt?.debtPeriods?.length ?? 0
+    ) || 0);
+    if (debtCount >= BILLING_REMINDER_STOP_DEBT_COUNT) {
+      this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} tidak dijadwalkan ulang karena tunggakan sudah 2 bulan atau lebih`, {
+        reminderId: reminder.id,
+        contactId: contact?.id || reminder.contactId || null,
+        debtCount,
         sourceStatus,
       });
       return null;
@@ -322,6 +338,22 @@ class ReminderScheduler {
               error: errorMessage,
               phoneNumber: reminder.phoneNumber,
               retryScheduled: false,
+            });
+            continue;
+          }
+
+          const billing = this.getReminderBilling(reminder);
+          if (billing.debtCount >= BILLING_REMINDER_STOP_DEBT_COUNT) {
+            await this.dataManager.moveToSent(reminder.id, {
+              sentAt: new Date().toISOString(),
+              deliveryStatus: "SKIPPED_ARREARS_LIMIT",
+              providerStatus: "skipped",
+            });
+            claimedReminderId = null;
+            this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} dilewati karena tunggakan sudah 2 bulan atau lebih`, {
+              reminderId: reminder.id,
+              contactId: reminder.contactId || null,
+              debtCount: billing.debtCount,
             });
             continue;
           }

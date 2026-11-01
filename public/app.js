@@ -892,6 +892,8 @@
         canSendBillingReminder(contact) {
           const status = String(contact?.currentPaymentStatus || contact?.paymentStatus || "UNPAID").toUpperCase();
           const dueStatus = String(contact?.dueStatus || "NOT_SCHEDULED").toUpperCase();
+          const debtCount = Math.max(0, Number(contact?.debtCount ?? this.getDebtPeriods(contact).length) || 0);
+          if (debtCount >= 2) return false;
           return this.hasDebt(contact) || (status === "UNPAID" && dueStatus === "OVERDUE");
         },
 

@@ -126,6 +126,14 @@ test("aksi tagihan memakai satu tombol dan menampilkan pilihan di modal", () => 
   assert.match(styles, /\.billing-action-quick-row \{[^}]*justify-content: flex-end;/);
 });
 
+test("tombol pengingat disembunyikan setelah tunggakan mencapai dua bulan", () => {
+  const app = createDashboardApp();
+
+  assert.equal(app.canSendBillingReminder({ hasDebt: true, debtCount: 1 }), true);
+  assert.equal(app.canSendBillingReminder({ hasDebt: true, debtCount: 2 }), false);
+  assert.equal(app.canSendBillingReminder({ hasDebt: true, debtCount: 3 }), false);
+});
+
 test("aksi beli masa aktif tersedia untuk akun menunggak dan memanggil endpoint khusus", async () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");

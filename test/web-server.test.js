@@ -2239,7 +2239,7 @@ test("endpoint pembayaran meneruskan nominal tunggakan custom", async () => {
   assert.equal(payload.data.notificationSent, true);
 });
 
-test("endpoint pengingat tagihan mengirim untuk pelanggan belum bayar yang memiliki tunggakan", async () => {
+test("endpoint pengingat tagihan mengirim untuk pelanggan dengan satu tunggakan", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   let sentContact = null;
   const contact = {
@@ -2249,7 +2249,7 @@ test("endpoint pengingat tagihan mengirim untuk pelanggan belum bayar yang memil
     paymentStatus: "UNPAID",
     currentPaymentStatus: "UNPAID",
     hasDebt: true,
-    debtCount: 2,
+    debtCount: 1,
   };
   const baseUrl = await startServer({
     getContact: () => contact,
@@ -2261,7 +2261,7 @@ test("endpoint pengingat tagihan mengirim untuk pelanggan belum bayar yang memil
       return {
         phoneNumber: value.phoneNumber,
         debtCount: value.debtCount,
-        totalAmount: 300000,
+        totalAmount: 200000,
         provider: "baileys",
       };
     },
@@ -2277,7 +2277,7 @@ test("endpoint pengingat tagihan mengirim untuk pelanggan belum bayar yang memil
   assert.equal(response.status, 200);
   assert.equal(sentContact.id, contact.id);
   assert.equal(payload.data.phoneNumber, contact.phoneNumber);
-  assert.equal(payload.data.totalAmount, 300000);
+  assert.equal(payload.data.totalAmount, 200000);
 });
 
 test("endpoint pengingat tagihan mengirim tagihan jatuh tempo meski belum memiliki tunggakan bulan lalu", async () => {
@@ -2326,6 +2326,10 @@ test("endpoint pengingat tagihan menolak pelanggan lunas atau tagihan yang belum
     {
       contact: { id: "no-debt", paymentStatus: "UNPAID", currentPaymentStatus: "UNPAID", dueStatus: "UPCOMING", hasDebt: false, debtCount: 0 },
       error: /jatuh tempo atau memiliki tunggakan/,
+    },
+    {
+      contact: { id: "two-arrears", paymentStatus: "UNPAID", currentPaymentStatus: "UNPAID", hasDebt: true, debtCount: 2 },
+      error: /2 tunggakan atau lebih/,
     },
   ];
 

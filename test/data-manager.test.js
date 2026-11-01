@@ -176,6 +176,7 @@ test("reminder bulanan yang hilang dibuat ulang dari jadwal layanan", async () =
     id: "contact-repair-reminder",
     name: "Pelanggan Bulanan",
     phoneNumber: "6281234567803",
+    createdAt: new Date().toISOString(),
     subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
     monthlyPaymentAmount: 100_000,
     paymentStatus: PAYMENT_STATUS.UNPAID,
@@ -192,6 +193,54 @@ test("reminder bulanan yang hilang dibuat ulang dari jadwal layanan", async () =
   assert.equal(saves, 1);
   assert.equal(await manager.repairMissingRecurringReminders(), 0);
   assert.equal(saves, 1);
+});
+
+test("jadwal reminder dihapus dan tidak dapat dibuat saat tunggakan mencapai dua bulan", async () => {
+  const current = getBillingPeriodParts(new Date(), "Asia/Jakarta");
+  const previous = getPreviousBillingPeriod(current.year, current.month);
+  const older = getPreviousBillingPeriod(previous.year, previous.month);
+  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
+  const olderKey = makeBillingPeriodKey(older.year, older.month);
+  const contact = {
+    id: "contact-reminder-suppressed",
+    name: "Pelanggan Dua Tunggakan",
+    phoneNumber: "6281234567805",
+    createdAt: `${olderKey}-01T00:00:00.000Z`,
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {
+      [olderKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
+      [previousKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
+    },
+    hotspotReactivationAt: new Date(Date.now() + 86_400_000).toISOString(),
+  };
+  const manager = createManager(contact);
+  manager.reminders.set("suppressed-reminder", {
+    id: "suppressed-reminder",
+    contactId: contact.id,
+    phoneNumber: contact.phoneNumber,
+    reminderDateTime: new Date(Date.now() + 86_400_000).toISOString(),
+    message: "Pengingat tagihan",
+  });
+  let saves = 0;
+  manager.saveReminders = async () => { saves += 1; };
+
+  assert.equal(await manager.repairMissingRecurringReminders(), 0);
+  assert.equal(manager.reminders.size, 0);
+  assert.equal(saves, 1);
+  await assert.rejects(
+    () => manager.addReminder({
+      contactId: contact.id,
+      reminderDateTime: new Date(Date.now() + 86_400_000),
+      message: "Pengingat baru",
+    }),
+    /2 tunggakan atau lebih/
+  );
+
+  contact.paymentMonths[olderKey] = { status: PAYMENT_STATUS.PAID, paidAmount: 100_000 };
+  assert.equal(manager.updateContactReminderMessages(contact), 1);
+  assert.equal(manager.reminders.size, 1);
 });
 
 test("transaksi Midtrans not_found yang masih baru tetap masuk antrean rekonsiliasi", () => {
@@ -573,7 +622,7 @@ test("pelanggan bulanan tanpa tunggakan tetap berlangganan dan tetap dijadwalkan
   assert.equal(contact.hotspotReactivationAt, schedule);
 });
 
-test("konversi otomatis lama dipulihkan walaupun tunggakan belum lunas", () => {
+test("konversi otomatis lama dipulihkan tanpa membuat reminder untuk dua tunggakan", () => {
   const current = getBillingPeriodParts();
   const previous = getPreviousBillingPeriod(current.year, current.month);
   const firstDebt = getPreviousBillingPeriod(previous.year, previous.month);
@@ -607,7 +656,7 @@ test("konversi otomatis lama dipulihkan walaupun tunggakan belum lunas", () => {
   assert.equal(contact.subscriptionType, SUBSCRIPTION_TYPES.RECURRING);
   assert.equal(contact.hotspotReactivationEnabled, true);
   assert.equal(manager.buildDebtInfo(contact).debtCount >= 2, true);
-  assert.equal(manager.reminders.size, 1);
+  assert.equal(manager.reminders.size, 0);
 });
 
 test("portal sekali berlangganan hanya menampilkan tunggakan periode awal", () => {

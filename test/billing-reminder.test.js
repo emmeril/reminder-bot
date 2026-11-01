@@ -46,10 +46,9 @@ function createContact(overrides = {}) {
     currentPaymentStatus: "UNPAID",
     monthlyPaymentAmount: 100000,
     hasDebt: true,
-    debtCount: 2,
+    debtCount: 1,
     debtPeriods: [
       { key: "2026-06", label: "Juni 2026" },
-      { key: "2026-07", label: "Juli 2026" },
     ],
     dueDate: "2026-08-20T03:00:00.000Z",
     ...overrides,
@@ -65,17 +64,32 @@ test("pengingat tagihan merender rincian tunggakan lalu langsung mengirim WhatsA
   assert.equal(sent[0].phoneNumber, "6281234567890");
   assert.match(sent[0].message, /Halo Pelanggan Tunggakan/);
   assert.match(sent[0].message, /Bulanan Rp 100\.000/);
-  assert.match(sent[0].message, /Tunggakan 2 bulan: Rp 200\.000/);
-  assert.match(sent[0].message, /Daftar Juni 2026, Juli 2026/);
-  assert.match(sent[0].message, /Total Rp 300\.000/);
+  assert.match(sent[0].message, /Tunggakan 1 bulan: Rp 100\.000/);
+  assert.match(sent[0].message, /Daftar Juni 2026/);
+  assert.match(sent[0].message, /Total Rp 200\.000/);
   assert.match(sent[0].message, /\*Rincian tagihan\*/);
   assert.match(sent[0].message, /Juni 2026: Rp 100\.000/);
-  assert.match(sent[0].message, /Juli 2026: Rp 100\.000/);
-  assert.match(sent[0].message, /\*Total: Rp 300\.000\*/);
+  assert.match(sent[0].message, /\*Total: Rp 200\.000\*/);
   assert.match(sent[0].message, /EMMERIL HOTSPOT - CS Emmeril/);
   assert.doesNotMatch(sent[0].message, /{{|}}/);
-  assert.equal(result.totalAmount, 300000);
+  assert.equal(result.totalAmount, 200000);
   assert.equal(result.provider, "baileys");
+});
+
+test("pengingat tagihan tidak dikirim ketika tunggakan sudah dua bulan", async () => {
+  const { bot, sent } = createBot();
+
+  await assert.rejects(
+    () => bot.sendBillingDebtReminder(createContact({
+      debtCount: 2,
+      debtPeriods: [
+        { key: "2026-06", label: "Juni 2026" },
+        { key: "2026-07", label: "Juli 2026" },
+      ],
+    })),
+    /2 tunggakan atau lebih/
+  );
+  assert.equal(sent.length, 0);
 });
 
 test("pengingat tagihan dapat dikirim untuk bulan berjalan yang sudah jatuh tempo", async () => {

@@ -430,6 +430,60 @@ test("reminder jatuh tempo pelanggan sekali berlangganan dilewati tanpa mengirim
   assert.equal(archived[0].providerStatus, "skipped");
 });
 
+test("reminder dengan dua tunggakan dihentikan tanpa WhatsApp dan tanpa jadwal berikutnya", async () => {
+  const reminder = {
+    id: "reminder-two-arrears",
+    contactId: "two-arrears",
+    phoneNumber: "6281234567890",
+    reminderDateTime: new Date(Date.now() - 1000).toISOString(),
+    reminderKind: REMINDER_KINDS.BILLING,
+    message: "Pengingat tagihan",
+  };
+  const archived = [];
+  const created = [];
+  let sendCount = 0;
+  const contact = {
+    id: "two-arrears",
+    subscriptionType: "RECURRING",
+    paymentStatus: "UNPAID",
+    currentPaymentStatus: "UNPAID",
+    debtCount: 2,
+    debtPeriods: [
+      { key: "2026-08", label: "Agustus 2026" },
+      { key: "2026-09", label: "September 2026" },
+    ],
+    monthlyPaymentAmount: 100_000,
+  };
+  const dataManager = {
+    getSettings: () => ({ autoRescheduleMonthly: true }),
+    getTimezone: () => "Asia/Jakarta",
+    getSortedReminders: () => [reminder],
+    getResolvedReminderContact: () => contact,
+    claimDueReminder: async () => reminder,
+    moveToSent: async (_id, extras) => {
+      archived.push(extras);
+      return extras;
+    },
+    addReminder: async (payload) => {
+      created.push(payload);
+      return { ...payload, id: "next-reminder" };
+    },
+    releaseReminderClaim: async () => null,
+  };
+  const notificationBot = {
+    getStatus: () => ({ whatsappProviderEnabled: true, isAvailable: true, outboundEnabled: true }),
+    sendMessage: async () => { sendCount += 1; },
+  };
+
+  await new ReminderScheduler(notificationBot, dataManager, { push() {} }).processDueReminders();
+
+  assert.equal(sendCount, 0);
+  assert.equal(archived.length, 1);
+  assert.equal(archived[0].deliveryStatus, "SKIPPED_ARREARS_LIMIT");
+  assert.equal(archived[0].providerStatus, "skipped");
+  assert.equal(created.length, 0);
+});
+
 test("WA reminder yang gagal tetap diarsipkan dan dijadwalkan bulan berikutnya", async () => {
   const timeZone = "Asia/Jakarta";
   const scheduledAt = new Date(Date.now() - 60_000);

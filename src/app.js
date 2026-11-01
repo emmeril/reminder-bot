@@ -12,6 +12,7 @@ const QRCode = require("qrcode");
 const { RouterOSClient } = require("routeros-client");
 const { Sequelize, DataTypes } = require("sequelize");
 const {
+  BILLING_REMINDER_STOP_DEBT_COUNT,
   CONFIG,
   DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   DEFAULT_SETTINGS,
@@ -3125,14 +3126,27 @@ class DataManager {
 
   async repairMissingRecurringReminders() {
     let created = 0;
+    let removed = 0;
     for (const contact of this.contacts.values()) {
+      if (this.isReminderSuppressedForArrears(contact)) {
+        removed += this.removeRemindersForContact(contact.id);
+        continue;
+      }
       if (this.ensureRecurringReminder(contact).created) created += 1;
     }
-    if (created > 0) {
+    if (created > 0 || removed > 0) {
       await this.saveReminders();
-      this.activityLog.push("info", "storage", `${created} reminder pelanggan bulanan dibuat ulang dari jadwal layanan`);
+      this.activityLog.push("info", "storage", "Jadwal reminder pelanggan bulanan diselaraskan", {
+        created,
+        removed,
+      });
     }
     return created;
+  }
+
+  isReminderSuppressedForArrears(contact) {
+    return Boolean(contact)
+      && this.buildDebtInfo(contact).debtCount >= BILLING_REMINDER_STOP_DEBT_COUNT;
   }
 
   removeRemindersForContact(contactId) {
@@ -3432,14 +3446,21 @@ class DataManager {
   }
 
   updateContactReminderMessages(contact) {
+    if (this.isReminderSuppressedForArrears(contact)) {
+      return this.removeRemindersForContact(contact.id);
+    }
+
     let changed = 0;
+    let matched = false;
     for (const reminder of this.reminders.values()) {
       const resolvedContact = this.getResolvedReminderContact(reminder);
       if (!resolvedContact || String(resolvedContact.id) !== String(contact.id)) continue;
+      matched = true;
       if (this.rewriteReminderPaymentMessage(reminder, contact)) {
         changed += 1;
       }
     }
+    if (!matched && this.ensureRecurringReminder(contact).created) changed += 1;
     return changed;
   }
 
@@ -3475,6 +3496,9 @@ class DataManager {
 
   syncRecurringReminderSchedule(contact) {
     if (!contact || !isRecurringSubscription(contact)) return 0;
+    if (this.isReminderSuppressedForArrears(contact)) {
+      return this.removeRemindersForContact(contact.id);
+    }
     const reminderDateTime = this.normalizeOptionalDate(contact.hotspotReactivationAt);
     if (!reminderDateTime) return 0;
 
@@ -3560,6 +3584,9 @@ class DataManager {
     if (!contact || !isRecurringSubscription(contact)) {
       return { created: false, reminder: null };
     }
+    if (this.isReminderSuppressedForArrears(contact)) {
+      return { created: false, reminder: null, suppressed: true };
+    }
 
     const existing = Array.from(this.reminders.values()).find((reminder) => {
       const resolvedContact = this.getResolvedReminderContact(reminder);
@@ -3597,6 +3624,10 @@ class DataManager {
 
   syncActivePeriodExpiryReminder(contact, purchase) {
     if (!contact || !purchase?.activeUntil) return { changed: 0, created: false, reminder: null };
+    if (this.isReminderSuppressedForArrears(contact)) {
+      const removed = this.removeRemindersForContact(contact.id);
+      return { changed: removed, created: false, reminder: null, suppressed: true };
+    }
 
     const activeUntil = new Date(purchase.activeUntil);
     const purchasedAt = new Date(purchase.purchasedAt || Date.now());
@@ -3659,6 +3690,9 @@ class DataManager {
 
   restoreBillingReminderAfterActivePeriod(contact) {
     if (!contact) return 0;
+    if (this.isReminderSuppressedForArrears(contact)) {
+      return this.removeRemindersForContact(contact.id);
+    }
     const reminderDateTime = this.normalizeOptionalDate(
       contact.hotspotReactivationAt || this.getNextServiceScheduleFromRegistration(contact)
     );
@@ -4775,6 +4809,9 @@ class DataManager {
       if (!isRecurringSubscription(contact)) {
         throw new Error("Reminder tidak diperlukan untuk pelanggan sekali berlangganan.");
       }
+      if (this.isReminderSuppressedForArrears(contact)) {
+        throw new Error("Reminder tidak dibuat untuk pelanggan dengan 2 tunggakan atau lebih.");
+      }
       if (!message) throw new Error("Isi reminder wajib diisi.");
       if (Number.isNaN(reminderDate.getTime())) throw new Error("Tanggal reminder tidak valid.");
 
@@ -4808,6 +4845,9 @@ class DataManager {
       if (payload.contactId !== undefined) {
         const contact = this.getContact(payload.contactId);
         if (!contact) throw new Error("Contact reminder tidak ditemukan.");
+        if (this.isReminderSuppressedForArrears(contact)) {
+          throw new Error("Reminder tidak dibuat untuk pelanggan dengan 2 tunggakan atau lebih.");
+        }
         reminder.contactId = String(contact.id);
         reminder.contactName = contact.name;
         reminder.phoneNumber = contact.phoneNumber;
@@ -4842,6 +4882,9 @@ class DataManager {
 
       const contact = this.getResolvedReminderContact(reminder);
       if (contact) {
+        if (this.isReminderSuppressedForArrears(contact)) {
+          throw new Error("Reminder tidak dibuat untuk pelanggan dengan 2 tunggakan atau lebih.");
+        }
         this.rewriteReminderPaymentMessage(reminder, contact);
       }
 
@@ -6067,6 +6110,10 @@ class NotificationBot {
       contactState.debtCount ?? contactState.debtPeriods?.length ?? 0
     ) || 0);
     const hasDebt = Boolean(contactState.hasDebt && debtCount > 0);
+
+    if (debtCount >= BILLING_REMINDER_STOP_DEBT_COUNT) {
+      throw new Error("Pengingat tagihan tidak dikirim untuk pelanggan dengan 2 tunggakan atau lebih.");
+    }
 
     const isOverdue = String(contactState.dueStatus || "").toUpperCase() === "OVERDUE";
     if (!hasDebt && (currentStatus !== PAYMENT_STATUS.UNPAID || !isOverdue)) {
@@ -8156,6 +8203,9 @@ class WebServer {
       ).toUpperCase();
       const isOverdue = String(contactState.dueStatus || "").toUpperCase() === "OVERDUE";
       const hasDebt = Boolean(contactState.hasDebt && Number(contactState.debtCount) > 0);
+      if (Number(contactState.debtCount) >= BILLING_REMINDER_STOP_DEBT_COUNT) {
+        throw new Error("Pengingat tagihan tidak dikirim untuk pelanggan dengan 2 tunggakan atau lebih.");
+      }
       if (!hasDebt && (currentStatus !== PAYMENT_STATUS.UNPAID || !isOverdue)) {
         throw new Error("Pengingat hanya dapat dikirim untuk tagihan yang jatuh tempo atau memiliki tunggakan.");
       }
