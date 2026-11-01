@@ -68,6 +68,10 @@ test("pengingat tagihan merender rincian tunggakan lalu langsung mengirim WhatsA
   assert.match(sent[0].message, /Tunggakan 2 bulan: Rp 200\.000/);
   assert.match(sent[0].message, /Daftar Juni 2026, Juli 2026/);
   assert.match(sent[0].message, /Total Rp 300\.000/);
+  assert.match(sent[0].message, /\*Rincian tagihan\*/);
+  assert.match(sent[0].message, /Juni 2026: Rp 100\.000/);
+  assert.match(sent[0].message, /Juli 2026: Rp 100\.000/);
+  assert.match(sent[0].message, /\*Total: Rp 300\.000\*/);
   assert.match(sent[0].message, /EMMERIL HOTSPOT - CS Emmeril/);
   assert.doesNotMatch(sent[0].message, /{{|}}/);
   assert.equal(result.totalAmount, 300000);

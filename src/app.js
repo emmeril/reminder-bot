@@ -46,6 +46,7 @@ const {
   addDaysSafely,
   addMonthsSafely,
   assertSecureConfiguration,
+  buildBillingDetails,
   buildHotspotEmailFromPhone,
   collectSecurityWarnings,
   escapeHtml,
@@ -3359,7 +3360,7 @@ class DataManager {
     const totalPeriods = (currentPaid ? 0 : 1) + debtCount;
     const currentAmount = currentPaid ? 0 : monthlyAmount;
     const totalAmount = currentAmount + Math.max(0, Number(debtInfo.debtAmount) || 0);
-    const hasBillingVariables = /{{\s*(?:monthlyAmount|currentAmount|debtAmount|totalAmount|debtCount|debtPeriods|totalPeriods)\s*}}/i.test(sourceMessage);
+    const hasBillingVariables = /{{\s*(?:billingDetails|monthlyAmount|currentAmount|debtAmount|totalAmount|debtCount|debtPeriods|totalPeriods)\s*}}/i.test(sourceMessage);
 
     let nextMessage;
     if (totalPeriods <= 0) {
@@ -6022,7 +6023,16 @@ class NotificationBot {
     }
 
     const monthlyAmount = Math.max(0, Number(contactState.monthlyPaymentAmount) || 0);
-    const currentAmount = currentStatus === PAYMENT_STATUS.UNPAID ? monthlyAmount : 0;
+    const timeZone = this.dataManager.getTimezone();
+    const { year, month } = getBillingPeriodParts(new Date(), timeZone);
+    const currentKey = makeBillingPeriodKey(year, month);
+    const currentPayment = contactState.paymentMonths?.[currentKey] || null;
+    const currentPaidAmount = currentStatus === PAYMENT_STATUS.PAID
+      ? monthlyAmount
+      : Math.min(monthlyAmount, Math.max(0, Number(currentPayment?.paidAmount) || 0));
+    const currentAmount = currentStatus === PAYMENT_STATUS.PAID
+      ? 0
+      : Math.max(0, monthlyAmount - currentPaidAmount);
     const debtAmount = contactState.debtAmount === undefined
       ? monthlyAmount * debtCount
       : Math.max(0, Number(contactState.debtAmount) || 0);
@@ -6032,7 +6042,6 @@ class NotificationBot {
       || DEFAULT_SETTINGS.billingReminderMessageTemplate;
     const companyName = sanitizeInput(settings.companyName) || "Emmeril Hotspot";
     const supportSignature = sanitizeInput(settings.supportSignature) || "CS Emmeril Hotspot";
-    const { year, month } = getBillingPeriodParts(new Date(), this.dataManager.getTimezone());
     const debtPeriods = (contactState.debtPeriods || [])
       .map((period) => sanitizeInput(period.label || period.key || ""))
       .filter(Boolean)
@@ -6045,10 +6054,20 @@ class NotificationBot {
           year: "numeric",
           hour: "2-digit",
           minute: "2-digit",
-          timeZone: this.dataManager.getTimezone(),
+          timeZone,
         })
       : "Belum dijadwalkan";
     const formatAmount = (value) => this.dataManager.formatPaymentAmount(value);
+    const billingPeriod = formatBillingPeriodLabel(year, month);
+    const billingDetails = buildBillingDetails({
+      debtPeriods: contactState.debtPeriods,
+      debtAmount,
+      currentPeriodLabel: billingPeriod,
+      currentAmount,
+      monthlyAmount,
+      totalAmount,
+      formatAmount,
+    });
     const variables = {
       name: contactState.name || "-",
       phoneNumber: contactState.phoneNumber || "-",
@@ -6058,15 +6077,27 @@ class NotificationBot {
       totalAmount: formatAmount(totalAmount),
       debtCount: String(debtCount),
       debtPeriods,
-      billingPeriod: formatBillingPeriodLabel(year, month),
+      billingPeriod,
+      billingDetails,
       dueDate,
       companyName,
       companyNameUpper: companyName.toUpperCase(),
       supportSignature,
     };
     let message = messageTemplate;
+    const placesBillingDetails = /{{\s*billingDetails\s*}}/i.test(messageTemplate);
     for (const [key, value] of Object.entries(variables)) {
       message = message.replace(new RegExp(`{{\\s*${key}\\s*}}`, "gi"), () => value);
+    }
+    if (!placesBillingDetails) {
+      const legacyDetailsPattern = /\n\nPeriode: [^\n]*\nTagihan bulan ini: [^\n]*\nTunggakan: [^\n]*\nPeriode tunggakan: [^\n]*\nTotal: [^\n]*(?=\nJatuh tempo:)/i;
+      if (legacyDetailsPattern.test(message)) {
+        message = message.replace(legacyDetailsPattern, `\n\n${billingDetails}\n`);
+      } else if (/\n(?=Jatuh tempo\b)/i.test(message)) {
+        message = message.replace(/\n(?=Jatuh tempo\b)/i, `\n${billingDetails}\n\n`);
+      } else {
+        message = `${message.trim()}\n\n${billingDetails}`;
+      }
     }
 
     const delivery = await this.sendMessage(contactState.phoneNumber, message, options);

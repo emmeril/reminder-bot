@@ -47,13 +47,91 @@ test("template reminder dirender dari variabel saat pesan akan dikirim", () => {
 
   assert.match(message, /^\*Pengingat Tagihan\*/);
   assert.match(message, /Yth\. Bapak\/Ibu Nouval,/);
-  assert.match(message, /Tagihan WiFi Anda sebesar Rp\s?200\.000 belum lunas/);
+  assert.match(message, /Tagihan WiFi Anda belum lunas/);
+  assert.match(message, /\*Rincian tagihan\*/);
+  assert.match(message, /Juli 2026: Rp\s?100\.000/);
+  assert.match(message, /Agustus 2026: Rp\s?100\.000/);
+  assert.match(message, /\*Total: Rp\s?200\.000\*/);
   assert.match(message, /Jatuh tempo: 2026-08-15/);
   assert.match(message, /Masa tenggang: 3 hari/);
   assert.match(message, /Layanan aktif sampai: 2026-08-18/);
   assert.match(message, /Perpanjangan otomatis: Dijeda sampai tunggakan lunas/);
   assert.match(message, /CS Emmeril Hotspot$/);
   assert.doesNotMatch(message, /{{|}}/);
+});
+
+test("reminder menampilkan nominal setiap periode pada tagihan akumulasi", () => {
+  const reminder = {
+    contactName: "Khrisna",
+    phoneNumber: "6281234567890",
+    reminderDateTime: "2026-11-01T01:00:00.000Z",
+    message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+    messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+  };
+  const dataManager = {
+    getSettings: () => ({
+      supportSignature: "CS Emmeril Hotspot",
+      hotspotIsolationGraceDays: 3,
+    }),
+    getTimezone: () => "Asia/Jakarta",
+    getResolvedReminderContact: () => ({
+      name: "Khrisna",
+      phoneNumber: "6281234567890",
+      paymentStatus: "UNPAID",
+      currentPaymentStatus: "UNPAID",
+      debtCount: 1,
+      debtAmount: 75_000,
+      debtPeriods: [{
+        key: "2026-10",
+        label: "Oktober 2026",
+        remainingAmount: 75_000,
+      }],
+      monthlyPaymentAmount: 75_000,
+      paymentMonths: {},
+    }),
+  };
+
+  const message = new ReminderScheduler({}, dataManager, { push() {} }).buildReminderMessage(reminder);
+
+  assert.match(message, /Oktober 2026: Rp\s?75\.000/);
+  assert.match(message, /November 2026: Rp\s?75\.000/);
+  assert.match(message, /\*Total: Rp\s?150\.000\*/);
+  assert.match(message, /Jatuh tempo: 2026-11-01/);
+  assert.doesNotMatch(message, /{{|}}/);
+});
+
+test("rincian reminder memakai sisa tagihan setelah pembayaran sebagian", () => {
+  const dataManager = {
+    getSettings: () => ({ hotspotIsolationGraceDays: 3 }),
+    getTimezone: () => "Asia/Jakarta",
+    getResolvedReminderContact: () => ({
+      name: "Pelanggan Parsial",
+      paymentStatus: "UNPAID",
+      currentPaymentStatus: "UNPAID",
+      debtCount: 1,
+      debtAmount: 50_000,
+      debtPeriods: [{
+        key: "2026-10",
+        label: "Oktober 2026",
+        remainingAmount: 50_000,
+      }],
+      monthlyPaymentAmount: 75_000,
+      paymentMonths: {
+        "2026-11": { status: "UNPAID", paidAmount: 25_000 },
+      },
+    }),
+  };
+  const scheduler = new ReminderScheduler({}, dataManager, { push() {} });
+
+  const message = scheduler.buildReminderMessage({
+    reminderDateTime: "2026-11-01T01:00:00.000Z",
+    message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+    messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+  });
+
+  assert.match(message, /Oktober 2026: Rp\s?50\.000/);
+  assert.match(message, /November 2026: Rp\s?50\.000/);
+  assert.match(message, /\*Total: Rp\s?100\.000\*/);
 });
 
 test("reminder masa aktif menampilkan batas aktif dan tunggakan yang masih tersimpan", () => {
@@ -136,7 +214,8 @@ test("informasi perpanjangan otomatis tidak ditampilkan tanpa tunggakan", () => 
     message: "Tagihan {{totalAmount}}{{renewalStatusInfo}}",
   });
 
-  assert.match(message, /^Tagihan Rp\s?100\.000$/);
+  assert.match(message, /^Tagihan Rp\s?100\.000/);
+  assert.match(message, /Rincian tagihan/);
   assert.doesNotMatch(message, /Informasi layanan|tidak akan diperpanjang otomatis|{{|}}/);
 });
 
@@ -161,7 +240,10 @@ test("variabel masa tenggang nol memakai tanggal jatuh tempo sebagai tanggal iso
 });
 
 test("nominal reminder otomatis bertambah sesuai jumlah tunggakan", () => {
-  const reminder = { message: "Halo, tagihan Anda sudah terbit." };
+  const reminder = {
+    reminderDateTime: "2026-08-15T01:00:00.000Z",
+    message: "Halo, tagihan Anda sudah terbit.",
+  };
   const dataManager = {
     getSettings: () => ({}),
     getResolvedReminderContact: () => ({
@@ -175,9 +257,9 @@ test("nominal reminder otomatis bertambah sesuai jumlah tunggakan", () => {
 
   const message = scheduler.buildReminderMessage(reminder);
 
-  assert.match(message, /Nominal bulanan: Rp\s?150\.000/);
-  assert.match(message, /Tunggakan: 2 bulan \(Rp\s?300\.000\)/);
-  assert.match(message, /Total tagihan: Rp\s?450\.000/);
+  assert.match(message, /Tunggakan sebelumnya: Rp\s?300\.000/);
+  assert.match(message, /Agustus 2026: Rp\s?150\.000/);
+  assert.match(message, /Total: Rp\s?450\.000/);
 });
 
 test("reminder hutang tetap dikirim ketika bulan berjalan sudah dibayar", () => {
@@ -193,7 +275,7 @@ test("reminder hutang tetap dikirim ketika bulan berjalan sudah dibayar", () => 
   const scheduler = new ReminderScheduler({}, dataManager, { push() {} });
 
   assert.equal(scheduler.isPaidReminder({}), false);
-  assert.match(scheduler.buildReminderMessage({ message: "Tagihan" }), /Total tagihan: Rp\s?150\.000/);
+  assert.match(scheduler.buildReminderMessage({ message: "Tagihan" }), /Total: Rp\s?150\.000/);
 });
 
 test("reminder bulan depan membaca status periode jadwal, bukan status bulan ini", () => {
@@ -246,7 +328,7 @@ test("placeholder nominal pada template diganti tanpa menambah blok rincian kedu
   });
 
   assert.match(message, /Total Rp\s?200\.000, tunggakan 1 bulan/);
-  assert.doesNotMatch(message, /Rincian Pembayaran/);
+  assert.doesNotMatch(message, /Rincian tagihan/);
 });
 
 test("nominal yang sudah ada di pesan reminder diperbarui menjadi total hutang", () => {
@@ -263,7 +345,8 @@ test("nominal yang sudah ada di pesan reminder diperbarui menjadi total hutang",
   const message = scheduler.buildReminderMessage({ message: "Tagihan Emmeril Hotspot Anda sebesar Rp 100.000 belum kami terima." });
 
   assert.match(message, /sebesar Rp\s?200\.000/);
-  assert.doesNotMatch(message, /Rincian Pembayaran/);
+  assert.match(message, /Rincian tagihan/);
+  assert.match(message, /Total: Rp\s?200\.000/);
 });
 
 test("reminder pelanggan sekali berlangganan tidak dijadwalkan ulang", async () => {

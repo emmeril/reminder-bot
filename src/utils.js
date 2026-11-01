@@ -412,6 +412,58 @@ function formatBillingPeriodLabel(year, month) {
   return `${MONTH_NAMES[month] || month} ${year}`;
 }
 
+function buildBillingDetails({
+  debtPeriods = [],
+  debtAmount = 0,
+  currentPeriodLabel = "Bulan berjalan",
+  currentAmount = 0,
+  monthlyAmount = 0,
+  totalAmount = 0,
+  formatAmount = (value) => String(value),
+} = {}) {
+  const normalizedDebtAmount = Math.max(0, Number(debtAmount) || 0);
+  const normalizedCurrentAmount = Math.max(0, Number(currentAmount) || 0);
+  const normalizedMonthlyAmount = Math.max(0, Number(monthlyAmount) || 0);
+  const rows = [];
+  let remainingDebt = normalizedDebtAmount;
+  const periods = Array.isArray(debtPeriods) ? debtPeriods : [];
+
+  periods.forEach((period, index) => {
+    if (remainingDebt <= 0) return;
+    const label = sanitizeInput(String(period?.label || period?.key || "")) || "Tunggakan sebelumnya";
+    const recordedRemaining = Number(period?.remainingAmount);
+    const suggestedAmount = Number.isFinite(recordedRemaining) && recordedRemaining >= 0
+      ? recordedRemaining
+      : normalizedMonthlyAmount;
+    const amount = index === periods.length - 1
+      ? remainingDebt
+      : Math.min(Math.max(0, suggestedAmount), remainingDebt);
+    if (amount <= 0) return;
+    rows.push({ label, amount });
+    remainingDebt = Math.max(0, remainingDebt - amount);
+  });
+
+  if (remainingDebt > 0) {
+    rows.push({ label: "Tunggakan sebelumnya", amount: remainingDebt });
+  }
+  if (normalizedCurrentAmount > 0) {
+    rows.push({
+      label: sanitizeInput(String(currentPeriodLabel || "")) || "Bulan berjalan",
+      amount: normalizedCurrentAmount,
+    });
+  }
+
+  const normalizedTotalAmount = Math.max(
+    0,
+    Number(totalAmount) || normalizedDebtAmount + normalizedCurrentAmount
+  );
+  return [
+    "*Rincian tagihan*",
+    ...rows.map((row) => `${row.label}: ${formatAmount(row.amount)}`),
+    `*Total: ${formatAmount(normalizedTotalAmount)}*`,
+  ].join("\n");
+}
+
 function addMonthsSafely(dateValue, monthsToAdd, timeZone = "Asia/Jakarta") {
   const source = new Date(dateValue);
   const sourceParts = getDateTimePartsInTimezone(source, timeZone);
@@ -464,6 +516,7 @@ module.exports = {
   addMonthsSafely,
   assertSecureConfiguration,
   buildHotspotEmailFromPhone,
+  buildBillingDetails,
   collectSecurityWarnings,
   escapeHtml,
   formatBillingPeriodLabel,

@@ -1,7 +1,9 @@
 *Pengingat Tagihan*
 
 Yth. Bapak/Ibu {{name}},
-Tagihan WiFi Anda sebesar {{totalAmount}} belum lunas.
+Tagihan WiFi Anda belum lunas.
+
+{{billingDetails}}
 
 Jatuh tempo: {{date}}
 Masa tenggang: {{graceDays}} hari

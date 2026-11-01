@@ -749,7 +749,7 @@ test("reminder baru menyimpan template variabel tanpa mengganti data pelanggan",
   assert.equal(reminder.message, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
   assert.equal(reminder.messageSource, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
   assert.match(reminder.message, /{{name}}/);
-  assert.match(reminder.message, /{{totalAmount}}/);
+  assert.match(reminder.message, /{{billingDetails}}/);
 });
 
 test("reminder tidak dapat dibuat untuk pelanggan sekali berlangganan", async () => {

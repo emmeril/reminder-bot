@@ -206,7 +206,7 @@ const SUBSCRIPTION_TYPES = {
   ONE_TIME: "ONE_TIME",
 };
 
-const DEFAULT_REMINDER_MESSAGE_TEMPLATE = "*Pengingat Tagihan*\n\nYth. Bapak/Ibu {{name}},\nTagihan WiFi Anda sebesar {{totalAmount}} belum lunas.\n\nJatuh tempo: {{date}}\nMasa tenggang: {{graceDays}} hari\nLayanan aktif sampai: {{isolationDate}}{{renewalStatusInfo}}\n\nMohon lakukan pembayaran sebelum layanan dinonaktifkan. Abaikan pesan ini jika Anda sudah membayar.\n\nPembayaran:\nBCA 134-266-9497 a.n. Hafriyanto\nDANA 087728972090\n\nTerima kasih,\n{{supportSignature}}";
+const DEFAULT_REMINDER_MESSAGE_TEMPLATE = "*Pengingat Tagihan*\n\nYth. Bapak/Ibu {{name}},\nTagihan WiFi Anda belum lunas.\n\n{{billingDetails}}\n\nJatuh tempo: {{date}}\nMasa tenggang: {{graceDays}} hari\nLayanan aktif sampai: {{isolationDate}}{{renewalStatusInfo}}\n\nMohon lakukan pembayaran sebelum layanan dinonaktifkan. Abaikan pesan ini jika Anda sudah membayar.\n\nPembayaran:\nBCA 134-266-9497 a.n. Hafriyanto\nDANA 087728972090\n\nTerima kasih,\n{{supportSignature}}";
 
 const DEFAULT_SETTINGS = {
   dashboardTitle: "Reminder Bot Control Center",
@@ -221,7 +221,7 @@ const DEFAULT_SETTINGS = {
   paymentMessageTemplateActivePeriod: "*Pembelian Masa Aktif*\n\nYth. Bapak/Ibu {{name}},\nMasa aktif WiFi selama satu bulan sudah ditambahkan.\n\nID transaksi: {{transactionId}}\nTanggal: {{paymentDate}}\nNominal: {{paymentAmount}}\nAktif sampai: {{activeUntil}}\nSisa tunggakan: {{remainingDebtAmount}}\nStatus: {{statusText}}\n\nTunggakan tetap tercatat. Perpanjangan otomatis aktif kembali setelah semua tunggakan lunas.\n\n{{hotspotAccountDetails}}\n\nTerima kasih,\n{{supportSignature}}",
   paymentHotspotAccountMessageTemplate: "*Akun WiFi*\nUsername: {{hotspotUsername}}\nPassword: {{hotspotPassword}}\nAktif sampai: {{activeUntil}}\n\nSimpan username dan password ini. Jangan bagikan kepada orang lain.",
   activePeriodReminderMessageTemplate: "*Masa Aktif Akan Berakhir*\n\nYth. Bapak/Ibu {{name}},\nMasa aktif WiFi Anda akan berakhir pada {{activeUntil}}.\n\nTunggakan: {{debtCount}} bulan\nPeriode: {{debtPeriods}}\nTotal: {{debtAmount}}\n\nLunasi tunggakan atau beli masa aktif agar WiFi tetap dapat digunakan.\n\nTerima kasih,\n{{supportSignature}}",
-  billingReminderMessageTemplate: "*Pengingat Tagihan*\n\nYth. Bapak/Ibu {{name}},\nTagihan WiFi Anda belum lunas.\n\nPeriode: {{billingPeriod}}\nTagihan bulan ini: {{currentAmount}}\nTunggakan: {{debtCount}} bulan ({{debtAmount}})\nPeriode tunggakan: {{debtPeriods}}\nTotal: {{totalAmount}}\nJatuh tempo: {{dueDate}}\n\nMohon lakukan pembayaran sesuai total tagihan. Abaikan pesan ini jika Anda sudah membayar.\n\nTerima kasih,\n{{supportSignature}}",
+  billingReminderMessageTemplate: "*Pengingat Tagihan*\n\nYth. Bapak/Ibu {{name}},\nTagihan WiFi Anda belum lunas.\n\n{{billingDetails}}\n\nJatuh tempo: {{dueDate}}\n\nMohon lakukan pembayaran sesuai total tagihan. Abaikan pesan ini jika Anda sudah membayar.\n\nTerima kasih,\n{{supportSignature}}",
   timezone: "Asia/Jakarta",
   hotspotIsolationGraceDays: 0,
   lastPaymentResetPeriod: "",

@@ -8,11 +8,13 @@ const TelegramManager = require("./telegram-manager");
 const {
   addDaysSafely,
   addMonthsSafely,
+  buildBillingDetails,
   formatDate,
   formatDateTime,
   getBillingPeriodParts,
   getDateTimePartsInTimezone,
   isValidTimeZone,
+  makeBillingPeriodKey,
   normalizeNetworkHost,
   parseBoolean,
   parseNetwatchSinceDate,
@@ -106,7 +108,12 @@ class ReminderScheduler {
       contactState?.currentPaymentStatus || contactState?.paymentStatus || "UNPAID"
     ).toUpperCase() === "PAID";
     const monthlyAmount = Math.max(0, Number(contactState?.monthlyPaymentAmount) || 0);
-    const currentAmount = currentPaid ? 0 : monthlyAmount;
+    const currentKey = makeBillingPeriodKey(period.year, period.month);
+    const currentPayment = contactState?.paymentMonths?.[currentKey] || null;
+    const currentPaidAmount = currentPaid
+      ? monthlyAmount
+      : Math.min(monthlyAmount, Math.max(0, Number(currentPayment?.paidAmount) || 0));
+    const currentAmount = currentPaid ? 0 : Math.max(0, monthlyAmount - currentPaidAmount);
     const debtAmount = contactState?.debtAmount === undefined
       ? monthlyAmount * debtCount
       : Math.max(0, Number(contactState.debtAmount) || 0);
@@ -153,6 +160,20 @@ class ReminderScheduler {
       .map((period) => sanitizeInput(period.label || period.key || ""))
       .filter(Boolean)
       .join(", ") || billing.contact?.debtPeriodLabel || "-";
+    const currentPeriodLabel = new Date(scheduledAt).toLocaleString("id-ID", {
+      month: "long",
+      year: "numeric",
+      timeZone,
+    });
+    const billingDetails = buildBillingDetails({
+      debtPeriods: billing.contact?.debtPeriods,
+      debtAmount: billing.debtAmount,
+      currentPeriodLabel,
+      currentAmount: billing.currentAmount,
+      monthlyAmount: billing.monthlyAmount,
+      totalAmount: billing.totalAmount,
+      formatAmount: (value) => this.formatRupiah(value),
+    });
     const variables = {
       name: billing.contact?.name || reminder.contactName || "-",
       nama: billing.contact?.name || reminder.contactName || "-",
@@ -164,11 +185,8 @@ class ReminderScheduler {
       activeUntil: reminder.activePeriodUntil
         ? formatDateTime(reminder.activePeriodUntil, timeZone)
         : "-",
-      billingPeriod: new Date(scheduledAt).toLocaleString("id-ID", {
-        month: "long",
-        year: "numeric",
-        timeZone,
-      }),
+      billingPeriod: currentPeriodLabel,
+      billingDetails,
       monthlyAmount: this.formatRupiah(billing.monthlyAmount),
       currentAmount: this.formatRupiah(billing.currentAmount),
       debtAmount: this.formatRupiah(billing.debtAmount),
@@ -184,12 +202,12 @@ class ReminderScheduler {
       supportSignature,
     };
     let message = String(reminder.messageSource || reminder.message || "");
-    let usedAmountPlaceholder = false;
-    const amountVariables = new Set([
+    let usedBillingDetailsPlaceholder = false;
+    let usedDetailedAmountPlaceholder = false;
+    const detailedAmountVariables = new Set([
       "monthlyAmount",
       "currentAmount",
       "debtAmount",
-      "totalAmount",
       "debtCount",
       "debtPeriods",
       "totalPeriods",
@@ -197,30 +215,28 @@ class ReminderScheduler {
 
     for (const [key, value] of Object.entries(variables)) {
       const pattern = new RegExp(`{{\\s*${key}\\s*}}`, "gi");
-      if (amountVariables.has(key) && pattern.test(message)) usedAmountPlaceholder = true;
+      if (key === "billingDetails" && pattern.test(message)) usedBillingDetailsPlaceholder = true;
+      if (detailedAmountVariables.has(key) && pattern.test(message)) usedDetailedAmountPlaceholder = true;
       message = message.replace(pattern, () => value);
     }
 
-    if (usedAmountPlaceholder || billing.monthlyAmount <= 0 || billing.totalPeriods <= 0) return message;
+    if (usedBillingDetailsPlaceholder || usedDetailedAmountPlaceholder
+      || billing.monthlyAmount <= 0 || billing.totalPeriods <= 0) return message;
 
-    const details = [
-      "*Rincian Pembayaran*",
-      `Nominal bulanan: ${variables.monthlyAmount}`,
-    ];
-    if (!billing.currentPaid) {
-      details.push(`Bulan berjalan: ${variables.currentAmount}`);
-    }
-    if (billing.debtCount > 0) {
-      details.push(`Tunggakan: ${billing.debtCount} bulan (${variables.debtAmount})`);
-    }
-    details.push(`*Total tagihan: ${variables.totalAmount}*`);
     const amountPattern = /(?:sebesar\s*)?Rp\s*[0-9][0-9.]*(?:,[0-9]{1,2})?/i;
     if (amountPattern.test(message)) {
-      return message
+      message = message
         .replace(/Rp\s*[0-9][0-9.]*(?:,[0-9]{1,2})?/i, variables.totalAmount)
         .replace(/(Rp\s*[0-9][0-9.]*(?:,[0-9]{1,2})?)(?=[A-Za-z])/gi, "$1 ");
     }
-    return `${message.trim()}\n\n${details.join("\n")}`;
+    message = message.replace(
+      /Tagihan WiFi Anda sebesar Rp\s*[0-9][0-9.]*(?:,[0-9]{1,2})? belum lunas\./i,
+      "Tagihan WiFi Anda belum lunas."
+    );
+    if (/\n\nJatuh tempo:/i.test(message)) {
+      return message.replace(/\n\n(?=Jatuh tempo:)/i, `\n\n${billingDetails}\n\n`);
+    }
+    return `${message.trim()}\n\n${billingDetails}`;
   }
 
   isPaidReminder(reminder) {
