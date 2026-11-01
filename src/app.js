@@ -164,13 +164,7 @@ function addBillingMonths(period, monthsToAdd) {
 }
 
 function getContactBillingStartPeriod(contact, timeZone = "Asia/Jakarta") {
-  const recurringStartedAt = normalizeSubscriptionType(contact?.subscriptionType) === SUBSCRIPTION_TYPES.RECURRING
-    && contact?.recurringBillingStartedAt
-    ? new Date(contact.recurringBillingStartedAt)
-    : null;
-  const createdAt = recurringStartedAt && !Number.isNaN(recurringStartedAt.getTime())
-    ? recurringStartedAt
-    : (contact.createdAt ? new Date(contact.createdAt) : null);
+  const createdAt = contact.createdAt ? new Date(contact.createdAt) : null;
   if (!createdAt || Number.isNaN(createdAt.getTime())) {
     return BILLING_START_PERIOD;
   }
@@ -1589,7 +1583,7 @@ class DataManager {
         false
       );
       contact.subscriptionType = normalizeSubscriptionType(contact.subscriptionType);
-      contact.recurringBillingStartedAt = this.normalizeOptionalDate(contact.recurringBillingStartedAt);
+      delete contact.recurringBillingStartedAt;
       contact.subscriptionChangedByArrears = parseBoolean(
         contact.subscriptionChangedByArrears,
         false
@@ -2463,21 +2457,28 @@ class DataManager {
       return { changed: true, startedRecurring: false };
     }
 
-    const transitionIso = transitionAt.toISOString();
     const currentKey = getBillingPeriodKey(transitionAt, this.getTimezone());
     if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") {
       contact.paymentMonths = {};
     }
-    contact.recurringBillingStartedAt = transitionIso;
-    contact.paymentMonths[currentKey] = {
-      status: PAYMENT_STATUS.UNPAID,
-      paidDate: null,
-      paymentType: null,
-      paidAmount: 0,
-    };
-    contact.paymentStatus = PAYMENT_STATUS.UNPAID;
-    contact.paymentDate = null;
-    contact.paymentType = null;
+    delete contact.recurringBillingStartedAt;
+    if (!contact.paymentMonths[currentKey]) {
+      contact.paymentMonths[currentKey] = {
+        status: PAYMENT_STATUS.UNPAID,
+        paidDate: null,
+        paymentType: null,
+        paidAmount: 0,
+      };
+    }
+    const currentPayment = contact.paymentMonths[currentKey];
+    const currentStatus = currentPayment.status === PAYMENT_STATUS.PAID
+      ? PAYMENT_STATUS.PAID
+      : PAYMENT_STATUS.UNPAID;
+    contact.paymentStatus = currentStatus;
+    contact.paymentDate = currentStatus === PAYMENT_STATUS.PAID
+      ? currentPayment.paidDate || contact.paymentDate || null
+      : null;
+    contact.paymentType = currentPayment.paymentType || null;
     contact.hotspotReactivationEnabled = false;
     contact.hotspotReactivationAt = null;
     return { changed: true, startedRecurring: true, currentKey };
@@ -3722,7 +3723,6 @@ class DataManager {
         monthlyPaymentAmount: sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000),
         monthlyPaymentAmountCustomized: payload.monthlyPaymentAmount !== undefined,
         subscriptionType,
-        recurringBillingStartedAt: subscriptionType === SUBSCRIPTION_TYPES.RECURRING ? now : null,
         subscriptionChangedByArrears: false,
         arrearsSubscriptionDebtPeriods: [],
         billingPausedForArrears: false,
@@ -3829,9 +3829,6 @@ class DataManager {
           monthlyPaymentAmount: sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000),
           monthlyPaymentAmountCustomized: payload.monthlyPaymentAmount !== undefined,
           subscriptionType: normalizeSubscriptionType(payload.subscriptionType),
-          recurringBillingStartedAt: normalizeSubscriptionType(payload.subscriptionType) === SUBSCRIPTION_TYPES.RECURRING
-            ? now
-            : null,
           subscriptionChangedByArrears: false,
           arrearsSubscriptionDebtPeriods: [],
           billingPausedForArrears: false,

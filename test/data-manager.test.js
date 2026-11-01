@@ -805,7 +805,7 @@ test("perubahan pelanggan menjadi sekali berlangganan menghapus reminder aktif",
   assert.equal(reminderSaves, 1);
 });
 
-test("konversi pelanggan sekali ke bulanan memulai tagihan baru tanpa mewarisi tunggakan lama", async () => {
+test("konversi pelanggan sekali ke bulanan mempertahankan tunggakan lama", async () => {
   const now = new Date();
   const current = getBillingPeriodParts(now, "Asia/Jakarta");
   const previous = getPreviousBillingPeriod(current.year, current.month);
@@ -842,26 +842,21 @@ test("konversi pelanggan sekali ke bulanan memulai tagihan baru tanpa mewarisi t
   assert.equal(converted.paymentMonths[currentKey].paidAmount, 0);
   assert.equal(converted.hotspotReactivationAt, null);
   assert.equal(converted.hotspotReactivationEnabled, false);
-  assert.equal(manager.buildDebtInfo(contact).debtCount, 0);
-  assert.equal(
-    getBillingPeriodParts(new Date(converted.recurringBillingStartedAt), "Asia/Jakarta").month,
-    current.month
-  );
+  assert.equal(converted.paymentMonths[previousKey].status, PAYMENT_STATUS.UNPAID);
+  assert.equal(manager.buildDebtInfo(contact).debtCount, 1);
 
   const paid = await manager.updatePaymentStatus(
     contact.id,
     PAYMENT_STATUS.PAID,
     PAYMENT_TYPES.CURRENT_ONLY
   );
-  const expectedActiveUntil = addMonthsSafely(paid.serviceActiveFrom, 1, "Asia/Jakarta").toISOString();
-
   assert.equal(paid.paymentMonths[currentKey].status, PAYMENT_STATUS.PAID);
   assert.equal(paid.paymentMonths[currentKey].paidAmount, 75_000);
-  assert.equal(paid.hotspotReactivationAt, expectedActiveUntil);
-  assert.equal(paid.hotspotReactivationEnabled, true);
-  assert.equal(paid.serviceActiveUntil, expectedActiveUntil);
-  assert.equal(manager.buildDebtInfo(contact).debtCount, 0);
-  assert.equal(Array.from(manager.reminders.values())[0].reminderDateTime, expectedActiveUntil);
+  assert.equal(paid.paymentMonths[previousKey].status, PAYMENT_STATUS.UNPAID);
+  assert.equal(paid.hotspotReactivationAt, null);
+  assert.equal(paid.hotspotReactivationEnabled, false);
+  assert.equal(paid.serviceActiveUntil, undefined);
+  assert.equal(manager.buildDebtInfo(contact).debtCount, 1);
 });
 
 test("reset pembayaran bulanan juga menyegarkan pesan reminder aktif", async () => {
