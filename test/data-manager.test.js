@@ -805,6 +805,65 @@ test("perubahan pelanggan menjadi sekali berlangganan menghapus reminder aktif",
   assert.equal(reminderSaves, 1);
 });
 
+test("konversi pelanggan sekali ke bulanan memulai tagihan baru tanpa mewarisi tunggakan lama", async () => {
+  const now = new Date();
+  const current = getBillingPeriodParts(now, "Asia/Jakarta");
+  const previous = getPreviousBillingPeriod(current.year, current.month);
+  const older = getPreviousBillingPeriod(previous.year, previous.month);
+  const currentKey = makeBillingPeriodKey(current.year, current.month);
+  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
+  const olderKey = makeBillingPeriodKey(older.year, older.month);
+  const contact = {
+    id: "contact-one-time-to-recurring",
+    name: "Pelanggan Konversi",
+    phoneNumber: "6281234567892",
+    createdAt: `${olderKey}-01T00:00:00.000Z`,
+    subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
+    monthlyPaymentAmount: 75_000,
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentDate: `${olderKey}-01T00:00:00.000Z`,
+    paymentType: PAYMENT_TYPES.FULL_PAID,
+    paymentMonths: {
+      [olderKey]: { status: PAYMENT_STATUS.PAID, paidAmount: 75_000 },
+      [previousKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
+    },
+    hotspotReactivationEnabled: false,
+    hotspotReactivationAt: null,
+  };
+  const manager = createManager(contact);
+
+  const converted = await manager.updateContact(contact.id, {
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+  });
+
+  assert.equal(converted.subscriptionType, SUBSCRIPTION_TYPES.RECURRING);
+  assert.equal(converted.paymentStatus, PAYMENT_STATUS.UNPAID);
+  assert.equal(converted.paymentMonths[currentKey].status, PAYMENT_STATUS.UNPAID);
+  assert.equal(converted.paymentMonths[currentKey].paidAmount, 0);
+  assert.equal(converted.hotspotReactivationAt, null);
+  assert.equal(converted.hotspotReactivationEnabled, false);
+  assert.equal(manager.buildDebtInfo(contact).debtCount, 0);
+  assert.equal(
+    getBillingPeriodParts(new Date(converted.recurringBillingStartedAt), "Asia/Jakarta").month,
+    current.month
+  );
+
+  const paid = await manager.updatePaymentStatus(
+    contact.id,
+    PAYMENT_STATUS.PAID,
+    PAYMENT_TYPES.CURRENT_ONLY
+  );
+  const expectedActiveUntil = addMonthsSafely(paid.serviceActiveFrom, 1, "Asia/Jakarta").toISOString();
+
+  assert.equal(paid.paymentMonths[currentKey].status, PAYMENT_STATUS.PAID);
+  assert.equal(paid.paymentMonths[currentKey].paidAmount, 75_000);
+  assert.equal(paid.hotspotReactivationAt, expectedActiveUntil);
+  assert.equal(paid.hotspotReactivationEnabled, true);
+  assert.equal(paid.serviceActiveUntil, expectedActiveUntil);
+  assert.equal(manager.buildDebtInfo(contact).debtCount, 0);
+  assert.equal(Array.from(manager.reminders.values())[0].reminderDateTime, expectedActiveUntil);
+});
+
 test("reset pembayaran bulanan juga menyegarkan pesan reminder aktif", async () => {
   const contact = {
     id: "contact-monthly-reset",

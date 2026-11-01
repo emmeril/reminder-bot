@@ -164,7 +164,13 @@ function addBillingMonths(period, monthsToAdd) {
 }
 
 function getContactBillingStartPeriod(contact, timeZone = "Asia/Jakarta") {
-  const createdAt = contact.createdAt ? new Date(contact.createdAt) : null;
+  const recurringStartedAt = normalizeSubscriptionType(contact?.subscriptionType) === SUBSCRIPTION_TYPES.RECURRING
+    && contact?.recurringBillingStartedAt
+    ? new Date(contact.recurringBillingStartedAt)
+    : null;
+  const createdAt = recurringStartedAt && !Number.isNaN(recurringStartedAt.getTime())
+    ? recurringStartedAt
+    : (contact.createdAt ? new Date(contact.createdAt) : null);
   if (!createdAt || Number.isNaN(createdAt.getTime())) {
     return BILLING_START_PERIOD;
   }
@@ -1583,6 +1589,7 @@ class DataManager {
         false
       );
       contact.subscriptionType = normalizeSubscriptionType(contact.subscriptionType);
+      contact.recurringBillingStartedAt = this.normalizeOptionalDate(contact.recurringBillingStartedAt);
       contact.subscriptionChangedByArrears = parseBoolean(
         contact.subscriptionChangedByArrears,
         false
@@ -2433,6 +2440,47 @@ class DataManager {
       hotspotReactivationEnabled: enabled,
       hotspotReactivationAt: reactivationAt,
     };
+  }
+
+  applySubscriptionTypeTransition(contact, previousType, nextType, changedAt = new Date()) {
+    const previous = normalizeSubscriptionType(previousType);
+    const next = normalizeSubscriptionType(nextType, previous);
+    if (previous === next) {
+      return { changed: false, startedRecurring: false };
+    }
+
+    const requestedAt = changedAt instanceof Date ? changedAt : new Date(changedAt);
+    const transitionAt = Number.isNaN(requestedAt.getTime()) ? new Date() : requestedAt;
+    contact.subscriptionChangedByArrears = false;
+    contact.arrearsSubscriptionDebtPeriods = [];
+    contact.billingPausedForArrears = false;
+    contact.billingPausedAfterPeriod = null;
+    contact.hotspotSuspendedForArrears = false;
+    contact.hotspotManualActivationWithArrears = false;
+
+    if (next !== SUBSCRIPTION_TYPES.RECURRING) {
+      contact.recurringBillingStartedAt = null;
+      return { changed: true, startedRecurring: false };
+    }
+
+    const transitionIso = transitionAt.toISOString();
+    const currentKey = getBillingPeriodKey(transitionAt, this.getTimezone());
+    if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") {
+      contact.paymentMonths = {};
+    }
+    contact.recurringBillingStartedAt = transitionIso;
+    contact.paymentMonths[currentKey] = {
+      status: PAYMENT_STATUS.UNPAID,
+      paidDate: null,
+      paymentType: null,
+      paidAmount: 0,
+    };
+    contact.paymentStatus = PAYMENT_STATUS.UNPAID;
+    contact.paymentDate = null;
+    contact.paymentType = null;
+    contact.hotspotReactivationEnabled = false;
+    contact.hotspotReactivationAt = null;
+    return { changed: true, startedRecurring: true, currentKey };
   }
 
   async saveAll() {
@@ -3674,6 +3722,7 @@ class DataManager {
         monthlyPaymentAmount: sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000),
         monthlyPaymentAmountCustomized: payload.monthlyPaymentAmount !== undefined,
         subscriptionType,
+        recurringBillingStartedAt: subscriptionType === SUBSCRIPTION_TYPES.RECURRING ? now : null,
         subscriptionChangedByArrears: false,
         arrearsSubscriptionDebtPeriods: [],
         billingPausedForArrears: false,
@@ -3780,6 +3829,9 @@ class DataManager {
           monthlyPaymentAmount: sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000),
           monthlyPaymentAmountCustomized: payload.monthlyPaymentAmount !== undefined,
           subscriptionType: normalizeSubscriptionType(payload.subscriptionType),
+          recurringBillingStartedAt: normalizeSubscriptionType(payload.subscriptionType) === SUBSCRIPTION_TYPES.RECURRING
+            ? now
+            : null,
           subscriptionChangedByArrears: false,
           arrearsSubscriptionDebtPeriods: [],
           billingPausedForArrears: false,
@@ -3815,14 +3867,6 @@ class DataManager {
         contact.name = name;
         const previousSubscriptionType = contact.subscriptionType;
         contact.subscriptionType = normalizeSubscriptionType(payload.subscriptionType, previousSubscriptionType);
-        if (payload.subscriptionType !== undefined && contact.subscriptionType !== previousSubscriptionType) {
-          contact.subscriptionChangedByArrears = false;
-          contact.arrearsSubscriptionDebtPeriods = [];
-          contact.billingPausedForArrears = false;
-          contact.billingPausedAfterPeriod = null;
-          contact.hotspotSuspendedForArrears = false;
-          contact.hotspotManualActivationWithArrears = false;
-        }
         if (!isRecurringSubscription(contact)) {
           remindersRemoved = this.removeRemindersForContact(contact.id);
         }
@@ -3837,7 +3881,15 @@ class DataManager {
           contact.monthlyPaymentAmountCustomized = true;
         }
         Object.assign(contact, hotspotFields);
-        if (!contact.hotspotReactivationAt) {
+        const subscriptionTransition = payload.subscriptionType !== undefined
+          ? this.applySubscriptionTypeTransition(
+              contact,
+              previousSubscriptionType,
+              contact.subscriptionType,
+              new Date(now)
+            )
+          : { changed: false, startedRecurring: false };
+        if (!subscriptionTransition.startedRecurring && !contact.hotspotReactivationAt) {
           contact.hotspotReactivationAt = this.getNextServiceScheduleFromRegistration(contact);
           contact.hotspotReactivationEnabled = isRecurringSubscription(contact);
         }
@@ -4039,21 +4091,16 @@ class DataManager {
         || previousHotspot.password !== nextPassword
         || (phoneChanged && Boolean(previousHotspot.username || nextUsername));
       const unlinked = !nextUsername && !nextProfile;
-      const subscriptionTypeChanged = nextSubscriptionType !== contact.subscriptionType;
+      const previousSubscriptionType = contact.subscriptionType;
+      const subscriptionTypeChanged = nextSubscriptionType !== previousSubscriptionType;
       let hotspotSyncRequired = false;
+      const transitionAt = new Date();
+      const now = transitionAt.toISOString();
 
       contact.name = nextName;
       contact.phoneNumber = nextPhone;
       contact.linkedApHost = nextLinkedApHost;
       contact.subscriptionType = nextSubscriptionType;
-      if (payload.subscriptionType !== undefined && subscriptionTypeChanged) {
-        contact.subscriptionChangedByArrears = false;
-        contact.arrearsSubscriptionDebtPeriods = [];
-        contact.billingPausedForArrears = false;
-        contact.billingPausedAfterPeriod = null;
-        contact.hotspotSuspendedForArrears = false;
-        contact.hotspotManualActivationWithArrears = false;
-      }
       if (!isRecurringSubscription(contact)) this.removeRemindersForContact(contact.id);
       if (payload.monthlyPaymentAmount !== undefined) {
         contact.monthlyPaymentAmount = sanitizePositiveInteger(
@@ -4065,8 +4112,15 @@ class DataManager {
         contact.monthlyPaymentAmountCustomized = true;
       }
       Object.assign(contact, hotspotFields);
+      if (payload.subscriptionType !== undefined && subscriptionTypeChanged) {
+        this.applySubscriptionTypeTransition(
+          contact,
+          previousSubscriptionType,
+          nextSubscriptionType,
+          transitionAt
+        );
+      }
       if (this.applyProfileMonthlyAmount(contact)) this.updateContactReminderMessages(contact);
-      const now = new Date().toISOString();
 
       if (unlinked) {
         contact.mikrotikPassword = "";
