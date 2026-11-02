@@ -565,6 +565,11 @@ test("sidebar dan panel laporan pendapatan tersedia dengan filter serta ekspor",
   assert.match(script, /key: "revenue"[^\n]*label: "Laporan Pendapatan"/);
   assert.match(html, /activeMenu === 'revenue'/);
   assert.match(html, /Pendapatan tercatat/);
+  assert.match(html, /Total pendapatan/);
+  assert.match(html, /Pembayaran tercatat/);
+  assert.match(html, /Pembayaran lunas/);
+  assert.doesNotMatch(html, /<span class="metric-label">Pembayaran sebagian<\/span>/);
+  assert.doesNotMatch(html, /<span class="metric-label">Rata-rata pembayaran<\/span>/);
   assert.match(html, /x-model="revenuePeriod"/);
   assert.match(html, /exportRevenueReport\(\)/);
   assert.match(html, /Belum ada pendapatan tercatat pada periode ini/);
