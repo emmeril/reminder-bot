@@ -3152,18 +3152,38 @@ class DataManager {
 
   async repairMissingRecurringReminders() {
     let created = 0;
+    let updated = 0;
     let removed = 0;
     for (const contact of this.contacts.values()) {
       if (this.isReminderSuppressedForArrears(contact)) {
         removed += this.removeRemindersForContact(contact.id);
         continue;
       }
-      if (this.ensureRecurringReminder(contact).created) created += 1;
+
+      const existing = Array.from(this.reminders.values()).find((reminder) => {
+        const resolvedContact = this.getResolvedReminderContact(reminder);
+        return String(resolvedContact?.id || reminder.contactId || "") === String(contact.id);
+      });
+      if (!existing) {
+        if (this.ensureRecurringReminder(contact).created) created += 1;
+        continue;
+      }
+
+      const serviceSchedule = this.normalizeOptionalDate(contact.hotspotReactivationAt);
+      const reminderSchedule = this.normalizeOptionalDate(existing.reminderDateTime);
+      const isTemporaryActivePeriod = existing.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY;
+      if (isRecurringSubscription(contact)
+        && !isTemporaryActivePeriod
+        && serviceSchedule
+        && reminderSchedule !== serviceSchedule) {
+        updated += this.syncRecurringReminderSchedule(contact);
+      }
     }
-    if (created > 0 || removed > 0) {
+    if (created > 0 || updated > 0 || removed > 0) {
       await this.saveReminders();
       this.activityLog.push("info", "storage", "Jadwal reminder pelanggan bulanan diselaraskan", {
         created,
+        updated,
         removed,
       });
     }
@@ -4215,7 +4235,9 @@ class DataManager {
       }
       contact.updatedAt = now;
 
-      this.ensureRecurringReminder(contact);
+      if (isRecurringSubscription(contact)) {
+        this.syncRecurringReminderSchedule(contact);
+      }
 
       for (const reminder of this.reminders.values()) {
         if (String(reminder.contactId) === String(id) || reminder.phoneNumber === previousPhone) {

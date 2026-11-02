@@ -196,6 +196,74 @@ test("reminder bulanan yang hilang dibuat ulang dari jadwal layanan", async () =
   assert.equal(saves, 1);
 });
 
+test("reminder lama diselaraskan dengan jadwal layanan saat startup", async () => {
+  const serviceSchedule = "2026-12-02T10:54:00.000Z";
+  const contact = {
+    id: "contact-stale-reminder",
+    name: "Pelanggan Jadwal Berubah",
+    phoneNumber: "6281234567803",
+    createdAt: new Date().toISOString(),
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    monthlyPaymentAmount: 75_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+    hotspotReactivationAt: serviceSchedule,
+  };
+  const manager = createManager(contact);
+  let saves = 0;
+  manager.saveReminders = async () => { saves += 1; };
+  manager.reminders.set("stale-reminder", {
+    id: "stale-reminder",
+    contactId: contact.id,
+    phoneNumber: contact.phoneNumber,
+    reminderDateTime: "2026-12-01T10:54:00.000Z",
+    reminderKind: REMINDER_KINDS.BILLING,
+    message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+    messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+    templateName: "Penagihan.txt",
+  });
+
+  await manager.repairMissingRecurringReminders();
+  assert.equal(manager.getReminder("stale-reminder").reminderDateTime, serviceSchedule);
+  assert.equal(manager.getReminder("stale-reminder").reminderKind, REMINDER_KINDS.BILLING);
+  assert.equal(saves, 1);
+  assert.equal(await manager.repairMissingRecurringReminders(), 0);
+  assert.equal(saves, 1);
+});
+
+test("reminder masa aktif sementara tidak ditimpa saat audit startup", async () => {
+  const contact = {
+    id: "contact-active-period-reminder",
+    name: "Pelanggan Masa Aktif",
+    phoneNumber: "6281234567804",
+    createdAt: new Date().toISOString(),
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    monthlyPaymentAmount: 75_000,
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentMonths: {},
+    hotspotReactivationAt: "2026-12-10T01:00:00.000Z",
+  };
+  const manager = createManager(contact);
+  manager.reminders.set("active-period-reminder", {
+    id: "active-period-reminder",
+    contactId: contact.id,
+    phoneNumber: contact.phoneNumber,
+    reminderDateTime: "2026-12-07T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    activePeriodUntil: contact.hotspotReactivationAt,
+  });
+
+  assert.equal(await manager.repairMissingRecurringReminders(), 0);
+  assert.equal(
+    manager.getReminder("active-period-reminder").reminderDateTime,
+    "2026-12-07T01:00:00.000Z"
+  );
+  assert.equal(
+    manager.getReminder("active-period-reminder").reminderKind,
+    REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY
+  );
+});
+
 test("reminder jatuh tempo berlanjut ke pengingat masa tenggang H-1", async () => {
   const manager = createManager({
     id: "contact-grace-reminder",
@@ -2732,6 +2800,60 @@ test("edit data umum tidak memicu sinkronisasi ulang hotspot", async () => {
   assert.equal(result.hotspotSyncRequired, false);
   assert.equal(result.contact.hotspotProvisioningStatus, "ACTIVE");
   assert.equal(result.contact.hotspotProvisioningPrevious, undefined);
+});
+
+test("edit jadwal layanan langsung menyinkronkan reminder tagihan", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+  manager.saveCustomerAccounts = async () => {};
+  manager.saveReminders = async () => {};
+  const oldSchedule = "2026-12-01T10:54:00.000Z";
+  const newSchedule = "2026-12-02T10:54:00.000Z";
+  const contact = {
+    id: "contact-edit-service-schedule",
+    name: "Pelanggan Jadwal",
+    phoneNumber: "6281234567821",
+    createdAt: new Date().toISOString(),
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    mikrotikUsername: "pelanggan_jadwal",
+    mikrotikProfile: "30H-2user",
+    mikrotikPassword: "67821",
+    hotspotProvisioningStatus: "ACTIVE",
+    hotspotProvisioningOperation: "NONE",
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: oldSchedule,
+    monthlyPaymentAmount: 75_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  };
+  manager.contacts.set(contact.id, contact);
+  manager.reminders.set("service-schedule-reminder", {
+    id: "service-schedule-reminder",
+    contactId: contact.id,
+    contactName: contact.name,
+    phoneNumber: contact.phoneNumber,
+    reminderDateTime: oldSchedule,
+    reminderKind: REMINDER_KINDS.BILLING,
+    message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+    messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+    templateName: "Penagihan.txt",
+  });
+
+  const result = await manager.prepareContactUpdate(contact.id, {
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: newSchedule,
+  });
+
+  assert.equal(result.hotspotSyncRequired, false);
+  assert.equal(result.contact.hotspotReactivationAt, newSchedule);
+  assert.equal(
+    manager.getReminder("service-schedule-reminder").reminderDateTime,
+    newSchedule
+  );
+  assert.equal(manager.buildDueDateInfo(contact).dueDate, newSchedule);
 });
 
 test("mengosongkan user dan profile hanya melepas hubungan hotspot dari aplikasi", async () => {
