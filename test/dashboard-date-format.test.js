@@ -754,8 +754,11 @@ test("jadwal reminder memakai waktu kirim H-1 dan tetap menampilkan jatuh tempo"
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const script = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
 
-  assert.match(html, /formatDateTime\(reminder\.deliveryDateTime \|\| reminder\.reminderDateTime\)/);
-  assert.match(html, /'Jatuh tempo: ' \+ formatDateTime\(reminder\.reminderDateTime\)/);
+  assert.match(html, /Waktu pengiriman/);
+  assert.match(html, /'Pengingat masa tenggang: '/);
+  assert.match(html, /'Percobaan ulang: '/);
+  assert.match(html, /'Waktu reminder: '/);
+  assert.match(html, /'Jatuh tempo tagihan: ' \+ formatDateTime\(reminder\.reminderDateTime\)/);
   assert.match(script, /const deliveryDateTime = reminder\.deliveryDateTime \|\| reminder\.reminderDateTime;/);
   assert.match(script, /this\.isToday\(deliveryDateTime\)/);
 });

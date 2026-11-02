@@ -745,7 +745,7 @@
                   <tr>
                     <th class="w-[22%] px-5 py-4"><i class="fa-solid fa-user mr-2 text-moss"></i>Tujuan</th>
                     <th class="w-[14%] px-5 py-4"><i class="fa-solid fa-repeat mr-2 text-moss"></i>Langganan</th>
-                    <th class="w-[18%] px-5 py-4"><i class="fa-solid fa-clock mr-2 text-clay"></i>Jadwal</th>
+                    <th class="w-[18%] px-5 py-4"><i class="fa-solid fa-clock mr-2 text-clay"></i>Waktu pengiriman</th>
                     <th class="w-[14%] px-5 py-4"><i class="fa-solid fa-file-lines mr-2 text-moss"></i>Template</th>
                     <th class="px-5 py-4"><i class="fa-solid fa-message mr-2 text-ink/45"></i>Pesan</th>
                     <th class="w-[14%] px-5 py-4"><i class="fa-solid fa-bolt mr-2 text-ink/45"></i>Aksi</th>
@@ -771,15 +771,15 @@
                       <td class="px-5 py-4" data-label="Langganan">
                         <span class="inline-flex w-fit rounded-full px-2.5 py-1 text-[10px] font-bold" :class="String(reminder.subscriptionType || 'RECURRING').toUpperCase() === 'ONE_TIME' ? 'bg-clay/10 text-clay' : 'bg-moss/10 text-moss'" x-text="getSubscriptionTypeLabel(reminder)"></span>
                       </td>
-                      <td class="px-5 py-4 text-ink/65" data-label="Jadwal">
+                      <td class="px-5 py-4 text-ink/65" data-label="Waktu pengiriman">
                         <span class="inline-flex items-center gap-2 whitespace-nowrap font-semibold text-ink/70">
                           <i class="fa-regular fa-calendar text-ink/35"></i>
-                          <span x-text="formatDateTime(reminder.deliveryDateTime || reminder.reminderDateTime)"></span>
+                          <span x-text="(reminder.deliveryScheduleType === 'GRACE_PERIOD' ? 'Pengingat masa tenggang: ' : (reminder.deliveryScheduleType === 'RETRY' ? 'Percobaan ulang: ' : 'Waktu reminder: ')) + formatDateTime(reminder.deliveryDateTime || reminder.reminderDateTime)"></span>
                         </span>
                         <div
                           x-show="reminder.deliveryDateTime && reminder.deliveryDateTime !== reminder.reminderDateTime"
                           class="mt-1 text-xs text-ink/45"
-                          x-text="'Jatuh tempo: ' + formatDateTime(reminder.reminderDateTime)"
+                          x-text="'Jatuh tempo tagihan: ' + formatDateTime(reminder.reminderDateTime)"
                         ></div>
                       </td>
                       <td class="px-5 py-4" data-label="Template">

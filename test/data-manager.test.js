@@ -215,6 +215,15 @@ test("jadwal reminder tagihan menampilkan waktu kirim H-1 tanpa mengubah jatuh t
   const reminder = manager.getSortedReminders()[0];
   assert.equal(reminder.reminderDateTime, "2026-11-02T01:00:00.000Z");
   assert.equal(reminder.deliveryDateTime, "2026-11-04T01:00:00.000Z");
+  assert.equal(reminder.deliveryScheduleType, "GRACE_PERIOD");
+  assert.equal(manager.hydrateReminder({
+    reminderDateTime: "2026-11-02T01:00:00.000Z",
+  }).deliveryScheduleType, "STANDARD");
+  assert.equal(manager.hydrateReminder({
+    reminderDateTime: "2026-11-02T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.BILLING,
+    nextDeliveryAttemptAt: "2026-11-04T02:00:00.000Z",
+  }).deliveryScheduleType, "RETRY");
   assert.equal(await manager.claimDueReminder(reminder.id, new Date("2026-11-04T00:59:59.000Z")), null);
   assert.equal(
     (await manager.claimDueReminder(reminder.id, new Date("2026-11-04T01:00:00.000Z"))).id,

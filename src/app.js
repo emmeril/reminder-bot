@@ -58,6 +58,7 @@ const {
   getBillingPeriodParts,
   getPreviousBillingPeriod,
   getReminderDeliveryDate,
+  isAutomaticBillingReminder,
   isValidPhoneNumber,
   isValidTimeZone,
   makeBillingPeriodKey,
@@ -2640,6 +2641,16 @@ class DataManager {
   hydrateReminder(reminder) {
     const contact = this.getResolvedReminderContact(reminder);
     const deliveryDate = this.getReminderDeliveryDate(reminder);
+    const retryDate = new Date(reminder.nextDeliveryAttemptAt || "");
+    const graceDays = sanitizePositiveInteger(
+      this.getSettings().hotspotIsolationGraceDays,
+      DEFAULT_SETTINGS.hotspotIsolationGraceDays,
+      0,
+      30
+    );
+    const deliveryScheduleType = !Number.isNaN(retryDate.getTime())
+      ? "RETRY"
+      : (graceDays > 0 && isAutomaticBillingReminder(reminder) ? "GRACE_PERIOD" : "STANDARD");
     return {
       ...reminder,
       contactId: reminder.contactId || contact?.id || null,
@@ -2648,6 +2659,7 @@ class DataManager {
       subscriptionType: normalizeSubscriptionType(contact?.subscriptionType || reminder.subscriptionType),
       paymentAmount: Math.max(0, Number(reminder.paymentAmount ?? contact?.monthlyPaymentAmount) || 0),
       deliveryDateTime: Number.isNaN(deliveryDate.getTime()) ? reminder.reminderDateTime : deliveryDate.toISOString(),
+      deliveryScheduleType,
     };
   }
 
