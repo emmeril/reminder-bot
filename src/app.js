@@ -2725,7 +2725,7 @@ class DataManager {
     const nextActiveReminder = parsedReminders.find(
       (reminder) => reminder.active && reminder.timestamp >= nowTs
     ) || null;
-    const dueReminder = nextInActivePeriod || latestInActivePeriod || nextActiveReminder;
+    const dueReminder = nextInActivePeriod || nextActiveReminder || latestInActivePeriod;
     const dueDate = dueReminder ? new Date(dueReminder.timestamp).toISOString() : null;
 
     let dueStatus = "NOT_SCHEDULED";
@@ -2847,6 +2847,7 @@ class DataManager {
       previousPaymentStatus: paymentMonths[makeBillingPeriodKey(previous.year, previous.month)]?.status || PAYMENT_STATUS.UNPAID,
       paymentStatus: effectivePaymentStatus,
       currentPaymentStatus: effectivePaymentStatus,
+      currentPaymentType: currentPayment?.paymentType || null,
       subscriptionType: normalizeSubscriptionType(contact.subscriptionType),
       subscriptionActive: !subscriptionEnded && !billingPausedForArrears,
       billingPausedForArrears,

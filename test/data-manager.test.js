@@ -70,6 +70,45 @@ test("jatuh tempo memakai reminder aktif berikutnya dan status pembayaran period
   assert.equal(manager.buildDueDateInfo(contact).dueStatus, "PAID");
 });
 
+test("riwayat reminder lama tidak mengalahkan reminder aktif berikutnya", () => {
+  const now = new Date();
+  const timeZone = "Asia/Jakarta";
+  const current = getBillingPeriodParts(now, timeZone);
+  const currentKey = makeBillingPeriodKey(current.year, current.month);
+  const pastReminder = new Date(now.getTime() - 60_000);
+  const nextReminder = addMonthsSafely(now, 1, timeZone);
+  const contact = {
+    id: "contact-active-due",
+    name: "Pelanggan Jadwal Aktif",
+    phoneNumber: "6281234567809",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {
+      [currentKey]: { status: PAYMENT_STATUS.UNPAID },
+    },
+    hotspotReactivationAt: nextReminder.toISOString(),
+  };
+  const manager = createManager(contact);
+  manager.sentReminders.set("old-sent-reminder", {
+    id: "old-sent-reminder",
+    contactId: contact.id,
+    phoneNumber: contact.phoneNumber,
+    reminderDateTime: pastReminder.toISOString(),
+    sentAt: pastReminder.toISOString(),
+  });
+  manager.reminders.set("next-active-reminder", {
+    id: "next-active-reminder",
+    contactId: contact.id,
+    phoneNumber: contact.phoneNumber,
+    reminderDateTime: nextReminder.toISOString(),
+  });
+
+  assert.deepEqual(manager.buildDueDateInfo(contact), {
+    dueDate: nextReminder.toISOString(),
+    dueStatus: "UPCOMING",
+  });
+});
+
 test("jatuh tempo membedakan jadwal bulanan yang hilang dan pelanggan sekali berlangganan", () => {
   const recurring = createManager({
     id: "contact-needs-schedule",

@@ -937,8 +937,9 @@
 
         getCurrentPaymentLabel(contact) {
           if (contact?.subscriptionActive === false) return "Tidak ada tagihan baru";
-          if (contact?.paymentType) return this.getPaymentTypeLabel(contact.paymentType);
-          return contact?.currentPaymentStatus === "PAID" ? "Lunas" : "Belum Bayar";
+          if (contact?.currentPaymentStatus !== "PAID") return "Belum Bayar";
+          if (contact?.currentPaymentType) return this.getPaymentTypeLabel(contact.currentPaymentType);
+          return "Lunas";
         },
 
         getDebtNote(contact) {

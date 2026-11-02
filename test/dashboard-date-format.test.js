@@ -638,6 +638,24 @@ test("modal aksi tagihan hanya aktif ketika pelanggan memiliki tindakan", () => 
   }), true);
 });
 
+test("status bulan ini tidak memakai jenis pembayaran periode sebelumnya", () => {
+  const app = createDashboardApp();
+
+  assert.equal(app.getCurrentPaymentLabel({
+    currentPaymentStatus: "UNPAID",
+    paymentType: "ARREARS-ONLY",
+  }), "Belum Bayar");
+  assert.equal(app.getCurrentPaymentLabel({
+    currentPaymentStatus: "PAID",
+    currentPaymentType: "CURRENT-ONLY",
+    paymentType: "ARREARS-ONLY",
+  }), "Bulan Ini Saja");
+  assert.equal(app.getCurrentPaymentLabel({
+    currentPaymentStatus: "PAID",
+    currentPaymentType: null,
+  }), "Lunas");
+});
+
 test("modal aksi tagihan memindahkan fokus lalu mengembalikannya saat ditutup", () => {
   let bodyLocked = false;
   let closeFocused = false;
