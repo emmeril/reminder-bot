@@ -22,6 +22,7 @@ test("template reminder dirender dari variabel saat pesan akan dikirim", () => {
     contactName: "Nouval",
     phoneNumber: "6287728972090",
     reminderDateTime: "2026-08-15T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.BILLING,
     message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
     messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   };
@@ -43,11 +44,14 @@ test("template reminder dirender dari variabel saat pesan akan dikirim", () => {
     }),
   };
 
-  const message = new ReminderScheduler({}, dataManager, { push() {} }).buildReminderMessage(reminder);
+  const message = new ReminderScheduler({}, dataManager, { push() {} }).buildReminderMessage(
+    reminder,
+    new Date("2026-08-15T01:00:00.000Z")
+  );
 
-  assert.match(message, /^\*Pengingat Tagihan\*/);
+  assert.match(message, /^\*Pengingat Masa Tenggang\*/);
   assert.match(message, /Yth\. Bapak\/Ibu Nouval,/);
-  assert.match(message, /Tagihan WiFi Anda belum lunas/);
+  assert.match(message, /Tagihan WiFi Anda sudah jatuh tempo dan belum lunas/);
   assert.match(message, /\*Rincian tagihan\*/);
   assert.match(message, /Juli 2026: Rp\s?100\.000/);
   assert.match(message, /Agustus 2026: Rp\s?100\.000/);
@@ -58,6 +62,98 @@ test("template reminder dirender dari variabel saat pesan akan dikirim", () => {
   assert.match(message, /Perpanjangan otomatis: Dijeda sampai tunggakan lunas/);
   assert.match(message, /CS Emmeril Hotspot$/);
   assert.doesNotMatch(message, /{{|}}/);
+});
+
+test("pengingat masa tenggang memakai template yang disimpan di pengaturan", () => {
+  const scheduler = new ReminderScheduler({}, {
+    getSettings: () => ({
+      gracePeriodReminderMessageTemplate: "Halo {{name}}, batas pembayaran {{isolationDate}}. Total {{totalAmount}}.",
+      hotspotIsolationGraceDays: 3,
+    }),
+    getTimezone: () => "Asia/Jakarta",
+    getResolvedReminderContact: () => ({
+      name: "Pelanggan Tenggang",
+      paymentStatus: "UNPAID",
+      currentPaymentStatus: "UNPAID",
+      monthlyPaymentAmount: 75_000,
+    }),
+  }, { push() {} });
+
+  const message = scheduler.buildReminderMessage({
+    reminderDateTime: "2026-11-01T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.BILLING,
+    message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+    messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+  }, new Date("2026-11-01T02:00:00.000Z"));
+
+  assert.match(message, /^Halo Pelanggan Tenggang, batas pembayaran 2026-11-04\. Total Rp\s?75\.000/);
+  assert.doesNotMatch(message, /{{|}}/);
+});
+
+test("template masa tenggang tidak mengganti reminder biasa saat jeda isolir nol", () => {
+  const scheduler = new ReminderScheduler({}, {
+    getSettings: () => ({
+      gracePeriodReminderMessageTemplate: "Masa tenggang sampai {{isolationDate}}.",
+      hotspotIsolationGraceDays: 0,
+    }),
+    getTimezone: () => "Asia/Jakarta",
+    getResolvedReminderContact: () => ({
+      paymentStatus: "UNPAID",
+      currentPaymentStatus: "UNPAID",
+      monthlyPaymentAmount: 100_000,
+    }),
+  }, { push() {} });
+
+  const message = scheduler.buildReminderMessage({
+    reminderDateTime: "2026-08-15T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.BILLING,
+    message: "Pengingat biasa {{totalAmount}}.",
+    messageSource: "Pengingat biasa {{totalAmount}}.",
+  });
+
+  assert.match(message, /^Pengingat biasa Rp\s?100\.000/);
+  assert.doesNotMatch(message, /Masa tenggang sampai/);
+});
+
+test("pengingat tagihan dikirim H-1 sebelum masa tenggang berakhir", () => {
+  const scheduler = new ReminderScheduler({}, {
+    getSettings: () => ({ hotspotIsolationGraceDays: 3 }),
+    getTimezone: () => "Asia/Jakarta",
+  }, { push() {} });
+  const reminder = {
+    reminderDateTime: "2026-11-02T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.BILLING,
+  };
+
+  assert.equal(
+    new Date(scheduler.getDueTime(reminder)).toISOString(),
+    "2026-11-04T01:00:00.000Z"
+  );
+});
+
+test("reminder biasa, tenggang nol, dan jadwal percobaan ulang tidak ikut digeser", () => {
+  const settings = { hotspotIsolationGraceDays: 3 };
+  const scheduler = new ReminderScheduler({}, {
+    getSettings: () => settings,
+    getTimezone: () => "Asia/Jakarta",
+  }, { push() {} });
+  const dueAt = "2026-11-02T01:00:00.000Z";
+
+  assert.equal(scheduler.getDueTime({ reminderDateTime: dueAt }), new Date(dueAt).getTime());
+
+  settings.hotspotIsolationGraceDays = 0;
+  assert.equal(scheduler.getDueTime({
+    reminderDateTime: dueAt,
+    reminderKind: REMINDER_KINDS.BILLING,
+  }), new Date(dueAt).getTime());
+
+  const retryAt = "2026-11-02T02:15:00.000Z";
+  settings.hotspotIsolationGraceDays = 3;
+  assert.equal(scheduler.getDueTime({
+    reminderDateTime: dueAt,
+    reminderKind: REMINDER_KINDS.BILLING,
+    nextDeliveryAttemptAt: retryAt,
+  }), new Date(retryAt).getTime());
 });
 
 test("reminder menampilkan nominal setiap periode pada tagihan akumulasi", () => {

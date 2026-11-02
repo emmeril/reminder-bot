@@ -195,6 +195,33 @@ test("reminder bulanan yang hilang dibuat ulang dari jadwal layanan", async () =
   assert.equal(saves, 1);
 });
 
+test("jadwal reminder tagihan menampilkan waktu kirim H-1 tanpa mengubah jatuh tempo", async () => {
+  const manager = createManager({
+    id: "contact-grace-reminder",
+    name: "Pelanggan Tenggang",
+    phoneNumber: "6281234567804",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+  });
+  manager.settings.hotspotIsolationGraceDays = 3;
+  manager.settings.timezone = "Asia/Jakarta";
+  manager.reminders.set("grace-reminder", {
+    id: "grace-reminder",
+    contactId: "contact-grace-reminder",
+    reminderDateTime: "2026-11-02T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.BILLING,
+    templateName: "Penagihan.txt",
+  });
+
+  const reminder = manager.getSortedReminders()[0];
+  assert.equal(reminder.reminderDateTime, "2026-11-02T01:00:00.000Z");
+  assert.equal(reminder.deliveryDateTime, "2026-11-04T01:00:00.000Z");
+  assert.equal(await manager.claimDueReminder(reminder.id, new Date("2026-11-04T00:59:59.000Z")), null);
+  assert.equal(
+    (await manager.claimDueReminder(reminder.id, new Date("2026-11-04T01:00:00.000Z"))).id,
+    reminder.id
+  );
+});
+
 test("jadwal reminder dihapus dan tidak dapat dibuat saat tunggakan mencapai dua bulan", async () => {
   const current = getBillingPeriodParts(new Date(), "Asia/Jakarta");
   const previous = getPreviousBillingPeriod(current.year, current.month);
@@ -1595,6 +1622,20 @@ test("menyimpan template pengingat tagihan dari menu pengaturan", async () => {
   assert.equal(
     settings.billingReminderMessageTemplate,
     "Halo {{name}}, total tagihan {{totalAmount}}."
+  );
+});
+
+test("menyimpan template pengingat masa tenggang", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.saveSettings = async () => {};
+
+  const settings = await manager.updateSettings({
+    gracePeriodReminderMessageTemplate: "Halo {{name}}, masa tenggang berakhir {{isolationDate}}.",
+  });
+
+  assert.equal(
+    settings.gracePeriodReminderMessageTemplate,
+    "Halo {{name}}, masa tenggang berakhir {{isolationDate}}."
   );
 });
 

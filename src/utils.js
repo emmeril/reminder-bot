@@ -511,6 +511,22 @@ function addDaysSafely(dateValue, daysToAdd, timeZone = "Asia/Jakarta") {
   }, timeZone) || new Date(NaN);
 }
 
+function isAutomaticBillingReminder(reminder) {
+  return String(reminder?.reminderKind || "").trim().toUpperCase() === "BILLING"
+    || String(reminder?.templateName || "").trim().toLowerCase() === "penagihan.txt";
+}
+
+function getReminderDeliveryDate(reminder, graceDays = 0, timeZone = "Asia/Jakarta") {
+  const retryDate = new Date(reminder?.nextDeliveryAttemptAt || "");
+  if (!Number.isNaN(retryDate.getTime())) return retryDate;
+
+  const dueDate = new Date(reminder?.reminderDateTime || "");
+  if (Number.isNaN(dueDate.getTime()) || !isAutomaticBillingReminder(reminder)) return dueDate;
+
+  const normalizedGraceDays = sanitizePositiveInteger(graceDays, 0, 0, 30);
+  return addDaysSafely(dueDate, Math.max(0, normalizedGraceDays - 1), timeZone);
+}
+
 module.exports = {
   addDaysSafely,
   addMonthsSafely,
@@ -528,8 +544,10 @@ module.exports = {
   getBillingPeriodParts,
   getDateTimePartsInTimezone,
   getPreviousBillingPeriod,
+  getReminderDeliveryDate,
   isValidPhoneNumber,
   isValidTimeZone,
+  isAutomaticBillingReminder,
   makeBillingPeriodKey,
   normalizeNetworkHost,
   normalizePhoneNumber,

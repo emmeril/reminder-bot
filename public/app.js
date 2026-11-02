@@ -205,6 +205,7 @@
             paymentMessageTemplateActivePeriod: "",
             paymentHotspotAccountMessageTemplate: "",
             activePeriodReminderMessageTemplate: "",
+            gracePeriodReminderMessageTemplate: "",
             billingReminderMessageTemplate: "",
             timezone: "",
             hotspotIsolationGraceDays: 0,
@@ -1340,12 +1341,13 @@
         get filteredReminders() {
           const now = Date.now();
           return this.reminders.filter((reminder) => {
-            const reminderTime = new Date(reminder.reminderDateTime).getTime();
+            const deliveryDateTime = reminder.deliveryDateTime || reminder.reminderDateTime;
+            const reminderTime = new Date(deliveryDateTime).getTime();
             const schedule = this.filters.reminders.schedule;
-            if (schedule === "TODAY" && !this.isToday(reminder.reminderDateTime)) return false;
+            if (schedule === "TODAY" && !this.isToday(deliveryDateTime)) return false;
             if (schedule === "UPCOMING" && (!Number.isFinite(reminderTime) || reminderTime < now)) return false;
             if (schedule === "OVERDUE" && (!Number.isFinite(reminderTime) || reminderTime >= now)) return false;
-            return this.searchMatches(reminder, ["contactName", "phoneNumber", "templateName", "message", "reminderDateTime"], this.filters.reminders.search);
+            return this.searchMatches(reminder, ["contactName", "phoneNumber", "templateName", "message", "reminderDateTime", "deliveryDateTime"], this.filters.reminders.search);
           });
         },
 
@@ -1479,6 +1481,7 @@
                 paymentMessageTemplateActivePeriod: data.settings.paymentMessageTemplateActivePeriod || "",
                 paymentHotspotAccountMessageTemplate: data.settings.paymentHotspotAccountMessageTemplate || "",
                 activePeriodReminderMessageTemplate: data.settings.activePeriodReminderMessageTemplate || "",
+                gracePeriodReminderMessageTemplate: data.settings.gracePeriodReminderMessageTemplate || "",
                 billingReminderMessageTemplate: data.settings.billingReminderMessageTemplate || "",
                 timezone: data.settings.timezone || "",
                 hotspotIsolationGraceDays: Number(data.settings.hotspotIsolationGraceDays ?? 0),

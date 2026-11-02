@@ -772,10 +772,15 @@
                         <span class="inline-flex w-fit rounded-full px-2.5 py-1 text-[10px] font-bold" :class="String(reminder.subscriptionType || 'RECURRING').toUpperCase() === 'ONE_TIME' ? 'bg-clay/10 text-clay' : 'bg-moss/10 text-moss'" x-text="getSubscriptionTypeLabel(reminder)"></span>
                       </td>
                       <td class="px-5 py-4 text-ink/65" data-label="Jadwal">
-                        <span class="inline-flex items-center gap-2 whitespace-nowrap">
+                        <span class="inline-flex items-center gap-2 whitespace-nowrap font-semibold text-ink/70">
                           <i class="fa-regular fa-calendar text-ink/35"></i>
-                          <span x-text="formatDateTime(reminder.reminderDateTime)"></span>
+                          <span x-text="formatDateTime(reminder.deliveryDateTime || reminder.reminderDateTime)"></span>
                         </span>
+                        <div
+                          x-show="reminder.deliveryDateTime && reminder.deliveryDateTime !== reminder.reminderDateTime"
+                          class="mt-1 text-xs text-ink/45"
+                          x-text="'Jatuh tempo: ' + formatDateTime(reminder.reminderDateTime)"
+                        ></div>
                       </td>
                       <td class="px-5 py-4" data-label="Template">
                         <span class="inline-flex max-w-full items-center rounded-full bg-moss/10 px-3 py-1 text-xs font-bold text-moss ring-1 ring-moss/10">
@@ -992,6 +997,15 @@
                   </span>
                   <textarea x-model="forms.settings.billingReminderMessageTemplate" placeholder="Tulis pesan pengingat tagihan dan tunggakan..."></textarea>
                   <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{phoneNumber}}</code><code>{{billingPeriod}}</code><code>{{billingDetails}}</code><code>{{monthlyAmount}}</code><code>{{currentAmount}}</code><code>{{debtCount}}</code><code>{{debtAmount}}</code><code>{{debtPeriods}}</code><code>{{totalAmount}}</code><code>{{dueDate}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
+                </label>
+                <label class="notification-template-card tone-amber">
+                  <span class="notification-template-header">
+                    <span class="notification-template-icon"><i class="fa-solid fa-hourglass-half"></i></span>
+                    <span class="notification-template-copy"><strong>Pengingat masa tenggang</strong><small>Dikirim otomatis H-1 sebelum masa tenggang berakhir.</small></span>
+                    <span class="notification-template-badge">Reminder otomatis</span>
+                  </span>
+                  <textarea x-model="forms.settings.gracePeriodReminderMessageTemplate" placeholder="Tulis pesan pengingat selama masa tenggang..."></textarea>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{phoneNumber}}</code><code>{{date}}</code><code>{{dateTime}}</code><code>{{graceDays}}</code><code>{{isolationDate}}</code><code>{{renewalStatusInfo}}</code><code>{{billingPeriod}}</code><code>{{billingDetails}}</code><code>{{monthlyAmount}}</code><code>{{currentAmount}}</code><code>{{debtCount}}</code><code>{{debtAmount}}</code><code>{{debtPeriods}}</code><code>{{totalAmount}}</code><code>{{totalPeriods}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-amber">
                   <span class="notification-template-header">

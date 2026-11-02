@@ -14,6 +14,7 @@ const {
   formatDateTime,
   getBillingPeriodParts,
   getDateTimePartsInTimezone,
+  getReminderDeliveryDate,
   isValidTimeZone,
   makeBillingPeriodKey,
   normalizeNetworkHost,
@@ -154,7 +155,7 @@ class ReminderScheduler {
     }).format(Math.max(0, Number(value) || 0));
   }
 
-  buildReminderMessage(reminder) {
+  buildReminderMessage(reminder, now = new Date()) {
     const billing = this.getReminderBilling(reminder);
     const settings = typeof this.dataManager.getSettings === "function"
       ? this.dataManager.getSettings()
@@ -217,7 +218,22 @@ class ReminderScheduler {
       companyNameUpper: companyName.toUpperCase(),
       supportSignature,
     };
-    let message = String(reminder.messageSource || reminder.message || "");
+    const isAutomaticBillingReminder = reminder.reminderKind === REMINDER_KINDS.BILLING
+      || String(reminder.templateName || "").toLowerCase() === "penagihan.txt";
+    const gracePeriodTemplate = String(
+      settings.gracePeriodReminderMessageTemplate
+        || DEFAULT_SETTINGS.gracePeriodReminderMessageTemplate
+        || ""
+    ).trim();
+    const currentTime = new Date(now).getTime();
+    const gracePeriodEndsAt = isolationDate.getTime();
+    const isWithinGracePeriod = graceDays > 0
+      && Number.isFinite(currentTime)
+      && currentTime < gracePeriodEndsAt;
+    const sourceMessage = isWithinGracePeriod && isAutomaticBillingReminder && gracePeriodTemplate
+      ? gracePeriodTemplate
+      : reminder.messageSource || reminder.message || "";
+    let message = String(sourceMessage);
     let usedBillingDetailsPlaceholder = false;
     let usedDetailedAmountPlaceholder = false;
     const detailedAmountVariables = new Set([
@@ -260,7 +276,20 @@ class ReminderScheduler {
   }
 
   getDueTime(reminder) {
-    return new Date(reminder.nextDeliveryAttemptAt || reminder.reminderDateTime).getTime();
+    if (typeof this.dataManager.getReminderDeliveryDate === "function") {
+      return this.dataManager.getReminderDeliveryDate(reminder).getTime();
+    }
+    const settings = typeof this.dataManager.getSettings === "function"
+      ? this.dataManager.getSettings()
+      : {};
+    const timeZone = typeof this.dataManager.getTimezone === "function"
+      ? this.dataManager.getTimezone()
+      : "Asia/Jakarta";
+    return getReminderDeliveryDate(
+      reminder,
+      settings.hotspotIsolationGraceDays,
+      timeZone
+    ).getTime();
   }
 
   async processDueReminders() {

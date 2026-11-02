@@ -216,6 +216,42 @@ test("pengaturan menyediakan template reminder berakhirnya masa aktif", () => {
   assert.equal(app.forms.settings.activePeriodReminderMessageTemplate, "");
 });
 
+test("pengaturan menyediakan template pengingat masa tenggang", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const app = createDashboardApp();
+
+  assert.match(html, /Pengingat masa tenggang/);
+  assert.match(html, /x-model="forms\.settings\.gracePeriodReminderMessageTemplate"/);
+  assert.match(html, /<code>{{isolationDate}}<\/code>/);
+  assert.equal(app.forms.settings.gracePeriodReminderMessageTemplate, "");
+});
+
+test("simpan pengaturan mengirim template pengingat masa tenggang", async () => {
+  const app = createDashboardApp();
+  const template = "Halo {{name}}, masa tenggang berakhir {{isolationDate}}.";
+  let request = null;
+  let notification = "";
+  let statusReloaded = false;
+  app.forms.settings.gracePeriodReminderMessageTemplate = template;
+  app.clearFormError = () => {};
+  app.setFormError = (_key, error) => { throw error; };
+  app.withProcessing = async (_message, action) => action();
+  app.api = async (url, options) => {
+    request = { url, method: options.method, payload: JSON.parse(options.body) };
+    return {};
+  };
+  app.notify = (message) => { notification = message; };
+  app.loadStatus = async () => { statusReloaded = true; };
+
+  await app.saveSettings();
+
+  assert.equal(request.url, "/api/settings");
+  assert.equal(request.method, "PUT");
+  assert.equal(request.payload.gracePeriodReminderMessageTemplate, template);
+  assert.equal(notification, "Settings diperbarui.");
+  assert.equal(statusReloaded, true);
+});
+
 test("pengaturan menyediakan template akun WiFi setelah pembayaran", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const app = createDashboardApp();
@@ -712,6 +748,16 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(html, /customer-hotspot-action-grid customer-row-actions/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 36px !important;[^}]*border-radius: 9px !important;[^}]*font-size: 10px !important;/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 44px !important;[^}]*font-size: 11px !important;/);
+});
+
+test("jadwal reminder memakai waktu kirim H-1 dan tetap menampilkan jatuh tempo", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
+
+  assert.match(html, /formatDateTime\(reminder\.deliveryDateTime \|\| reminder\.reminderDateTime\)/);
+  assert.match(html, /'Jatuh tempo: ' \+ formatDateTime\(reminder\.reminderDateTime\)/);
+  assert.match(script, /const deliveryDateTime = reminder\.deliveryDateTime \|\| reminder\.reminderDateTime;/);
+  assert.match(script, /this\.isToday\(deliveryDateTime\)/);
 });
 
 test("baris akun pelanggan membuka modal ganti password melalui ikon chevron", () => {

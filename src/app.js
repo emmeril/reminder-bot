@@ -57,6 +57,7 @@ const {
   getBillingPeriodKey,
   getBillingPeriodParts,
   getPreviousBillingPeriod,
+  getReminderDeliveryDate,
   isValidPhoneNumber,
   isValidTimeZone,
   makeBillingPeriodKey,
@@ -2567,7 +2568,7 @@ class DataManager {
   getSortedReminders() {
     return Array.from(this.reminders.values())
       .map((reminder) => this.hydrateReminder(reminder))
-      .sort((a, b) => new Date(a.reminderDateTime) - new Date(b.reminderDateTime));
+      .sort((a, b) => new Date(a.deliveryDateTime) - new Date(b.deliveryDateTime));
   }
 
   getSentReminders() {
@@ -2592,7 +2593,7 @@ class DataManager {
       unpaidContacts: unpaid,
       debtContacts: debt,
       adminRecipients: this.getAdminRecipients().length,
-      nextReminderAt: reminders[0]?.reminderDateTime || null,
+      nextReminderAt: reminders[0]?.deliveryDateTime || reminders[0]?.reminderDateTime || null,
     };
   }
 
@@ -2638,6 +2639,7 @@ class DataManager {
 
   hydrateReminder(reminder) {
     const contact = this.getResolvedReminderContact(reminder);
+    const deliveryDate = this.getReminderDeliveryDate(reminder);
     return {
       ...reminder,
       contactId: reminder.contactId || contact?.id || null,
@@ -2645,7 +2647,16 @@ class DataManager {
       phoneNumber: contact?.phoneNumber || reminder.phoneNumber || null,
       subscriptionType: normalizeSubscriptionType(contact?.subscriptionType || reminder.subscriptionType),
       paymentAmount: Math.max(0, Number(reminder.paymentAmount ?? contact?.monthlyPaymentAmount) || 0),
+      deliveryDateTime: Number.isNaN(deliveryDate.getTime()) ? reminder.reminderDateTime : deliveryDate.toISOString(),
     };
+  }
+
+  getReminderDeliveryDate(reminder) {
+    return getReminderDeliveryDate(
+      reminder,
+      this.getSettings().hotspotIsolationGraceDays,
+      this.getTimezone()
+    );
   }
 
   buildDueDateInfo(contact) {
@@ -4733,7 +4744,7 @@ class DataManager {
     return this.withDataMutation(async () => {
       let changed = 0;
       for (const reminder of this.reminders.values()) {
-        const dueAt = new Date(reminder.nextDeliveryAttemptAt || reminder.reminderDateTime).getTime();
+        const dueAt = this.getReminderDeliveryDate(reminder).getTime();
         if (!Number.isFinite(dueAt) || dueAt > now.getTime() || reminder.processingAt) continue;
         if (reminder.providerStatus !== "pending" || reminder.whatsappProvider !== provider) {
           reminder.providerStatus = "pending";
@@ -4906,7 +4917,7 @@ class DataManager {
       const reminder = this.getReminder(id);
       if (!reminder) return null;
 
-      const reminderTime = new Date(reminder.nextDeliveryAttemptAt || reminder.reminderDateTime).getTime();
+      const reminderTime = this.getReminderDeliveryDate(reminder).getTime();
       if (!Number.isFinite(reminderTime) || reminderTime > now.getTime()) {
         return null;
       }
@@ -5059,6 +5070,9 @@ class DataManager {
         activePeriodReminderMessageTemplate: payload.activePeriodReminderMessageTemplate !== undefined
           ? sanitizeMultilineText(payload.activePeriodReminderMessageTemplate) || current.activePeriodReminderMessageTemplate
           : current.activePeriodReminderMessageTemplate,
+        gracePeriodReminderMessageTemplate: payload.gracePeriodReminderMessageTemplate !== undefined
+          ? sanitizeMultilineText(payload.gracePeriodReminderMessageTemplate) || current.gracePeriodReminderMessageTemplate
+          : current.gracePeriodReminderMessageTemplate,
         billingReminderMessageTemplate: payload.billingReminderMessageTemplate !== undefined
           ? sanitizeMultilineText(payload.billingReminderMessageTemplate) || current.billingReminderMessageTemplate
           : current.billingReminderMessageTemplate,
