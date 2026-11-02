@@ -730,7 +730,7 @@
         },
 
         canEnableHotspot(contact) {
-          if (contact?.billingPausedForArrears && contact?.hasDebt) return false;
+          if (contact?.hasDebt) return false;
           const status = this.getHotspotProvisioningStatus(contact);
           return status === "DISABLED"
             || (status === "CHANGED" && /akun dinonaktifkan/i.test(String(contact?.hotspotProvisioningError || "")));
@@ -902,9 +902,22 @@
           return contact?.subscriptionActive !== false && status !== "PAID";
         },
 
+        getCurrentBillingPeriodLabel() {
+          const [periodYear, periodMonth] = String(this.billingPeriod || "").split("-").map(Number);
+          const nowParts = this.getZonedParts(new Date());
+          const year = periodYear || Number(nowParts?.year);
+          const month = periodMonth || Number(nowParts?.month);
+          return this.getBillingPeriodLabel(year, month);
+        },
+
         getCurrentBillingActionLabel(contact) {
-          if (contact?.subscriptionActive === false) return "Tidak ada tagihan bulan ini";
-          return this.canPayCurrentBilling(contact) ? "Bayar bulan ini" : "Bulan ini sudah lunas";
+          const period = this.getCurrentBillingPeriodLabel();
+          if (contact?.subscriptionActive === false) return `Tidak ada tagihan ${period}`;
+          if (!this.canPayCurrentBilling(contact)) return `${period} sudah lunas`;
+          const amount = Math.max(0, Number(contact?.monthlyPaymentAmount) || 0);
+          return amount > 0
+            ? `Bayar ${period} · ${this.formatRupiah(amount)}`
+            : `Bayar ${period}`;
         },
 
         getSubscriptionTypeLabel(contact) {
@@ -931,6 +944,46 @@
           return this.getDebtPeriods(contact).reduce((total, period) => (
             total + Math.max(0, Number(period.remainingAmount ?? contact?.monthlyPaymentAmount) || 0)
           ), 0);
+        },
+
+        getOldestDebtPeriod(contact) {
+          return this.getDebtPeriods(contact)[0] || null;
+        },
+
+        getArrearsPaymentLabel(contact) {
+          const periods = this.getDebtPeriods(contact);
+          const oldest = periods[0];
+          if (!oldest?.label) return "Bayar tunggakan lama";
+          return periods.length > 1
+            ? `Bayar tunggakan mulai ${oldest.label}`
+            : `Bayar tunggakan ${oldest.label}`;
+        },
+
+        getArrearsPaymentHelp(contact) {
+          const periods = this.getDebtPeriods(contact);
+          const oldest = periods[0];
+          const amount = this.formatRupiah(this.getDebtAmount(contact));
+          if (!oldest?.label) return `Sisa tunggakan ${amount}. Pembayaran masuk ke periode paling lama.`;
+          if (periods.length > 1) {
+            return `Total sisa ${periods.length} bulan ${amount}. Pembayaran dimulai dari ${oldest.label}.`;
+          }
+          return `Sisa ${oldest.label} ${amount}.`;
+        },
+
+        getArrearsPaymentSubmitLabel(contact) {
+          const oldest = this.getOldestDebtPeriod(contact);
+          return oldest?.label ? `Catat ke ${oldest.label}` : "Catat pembayaran tunggakan";
+        },
+
+        getTotalOutstandingAmount(contact) {
+          const currentAmount = this.canPayCurrentBilling(contact)
+            ? Math.max(0, Number(contact?.monthlyPaymentAmount) || 0)
+            : 0;
+          return this.getDebtAmount(contact) + currentAmount;
+        },
+
+        getFullPaymentActionLabel(contact) {
+          return `Lunasi semua · ${this.formatRupiah(this.getTotalOutstandingAmount(contact))}`;
         },
 
         getDebtCountLabel(contact) {
@@ -1921,7 +1974,7 @@
         },
 
         canPurchaseActivePeriod(contact) {
-          if (!contact?.id || !contact.hasDebt || !contact.billingPausedForArrears) return false;
+          if (!contact?.id || !contact.hasDebt) return false;
           if (String(contact.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") !== "RECURRING") return false;
           if (!contact.mikrotikUsername || !contact.mikrotikProfile || Number(contact.monthlyPaymentAmount) <= 0) return false;
           const status = this.getHotspotProvisioningStatus(contact);
@@ -2103,7 +2156,7 @@
             title: `${disabled ? "Nonaktifkan" : "Aktifkan"} akun hotspot?`,
             description: disabled
               ? `Akun hotspot ${contact.mikrotikUsername || "ini"} akan dinonaktifkan di MikroTik dan sesi aktifnya akan diputus. Data akun tetap tersimpan.`
-              : contact.billingPausedForArrears && contact.hasDebt
+              : contact.hasDebt
                 ? `Akun hotspot ${contact.mikrotikUsername || "ini"} akan aktif selama satu bulan dari sekarang. Tunggakan tetap tersimpan dan perpanjangan otomatis tetap dijeda sampai seluruh tunggakan lunas.`
                 : `Akun hotspot ${contact.mikrotikUsername || "ini"} akan diaktifkan kembali di MikroTik.`,
             confirmLabel: disabled ? "Nonaktifkan" : "Aktifkan",
@@ -2112,7 +2165,7 @@
                 method: "POST",
                 body: JSON.stringify({}),
               });
-              this.notify(!disabled && contact.billingPausedForArrears && contact.hasDebt
+              this.notify(!disabled && contact.hasDebt
                 ? "Akun hotspot aktif selama satu bulan. Tunggakan tetap tersimpan."
                 : `Akun hotspot berhasil ${action}.`);
               await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);

@@ -112,10 +112,10 @@ test("aksi tagihan memakai satu tombol dan menampilkan pilihan di modal", () => 
   assert.match(currentBillingButton, /:disabled="!canPayCurrentBilling\(billingActionModal\.contact\)"/);
   assert.match(currentBillingButton, /getCurrentBillingActionLabel\(billingActionModal\.contact\)/);
   assert.match(html, /billing-action-primary-row[\s\S]*?aria-label="Kirim pengingat WhatsApp"[\s\S]*?>Kirim WhatsApp</);
-  assert.match(html, /billing-action-quick-row[\s\S]*?aria-label="Lunasi semua tagihan"[\s\S]*?>Lunasi semua</);
+  assert.match(html, /billing-action-quick-row[\s\S]*?:aria-label="getFullPaymentActionLabel\(billingActionModal\.contact\)"[\s\S]*?getFullPaymentActionLabel\(billingActionModal\.contact\)/);
   assert.match(html, /Tandai belum bayar/);
-  assert.match(html, /Bayar sebagian tunggakan/);
-  assert.match(html, /Catat pembayaran/);
+  assert.match(html, /getArrearsPaymentLabel\(billingActionModal\.contact\)/);
+  assert.match(html, /getArrearsPaymentSubmitLabel\(billingActionModal\.contact\)/);
   assert.doesNotMatch(html, /<details[^>]*customer-payment-menu/);
   assert.match(styles, /\.billing-action-option \{[^}]*width: fit-content;[^}]*justify-self: end;[^}]*border-radius: 999px;/);
   assert.match(styles, /\.billing-action-submit \{[^}]*width: fit-content;[^}]*justify-self: end;[^}]*border-radius: 999px;/);
@@ -143,7 +143,7 @@ test("aksi beli masa aktif tersedia untuk akun menunggak dan memanggil endpoint 
     subscriptionType: "RECURRING",
     monthlyPaymentAmount: 100000,
     hasDebt: true,
-    billingPausedForArrears: true,
+    billingPausedForArrears: false,
     hotspotProvisioningStatus: "DISABLED",
     mikrotikUsername: "pelanggan_masa_aktif",
     mikrotikProfile: "50M",
@@ -153,6 +153,7 @@ test("aksi beli masa aktif tersedia untuk akun menunggak dan memanggil endpoint 
   assert.match(html, /getActivePeriodPurchaseLabel\(billingActionModal\.contact\)/);
   assert.match(styles, /\.billing-action-active-period \.billing-action-option \{ width: 100%; \}/);
   assert.equal(app.canPurchaseActivePeriod(contact), true);
+  assert.equal(app.canPurchaseActivePeriod({ ...contact, hasDebt: false }), false);
   assert.equal(app.canEnableHotspot(contact), false);
 
   let confirmation = null;
@@ -213,13 +214,38 @@ test("pengaturan menyediakan template akun WiFi setelah pembayaran", () => {
 
 test("tombol tagihan bulan ini tetap tampil dengan status tindakan yang sesuai", () => {
   const app = createDashboardApp();
+  app.billingPeriod = "2026-11";
 
   assert.equal(app.canPayCurrentBilling({ subscriptionActive: true, currentPaymentStatus: "UNPAID" }), true);
-  assert.equal(app.getCurrentBillingActionLabel({ subscriptionActive: true, currentPaymentStatus: "UNPAID" }), "Bayar bulan ini");
+  assert.equal(app.getCurrentBillingActionLabel({ subscriptionActive: true, currentPaymentStatus: "UNPAID", monthlyPaymentAmount: 75000 }), "Bayar November 2026 · Rp\u00a075.000");
   assert.equal(app.canPayCurrentBilling({ subscriptionActive: true, currentPaymentStatus: "PAID" }), false);
-  assert.equal(app.getCurrentBillingActionLabel({ subscriptionActive: true, currentPaymentStatus: "PAID" }), "Bulan ini sudah lunas");
+  assert.equal(app.getCurrentBillingActionLabel({ subscriptionActive: true, currentPaymentStatus: "PAID" }), "November 2026 sudah lunas");
   assert.equal(app.canPayCurrentBilling({ subscriptionActive: false, currentPaymentStatus: "PAID" }), false);
-  assert.equal(app.getCurrentBillingActionLabel({ subscriptionActive: false, currentPaymentStatus: "PAID" }), "Tidak ada tagihan bulan ini");
+  assert.equal(app.getCurrentBillingActionLabel({ subscriptionActive: false, currentPaymentStatus: "PAID" }), "Tidak ada tagihan November 2026");
+});
+
+test("aksi tagihan menyebut periode dan nominal agar pilihan pembayaran tidak tertukar", () => {
+  const app = createDashboardApp();
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
+  app.billingPeriod = "2026-11";
+  const contact = {
+    subscriptionActive: true,
+    currentPaymentStatus: "UNPAID",
+    monthlyPaymentAmount: 75000,
+    debtAmount: 75000,
+    debtPeriods: [{ key: "2026-10", label: "Oktober 2026", remainingAmount: 75000 }],
+  };
+
+  assert.equal(app.getCurrentBillingActionLabel(contact), "Bayar November 2026 · Rp\u00a075.000");
+  assert.equal(app.getArrearsPaymentLabel(contact), "Bayar tunggakan Oktober 2026");
+  assert.equal(app.getArrearsPaymentHelp(contact), "Sisa Oktober 2026 Rp\u00a075.000.");
+  assert.equal(app.getArrearsPaymentSubmitLabel(contact), "Catat ke Oktober 2026");
+  assert.equal(app.getFullPaymentActionLabel(contact), "Lunasi semua · Rp\u00a0150.000");
+  assert.match(html, /x-text="getArrearsPaymentLabel\(billingActionModal\.contact\)"/);
+  assert.match(html, /x-text="getFullPaymentActionLabel\(billingActionModal\.contact\)"/);
+  assert.match(styles, /\.billing-action-option \{[^}]*white-space: normal;/);
+  assert.match(styles, /\.billing-action-submit \{[^}]*white-space: normal;/);
 });
 
 test("pengaturan memiliki tab masa tenggang isolir", () => {

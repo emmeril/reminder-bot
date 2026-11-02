@@ -1337,13 +1337,13 @@
           </div>
 
           <form x-show="hasDebt(billingActionModal.contact)" class="customer-arrears-payment-form billing-action-arrears" @submit.prevent="payArrears(billingActionModal.contact)">
-            <label :for="'arrears-payment-' + billingActionModal.contact?.id">Bayar sebagian tunggakan</label>
+            <label :for="'arrears-payment-' + billingActionModal.contact?.id" x-text="getArrearsPaymentLabel(billingActionModal.contact)"></label>
             <div class="currency-input-group">
               <span class="currency-prefix">Rp</span>
               <input :id="'arrears-payment-' + billingActionModal.contact?.id" x-model.number="arrearsPaymentAmounts[billingActionModal.contact?.id]" type="number" inputmode="numeric" min="1" :max="getDebtAmount(billingActionModal.contact)" step="1" :aria-describedby="'arrears-help-' + billingActionModal.contact?.id" placeholder="Masukkan nominal pembayaran" required>
             </div>
-            <small :id="'arrears-help-' + billingActionModal.contact?.id" x-text="'Maksimal ' + formatRupiah(getDebtAmount(billingActionModal.contact)) + '. Pembayaran masuk ke tunggakan paling lama.'"></small>
-            <button type="submit" class="billing-action-submit"><i class="fa-solid fa-money-bill-wave"></i>Catat pembayaran</button>
+            <small :id="'arrears-help-' + billingActionModal.contact?.id" x-text="getArrearsPaymentHelp(billingActionModal.contact)"></small>
+            <button type="submit" class="billing-action-submit"><i class="fa-solid fa-money-bill-wave"></i><span x-text="getArrearsPaymentSubmitLabel(billingActionModal.contact)"></span></button>
           </form>
 
           <div x-show="canPurchaseActivePeriod(billingActionModal.contact)" class="billing-action-active-period">
@@ -1358,9 +1358,9 @@
           </div>
 
           <div class="billing-action-quick-row">
-            <button x-show="hasDebt(billingActionModal.contact)" type="button" @click="runBillingPayment('PAID', 'FULL-PAID')" class="billing-action-option" aria-label="Lunasi semua tagihan" title="Lunasi semua tagihan">
+            <button x-show="hasDebt(billingActionModal.contact)" type="button" @click="runBillingPayment('PAID', 'FULL-PAID')" class="billing-action-option" :aria-label="getFullPaymentActionLabel(billingActionModal.contact)" :title="getFullPaymentActionLabel(billingActionModal.contact)">
               <i class="fa-solid fa-sack-dollar"></i>
-              <span>Lunasi semua</span>
+              <span x-text="getFullPaymentActionLabel(billingActionModal.contact)"></span>
             </button>
           </div>
 

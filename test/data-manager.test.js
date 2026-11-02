@@ -1102,8 +1102,8 @@ test("pembelian masa aktif mengaktifkan hotspot satu bulan tanpa mengurangi tung
     paymentMonths: {
       [debtKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
     },
-    billingPausedForArrears: true,
-    billingPausedAfterPeriod: debtKey,
+    billingPausedForArrears: false,
+    billingPausedAfterPeriod: null,
     hotspotSuspendedForArrears: true,
     hotspotReactivationEnabled: false,
     hotspotReactivationAt: null,
@@ -1127,6 +1127,7 @@ test("pembelian masa aktif mengaktifkan hotspot satu bulan tanpa mengurangi tung
   assert.equal(updated.hotspotManualActivationWithArrears, true);
   assert.equal(updated.hotspotReactivationEnabled, false);
   assert.equal(updated.hotspotReactivationAt, activeUntil.toISOString());
+  assert.equal(updated.billingPausedForArrears, true);
   assert.equal(updated.debtAmount, 100000);
   assert.equal(updated.activePeriodPurchases.length, 1);
   assert.equal(updated.activePeriodPurchases[0].amount, 100000);

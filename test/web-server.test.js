@@ -1287,7 +1287,7 @@ test("pembelian masa aktif mengaktifkan hotspot tanpa mengubah tunggakan", async
     mikrotikUsername: "pelanggan_masa_aktif",
     mikrotikProfile: "50M",
     hotspotProvisioningStatus: "DISABLED",
-    billingPausedForArrears: true,
+    billingPausedForArrears: false,
     hotspotSuspendedForArrears: true,
     activePeriodPurchases: [],
   };
@@ -1297,7 +1297,7 @@ test("pembelian masa aktif mengaktifkan hotspot tanpa mengubah tunggakan", async
       ...value,
       hasDebt: true,
       debtAmount: 200000,
-      billingPausedForArrears: true,
+      billingPausedForArrears: false,
     }),
     prepareHotspotLifecycleOperation: async () => { calls.push("prepare"); },
     updateHotspotProvisioningStatus: async () => { calls.push("status"); },
@@ -1370,11 +1370,11 @@ test("aktivasi biasa ditolak ketika akun masih memiliki tunggakan", async () => 
     mikrotikUsername: "pelanggan_menunggak",
     mikrotikProfile: "50M",
     hotspotProvisioningStatus: "DISABLED",
-    billingPausedForArrears: true,
+    billingPausedForArrears: false,
   };
   const baseUrl = await startServer({
     getContact: () => contact,
-    hydrateContact: (value) => ({ ...value, billingPausedForArrears: true, hasDebt: true }),
+    hydrateContact: (value) => ({ ...value, billingPausedForArrears: false, hasDebt: true }),
   }, {}, {
     setHotspotUserDisabled: async () => { routerCalls += 1; },
   });

@@ -2865,8 +2865,8 @@ class DataManager {
     if (!contact || !isRecurringSubscription(contact)) {
       throw new Error("Pembelian masa aktif hanya tersedia untuk pelanggan bulanan.");
     }
-    if (!parseBoolean(contact.billingPausedForArrears, false) || !this.buildDebtInfo(contact).hasDebt) {
-      throw new Error("Pembelian masa aktif hanya tersedia saat perpanjangan dijeda karena tunggakan.");
+    if (!this.buildDebtInfo(contact).hasDebt) {
+      throw new Error("Pembelian masa aktif hanya tersedia untuk pelanggan yang memiliki tunggakan.");
     }
 
     const amount = Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0));
@@ -6527,7 +6527,7 @@ class WebServer {
         const currentState = typeof this.dataManager.hydrateContact === "function"
           ? this.dataManager.hydrateContact(current)
           : current;
-        if (currentState.billingPausedForArrears && currentState.hasDebt) {
+        if (currentState.hasDebt) {
           const error = new Error("Gunakan Beli masa aktif 1 bulan untuk mengaktifkan akun yang masih memiliki tunggakan.");
           error.statusCode = 409;
           throw error;
@@ -6615,8 +6615,8 @@ class WebServer {
       if (!isRecurringSubscription(contact)) {
         throw new Error("Pembelian masa aktif hanya tersedia untuk pelanggan bulanan.");
       }
-      if (!hydrated.billingPausedForArrears || !hydrated.hasDebt) {
-        throw new Error("Pembelian masa aktif hanya tersedia saat perpanjangan dijeda karena tunggakan.");
+      if (!hydrated.hasDebt) {
+        throw new Error("Pembelian masa aktif hanya tersedia untuk pelanggan yang memiliki tunggakan.");
       }
       if (!contact.mikrotikUsername || !contact.mikrotikProfile) {
         throw new Error("Data akun hotspot pelanggan belum lengkap.");
