@@ -95,10 +95,29 @@
 
       <div class="dashboard-content">
         <div class="page-grid grid gap-6 grid-cols-1" :class="activeMenu === 'overview' ? 'overview-workspace' : ''">
+      <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell summary-panel overview-summary-region rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
+        <div class="summary-heading mb-5">
+          <div><h2 class="font-display text-2xl">Kondisi hari ini</h2><p class="card-description">Ringkasan pelanggan, pembayaran, pesan, dan jaringan</p></div>
+          <span class="summary-date" x-text="currentDateLabel"></span>
+        </div>
+        <div class="summary-metric-grid grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <template x-for="metric in summaryMetrics" :key="metric.label">
+            <button type="button" class="metric-card" :class="'tone-' + (metric.tone || 'blue')" @click="selectMenu(metric.menu)" :aria-label="'Buka ' + metric.label">
+              <span class="icon-chip"><i :class="metric.icon"></i></span>
+              <span class="metric-copy"><span class="metric-label" x-text="metric.label"></span><strong class="metric-value" x-text="metric.value"></strong></span>
+              <i class="fa-solid fa-chevron-right metric-arrow"></i>
+            </button>
+          </template>
+        </div>
+        <div class="payment-progress-card">
+          <div class="progress-copy"><span><i class="fa-solid fa-chart-pie"></i></span><div><strong>Progres pembayaran bulan ini</strong><small><span x-text="summaryValue('Sudah bayar')"></span> dari <span x-text="summaryValue('Pelanggan')"></span> pelanggan sudah tercatat</small></div></div>
+          <div class="progress-visual"><strong x-text="paymentProgress + '%'" ></strong><div><span :style="'width:' + paymentProgress + '%'" ></span></div></div>
+        </div>
+      </section>
       <aside
         x-show="['overview','notifications'].includes(activeMenu)"
         x-transition.opacity
-        class="space-y-6"
+        class="space-y-6 overview-side"
         :class="activeMenu === 'overview' ? 'w-full' : 'space-y-0 grid gap-6 md:grid-cols-2 xl:grid-cols-3 w-full'"
       >
         <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell status-panel rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
@@ -128,7 +147,7 @@
             <span class="attention-count" x-text="summaryValue('Belum bayar') + summaryValue('AP bermasalah')"></span>
           </div>
           <div class="attention-list">
-            <button type="button" @click="selectMenu('contacts')" class="attention-item warning">
+            <button type="button" @click="selectMenu('payment-amount')" class="attention-item warning">
               <span class="attention-icon"><i class="fa-solid fa-wallet"></i></span>
               <span><strong><span x-text="summaryValue('Belum bayar')"></span> pelanggan belum bayar</strong><small>Cek status dan tindak lanjuti tagihan</small></span>
               <i class="fa-solid fa-arrow-right"></i>
@@ -231,25 +250,6 @@
       </aside>
 
       <main class="space-y-6 w-full max-w-none">
-        <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell summary-panel rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
-          <div class="mb-5">
-            <div><h2 class="font-display text-2xl">Hari ini</h2><p class="card-description">Ringkasan pelanggan, pembayaran, dan jaringan</p></div>
-          </div>
-          <div class="summary-metric-grid grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <template x-for="metric in summaryMetrics" :key="metric.label">
-              <button type="button" class="metric-card" :class="'tone-' + (metric.tone || 'blue')" @click="metric.label === 'Pelanggan' || metric.label.includes('bayar') || metric.label.includes('hutang') ? selectMenu('contacts') : metric.label.includes('Reminder') ? selectMenu('reminders') : metric.label.includes('AP') ? selectMenu('monitor-ap') : metric.label.includes('Pesan') ? selectMenu('history') : null">
-                <span class="icon-chip"><i :class="metric.icon"></i></span>
-                <span class="metric-copy"><span class="metric-label" x-text="metric.label"></span><strong class="metric-value" x-text="metric.value"></strong></span>
-                <i class="fa-solid fa-chevron-right metric-arrow"></i>
-              </button>
-            </template>
-          </div>
-          <div class="payment-progress-card">
-            <div class="progress-copy"><span><i class="fa-solid fa-chart-pie"></i></span><div><strong>Progres pembayaran bulan ini</strong><small><span x-text="summaryValue('Sudah bayar')"></span> dari <span x-text="summaryValue('Pelanggan')"></span> pelanggan sudah tercatat</small></div></div>
-            <div class="progress-visual"><strong x-text="paymentProgress + '%'" ></strong><div><span :style="'width:' + paymentProgress + '%'" ></span></div></div>
-          </div>
-        </section>
-
         <section x-show="activeMenu === 'contacts'" x-transition.opacity class="panel-shell customer-panel rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5 customer-heading">
             <div>
@@ -665,7 +665,9 @@
               <i class="fa-solid fa-rotate mr-2"></i>Reload
             </button>
           </div>
-          <div class="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5" aria-label="Ringkasan sinkronisasi jaringan">
+          <div class="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7" aria-label="Ringkasan status jaringan">
+            <div class="rounded-2xl border border-moss/20 bg-moss/5 px-4 py-3"><strong class="block text-xl text-ink" x-text="networkMonitorSummary.up"></strong><span class="text-xs font-medium text-ink/75">AP UP</span></div>
+            <div class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3"><strong class="block text-xl text-ink" x-text="networkMonitorSummary.down"></strong><span class="text-xs font-medium text-ink/75">AP DOWN</span></div>
             <div class="rounded-2xl border border-ink/10 bg-haze/50 px-4 py-3"><strong class="block text-xl text-ink" x-text="networkMonitorSummary.netwatch"></strong><span class="text-xs font-medium text-ink/75">AP Netwatch</span></div>
             <div class="rounded-2xl border border-ink/10 bg-haze/50 px-4 py-3"><strong class="block text-xl text-ink" x-text="networkMonitorSummary.unlinkedMonitors"></strong><span class="text-xs font-medium text-ink/75">AP tanpa pelanggan</span></div>
             <div class="rounded-2xl border border-moss/20 bg-moss/5 px-4 py-3"><strong class="block text-xl text-ink" x-text="networkMonitorSummary.linkedCustomers"></strong><span class="text-xs font-medium text-ink/75">Pelanggan terhubung</span></div>

@@ -1207,11 +1207,13 @@
         },
 
         get networkMonitorSummary() {
+          const monitoredAccessPoints = this.apMonitors.filter((ap) => ap.availableInNetwatch !== false);
           return {
-            netwatch: this.apMonitors.filter((ap) => ap.availableInNetwatch !== false).length,
-            unlinkedMonitors: this.apMonitors.filter((ap) => (
-              ap.availableInNetwatch !== false
-              && String(ap.linkStatus || "").toUpperCase() === "UNLINKED"
+            netwatch: monitoredAccessPoints.length,
+            up: monitoredAccessPoints.filter((ap) => String(ap.status || "").toUpperCase() === "UP").length,
+            down: monitoredAccessPoints.filter((ap) => String(ap.status || "").toUpperCase() === "DOWN").length,
+            unlinkedMonitors: monitoredAccessPoints.filter((ap) => (
+              String(ap.linkStatus || "").toUpperCase() === "UNLINKED"
             )).length,
             linkedCustomers: this.contacts.filter((contact) => this.normalizeHost(contact.linkedApHost)).length,
             unlinkedCustomers: this.contacts.filter((contact) => !this.normalizeHost(contact.linkedApHost)).length,
@@ -1494,13 +1496,13 @@
               { label: "Telegram", value: data.bot.telegramEnabled ? "Ready" : "Not ready", icon: "fa-brands fa-telegram" },
             ];
             this.summaryMetrics = [
-              { label: "Pelanggan", value: data.summary.contacts, icon: "fa-solid fa-users", tone: "blue" },
-              { label: "Reminder aktif", value: data.summary.reminders, icon: "fa-solid fa-calendar-check", tone: "violet" },
-              { label: "Pesan terkirim", value: data.summary.sentReminders, icon: "fa-solid fa-paper-plane", tone: "cyan" },
-              { label: "Penerima admin", value: data.summary.adminRecipients, icon: "fa-solid fa-user-shield", tone: "slate" },
-              { label: "Sudah bayar", value: data.summary.paidContacts, icon: "fa-solid fa-circle-check", tone: "green" },
-              { label: "Belum bayar", value: data.summary.unpaidContacts, icon: "fa-solid fa-clock", tone: "amber" },
-              { label: "Masih ada hutang", value: data.summary.debtContacts || 0, icon: "fa-solid fa-file-invoice-dollar" },
+              { label: "Pelanggan", value: data.summary.contacts, icon: "fa-solid fa-users", tone: "blue", menu: "contacts" },
+              { label: "Reminder aktif", value: data.summary.reminders, icon: "fa-solid fa-calendar-check", tone: "violet", menu: "reminders" },
+              { label: "Pesan terkirim", value: data.summary.sentReminders, icon: "fa-solid fa-paper-plane", tone: "cyan", menu: "history" },
+              { label: "Penerima admin", value: data.summary.adminRecipients, icon: "fa-solid fa-user-shield", tone: "slate", menu: "notifications" },
+              { label: "Sudah bayar", value: data.summary.paidContacts, icon: "fa-solid fa-circle-check", tone: "green", menu: "payment-amount" },
+              { label: "Belum bayar", value: data.summary.unpaidContacts, icon: "fa-solid fa-clock", tone: "amber", menu: "payment-amount" },
+              { label: "Masih ada hutang", value: data.summary.debtContacts || 0, icon: "fa-solid fa-file-invoice-dollar", tone: "red", menu: "payment-amount" },
             ];
             this.updateApSummaryMetrics();
             if (!this.settingsDirty) {
@@ -1630,15 +1632,7 @@
         updateApSummaryMetrics() {
           if (!Array.isArray(this.summaryMetrics) || this.summaryMetrics.length === 0) return;
 
-          const apUp = this.apMonitors.filter((ap) => {
-            const status = String(ap?.status || "").toUpperCase();
-            return ["UP", "ONLINE", "OK"].includes(status);
-          }).length;
-
-          const apDown = this.apMonitors.filter((ap) => {
-            const status = String(ap?.status || "").toUpperCase();
-            return ["DOWN", "OFFLINE", "FAIL"].includes(status);
-          }).length;
+          const { up: apUp, down: apDown } = this.networkMonitorSummary;
 
           const baseMetrics = this.summaryMetrics.filter(
             (metric) => metric.label !== "AP online" && metric.label !== "AP bermasalah"
@@ -1646,8 +1640,8 @@
 
           this.summaryMetrics = [
             ...baseMetrics,
-            { label: "AP online", value: apUp, icon: "fa-solid fa-wifi", tone: "green" },
-            { label: "AP bermasalah", value: apDown, icon: "fa-solid fa-triangle-exclamation", tone: "red" },
+            { label: "AP online", value: apUp, icon: "fa-solid fa-wifi", tone: "green", menu: "monitor-ap" },
+            { label: "AP bermasalah", value: apDown, icon: "fa-solid fa-triangle-exclamation", tone: "red", menu: "monitor-ap" },
           ];
         },
 

@@ -359,10 +359,21 @@ test("monitor jaringan menggabungkan AP dengan pelanggan terkait", () => {
       customerCount: 0,
       linkedContacts: [],
     },
+    {
+      id: "missing-reference",
+      host: "ap-lama.local",
+      status: "UP",
+      availableInNetwatch: false,
+      linkStatus: "UNLINKED",
+      customerCount: 0,
+      linkedContacts: [],
+    },
   ];
 
   assert.deepEqual(JSON.parse(JSON.stringify(app.networkMonitorSummary)), {
     netwatch: 2,
+    up: 1,
+    down: 1,
     unlinkedMonitors: 1,
     linkedCustomers: 1,
     unlinkedCustomers: 1,
@@ -382,12 +393,41 @@ test("monitor jaringan menggabungkan AP dengan pelanggan terkait", () => {
 test("tampilan monitor jaringan menyediakan ringkasan dan filter sinkronisasi", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
 
-  assert.match(html, /Ringkasan sinkronisasi jaringan/);
+  assert.match(html, /Ringkasan status jaringan/);
+  assert.match(html, /x-text="networkMonitorSummary\.up"/);
+  assert.match(html, /x-text="networkMonitorSummary\.down"/);
+  assert.match(html, />AP UP<\/span>/);
+  assert.match(html, />AP DOWN<\/span>/);
   assert.match(html, /AP tanpa pelanggan/);
   assert.match(html, /x-model="filters\.monitorAp\.linkStatus"/);
   assert.match(html, /getApCustomerSummary\(ap\)/);
   assert.match(html, /Tabel status AP dan pelanggan terkait/);
   assert.match(html, /x-for="ap in selectableApMonitors"/);
+});
+
+test("ringkasan menempatkan kondisi utama lebih dulu dan setiap metrik dapat dibuka", () => {
+  const app = createDashboardApp({
+    window: { matchMedia: () => ({ matches: false }), scrollTo: () => {} },
+  });
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
+  const script = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
+
+  assert.ok(html.indexOf("overview-summary-region") < html.indexOf("overview-side"));
+  assert.match(html, /Kondisi hari ini/);
+  assert.match(html, /x-text="currentDateLabel"/);
+  assert.match(html, /@click="selectMenu\(metric\.menu\)"/);
+  assert.match(html, /:aria-label="'Buka ' \+ metric\.label"/);
+  assert.doesNotMatch(html, /metric\.label\.includes\('bayar'\)/);
+  assert.match(styles, /\.overview-workspace > \.overview-side \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
+  assert.match(styles, /@media \(max-width: 991px\)[\s\S]*?\.overview-workspace > \.overview-side \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/);
+  assert.match(styles, /@media \(max-width: 767px\)[\s\S]*?\.overview-workspace > \.overview-side \{ grid-template-columns: minmax\(0, 1fr\);/);
+  assert.match(script, /label: "Penerima admin"[^\n]*menu: "notifications"/);
+  assert.match(script, /label: "AP bermasalah"[^\n]*menu: "monitor-ap"/);
+
+  app.selectMenu("payment-amount");
+  assert.equal(app.activeMenu, "contacts");
+  assert.equal(app.activeContactTab, "billing");
 });
 
 test("pembayaran tunggakan mengirim nominal custom admin", async () => {
@@ -778,6 +818,8 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(styles, /\.customer-hotspot-table \{ min-width: 1780px; \}/);
   assert.match(styles, /\.customer-hotspot-table th:nth-child\(5\) \{ width: 12%; \}/);
   assert.match(styles, /\.customer-hotspot-table th:nth-child\(6\) \{ width: 12%; \}/);
+  assert.match(styles, /\.customer-hotspot-account-actions button \{[^}]*gap: 7px;[^}]*padding-inline: 12px !important;/);
+  assert.match(styles, /\.customer-hotspot-table th:nth-child\(10\) \{ width: 8%; \}/);
 });
 
 test("filter tagihan dan hotspot dapat direset tanpa mengubah jumlah baris", () => {
