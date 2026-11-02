@@ -1436,6 +1436,32 @@
           this.filters[key].page = 1;
         },
 
+        get hasContactBillingFilters() {
+          const filters = this.filters.contactBilling;
+          return Boolean(String(filters.search || "").trim())
+            || String(filters.status || "ALL") !== "ALL"
+            || String(filters.dueStatus || "ALL") !== "ALL";
+        },
+
+        resetContactBillingFilters() {
+          this.filters.contactBilling.search = "";
+          this.filters.contactBilling.status = "ALL";
+          this.filters.contactBilling.dueStatus = "ALL";
+          this.resetPage("contactBilling");
+        },
+
+        get hasContactHotspotFilters() {
+          const filters = this.filters.contactHotspot;
+          return Boolean(String(filters.search || "").trim())
+            || String(filters.status || "ALL") !== "ALL";
+        },
+
+        resetContactHotspotFilters() {
+          this.filters.contactHotspot.search = "";
+          this.filters.contactHotspot.status = "ALL";
+          this.resetPage("contactHotspot");
+        },
+
         paginationLabel(key, total) {
           this.clampPage(key, total);
           if (!total) return "Menampilkan 0 data";

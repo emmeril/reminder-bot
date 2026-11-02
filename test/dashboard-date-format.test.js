@@ -329,8 +329,8 @@ test("status jatuh tempo membedakan jadwal yang perlu dibuat dan sekali berlangg
     app.getDueDateLabel({ dueStatus: "NOT_APPLICABLE" }),
     "Tidak ada perpanjangan otomatis"
   );
-  assert.match(html, /<option value="NOT_SCHEDULED">Perlu dijadwalkan<\/option>/);
-  assert.match(html, /<option value="NOT_APPLICABLE">Tidak dijadwalkan<\/option>/);
+  assert.match(html, /<option value="NOT_SCHEDULED">Belum ada jadwal<\/option>/);
+  assert.match(html, /<option value="NOT_APPLICABLE">Tanpa jadwal bulanan<\/option>/);
   assert.match(html, /x-text="getDueDateLabel\(contact\)"/);
 });
 
@@ -760,6 +760,8 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(html, /data-label="Bulan Ini"/);
   assert.match(html, /data-label="Tunggakan"/);
   assert.match(html, /data-label="Status Akun"/);
+  assert.match(html, /data-label="User Hotspot"/);
+  assert.match(html, /data-label="Profile"/);
   assert.match(html, /data-label="Status Jadwal"/);
   assert.match(html, /data-label="Jadwal Layanan"/);
   assert.match(html, /data-label="IP Access Point"/);
@@ -767,10 +769,37 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(html, /data-label="Aksi Akun"/);
   assert.match(html, /data-label="Aksi Layanan"/);
   assert.match(html, /<td colspan="10"[^>]*Tidak ada tagihan yang cocok/);
-  assert.match(html, /<td colspan="9"[^>]*Tidak ada akun hotspot yang cocok/);
+  assert.match(html, /<td colspan="11"[^>]*Tidak ada akun hotspot yang cocok/);
+  assert.match(html, /Pelanggan<\/th>\s*<th[^>]*>Nomor HP<\/th>\s*<th[^>]*>User Hotspot<\/th>/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 36px !important;[^}]*border-radius: 9px !important;[^}]*font-size: 10px !important;/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 44px !important;[^}]*font-size: 11px !important;/);
   assert.match(styles, /\.customer-due-status \{[^}]*white-space: nowrap;/);
+  assert.match(styles, /\.customer-hotspot-status, \.customer-schedule-status \{[^}]*white-space: nowrap;/);
+  assert.match(styles, /\.customer-hotspot-table \{ min-width: 1780px; \}/);
+  assert.match(styles, /\.customer-hotspot-table th:nth-child\(5\) \{ width: 12%; \}/);
+  assert.match(styles, /\.customer-hotspot-table th:nth-child\(6\) \{ width: 12%; \}/);
+});
+
+test("filter tagihan dan hotspot dapat direset tanpa mengubah jumlah baris", () => {
+  const app = createDashboardApp();
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+
+  app.filters.contactBilling = { search: "Nayya", status: "HAS-DEBT", dueStatus: "OVERDUE", page: 3, pageSize: 25 };
+  assert.equal(app.hasContactBillingFilters, true);
+  app.resetContactBillingFilters();
+  assert.deepEqual(app.filters.contactBilling, { search: "", status: "ALL", dueStatus: "ALL", page: 1, pageSize: 25 });
+  assert.equal(app.hasContactBillingFilters, false);
+
+  app.filters.contactHotspot = { search: "bintang", status: "ACTIVE", page: 2, pageSize: 50 };
+  assert.equal(app.hasContactHotspotFilters, true);
+  app.resetContactHotspotFilters();
+  assert.deepEqual(app.filters.contactHotspot, { search: "", status: "ALL", page: 1, pageSize: 50 });
+  assert.equal(app.hasContactHotspotFilters, false);
+
+  assert.match(html, /@click="resetContactBillingFilters\(\)"/);
+  assert.match(html, /@click="resetContactHotspotFilters\(\)"/);
+  assert.match(html, /Jumlah tagihan per halaman/);
+  assert.match(html, /Jumlah akun hotspot per halaman/);
 });
 
 test("jadwal reminder memakai waktu kirim H-1 dan tetap menampilkan jatuh tempo", () => {

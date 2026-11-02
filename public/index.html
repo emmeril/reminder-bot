@@ -349,29 +349,25 @@
               <p>Atur nominal bulanan dan catat pembayaran tanpa bercampur dengan pengaturan hotspot.</p>
               <button type="button" @click="exportPaymentRecap()" class="ui-secondary-button border border-moss/20 bg-white px-4 py-2 text-sm font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-file-excel mr-2"></i>Rekap Excel</button>
             </div>
-            <div class="filter-inline">
-              <input x-model="filters.contactBilling.search" @input="resetPage('contactBilling')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari pelanggan, nomor WA, atau nominal">
-              <select x-model="filters.contactBilling.status" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-                <option value="ALL">Semua status bayar</option>
-                <option value="HAS-DEBT">Masih ada hutang</option>
-                <option value="ARREARS-ONLY">Hanya tunggakan</option>
-                <option value="UNPAID">Belum bayar</option>
-                <option value="CURRENT-ONLY">Bulan ini saja</option>
-                <option value="FULL-PAID">Lunas semua</option>
+            <div class="filter-inline customer-filter-bar">
+              <input x-model="filters.contactBilling.search" @input="resetPage('contactBilling')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama, nomor HP, atau nominal" aria-label="Cari tagihan pelanggan">
+              <select x-model="filters.contactBilling.status" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Filter status pembayaran">
+                <option value="ALL">Semua pembayaran</option>
+                <option value="HAS-DEBT">Ada tunggakan</option>
+                <option value="ARREARS-ONLY">Pembayaran tunggakan saja</option>
+                <option value="UNPAID">Bulan ini belum dibayar</option>
+                <option value="CURRENT-ONLY">Hanya bulan ini lunas</option>
+                <option value="FULL-PAID">Semua tagihan lunas</option>
               </select>
-              <select x-model="filters.contactBilling.dueStatus" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-                <option value="ALL">Semua jatuh tempo</option>
-                <option value="NOT_SCHEDULED">Perlu dijadwalkan</option>
-                <option value="NOT_APPLICABLE">Tidak dijadwalkan</option>
+              <select x-model="filters.contactBilling.dueStatus" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Filter jadwal jatuh tempo">
+                <option value="ALL">Semua jadwal</option>
+                <option value="NOT_SCHEDULED">Belum ada jadwal</option>
+                <option value="NOT_APPLICABLE">Tanpa jadwal bulanan</option>
                 <option value="UPCOMING">Belum jatuh tempo</option>
-                <option value="OVERDUE">Jatuh tempo</option>
-                <option value="PAID">Lunas</option>
+                <option value="OVERDUE">Sudah jatuh tempo</option>
+                <option value="PAID">Sudah dibayar</option>
               </select>
-              <select x-model.number="filters.contactBilling.pageSize" @change="resetPage('contactBilling')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-                <template x-for="size in pageSizes" :key="'contact-billing-size-' + size">
-                  <option :value="size" x-text="size + ' per halaman'"></option>
-                </template>
-              </select>
+              <button type="button" @click="resetContactBillingFilters()" :disabled="!hasContactBillingFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2"></i>Reset filter</button>
             </div>
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Tagihan pelanggan">
@@ -451,6 +447,14 @@
             <div class="customer-pagination">
               <div x-text="paginationLabel('contactBilling', filteredBillingContacts.length)"></div>
               <div class="customer-pagination-controls">
+                <label class="customer-page-size-control">
+                  <span>Baris</span>
+                  <select x-model.number="filters.contactBilling.pageSize" @change="resetPage('contactBilling')" aria-label="Jumlah tagihan per halaman">
+                    <template x-for="size in pageSizes" :key="'contact-billing-size-' + size">
+                      <option :value="size" x-text="size"></option>
+                    </template>
+                  </select>
+                </label>
                 <button type="button" aria-label="Halaman sebelumnya" @click="setPage('contactBilling', filters.contactBilling.page - 1)" :disabled="filters.contactBilling.page <= 1" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
                 <span x-text="filters.contactBilling.page + ' / ' + totalPages('contactBilling', filteredBillingContacts.length)"></span>
                 <button type="button" aria-label="Halaman berikutnya" @click="setPage('contactBilling', filters.contactBilling.page + 1)" :disabled="filters.contactBilling.page >= totalPages('contactBilling', filteredBillingContacts.length)" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
@@ -459,24 +463,20 @@
           </div>
 
           <div id="customer-hotspot-panel" role="tabpanel" aria-labelledby="customer-hotspot-tab" x-cloak x-show="activeContactTab === 'hotspot'" x-transition.opacity class="customer-tab-panel">
-            <div class="filter-inline">
-              <input x-model="filters.contactHotspot.search" @input="resetPage('contactHotspot')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari pelanggan, user, profile, atau IP AP">
-              <select x-model="filters.contactHotspot.status" @change="resetPage('contactHotspot')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-                <option value="ALL">Semua akun hotspot</option>
-                <option value="CONFIGURED">Akun tersedia</option>
-                <option value="UNCONFIGURED">Belum ada akun</option>
-                <option value="ACTIVE">Aktif di MikroTik</option>
-                <option value="PENDING">Menunggu provisioning</option>
-                <option value="FAILED">Sinkronisasi gagal</option>
-                <option value="DEACTIVATED">Dinonaktifkan terjadwal</option>
-                <option value="DISABLED">Dinonaktifkan admin</option>
-                <option value="AUTO">Auto reaktivasi aktif</option>
+            <div class="filter-inline customer-filter-bar">
+              <input x-model="filters.contactHotspot.search" @input="resetPage('contactHotspot')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama, user, profile, atau IP AP" aria-label="Cari akun hotspot pelanggan">
+              <select x-model="filters.contactHotspot.status" @change="resetPage('contactHotspot')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Filter status akun hotspot">
+                <option value="ALL">Semua status akun</option>
+                <option value="CONFIGURED">Sudah punya akun</option>
+                <option value="UNCONFIGURED">Belum punya akun</option>
+                <option value="ACTIVE">Aktif</option>
+                <option value="PENDING">Sedang diproses</option>
+                <option value="FAILED">Gagal sinkron</option>
+                <option value="DEACTIVATED">Nonaktif terjadwal</option>
+                <option value="DISABLED">Nonaktif oleh admin</option>
+                <option value="AUTO">Aktivasi otomatis</option>
               </select>
-              <select x-model.number="filters.contactHotspot.pageSize" @change="resetPage('contactHotspot')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-                <template x-for="size in pageSizes" :key="'contact-hotspot-size-' + size">
-                  <option :value="size" x-text="size + ' per halaman'"></option>
-                </template>
-              </select>
+              <button type="button" @click="resetContactHotspotFilters()" :disabled="!hasContactHotspotFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2"></i>Reset filter</button>
             </div>
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Hotspot pelanggan">
@@ -484,7 +484,9 @@
                   <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
                     <tr>
                       <th class="px-4 py-3">Pelanggan</th>
-                      <th class="px-4 py-3">User / Profile</th>
+                      <th class="px-4 py-3">Nomor HP</th>
+                      <th class="px-4 py-3">User Hotspot</th>
+                      <th class="px-4 py-3">Profile</th>
                       <th class="px-4 py-3">Status Akun</th>
                       <th class="px-4 py-3">Status Jadwal</th>
                       <th class="px-4 py-3">Jadwal layanan</th>
@@ -496,20 +498,24 @@
                   </thead>
                   <tbody class="divide-y divide-ink/6 bg-white/70">
                     <template x-if="!filteredHotspotContacts.length">
-                      <tr><td colspan="9" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada akun hotspot yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
+                      <tr><td colspan="11" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada akun hotspot yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
                     </template>
                     <template x-for="contact in paginatedHotspotContacts" :key="'hotspot-' + contact.id">
                       <tr>
-                        <td class="px-4 py-4" data-label="Pelanggan"><strong class="customer-name" x-text="contact.name"></strong><small class="customer-meta" x-text="contact.phoneNumber"></small></td>
-                        <td class="px-4 py-4 text-ink/65" data-label="User / Profile">
-                          <span class="customer-hotspot-account" x-text="getContactHotspotLabel(contact)"></span>
+                        <td class="px-4 py-4" data-label="Pelanggan"><strong class="customer-name" x-text="contact.name"></strong></td>
+                        <td class="px-4 py-4" data-label="Nomor HP"><span class="customer-phone-number" x-text="contact.phoneNumber"></span></td>
+                        <td class="px-4 py-4 text-ink/65" data-label="User Hotspot">
+                          <span class="customer-hotspot-account" x-text="contact.mikrotikUsername || 'Belum ada user'"></span>
+                        </td>
+                        <td class="px-4 py-4 text-ink/65" data-label="Profile">
+                          <span class="customer-hotspot-profile" x-text="contact.mikrotikProfile || 'Belum ada profile'"></span>
                         </td>
                         <td class="px-4 py-4" data-label="Status Akun">
                           <span class="customer-hotspot-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getHotspotProvisioningClass(contact)" x-text="getHotspotProvisioningLabel(contact)"></span>
                           <small x-show="contact.hotspotProvisioningError && canRetryHotspotProvisioning(contact)" class="customer-hotspot-error" x-text="contact.hotspotProvisioningError"></small>
                         </td>
                         <td class="px-4 py-4" data-label="Status Jadwal">
-                          <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getReactivationClass(contact)" x-text="getReactivationLabel(contact)"></span>
+                          <span class="customer-schedule-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getReactivationClass(contact)" x-text="getReactivationLabel(contact)"></span>
                         </td>
                         <td class="px-4 py-4" data-label="Jadwal Layanan">
                           <small class="customer-schedule-detail" x-text="getReactivationDetail(contact)"></small>
@@ -544,6 +550,14 @@
             <div class="customer-pagination">
               <div x-text="paginationLabel('contactHotspot', filteredHotspotContacts.length)"></div>
               <div class="customer-pagination-controls">
+                <label class="customer-page-size-control">
+                  <span>Baris</span>
+                  <select x-model.number="filters.contactHotspot.pageSize" @change="resetPage('contactHotspot')" aria-label="Jumlah akun hotspot per halaman">
+                    <template x-for="size in pageSizes" :key="'contact-hotspot-size-' + size">
+                      <option :value="size" x-text="size"></option>
+                    </template>
+                  </select>
+                </label>
                 <button type="button" aria-label="Halaman sebelumnya" @click="setPage('contactHotspot', filters.contactHotspot.page - 1)" :disabled="filters.contactHotspot.page <= 1" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
                 <span x-text="filters.contactHotspot.page + ' / ' + totalPages('contactHotspot', filteredHotspotContacts.length)"></span>
                 <button type="button" aria-label="Halaman berikutnya" @click="setPage('contactHotspot', filters.contactHotspot.page + 1)" :disabled="filters.contactHotspot.page >= totalPages('contactHotspot', filteredHotspotContacts.length)" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
