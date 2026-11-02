@@ -134,6 +134,21 @@ test("tombol pengingat disembunyikan setelah tunggakan mencapai dua bulan", () =
   assert.equal(app.canSendBillingReminder({ hasDebt: true, debtCount: 3 }), false);
 });
 
+test("fallback tunggakan tetap membaca periode lama yang dikoreksi belum lunas", () => {
+  const app = createDashboardApp();
+  app.billingPeriod = "2026-11";
+  const periods = app.getDebtPeriods({
+    createdAt: "2026-10-01T00:00:00.000Z",
+    paymentType: "FULL-PAID",
+    paymentMonths: {
+      "2026-10": { status: "UNPAID", paidAmount: 0 },
+      "2026-11": { status: "PAID", paidAmount: 100_000 },
+    },
+  });
+
+  assert.deepEqual(Array.from(periods, (period) => period.key), ["2026-10"]);
+});
+
 test("aksi beli masa aktif tersedia untuk akun menunggak dan memanggil endpoint khusus", async () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");

@@ -859,7 +859,6 @@
         getDebtPeriods(contact) {
           if (!contact) return [];
           if (Array.isArray(contact.debtPeriods)) return contact.debtPeriods;
-          if (this.inferPaymentType(contact) === "FULL-PAID") return [];
 
           const paymentMonths = contact.paymentMonths || {};
           const start = this.getContactBillingStartPeriod(contact);

@@ -2747,7 +2747,6 @@ class DataManager {
     const paymentMonths = contact.paymentMonths || {};
     const monthlyAmount = Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0));
     const currentPayment = paymentMonths[currentKey] || null;
-    const currentType = String(currentPayment?.paymentType || contact.paymentType || "").toUpperCase();
     const previous = getPreviousBillingPeriod(year, month);
     const startPeriod = getContactBillingStartPeriod(contact, timeZone);
     const billingPausedForArrears = isRecurringSubscription(contact)
@@ -2777,26 +2776,24 @@ class DataManager {
           status: payment?.status || PAYMENT_STATUS.UNPAID,
         }))
       : [];
-    const debtPeriods = currentType === PAYMENT_TYPES.FULL_PAID
-      ? []
-      : [...billingPeriods, ...legacyOneTimePeriods]
-        .filter((period, index, all) => all.findIndex((candidate) => candidate.year === period.year && candidate.month === period.month) === index)
-        .filter((period) => {
-          const key = makeBillingPeriodKey(period.year, period.month);
-          return paymentMonths[key]?.status !== PAYMENT_STATUS.PAID;
-        })
-        .map((period) => {
-          const key = makeBillingPeriodKey(period.year, period.month);
-          const payment = paymentMonths[key] || null;
-          const paidAmount = this.getPaymentPaidAmount(payment, monthlyAmount);
-          return {
-            key,
-            label: formatBillingPeriodLabel(period.year, period.month),
-            status: payment?.status || PAYMENT_STATUS.UNPAID,
-            paidAmount,
-            remainingAmount: this.getPaymentRemainingAmount(payment, monthlyAmount),
-          };
-        });
+    const debtPeriods = [...billingPeriods, ...legacyOneTimePeriods]
+      .filter((period, index, all) => all.findIndex((candidate) => candidate.year === period.year && candidate.month === period.month) === index)
+      .filter((period) => {
+        const key = makeBillingPeriodKey(period.year, period.month);
+        return paymentMonths[key]?.status !== PAYMENT_STATUS.PAID;
+      })
+      .map((period) => {
+        const key = makeBillingPeriodKey(period.year, period.month);
+        const payment = paymentMonths[key] || null;
+        const paidAmount = this.getPaymentPaidAmount(payment, monthlyAmount);
+        return {
+          key,
+          label: formatBillingPeriodLabel(period.year, period.month),
+          status: payment?.status || PAYMENT_STATUS.UNPAID,
+          paidAmount,
+          remainingAmount: this.getPaymentRemainingAmount(payment, monthlyAmount),
+        };
+      });
     const hasDebt = debtPeriods.length > 0;
     const firstDebt = debtPeriods[0] || null;
     const debtAmount = debtPeriods.reduce((total, period) => total + period.remainingAmount, 0);
@@ -5480,7 +5477,7 @@ class DataManager {
             paymentType: paymentType || null,
             paidAmount: status === PAYMENT_STATUS.PAID
               ? Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0))
-              : this.getPaymentPaidAmount(existingCurrentPayment, contact.monthlyPaymentAmount),
+              : 0,
           };
         } else if (!currentPaymentBeforeUpdate) {
           contact.paymentMonths[currentKey] = {

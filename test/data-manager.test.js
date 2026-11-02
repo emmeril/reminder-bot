@@ -771,9 +771,51 @@ test("pembayaran lunas memindahkan reminder ke jatuh tempo berikutnya", async ()
   assert.match(reminder.message, /belum kami terima/);
 
   await manager.updatePaymentStatus(contact.id, PAYMENT_STATUS.UNPAID);
+  const current = getBillingPeriodParts(new Date(), manager.getTimezone());
+  const currentKey = makeBillingPeriodKey(current.year, current.month);
   assert.equal(new Date(reminder.reminderDateTime).getTime(), nextReminderTime);
-  assert.match(reminder.message, /Rp\s?100\.000/);
+  assert.match(reminder.message, /Rp\s?200\.000/);
   assert.match(reminder.message, /belum kami terima/);
+  assert.equal(contact.paymentMonths[currentKey].status, PAYMENT_STATUS.UNPAID);
+  assert.equal(contact.paymentMonths[currentKey].paidAmount, 0);
+  assert.equal(
+    manager.getPaymentRemainingAmount(contact.paymentMonths[currentKey], contact.monthlyPaymentAmount),
+    contact.monthlyPaymentAmount
+  );
+});
+
+test("koreksi periode lama tetap menjadi tunggakan setelah pembayaran lunas semua", async () => {
+  const now = new Date();
+  const current = getBillingPeriodParts(now, "Asia/Jakarta");
+  const previous = getPreviousBillingPeriod(current.year, current.month);
+  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
+  const contact = {
+    id: "contact-corrected-old-debt",
+    name: "Pelanggan Koreksi",
+    phoneNumber: "6281234567897",
+    createdAt: addMonthsSafely(now, -1, "Asia/Jakarta").toISOString(),
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentDate: null,
+    paymentType: null,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+
+  await manager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID, PAYMENT_TYPES.FULL_PAID);
+  await manager.setPaymentForMonth(
+    contact.id,
+    previous.year,
+    previous.month,
+    PAYMENT_STATUS.UNPAID
+  );
+
+  const debtInfo = manager.buildDebtInfo(contact);
+  assert.equal(contact.paymentType, PAYMENT_TYPES.FULL_PAID);
+  assert.equal(debtInfo.hasDebt, true);
+  assert.deepEqual(debtInfo.debtPeriods.map((period) => period.key), [previousKey]);
+  assert.equal(debtInfo.debtAmount, contact.monthlyPaymentAmount);
 });
 
 test("reminder baru menyimpan template variabel tanpa mengganti data pelanggan", async () => {
