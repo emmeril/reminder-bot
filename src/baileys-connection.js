@@ -611,7 +611,7 @@ class BaileysConnection {
     }
   }
 
-  async resolveRecipientJid(normalized) {
+  async resolveRecipientJids(normalized) {
     const result = await this.checkPhoneNumber(normalized);
     if (!result.registered || !result.jid) {
       const error = new Error("Nomor tujuan tidak terdaftar di WhatsApp");
@@ -621,12 +621,27 @@ class BaileysConnection {
       throw error;
     }
 
+    const primaryJid = result.jid.endsWith("@s.whatsapp.net")
+      ? result.jid
+      : `${normalized}@s.whatsapp.net`;
     try {
-      const lid = await this.socket.signalRepository?.lidMapping?.getLIDForPN?.(result.jid);
-      return lid || result.jid;
+      const lid = await this.socket.signalRepository?.lidMapping?.getLIDForPN?.(primaryJid);
+      return {
+        primaryJid,
+        fallbackJid: lid && lid !== primaryJid ? lid : null,
+      };
     } catch {
-      return result.jid;
+      return { primaryJid, fallbackJid: null };
     }
+  }
+
+  async sendToRecipientJid(jid, normalized, message) {
+    this.autoSafetyGuard.markAttempt(normalized);
+    const result = await this.socket.sendMessage(jid, { text: String(message || "") });
+    this.rememberMessage(result);
+    await this.authStore?.saveMessage?.(result?.key, result?.message).catch(() => {});
+    const deliveryStatus = await this.waitForImmediateMessageFailure(result?.key?.id);
+    return { result, deliveryStatus };
   }
 
   getMessageStoreKey(key) {
@@ -818,14 +833,21 @@ class BaileysConnection {
     this.assertOutboundReady();
 
     try {
-      const jid = await this.resolveRecipientJid(normalized);
-      // Count attempts, including failed attempts, to prevent rapid retries
-      // from repeatedly contacting the same WhatsApp recipient.
-      this.autoSafetyGuard.markAttempt(normalized);
-      const result = await this.socket.sendMessage(jid, { text: String(message || "") });
-      this.rememberMessage(result);
-      await this.authStore?.saveMessage?.(result?.key, result?.message).catch(() => {});
-      const deliveryStatus = await this.waitForImmediateMessageFailure(result?.key?.id);
+      const { primaryJid, fallbackJid } = await this.resolveRecipientJids(normalized);
+      let delivery;
+      try {
+        delivery = await this.sendToRecipientJid(primaryJid, normalized, message);
+      } catch (primaryError) {
+        if (primaryError?.code !== "WHATSAPP_MESSAGE_REJECTED" || !fallbackJid) {
+          throw primaryError;
+        }
+        console.warn(
+          `[Baileys:${this.id}] pengiriman PN ditolak; mencoba ulang melalui LID`
+        );
+        delivery = await this.sendToRecipientJid(fallbackJid, normalized, message);
+      }
+
+      const { result, deliveryStatus } = delivery;
       this.lastActivity = Date.now();
       this.updateConnection({
         connected: true,
@@ -840,7 +862,7 @@ class BaileysConnection {
           : "Pesan berhasil dikirim via Baileys",
         messageId: result?.key?.id || null,
         target: normalized,
-        targetJid: result?.key?.remoteJid || jid,
+        targetJid: result?.key?.remoteJid || primaryJid,
         timestamp: result?.messageTimestamp || null,
         type: "chat",
         deliveryStatus,

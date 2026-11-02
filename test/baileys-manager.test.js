@@ -135,7 +135,7 @@ test("WA terputus gagal cepat tanpa menunggu delay dan tanpa retry", async () =>
   assert.ok(Date.now() - startedAt < 1_000);
 });
 
-test("mengirim pesan ke LID ketika mapping PN tersedia", async () => {
+test("mengirim pesan pribadi ke PN agar tersinkron ke perangkat utama", async () => {
   let request;
   BaileysManager.socket = {
     onWhatsApp: async () => [{ exists: true, jid: "6281234567890@s.whatsapp.net" }],
@@ -156,18 +156,22 @@ test("mengirim pesan ke LID ketika mapping PN tersedia", async () => {
 
   const result = await BaileysManager.sendMessage("6281234567890", "Halo");
 
-  assert.deepEqual(request, { jid: "123456789@lid", content: { text: "Halo" } });
+  assert.deepEqual(request, {
+    jid: "6281234567890@s.whatsapp.net",
+    content: { text: "Halo" },
+  });
   assert.equal(result.provider, "baileys");
   assert.equal(result.messageId, "message-1");
-  assert.equal(result.targetJid, "123456789@lid");
+  assert.equal(result.targetJid, "6281234567890@s.whatsapp.net");
   assert.deepEqual(await BaileysManager.getPrimaryConnection().getStoredMessage({
     id: "message-1",
-    remoteJid: "123456789@lid",
+    remoteJid: "6281234567890@s.whatsapp.net",
   }), { conversation: "Halo" });
 });
 
-test("mengambil LID melalui mapping resmi setelah pemeriksaan nomor", async () => {
-  let request;
+test("menggunakan LID sebagai fallback hanya ketika pengiriman PN ditolak", async () => {
+  const connection = BaileysManager.getPrimaryConnection();
+  const requests = [];
   let mappingJid;
   BaileysManager.socket = {
     onWhatsApp: async () => [{
@@ -183,7 +187,18 @@ test("mengambil LID melalui mapping resmi setelah pemeriksaan nomor", async () =
       },
     },
     sendMessage: async (jid, content) => {
-      request = { jid, content };
+      requests.push({ jid, content });
+      if (jid.endsWith("@s.whatsapp.net")) {
+        const result = {
+          key: { id: "message-pn-rejected", remoteJid: jid, fromMe: true },
+          message: { conversation: "Halo" },
+        };
+        setImmediate(() => connection.handleMessageUpdates([{
+          key: result.key,
+          update: { status: 0, messageStubParameters: ["500"] },
+        }], { ERROR: 0 }));
+        return result;
+      }
       return {
         key: { id: "message-lid", remoteJid: jid },
         message: { conversation: "Halo" },
@@ -194,8 +209,42 @@ test("mengambil LID melalui mapping resmi setelah pemeriksaan nomor", async () =
   const result = await BaileysManager.sendMessage("6281234567890", "Halo");
 
   assert.equal(mappingJid, "6281234567890@s.whatsapp.net");
-  assert.deepEqual(request, { jid: "987654321@lid", content: { text: "Halo" } });
+  assert.deepEqual(requests, [
+    { jid: "6281234567890@s.whatsapp.net", content: { text: "Halo" } },
+    { jid: "987654321@lid", content: { text: "Halo" } },
+  ]);
   assert.equal(result.targetJid, "987654321@lid");
+});
+
+test("tidak mengirim ulang ke LID ketika pesan PN sudah diterima server", async () => {
+  const requests = [];
+  BaileysManager.socket = {
+    onWhatsApp: async () => [{
+      exists: true,
+      jid: "6281234567890@s.whatsapp.net",
+    }],
+    signalRepository: {
+      lidMapping: {
+        getLIDForPN: async () => "987654321@lid",
+      },
+    },
+    sendMessage: async (jid, content) => {
+      requests.push({ jid, content });
+      return {
+        key: { id: "message-pn", remoteJid: jid },
+        message: { conversation: "Halo" },
+      };
+    },
+  };
+
+  const result = await BaileysManager.sendMessage("6281234567890", "Halo");
+
+  assert.deepEqual(requests, [{
+    jid: "6281234567890@s.whatsapp.net",
+    content: { text: "Halo" },
+  }]);
+  assert.equal(result.targetJid, "6281234567890@s.whatsapp.net");
+  assert.equal(result.deliveryStatus, "accepted");
 });
 
 test("membungkus key store auth dengan cache resmi Baileys", () => {
