@@ -379,21 +379,30 @@
                   <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
                     <tr>
                       <th class="px-4 py-3">Pelanggan</th>
+                      <th class="px-4 py-3">Nomor HP</th>
+                      <th class="px-4 py-3">Langganan</th>
                       <th class="px-4 py-3">Jatuh Tempo</th>
+                      <th class="px-4 py-3">Status Jatuh Tempo</th>
                       <th class="px-4 py-3">Nominal Bulanan</th>
-                      <th class="px-4 py-3">Pembayaran</th>
+                      <th class="px-4 py-3">Sumber Nominal</th>
+                      <th class="px-4 py-3">Bulan Ini</th>
+                      <th class="px-4 py-3">Tunggakan</th>
                       <th class="px-4 py-3">Aksi</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-ink/6 bg-white/70">
                     <template x-if="!filteredBillingContacts.length">
-                      <tr><td colspan="5" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada tagihan yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
+                      <tr><td colspan="10" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada tagihan yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
                     </template>
                     <template x-for="contact in paginatedBillingContacts" :key="'billing-' + contact.id">
                       <tr>
-                        <td class="px-4 py-4" data-label="Pelanggan"><strong class="customer-name" x-text="contact.name"></strong><small class="customer-meta" x-text="contact.phoneNumber"></small><small class="customer-meta" x-text="getSubscriptionTypeLabel(contact)"></small></td>
+                        <td class="px-4 py-4" data-label="Pelanggan"><strong class="customer-name" x-text="contact.name"></strong></td>
+                        <td class="px-4 py-4" data-label="Nomor HP"><span class="customer-phone-number" x-text="contact.phoneNumber"></span></td>
+                        <td class="px-4 py-4" data-label="Langganan"><span class="text-xs font-semibold text-ink/65" x-text="getSubscriptionTypeLabel(contact)"></span></td>
                         <td class="px-4 py-4" data-label="Jatuh Tempo">
                           <span class="customer-due-date" x-text="getDueDateLabel(contact)"></span>
+                        </td>
+                        <td class="px-4 py-4" data-label="Status Jatuh Tempo">
                           <span class="customer-due-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getDueStatusClass(contact.dueStatus)" x-text="getDueStatusLabel(contact.dueStatus)"></span>
                         </td>
                         <td class="px-4 py-4" data-label="Nominal Bulanan">
@@ -402,12 +411,20 @@
                             <button type="button" @click="saveContactPaymentAmount(contact)" class="customer-amount-save bg-moss text-xs font-semibold text-white" title="Simpan nominal custom" aria-label="Simpan nominal custom"><i class="fa-solid fa-floppy-disk"></i></button>
                             <button x-show="contact.monthlyPaymentAmountCustomized && hasProfileMonthlyAmount(contact)" type="button" @click="resetContactPaymentAmount(contact)" class="customer-amount-save border border-moss/20 bg-white text-xs font-semibold text-moss" title="Kembalikan ke tarif profile" aria-label="Kembalikan ke tarif profile"><i class="fa-solid fa-rotate-left"></i></button>
                           </div>
-                          <small x-show="hasProfileMonthlyAmount(contact)" class="mt-1 block text-xs" :class="contact.monthlyPaymentAmountCustomized ? 'text-clay' : 'text-moss'" x-text="contact.monthlyPaymentAmountCustomized ? 'Nominal custom · default profile Rp ' + Number(getProfileMonthlyAmount(contact.mikrotikProfile)).toLocaleString('id-ID') : 'Mengikuti tarif profile'"></small>
                         </td>
-                        <td class="px-4 py-4" data-label="Pembayaran">
+                        <td class="px-4 py-4" data-label="Sumber Nominal">
+                          <small x-show="hasProfileMonthlyAmount(contact)" class="mt-1 block text-xs" :class="contact.monthlyPaymentAmountCustomized ? 'text-clay' : 'text-moss'" x-text="contact.monthlyPaymentAmountCustomized ? 'Nominal custom · default profile Rp ' + Number(getProfileMonthlyAmount(contact.mikrotikProfile)).toLocaleString('id-ID') : 'Mengikuti tarif profile'"></small>
+                          <small x-show="!hasProfileMonthlyAmount(contact)" class="block text-xs text-ink/50">Tarif manual</small>
+                        </td>
+                        <td class="px-4 py-4" data-label="Bulan Ini">
                           <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="contact.currentPaymentStatus === 'PAID' ? 'bg-moss/10 text-moss' : 'bg-clay/10 text-clay'" x-text="getCurrentPaymentLabel(contact)"></span>
+                        </td>
+                        <td class="px-4 py-4" data-label="Tunggakan">
                           <template x-if="hasDebt(contact)">
                             <div class="customer-debt-note"><strong><i class="fa-solid fa-triangle-exclamation"></i><span x-text="getDebtCountLabel(contact)"></span></strong><small x-text="getDebtNote(contact)"></small></div>
+                          </template>
+                          <template x-if="!hasDebt(contact)">
+                            <span class="text-xs font-semibold text-ink/50">Tidak ada tunggakan</span>
                           </template>
                         </td>
                         <td class="px-4 py-4 align-top" data-label="Aksi">
@@ -468,40 +485,54 @@
                     <tr>
                       <th class="px-4 py-3">Pelanggan</th>
                       <th class="px-4 py-3">User / Profile</th>
+                      <th class="px-4 py-3">Status Akun</th>
+                      <th class="px-4 py-3">Status Jadwal</th>
                       <th class="px-4 py-3">Jadwal layanan</th>
-                      <th class="px-4 py-3">Access Point</th>
-                      <th class="px-4 py-3">Aksi</th>
+                      <th class="px-4 py-3">IP Access Point</th>
+                      <th class="px-4 py-3">Status AP</th>
+                      <th class="px-4 py-3">Aksi Akun</th>
+                      <th class="px-4 py-3">Aksi Layanan</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-ink/6 bg-white/70">
                     <template x-if="!filteredHotspotContacts.length">
-                      <tr><td colspan="5" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada akun hotspot yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
+                      <tr><td colspan="9" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada akun hotspot yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
                     </template>
                     <template x-for="contact in paginatedHotspotContacts" :key="'hotspot-' + contact.id">
                       <tr>
                         <td class="px-4 py-4" data-label="Pelanggan"><strong class="customer-name" x-text="contact.name"></strong><small class="customer-meta" x-text="contact.phoneNumber"></small></td>
                         <td class="px-4 py-4 text-ink/65" data-label="User / Profile">
                           <span class="customer-hotspot-account" x-text="getContactHotspotLabel(contact)"></span>
+                        </td>
+                        <td class="px-4 py-4" data-label="Status Akun">
                           <span class="customer-hotspot-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getHotspotProvisioningClass(contact)" x-text="getHotspotProvisioningLabel(contact)"></span>
                           <small x-show="contact.hotspotProvisioningError && canRetryHotspotProvisioning(contact)" class="customer-hotspot-error" x-text="contact.hotspotProvisioningError"></small>
                         </td>
-                        <td class="px-4 py-4" data-label="Jadwal layanan">
+                        <td class="px-4 py-4" data-label="Status Jadwal">
                           <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getReactivationClass(contact)" x-text="getReactivationLabel(contact)"></span>
+                        </td>
+                        <td class="px-4 py-4" data-label="Jadwal Layanan">
                           <small class="customer-schedule-detail" x-text="getReactivationDetail(contact)"></small>
                         </td>
-                        <td class="px-4 py-4" data-label="Access Point">
+                        <td class="px-4 py-4" data-label="IP Access Point">
                           <span class="customer-ap-host" x-text="contact.linkedApHost || 'Belum dipilih'"></span>
-                          <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getContactApStatusClass(contact)" x-text="getContactApStatusLabel(contact)"></span>
                         </td>
-                        <td class="px-4 py-4" data-label="Aksi">
-                          <div class="customer-action-group customer-hotspot-action-grid customer-row-actions">
+                        <td class="px-4 py-4" data-label="Status AP">
+                          <span class="customer-ap-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getContactApStatusClass(contact)" x-text="getContactApStatusLabel(contact)"></span>
+                        </td>
+                        <td class="px-4 py-4" data-label="Aksi Akun">
+                          <div class="customer-action-group customer-hotspot-action-grid customer-hotspot-account-actions customer-row-actions">
                             <button type="button" @click="openAccountDeliveryModal(contact)" class="customer-account-send-button border border-emerald-600 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"><i class="fa-brands fa-whatsapp mr-1.5"></i>Kirim Akun</button>
                             <button x-show="canRetryHotspotProvisioning(contact)" type="button" @click="retryHotspotProvisioning(contact)" class="border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"><i class="fa-solid fa-rotate mr-1.5"></i>Coba lagi</button>
+                            <button type="button" @click="openHotspotAccountModal(contact)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-gear mr-1.5"></i><span x-text="contact.mikrotikUsername ? 'Atur akun' : 'Buat akun'"></span></button>
+                          </div>
+                        </td>
+                        <td class="px-4 py-4" data-label="Aksi Layanan">
+                          <div class="customer-action-group customer-hotspot-action-grid customer-hotspot-service-actions customer-row-actions">
                             <button x-show="contact.mikrotikUsername && contact.mikrotikProfile && canReactivateHotspot(contact)" type="button" @click="reactivateHotspotContact(contact)" class="border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-power-off mr-1.5"></i>Aktifkan sekarang</button>
                             <button x-show="canDisableHotspot(contact)" type="button" @click="setHotspotDisabled(contact, true)" class="border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"><i class="fa-solid fa-ban mr-1.5"></i>Nonaktifkan</button>
                             <button x-show="canEnableHotspot(contact)" type="button" @click="setHotspotDisabled(contact, false)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-power-off mr-1.5"></i>Aktifkan akun</button>
                             <button x-show="contact.mikrotikUsername && contact.mikrotikProfile" type="button" @click="openHotspotScheduleModal(contact)" class="customer-schedule-button border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"><i class="fa-solid fa-calendar-days mr-1.5"></i>Atur jadwal</button>
-                            <button type="button" @click="openHotspotAccountModal(contact)" class="border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss"><i class="fa-solid fa-gear mr-1.5"></i><span x-text="contact.mikrotikUsername ? 'Atur akun' : 'Buat akun'"></span></button>
                           </div>
                         </td>
                       </tr>

@@ -750,9 +750,27 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
 
   assert.match(html, /customer-data-actions customer-row-actions/);
   assert.match(html, /customer-billing-actions customer-row-actions/);
-  assert.match(html, /customer-hotspot-action-grid customer-row-actions/);
+  assert.match(html, /customer-hotspot-action-grid[^\"]*customer-row-actions/);
+  assert.match(html, /customer-hotspot-account-actions[^\"]*customer-row-actions/);
+  assert.match(html, /customer-hotspot-service-actions[^\"]*customer-row-actions/);
+  assert.match(html, /data-label="Langganan"/);
+  assert.match(html, /data-label="Nomor HP"/);
+  assert.match(html, /data-label="Status Jatuh Tempo"/);
+  assert.match(html, /data-label="Sumber Nominal"/);
+  assert.match(html, /data-label="Bulan Ini"/);
+  assert.match(html, /data-label="Tunggakan"/);
+  assert.match(html, /data-label="Status Akun"/);
+  assert.match(html, /data-label="Status Jadwal"/);
+  assert.match(html, /data-label="Jadwal Layanan"/);
+  assert.match(html, /data-label="IP Access Point"/);
+  assert.match(html, /data-label="Status AP"/);
+  assert.match(html, /data-label="Aksi Akun"/);
+  assert.match(html, /data-label="Aksi Layanan"/);
+  assert.match(html, /<td colspan="10"[^>]*Tidak ada tagihan yang cocok/);
+  assert.match(html, /<td colspan="9"[^>]*Tidak ada akun hotspot yang cocok/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 36px !important;[^}]*border-radius: 9px !important;[^}]*font-size: 10px !important;/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 44px !important;[^}]*font-size: 11px !important;/);
+  assert.match(styles, /\.customer-due-status \{[^}]*white-space: nowrap;/);
 });
 
 test("jadwal reminder memakai waktu kirim H-1 dan tetap menampilkan jatuh tempo", () => {

@@ -758,7 +758,7 @@ table tbody tr:hover { background: #fafaff; }
 .customer-data-actions { display: grid; width: 100%; grid-template-columns: 1.35fr 1fr 1fr; gap: 7px; }
 .customer-data-actions button { display: inline-flex; width: 100%; min-width: 0; min-height: 36px; align-items: center; justify-content: center; gap: 7px; padding: 8px 10px !important; border-radius: 9px !important; font-size: 10px !important; line-height: 1.2; white-space: nowrap; }
 .customer-data-actions button i { width: 12px; flex: 0 0 12px; margin-right: 0 !important; text-align: center; }
-.customer-hotspot-action-grid { display: grid; width: 100%; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+.customer-hotspot-action-grid { display: grid; width: 100%; grid-template-columns: 1fr; gap: 6px; }
 .customer-hotspot-action-grid button { display: inline-flex; width: 100%; min-width: 0; min-height: 34px; align-items: center; justify-content: center; gap: 5px; padding: 7px 8px !important; border-radius: 9px !important; font-size: 10px !important; line-height: 1.2; white-space: nowrap; }
 .customer-hotspot-action-grid button i { width: 12px; flex: 0 0 12px; margin-right: 0 !important; text-align: center; }
 .customer-action-group .customer-account-send-button { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; border-color: #059669 !important; border-radius: 9px !important; background: #059669 !important; }
@@ -767,6 +767,7 @@ table tbody tr:hover { background: #fafaff; }
 .customer-name, .customer-meta { display: block; }
 .customer-name { color: #344054; font-size: 13px; font-weight: 700; }
 .customer-meta { margin-top: 3px; color: #8a94a5; font-size: 11px; }
+.customer-phone-number { display: block; color: #596579; font-size: 12px; white-space: nowrap; }
 .customer-table-frame { width: 100%; }
 .customer-workspace-table { width: 100%; min-width: 0; table-layout: fixed; }
 .customer-workspace-table th, .customer-workspace-table td { overflow-wrap: anywhere; }
@@ -779,7 +780,7 @@ table tbody tr:hover { background: #fafaff; }
 .customer-data-table th:nth-child(5) { width: 14%; }
 .customer-data-table th:nth-child(6) { width: 29%; }
 .customer-due-date { display: block; color: #596579; font-size: 12px; line-height: 1.45; }
-.customer-due-status { margin-top: 7px; }
+.customer-due-status { margin-top: 0; white-space: nowrap; }
 .customer-amount-editor { display: flex; min-width: 0; align-items: center; gap: 6px; }
 .customer-amount-editor .currency-input-group { min-width: 0; flex: 1; }
 .customer-amount-save { display: inline-flex; width: 38px; min-width: 38px; height: 38px; align-items: center; justify-content: center; padding: 0 !important; }
@@ -836,7 +837,8 @@ table tbody tr:hover { background: #fafaff; }
 .customer-debt-note { display: flex; max-width: 220px; flex-direction: column; gap: 3px; margin-top: 7px; padding: 7px 8px; color: #b42318; border: 1px solid #f4c7c3; border-radius: 8px; background: #fff7f6; }
 .customer-debt-note strong { display: flex; align-items: center; gap: 5px; font-size: 11px; }
 .customer-debt-note small { color: #c05a50; font-size: 10px; line-height: 1.4; }
-.customer-ap-host { display: block; margin-bottom: 6px; color: #667085; font-size: 11px; font-weight: 650; }
+.customer-ap-host { display: block; margin-bottom: 0; color: #667085; font-size: 11px; font-weight: 650; white-space: nowrap; }
+.customer-ap-status { white-space: nowrap; }
 .customer-hotspot-account { display: block; color: #475467; font-weight: 650; }
 .customer-hotspot-status { margin-top: 7px; }
 .customer-hotspot-error { display: -webkit-box; overflow: hidden; max-width: 240px; margin-top: 6px; color: #b42318; font-size: 10px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
@@ -861,16 +863,27 @@ table tbody tr:hover { background: #fafaff; }
 .customer-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; color: #667085; font-size: 12px; }
 .customer-pagination-controls { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; white-space: nowrap; }
 .customer-pagination-controls span { min-width: 48px; text-align: center; }
-.customer-billing-table th:nth-child(1) { width: 17%; }
-.customer-billing-table th:nth-child(2) { width: 17%; }
-.customer-billing-table th:nth-child(3) { width: 23%; }
-.customer-billing-table th:nth-child(4) { width: 23%; }
-.customer-billing-table th:nth-child(5) { width: 20%; }
-.customer-hotspot-table th:nth-child(1) { width: 17%; }
-.customer-hotspot-table th:nth-child(2) { width: 17%; }
-.customer-hotspot-table th:nth-child(3) { width: 19%; }
-.customer-hotspot-table th:nth-child(4) { width: 20%; }
-.customer-hotspot-table th:nth-child(5) { width: 27%; }
+.customer-billing-table { min-width: 1600px; }
+.customer-billing-table th:nth-child(1) { width: 10%; }
+.customer-billing-table th:nth-child(2) { width: 10%; }
+.customer-billing-table th:nth-child(3) { width: 8%; }
+.customer-billing-table th:nth-child(4) { width: 10%; }
+.customer-billing-table th:nth-child(5) { width: 10%; }
+.customer-billing-table th:nth-child(6) { width: 14%; }
+.customer-billing-table th:nth-child(7) { width: 13%; }
+.customer-billing-table th:nth-child(8) { width: 9%; }
+.customer-billing-table th:nth-child(9) { width: 10%; }
+.customer-billing-table th:nth-child(10) { width: 6%; }
+.customer-hotspot-table { min-width: 1450px; }
+.customer-hotspot-table th:nth-child(1) { width: 11%; }
+.customer-hotspot-table th:nth-child(2) { width: 12%; }
+.customer-hotspot-table th:nth-child(3) { width: 11%; }
+.customer-hotspot-table th:nth-child(4) { width: 11%; }
+.customer-hotspot-table th:nth-child(5) { width: 14%; }
+.customer-hotspot-table th:nth-child(6) { width: 11%; }
+.customer-hotspot-table th:nth-child(7) { width: 10%; }
+.customer-hotspot-table th:nth-child(8) { width: 9%; }
+.customer-hotspot-table th:nth-child(9) { width: 11%; }
 
 @media (max-width: 767px) {
   .customer-heading { align-items: stretch; flex-direction: column; gap: 11px; }
@@ -885,6 +898,7 @@ table tbody tr:hover { background: #fafaff; }
   .customer-panel-toolbar { align-items: stretch; flex-direction: column; gap: 9px; }
   .customer-panel-toolbar button { width: 100%; }
   .customer-workspace-table { table-layout: auto; }
+  .customer-billing-table, .customer-hotspot-table { min-width: 0; }
   /* Let the data tab use the same full-width mobile card layout as other customer tabs. */
   .customer-data-table { min-width: 0; }
   .customer-action-group { width: 100%; }
