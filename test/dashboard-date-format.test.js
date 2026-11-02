@@ -405,7 +405,7 @@ test("tampilan monitor jaringan menyediakan ringkasan dan filter sinkronisasi", 
   assert.match(html, /x-for="ap in selectableApMonitors"/);
 });
 
-test("ringkasan menempatkan kondisi utama lebih dulu dan setiap metrik dapat dibuka", () => {
+test("ringkasan menempatkan status di kiri dan kondisi utama di kanan", () => {
   const app = createDashboardApp({
     window: { matchMedia: () => ({ matches: false }), scrollTo: () => {} },
   });
@@ -413,15 +413,15 @@ test("ringkasan menempatkan kondisi utama lebih dulu dan setiap metrik dapat dib
   const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
   const script = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
 
-  assert.ok(html.indexOf("overview-summary-region") < html.indexOf("overview-side"));
+  assert.ok(html.indexOf("status-panel") < html.indexOf("overview-summary-region"));
   assert.match(html, /Kondisi hari ini/);
   assert.match(html, /x-text="currentDateLabel"/);
   assert.match(html, /@click="selectMenu\(metric\.menu\)"/);
   assert.match(html, /:aria-label="'Buka ' \+ metric\.label"/);
   assert.doesNotMatch(html, /metric\.label\.includes\('bayar'\)/);
-  assert.match(styles, /\.overview-workspace > \.overview-side \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
-  assert.match(styles, /@media \(max-width: 991px\)[\s\S]*?\.overview-workspace > \.overview-side \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/);
-  assert.match(styles, /@media \(max-width: 767px\)[\s\S]*?\.overview-workspace > \.overview-side \{ grid-template-columns: minmax\(0, 1fr\);/);
+  assert.match(styles, /\.page-grid\.overview-workspace \{ grid-template-columns: minmax\(300px, 1fr\) minmax\(0, 2fr\);/);
+  assert.match(styles, /\.overview-workspace > \.status-panel,[\s\S]*?\.overview-workspace > \.quick-panel \{[^}]*width: 100%;[^}]*height: 100%;/);
+  assert.match(styles, /@media \(max-width: 767px\)[\s\S]*?\.page-grid\.overview-workspace \{ grid-template-columns: minmax\(0, 1fr\);/);
   assert.match(script, /label: "Penerima admin"[^\n]*menu: "notifications"/);
   assert.match(script, /label: "AP bermasalah"[^\n]*menu: "monitor-ap"/);
 

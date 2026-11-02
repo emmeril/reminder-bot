@@ -1081,10 +1081,11 @@ input:focus, textarea:focus, select:focus, .currency-input-group:focus-within {
 .login-footnote a { color: var(--primary-dark); border-color: #dbe3ed; border-radius: 9px; background: #fff; }
 
 /* Overview follows the operator's scan order: totals first, then status and actions. */
-.page-grid.overview-workspace { grid-template-columns: minmax(0, 1fr); gap: 16px !important; }
+.page-grid.overview-workspace { grid-template-columns: minmax(300px, 1fr) minmax(0, 2fr); gap: 16px !important; }
 .overview-summary-region { width: 100%; }
-.overview-workspace > .overview-side { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; gap: 16px; }
-.overview-workspace > .overview-side > * { height: 100%; margin-top: 0 !important; }
+.overview-workspace > .status-panel,
+.overview-workspace > .attention-panel,
+.overview-workspace > .quick-panel { width: 100%; height: 100%; margin-top: 0 !important; }
 .overview-workspace > main { display: none; }
 .summary-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .summary-heading > div { min-width: 0; }
@@ -1105,9 +1106,6 @@ input:focus, textarea:focus, select:focus, .currency-input-group:focus-within {
   .content-wrapper { width: 100%; min-width: 0; margin-left: 0; }
   .menu-pill.nav-item { min-height: 44px; }
   .sidebar-logout { width: 44px; height: 44px; }
-  .overview-workspace > .overview-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .overview-workspace .quick-panel { grid-column: 1 / -1; }
-  .overview-workspace .quick-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 @media (max-width: 767px) {
@@ -1129,8 +1127,7 @@ input:focus, textarea:focus, select:focus, .currency-input-group:focus-within {
   .panel-shell button { min-height: 44px; }
   .service-card > a { width: 44px; height: 44px; }
   .customer-tabs > button { min-height: 56px; }
-  .overview-workspace > .overview-side { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .overview-workspace .quick-panel { grid-column: auto; }
+  .page-grid.overview-workspace { grid-template-columns: minmax(0, 1fr); gap: 12px !important; }
   .overview-workspace .quick-grid { grid-template-columns: minmax(0, 1fr); }
   .summary-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
   .summary-date { white-space: normal; }
