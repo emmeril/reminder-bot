@@ -512,8 +512,14 @@ function addDaysSafely(dateValue, daysToAdd, timeZone = "Asia/Jakarta") {
 }
 
 function isAutomaticBillingReminder(reminder) {
-  return String(reminder?.reminderKind || "").trim().toUpperCase() === "BILLING"
+  const reminderKind = String(reminder?.reminderKind || "").trim().toUpperCase();
+  return reminderKind === "BILLING"
+    || reminderKind === "GRACE_PERIOD"
     || String(reminder?.templateName || "").trim().toLowerCase() === "penagihan.txt";
+}
+
+function isGracePeriodReminder(reminder) {
+  return String(reminder?.reminderKind || "").trim().toUpperCase() === "GRACE_PERIOD";
 }
 
 function getReminderDeliveryDate(reminder, graceDays = 0, timeZone = "Asia/Jakarta") {
@@ -521,7 +527,7 @@ function getReminderDeliveryDate(reminder, graceDays = 0, timeZone = "Asia/Jakar
   if (!Number.isNaN(retryDate.getTime())) return retryDate;
 
   const dueDate = new Date(reminder?.reminderDateTime || "");
-  if (Number.isNaN(dueDate.getTime()) || !isAutomaticBillingReminder(reminder)) return dueDate;
+  if (Number.isNaN(dueDate.getTime()) || !isGracePeriodReminder(reminder)) return dueDate;
 
   const normalizedGraceDays = sanitizePositiveInteger(graceDays, 0, 0, 30);
   return addDaysSafely(dueDate, Math.max(0, normalizedGraceDays - 1), timeZone);
@@ -548,6 +554,7 @@ module.exports = {
   isValidPhoneNumber,
   isValidTimeZone,
   isAutomaticBillingReminder,
+  isGracePeriodReminder,
   makeBillingPeriodKey,
   normalizeNetworkHost,
   normalizePhoneNumber,

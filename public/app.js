@@ -564,6 +564,15 @@
           return new Date(value).toLocaleString("id-ID", { timeZone: this.getAppTimezone() });
         },
 
+        getReminderDeliveryLabel(reminder) {
+          const labels = {
+            GRACE_PERIOD: "Pengingat masa tenggang",
+            BILLING_DUE: "Jatuh tempo tagihan",
+            RETRY: "Percobaan ulang",
+          };
+          return labels[String(reminder?.deliveryScheduleType || "").toUpperCase()] || "Waktu reminder";
+        },
+
         messageKey(scope, id) {
           return `${scope}:${id || "unknown"}`;
         },

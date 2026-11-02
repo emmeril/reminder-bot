@@ -59,6 +59,7 @@ const {
   getPreviousBillingPeriod,
   getReminderDeliveryDate,
   isAutomaticBillingReminder,
+  isGracePeriodReminder,
   isValidPhoneNumber,
   isValidTimeZone,
   makeBillingPeriodKey,
@@ -2648,9 +2649,14 @@ class DataManager {
       0,
       30
     );
-    const deliveryScheduleType = !Number.isNaN(retryDate.getTime())
-      ? "RETRY"
-      : (graceDays > 0 && isAutomaticBillingReminder(reminder) ? "GRACE_PERIOD" : "STANDARD");
+    let deliveryScheduleType = "STANDARD";
+    if (!Number.isNaN(retryDate.getTime())) {
+      deliveryScheduleType = "RETRY";
+    } else if (graceDays > 0 && isGracePeriodReminder(reminder)) {
+      deliveryScheduleType = "GRACE_PERIOD";
+    } else if (isAutomaticBillingReminder(reminder)) {
+      deliveryScheduleType = "BILLING_DUE";
+    }
     return {
       ...reminder,
       contactId: reminder.contactId || contact?.id || null,
@@ -3531,12 +3537,13 @@ class DataManager {
       reminder.reminderDateTime = reminderDateTime;
       changed += 1;
     }
-    if (reminder.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY) {
+    if ([REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY, REMINDER_KINDS.GRACE_PERIOD].includes(reminder.reminderKind)) {
       reminder.reminderKind = REMINDER_KINDS.BILLING;
       reminder.message = DEFAULT_REMINDER_MESSAGE_TEMPLATE;
       reminder.messageSource = DEFAULT_REMINDER_MESSAGE_TEMPLATE;
       reminder.templateName = "Penagihan.txt";
       delete reminder.activePeriodUntil;
+      delete reminder.gracePeriodCreatedAt;
       changed += 1;
     }
     for (const field of [
@@ -4842,6 +4849,9 @@ class DataManager {
         phoneNumber: contact.phoneNumber,
         paymentAmount: Math.max(0, Number(contact.monthlyPaymentAmount) || 0),
         reminderDateTime: reminderDate.toISOString(),
+        reminderKind: Object.values(REMINDER_KINDS).includes(payload.reminderKind)
+          ? payload.reminderKind
+          : undefined,
         message,
         messageSource: sanitizeMultilineText(payload.messageSource || message),
         templateName: payload.templateName ? sanitizeInput(payload.templateName) : null,
@@ -4984,6 +4994,60 @@ class DataManager {
         await this.saveSentReminders(options);
       }));
       return sentReminder;
+    });
+  }
+
+  async moveToGracePeriod(id, extras = {}) {
+    return this.withDataMutation(async () => {
+      const reminder = this.getReminder(id);
+      if (!reminder) return null;
+
+      const historyId = generateId();
+      const sentReminder = {
+        ...this.hydrateReminder(reminder),
+        id: historyId,
+        sourceReminderId: String(id),
+        message: extras.message || reminder.message,
+        sentAt: extras.sentAt || new Date().toISOString(),
+        deliveryStatus: extras.deliveryStatus || "SENT",
+        whatsappProvider: extras.whatsappProvider || reminder.whatsappProvider || null,
+        providerMessageId: extras.providerMessageId || reminder.providerMessageId || null,
+        providerStatus: extras.providerStatus || (extras.deliveryStatus === "FAILED" ? "failed" : "sent"),
+        providerError: extras.providerError || extras.deliveryError || reminder.providerError || null,
+      };
+      if (extras.deliveryError) {
+        sentReminder.deliveryError = sanitizeInput(extras.deliveryError);
+      }
+      delete sentReminder.processingAt;
+      delete sentReminder.nextDeliveryAttemptAt;
+
+      reminder.reminderKind = REMINDER_KINDS.GRACE_PERIOD;
+      reminder.gracePeriodCreatedAt = new Date().toISOString();
+      for (const field of [
+        "processingAt",
+        "nextDeliveryAttemptAt",
+        "deliveryAttemptedAt",
+        "lastDeliveryAttemptAt",
+        "lastDeliveryError",
+        "deliveryAttempts",
+        "whatsappProvider",
+        "providerMessageId",
+        "providerStatus",
+        "providerError",
+      ]) {
+        delete reminder[field];
+      }
+
+      this.sentReminders.set(historyId, sentReminder);
+      await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+        const options = { transaction };
+        await this.saveReminders(options);
+        await this.saveSentReminders(options);
+      }));
+      return {
+        sentReminder,
+        reminder: this.hydrateReminder(reminder),
+      };
     });
   }
 

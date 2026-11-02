@@ -15,6 +15,8 @@ const {
   getBillingPeriodParts,
   getDateTimePartsInTimezone,
   getReminderDeliveryDate,
+  isAutomaticBillingReminder,
+  isGracePeriodReminder,
   isValidTimeZone,
   makeBillingPeriodKey,
   normalizeNetworkHost,
@@ -218,8 +220,6 @@ class ReminderScheduler {
       companyNameUpper: companyName.toUpperCase(),
       supportSignature,
     };
-    const isAutomaticBillingReminder = reminder.reminderKind === REMINDER_KINDS.BILLING
-      || String(reminder.templateName || "").toLowerCase() === "penagihan.txt";
     const gracePeriodTemplate = String(
       settings.gracePeriodReminderMessageTemplate
         || DEFAULT_SETTINGS.gracePeriodReminderMessageTemplate
@@ -230,7 +230,7 @@ class ReminderScheduler {
     const isWithinGracePeriod = graceDays > 0
       && Number.isFinite(currentTime)
       && currentTime < gracePeriodEndsAt;
-    const sourceMessage = isWithinGracePeriod && isAutomaticBillingReminder && gracePeriodTemplate
+    const sourceMessage = isWithinGracePeriod && isGracePeriodReminder(reminder) && gracePeriodTemplate
       ? gracePeriodTemplate
       : reminder.messageSource || reminder.message || "";
     let message = String(sourceMessage);
@@ -273,6 +273,43 @@ class ReminderScheduler {
 
   isPaidReminder(reminder) {
     return this.getReminderBilling(reminder).totalPeriods === 0;
+  }
+
+  shouldQueueGracePeriodReminder(reminder) {
+    if (isGracePeriodReminder(reminder)
+      || reminder.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY
+      || typeof this.dataManager.moveToGracePeriod !== "function") return false;
+
+    const settings = typeof this.dataManager.getSettings === "function"
+      ? this.dataManager.getSettings()
+      : {};
+    const graceDays = sanitizePositiveInteger(
+      settings.hotspotIsolationGraceDays,
+      DEFAULT_SETTINGS.hotspotIsolationGraceDays,
+      0,
+      30
+    );
+    return graceDays > 0 && isAutomaticBillingReminder(reminder);
+  }
+
+  async finalizeReminderDelivery(reminder, extras, sourceStatus) {
+    if (this.shouldQueueGracePeriodReminder(reminder)) {
+      const transition = await this.dataManager.moveToGracePeriod(reminder.id, extras);
+      this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} dilanjutkan ke pengingat masa tenggang`, {
+        reminderId: reminder.id,
+        contactId: reminder.contactId || null,
+        sourceStatus,
+        graceReminderDateTime: transition?.reminder?.deliveryDateTime || null,
+      });
+      return {
+        sentReminder: transition?.sentReminder || null,
+        graceScheduled: Boolean(transition?.reminder),
+      };
+    }
+
+    const sentReminder = await this.dataManager.moveToSent(reminder.id, extras);
+    await this.rescheduleMonthlyReminder(reminder, sourceStatus);
+    return { sentReminder, graceScheduled: false };
   }
 
   getDueTime(reminder) {
@@ -353,20 +390,19 @@ class ReminderScheduler {
 
           if (reminder.deliveryAttemptedAt && !reminder.providerStatus) {
             const errorMessage = reminder.lastDeliveryError || "Pengiriman sebelumnya gagal";
-            await this.dataManager.moveToSent(reminder.id, {
+            const finalized = await this.finalizeReminderDelivery(reminder, {
               sentAt: reminder.lastDeliveryAttemptAt || new Date().toISOString(),
               deliveryStatus: "FAILED",
               deliveryError: errorMessage,
               providerStatus: "failed",
               providerError: errorMessage,
-            });
+            }, "FAILED");
             claimedReminderId = null;
-            await this.rescheduleMonthlyReminder(reminder, "FAILED");
             this.activityLog.push("warn", "delivery", `Reminder ${reminder.id} tidak dikirim ulang setelah kegagalan sebelumnya`, {
               reminderId: reminder.id,
               error: errorMessage,
               phoneNumber: reminder.phoneNumber,
-              retryScheduled: false,
+              graceReminderScheduled: finalized.graceScheduled,
             });
             continue;
           }
@@ -430,7 +466,7 @@ class ReminderScheduler {
             const errorMessage = error?.message || String(error);
             const attempts = Math.max(1, Number(attemptedReminder.deliveryAttempts) || 1);
 
-            await this.dataManager.moveToSent(reminder.id, {
+            const finalized = await this.finalizeReminderDelivery(reminder, {
               sentAt: new Date().toISOString(),
               deliveryStatus: "FAILED",
               deliveryError: errorMessage,
@@ -438,9 +474,8 @@ class ReminderScheduler {
               providerStatus: "failed",
               providerError: errorMessage,
               message: outgoingMessage,
-            });
+            }, "FAILED");
             claimedReminderId = null;
-            await this.rescheduleMonthlyReminder(reminder, "FAILED");
             this.activityLog.push("error", "whatsapp.message.failed", `Message failed: ${targetPhoneNumber}`, {
               event: "whatsapp.message.failed",
               reminderId: reminder.id,
@@ -448,20 +483,21 @@ class ReminderScheduler {
               phoneNumber: reminder.phoneNumber,
               provider: status.selectedProvider || null,
               attempts,
-              retryScheduled: false,
+              graceReminderScheduled: finalized.graceScheduled,
             });
             continue;
           }
           const provider = sendResult?.provider || "baileys";
           const deliveryStatus = provider === "baileys" ? "SENT_BAILEYS" : "SENT";
-          const sentReminder = await this.dataManager.moveToSent(reminder.id, {
+          const finalized = await this.finalizeReminderDelivery(reminder, {
             sentAt: new Date().toISOString(),
             deliveryStatus,
             whatsappProvider: provider,
             providerMessageId: sendResult?.providerMessageId || sendResult?.messageId || null,
             providerStatus: "sent",
             message: outgoingMessage,
-          });
+          }, deliveryStatus);
+          const sentReminder = finalized.sentReminder;
           claimedReminderId = null;
 
           this.activityLog.push("info", "whatsapp.message.sent", `Message sent: ${targetPhoneNumber}`, {
@@ -470,10 +506,6 @@ class ReminderScheduler {
             provider,
             providerMessageId: sendResult?.providerMessageId || sendResult?.messageId || null,
           });
-
-          // Jadwal berikutnya adalah proses inti reminder. Selesaikan lebih
-          // dahulu agar notifikasi tambahan ke admin tidak dapat menahannya.
-          await this.rescheduleMonthlyReminder(reminder, deliveryStatus);
 
           if (this.dataManager.getSettings().notifyAdminsOnDelivery) {
             try {

@@ -22,7 +22,7 @@ test("template reminder dirender dari variabel saat pesan akan dikirim", () => {
     contactName: "Nouval",
     phoneNumber: "6287728972090",
     reminderDateTime: "2026-08-15T01:00:00.000Z",
-    reminderKind: REMINDER_KINDS.BILLING,
+    reminderKind: REMINDER_KINDS.GRACE_PERIOD,
     message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
     messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   };
@@ -81,7 +81,7 @@ test("pengingat masa tenggang memakai template yang disimpan di pengaturan", () 
 
   const message = scheduler.buildReminderMessage({
     reminderDateTime: "2026-11-01T01:00:00.000Z",
-    reminderKind: REMINDER_KINDS.BILLING,
+    reminderKind: REMINDER_KINDS.GRACE_PERIOD,
     message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
     messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   }, new Date("2026-11-01T02:00:00.000Z"));
@@ -115,18 +115,26 @@ test("template masa tenggang tidak mengganti reminder biasa saat jeda isolir nol
   assert.doesNotMatch(message, /Masa tenggang sampai/);
 });
 
-test("pengingat tagihan dikirim H-1 sebelum masa tenggang berakhir", () => {
+test("pengingat jatuh tempo dikirim sesuai tanggal dan pengingat masa tenggang dikirim H-1", () => {
   const scheduler = new ReminderScheduler({}, {
     getSettings: () => ({ hotspotIsolationGraceDays: 3 }),
     getTimezone: () => "Asia/Jakarta",
   }, { push() {} });
-  const reminder = {
+  const billingReminder = {
     reminderDateTime: "2026-11-02T01:00:00.000Z",
     reminderKind: REMINDER_KINDS.BILLING,
   };
+  const graceReminder = {
+    ...billingReminder,
+    reminderKind: REMINDER_KINDS.GRACE_PERIOD,
+  };
 
   assert.equal(
-    new Date(scheduler.getDueTime(reminder)).toISOString(),
+    new Date(scheduler.getDueTime(billingReminder)).toISOString(),
+    "2026-11-02T01:00:00.000Z"
+  );
+  assert.equal(
+    new Date(scheduler.getDueTime(graceReminder)).toISOString(),
     "2026-11-04T01:00:00.000Z"
   );
 });
@@ -154,6 +162,98 @@ test("reminder biasa, tenggang nol, dan jadwal percobaan ulang tidak ikut digese
     reminderKind: REMINDER_KINDS.BILLING,
     nextDeliveryAttemptAt: retryAt,
   }), new Date(retryAt).getTime());
+});
+
+test("scheduler mengirim saat jatuh tempo lalu H-1 dan hanya menjadwalkan bulan berikutnya sekali", async () => {
+  const reminder = {
+    id: "two-stage-reminder",
+    contactId: "two-stage-contact",
+    contactName: "Pelanggan Dua Tahap",
+    phoneNumber: "6281234567890",
+    reminderDateTime: new Date(Date.now() - 1000).toISOString(),
+    reminderKind: REMINDER_KINDS.BILLING,
+    templateName: "Penagihan.txt",
+    message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+    messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+  };
+  const reminders = new Map([[reminder.id, reminder]]);
+  const sentMessages = [];
+  const histories = [];
+  const nextReminders = [];
+  let graceTransitions = 0;
+
+  const contact = {
+    id: "two-stage-contact",
+    subscriptionType: "RECURRING",
+    paymentStatus: "UNPAID",
+    currentPaymentStatus: "UNPAID",
+    debtCount: 0,
+    monthlyPaymentAmount: 75_000,
+  };
+  const dataManager = {
+    getSettings: () => ({
+      autoRescheduleMonthly: true,
+      hotspotIsolationGraceDays: 1,
+      gracePeriodReminderMessageTemplate: "*Pengingat Masa Tenggang*\n\nHalo {{name}}, bayar sebelum {{isolationDate}}.",
+      notifyAdminsOnDelivery: false,
+    }),
+    getTimezone: () => "Asia/Jakarta",
+    getSortedReminders: () => Array.from(reminders.values()),
+    getResolvedReminderContact: () => contact,
+    claimDueReminder: async (id) => reminders.get(id) || null,
+    markReminderDeliveryAttempt: async (id) => {
+      const current = reminders.get(id);
+      current.deliveryAttempts = 1;
+      current.deliveryAttemptedAt = new Date().toISOString();
+      current.providerStatus = "processing";
+      return current;
+    },
+    moveToGracePeriod: async (id, extras) => {
+      const current = reminders.get(id);
+      histories.push({ ...current, ...extras });
+      current.reminderKind = REMINDER_KINDS.GRACE_PERIOD;
+      delete current.deliveryAttempts;
+      delete current.deliveryAttemptedAt;
+      delete current.providerStatus;
+      graceTransitions += 1;
+      return {
+        sentReminder: histories.at(-1),
+        reminder: { ...current, deliveryDateTime: current.reminderDateTime },
+      };
+    },
+    moveToSent: async (id, extras) => {
+      const current = reminders.get(id);
+      reminders.delete(id);
+      const history = { ...current, ...extras };
+      histories.push(history);
+      return history;
+    },
+    addReminder: async (payload) => {
+      const next = { ...payload, id: "next-month-reminder" };
+      nextReminders.push(next);
+      return next;
+    },
+    releaseReminderClaim: async () => null,
+  };
+  const notificationBot = {
+    getStatus: () => ({ whatsappProviderEnabled: true, isAvailable: true, outboundEnabled: true }),
+    sendMessage: async (_phoneNumber, message) => {
+      sentMessages.push(message);
+      return { provider: "baileys", providerMessageId: `message-${sentMessages.length}` };
+    },
+  };
+  const scheduler = new ReminderScheduler(notificationBot, dataManager, { push() {} });
+
+  await scheduler.processDueReminders();
+  await scheduler.processDueReminders();
+
+  assert.equal(sentMessages.length, 2);
+  assert.match(sentMessages[0], /^\*Pengingat Tagihan\*/);
+  assert.match(sentMessages[1], /^\*Pengingat Masa Tenggang\*/);
+  assert.equal(graceTransitions, 1);
+  assert.equal(histories.length, 2);
+  assert.equal(nextReminders.length, 1);
+  assert.equal(nextReminders[0].reminderKind, REMINDER_KINDS.BILLING);
 });
 
 test("reminder menampilkan nominal setiap periode pada tagihan akumulasi", () => {

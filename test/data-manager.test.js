@@ -26,6 +26,7 @@ function createManager(contact) {
   manager.savePelanggan = async () => {};
   manager.saveCustomerAccounts = async () => {};
   manager.saveReminders = async () => {};
+  manager.saveSentReminders = async () => {};
   manager.saveSettings = async () => {};
   manager.withDatabaseWrite = async (operation) => operation();
   manager.sequelize = {
@@ -195,7 +196,7 @@ test("reminder bulanan yang hilang dibuat ulang dari jadwal layanan", async () =
   assert.equal(saves, 1);
 });
 
-test("jadwal reminder tagihan menampilkan waktu kirim H-1 tanpa mengubah jatuh tempo", async () => {
+test("reminder jatuh tempo berlanjut ke pengingat masa tenggang H-1", async () => {
   const manager = createManager({
     id: "contact-grace-reminder",
     name: "Pelanggan Tenggang",
@@ -214,8 +215,8 @@ test("jadwal reminder tagihan menampilkan waktu kirim H-1 tanpa mengubah jatuh t
 
   const reminder = manager.getSortedReminders()[0];
   assert.equal(reminder.reminderDateTime, "2026-11-02T01:00:00.000Z");
-  assert.equal(reminder.deliveryDateTime, "2026-11-04T01:00:00.000Z");
-  assert.equal(reminder.deliveryScheduleType, "GRACE_PERIOD");
+  assert.equal(reminder.deliveryDateTime, "2026-11-02T01:00:00.000Z");
+  assert.equal(reminder.deliveryScheduleType, "BILLING_DUE");
   assert.equal(manager.hydrateReminder({
     reminderDateTime: "2026-11-02T01:00:00.000Z",
   }).deliveryScheduleType, "STANDARD");
@@ -224,11 +225,32 @@ test("jadwal reminder tagihan menampilkan waktu kirim H-1 tanpa mengubah jatuh t
     reminderKind: REMINDER_KINDS.BILLING,
     nextDeliveryAttemptAt: "2026-11-04T02:00:00.000Z",
   }).deliveryScheduleType, "RETRY");
+  const transition = await manager.moveToGracePeriod(reminder.id, {
+    sentAt: "2026-11-02T01:00:00.000Z",
+    deliveryStatus: "SENT_BAILEYS",
+    message: "Pengingat jatuh tempo",
+  });
+  assert.equal(transition.sentReminder.message, "Pengingat jatuh tempo");
+  assert.equal(manager.sentReminders.size, 1);
+  assert.equal(transition.reminder.reminderKind, REMINDER_KINDS.GRACE_PERIOD);
+  assert.equal(transition.reminder.reminderDateTime, "2026-11-02T01:00:00.000Z");
+  assert.equal(transition.reminder.deliveryDateTime, "2026-11-04T01:00:00.000Z");
+  assert.equal(transition.reminder.deliveryScheduleType, "GRACE_PERIOD");
   assert.equal(await manager.claimDueReminder(reminder.id, new Date("2026-11-04T00:59:59.000Z")), null);
   assert.equal(
     (await manager.claimDueReminder(reminder.id, new Date("2026-11-04T01:00:00.000Z"))).id,
     reminder.id
   );
+
+  delete manager.getReminder(reminder.id).processingAt;
+  manager.getContact("contact-grace-reminder").hotspotReactivationAt = "2026-12-02T01:00:00.000Z";
+  manager.isReminderSuppressedForArrears = () => false;
+  assert.ok(manager.syncRecurringReminderSchedule(manager.getContact("contact-grace-reminder")) > 0);
+  const nextBillingReminder = manager.getSortedReminders()[0];
+  assert.equal(nextBillingReminder.reminderKind, REMINDER_KINDS.BILLING);
+  assert.equal(nextBillingReminder.reminderDateTime, "2026-12-02T01:00:00.000Z");
+  assert.equal(nextBillingReminder.deliveryDateTime, "2026-12-02T01:00:00.000Z");
+  assert.equal(nextBillingReminder.deliveryScheduleType, "BILLING_DUE");
 });
 
 test("jadwal reminder dihapus dan tidak dapat dibuat saat tunggakan mencapai dua bulan", async () => {

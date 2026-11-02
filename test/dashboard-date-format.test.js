@@ -751,13 +751,16 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
 });
 
 test("jadwal reminder memakai waktu kirim H-1 dan tetap menampilkan jatuh tempo", () => {
+  const app = createDashboardApp();
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const script = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
 
   assert.match(html, /Waktu pengiriman/);
-  assert.match(html, /'Pengingat masa tenggang: '/);
-  assert.match(html, /'Percobaan ulang: '/);
-  assert.match(html, /'Waktu reminder: '/);
+  assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "GRACE_PERIOD" }), "Pengingat masa tenggang");
+  assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "BILLING_DUE" }), "Jatuh tempo tagihan");
+  assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "RETRY" }), "Percobaan ulang");
+  assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "STANDARD" }), "Waktu reminder");
+  assert.match(html, /getReminderDeliveryLabel\(reminder\)/);
   assert.match(html, /'Jatuh tempo tagihan: ' \+ formatDateTime\(reminder\.reminderDateTime\)/);
   assert.match(script, /const deliveryDateTime = reminder\.deliveryDateTime \|\| reminder\.reminderDateTime;/);
   assert.match(script, /this\.isToday\(deliveryDateTime\)/);

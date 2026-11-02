@@ -774,7 +774,7 @@
                       <td class="px-5 py-4 text-ink/65" data-label="Waktu pengiriman">
                         <span class="inline-flex items-center gap-2 whitespace-nowrap font-semibold text-ink/70">
                           <i class="fa-regular fa-calendar text-ink/35"></i>
-                          <span x-text="(reminder.deliveryScheduleType === 'GRACE_PERIOD' ? 'Pengingat masa tenggang: ' : (reminder.deliveryScheduleType === 'RETRY' ? 'Percobaan ulang: ' : 'Waktu reminder: ')) + formatDateTime(reminder.deliveryDateTime || reminder.reminderDateTime)"></span>
+                          <span x-text="getReminderDeliveryLabel(reminder) + ': ' + formatDateTime(reminder.deliveryDateTime || reminder.reminderDateTime)"></span>
                         </span>
                         <div
                           x-show="reminder.deliveryDateTime && reminder.deliveryDateTime !== reminder.reminderDateTime"
