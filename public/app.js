@@ -7,6 +7,7 @@
           voucherOptions: false,
           voucherHistory: false,
           voucherStats: false,
+          voucherRevenue: false,
           voucherProfile: false,
           templates: false,
         },
@@ -110,6 +111,7 @@
         activeContactTab: "data",
         activeSettingsTab: "general",
         activeVoucherTab: "create",
+        activeRevenueTab: "customers",
         sidebarHidden: false,
         mobileSidebarOpen: false,
         navGroups: [
@@ -122,7 +124,7 @@
           { key: "overview", group: "workspace", label: "Ringkasan", icon: "fa-solid fa-table-cells-large", description: "Lihat kondisi layanan dan pekerjaan hari ini." },
           { key: "contacts", group: "operations", label: "Pelanggan", icon: "fa-solid fa-users", description: "Kelola data, tagihan, dan akun hotspot pelanggan." },
           { key: "vouchers", group: "operations", label: "Voucher", icon: "fa-solid fa-ticket", description: "Buat satu atau banyak akun voucher hotspot." },
-          { key: "revenue", group: "operations", label: "Laporan Pendapatan", icon: "fa-solid fa-chart-line", description: "Periksa pembayaran yang tercatat pada setiap periode." },
+          { key: "revenue", group: "operations", label: "Laporan Pendapatan", icon: "fa-solid fa-chart-line", description: "Periksa pendapatan pelanggan dan voucher pada setiap periode." },
           { key: "reminders", group: "operations", label: "Jadwal", icon: "fa-solid fa-calendar-check", description: "Atur waktu dan isi pesan pengingat pelanggan." },
           { key: "monitor-ap", group: "operations", label: "Jaringan", icon: "fa-solid fa-tower-broadcast", description: "Pantau koneksi access point pelanggan." },
           { key: "notifications", group: "messages", label: "Kirim pesan", icon: "fa-solid fa-paper-plane", description: "Kirim pesan ke satu pelanggan atau banyak pelanggan." },
@@ -151,6 +153,14 @@
         expandedMessages: {},
         billingPeriod: "",
         revenuePeriod: "",
+        voucherRevenueError: "",
+        voucherRevenueRequestId: 0,
+        voucherRevenue: {
+          period: "",
+          summary: { revenue: 0, quantity: 0, profiles: 0 },
+          profileSummary: [],
+          entries: [],
+        },
         voucherResult: null,
         voucherBatches: [],
         selectedVoucherBatchId: "",
@@ -170,6 +180,7 @@
           contactBilling: { search: "", status: "ALL", dueStatus: "ALL", page: 1, pageSize: 10 },
           contactHotspot: { search: "", status: "ALL", page: 1, pageSize: 10 },
           revenue: { search: "", status: "ALL", page: 1, pageSize: 10 },
+          voucherRevenue: { search: "", profile: "ALL", page: 1, pageSize: 10 },
           monitorAp: { search: "", status: "ALL", linkStatus: "ALL", page: 1, pageSize: 10 },
           reminders: { search: "", schedule: "ALL", page: 1, pageSize: 10 },
           sent: { search: "", status: "ALL", page: 1, pageSize: 10 },
@@ -288,6 +299,7 @@
           const savedMenu = requestedMenu || localStorage.getItem("dashboardActiveMenu");
           const savedContactTab = localStorage.getItem("dashboardContactTab");
           const savedSettingsTab = localStorage.getItem("dashboardSettingsTab");
+          const savedRevenueTab = localStorage.getItem("dashboardRevenueTab");
           const isValidSavedMenu = this.navMenus.some((menu) => menu.key === savedMenu);
           if (savedMenu === "payment-amount") {
             this.activeMenu = "contacts";
@@ -303,6 +315,9 @@
           if (["general", "rates", "isolation", "backup", "messages", "automation"].includes(savedSettingsTab)) {
             this.activeSettingsTab = savedSettingsTab;
           }
+          if (["customers", "vouchers"].includes(savedRevenueTab)) {
+            this.activeRevenueTab = savedRevenueTab;
+          }
           this.sidebarHidden = localStorage.getItem("dashboardSidebarHidden") === "true";
 
           this.$watch("activeMenu", (value) => {
@@ -317,6 +332,9 @@
           this.$watch("activeSettingsTab", (value) => {
             localStorage.setItem("dashboardSettingsTab", value);
           });
+          this.$watch("activeRevenueTab", (value) => {
+            localStorage.setItem("dashboardRevenueTab", value);
+          });
 
           await this.loadStatus();
           await Promise.all([
@@ -329,6 +347,9 @@
             void this.loadVoucherOptions({ silent: true });
             void this.loadVoucherBatches({ silent: true });
             void this.loadVoucherStats({ silent: true });
+          }
+          if (this.activeMenu === "revenue" && this.activeRevenueTab === "vouchers") {
+            void this.loadVoucherRevenue({ silent: true });
           }
 
           setTimeout(() => {
@@ -382,6 +403,9 @@
           if (key === "vouchers" && !this.voucherStats.profiles.length) {
             void this.loadVoucherStats({ silent: true });
           }
+          if (key === "revenue" && this.activeRevenueTab === "vouchers") {
+            void this.loadVoucherRevenue({ silent: true });
+          }
           window.scrollTo({ top: 0, behavior: "smooth" });
         },
 
@@ -393,6 +417,12 @@
         selectSettingsTab(key) {
           if (!["general", "rates", "isolation", "backup", "messages", "automation"].includes(key)) return;
           this.activeSettingsTab = key;
+        },
+
+        selectRevenueTab(key) {
+          if (!["customers", "vouchers"].includes(key)) return;
+          this.activeRevenueTab = key;
+          if (key === "vouchers") void this.loadVoucherRevenue({ silent: true });
         },
 
         selectAdjacentSettingsTab(direction) {
@@ -1090,6 +1120,71 @@
           return this.getBillingPeriodLabel(year, month);
         },
 
+        handleRevenuePeriodChange() {
+          this.resetPage("revenue");
+          this.resetPage("voucherRevenue");
+          if (this.activeRevenueTab === "vouchers") void this.loadVoucherRevenue({ silent: true });
+        },
+
+        async loadVoucherRevenue(options = {}) {
+          const period = this.revenuePeriod || this.billingPeriod;
+          if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(period || ""))) return;
+          const requestId = ++this.voucherRevenueRequestId;
+          this.loading.voucherRevenue = true;
+          this.voucherRevenueError = "";
+          if (this.voucherRevenue.period !== period) {
+            this.voucherRevenue = {
+              period,
+              summary: { revenue: 0, quantity: 0, profiles: 0 },
+              profileSummary: [],
+              entries: [],
+            };
+          }
+          try {
+            const report = await this.api(`/api/mikrotik/voucher-revenue?period=${encodeURIComponent(period)}`, {
+              silent: Boolean(options.silent),
+            });
+            if (requestId !== this.voucherRevenueRequestId) return;
+            this.voucherRevenue = {
+              period: report?.period || period,
+              summary: {
+                revenue: Number(report?.summary?.revenue || 0),
+                quantity: Number(report?.summary?.quantity || 0),
+                profiles: Number(report?.summary?.profiles || 0),
+              },
+              profileSummary: Array.isArray(report?.profileSummary) ? report.profileSummary : [],
+              entries: Array.isArray(report?.entries) ? report.entries : [],
+            };
+            if (!options.silent) this.notify("Laporan pendapatan voucher diperbarui dari MikroTik.");
+          } catch (error) {
+            if (requestId !== this.voucherRevenueRequestId) return;
+            this.voucherRevenueError = error.message || "Laporan pendapatan voucher gagal dimuat.";
+          } finally {
+            if (requestId === this.voucherRevenueRequestId) this.loading.voucherRevenue = false;
+          }
+        },
+
+        get voucherRevenueProfiles() {
+          return Array.from(new Set(this.voucherRevenue.entries.map((entry) => entry.profile).filter(Boolean)))
+            .sort((a, b) => a.localeCompare(b, "id-ID"));
+        },
+
+        get filteredVoucherRevenueEntries() {
+          const selectedProfile = this.filters.voucherRevenue.profile || "ALL";
+          return this.voucherRevenue.entries.filter((entry) => {
+            if (selectedProfile !== "ALL" && entry.profile !== selectedProfile) return false;
+            return this.searchMatches(
+              entry,
+              ["username", "profile", "amount", "validity", "address", "macAddress"],
+              this.filters.voucherRevenue.search
+            );
+          });
+        },
+
+        get paginatedVoucherRevenueEntries() {
+          return this.paginate(this.filteredVoucherRevenueEntries, "voucherRevenue");
+        },
+
         get revenueEntries() {
           const period = this.revenuePeriod || this.billingPeriod;
           if (!/^\d{4}-\d{2}$/.test(String(period || ""))) return [];
@@ -1212,6 +1307,37 @@
           link.remove();
           URL.revokeObjectURL(url);
           this.notify("Laporan pendapatan sedang diunduh dalam format CSV.");
+        },
+
+        exportVoucherRevenueReport() {
+          const rows = [
+            ["Periode", "Username Voucher", "Profile", "Nilai Voucher", "Tanggal Digunakan", "Masa Berlaku", "Alamat IP", "MAC Address"],
+            ...this.filteredVoucherRevenueEntries.map((entry) => [
+              this.getRevenuePeriodLabel(entry.period),
+              entry.username,
+              entry.profile,
+              entry.amount,
+              entry.usedAt ? this.formatDateTime(entry.usedAt) : "-",
+              entry.validity || "-",
+              entry.address || "-",
+              entry.macAddress || "-",
+            ]),
+          ];
+          const csvCell = (value) => {
+            let text = String(value ?? "");
+            if (/^[=+\-@]/.test(text)) text = `'${text}`;
+            return `"${text.replace(/"/g, '""')}"`;
+          };
+          const csv = `\uFEFF${rows.map((row) => row.map(csvCell).join(",")).join("\n")}`;
+          const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `laporan-pendapatan-voucher-${this.revenuePeriod || "periode"}.csv`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+          this.notify("Laporan pendapatan voucher sedang diunduh dalam format CSV.");
         },
 
         getDueStatusLabel(status) {

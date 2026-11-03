@@ -188,6 +188,12 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
       summary: { total: 2, used: 1, unused: 1 },
       profiles: [{ profile: "100M", total: 2, used: 1, unused: 1 }],
     }),
+    getVoucherRevenueReport: async ({ period }) => ({
+      period,
+      summary: { revenue: 40000, quantity: 1, profiles: 1 },
+      profileSummary: [{ profile: "100M", quantity: 1, revenue: 40000 }],
+      entries: [{ id: "*1", username: "voucher-api", profile: "100M", amount: 40000 }],
+    }),
     createHotspotVouchers: async (payload) => {
       receivedPayload = payload;
       return {
@@ -216,6 +222,12 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
   const statsPayload = await statsResponse.json();
   assert.equal(statsResponse.status, 200);
   assert.deepEqual(statsPayload.data.summary, { total: 2, used: 1, unused: 1 });
+
+  const revenueResponse = await fetch(`${baseUrl}/api/mikrotik/voucher-revenue?period=2026-11`, { headers });
+  const revenuePayload = await revenueResponse.json();
+  assert.equal(revenueResponse.status, 200);
+  assert.deepEqual(revenuePayload.data.summary, { revenue: 40000, quantity: 1, profiles: 1 });
+  assert.equal(revenuePayload.data.period, "2026-11");
 
   const createResponse = await fetch(`${baseUrl}/api/mikrotik/vouchers`, {
     method: "POST",

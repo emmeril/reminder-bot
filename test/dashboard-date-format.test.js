@@ -598,21 +598,91 @@ test("ekspor laporan pendapatan membuat CSV aman dari formula spreadsheet", asyn
   assert.match(csv, /"100000"/);
 });
 
+test("laporan pendapatan voucher dimuat dan difilter terpisah dari pelanggan", async () => {
+  const app = createDashboardApp();
+  app.revenuePeriod = "2026-11";
+  app.api = async (url) => {
+    assert.equal(url, "/api/mikrotik/voucher-revenue?period=2026-11");
+    return {
+      period: "2026-11",
+      summary: { revenue: 50000, quantity: 2, profiles: 2 },
+      profileSummary: [
+        { profile: "VCR-1D", quantity: 1, revenue: 40000 },
+        { profile: "VCR-4H", quantity: 1, revenue: 10000 },
+      ],
+      entries: [
+        { id: "*1", username: "voucher-satu", profile: "VCR-1D", amount: 40000, usedAt: "2026-11-03T01:00:00.000Z", validity: "1d", address: "10.0.0.2", macAddress: "AA:BB" },
+        { id: "*2", username: "voucher-dua", profile: "VCR-4H", amount: 10000, usedAt: "2026-11-02T02:00:00.000Z", validity: "4h", address: "10.0.0.3", macAddress: "CC:DD" },
+      ],
+    };
+  };
+  app.notify = () => {};
+
+  await app.loadVoucherRevenue({ silent: true });
+
+  assert.deepEqual({ ...app.voucherRevenue.summary }, { revenue: 50000, quantity: 2, profiles: 2 });
+  assert.deepEqual(Array.from(app.voucherRevenueProfiles), ["VCR-1D", "VCR-4H"]);
+  app.filters.voucherRevenue.profile = "VCR-4H";
+  assert.equal(app.filteredVoucherRevenueEntries.length, 1);
+  assert.equal(app.filteredVoucherRevenueEntries[0].username, "voucher-dua");
+  app.filters.voucherRevenue.profile = "ALL";
+  app.filters.voucherRevenue.search = "AA:BB";
+  assert.equal(app.filteredVoucherRevenueEntries[0].username, "voucher-satu");
+});
+
+test("ekspor laporan voucher membuat berkas CSV tersendiri", async () => {
+  let createdBlob = null;
+  const link = { href: "", download: "", click() {}, remove() {} };
+  const app = createDashboardApp({
+    Blob,
+    URL: {
+      createObjectURL(blob) { createdBlob = blob; return "blob:voucher-revenue"; },
+      revokeObjectURL() {},
+    },
+    document: { createElement: () => link, body: { appendChild() {} } },
+  });
+  app.revenuePeriod = "2026-11";
+  app.voucherRevenue.entries = [{
+    id: "*1",
+    username: "=voucher-formula",
+    profile: "VCR-1D",
+    amount: 40000,
+    period: "2026-11",
+    usedAt: "2026-11-03T01:00:00.000Z",
+    validity: "1d",
+    address: "10.0.0.2",
+    macAddress: "AA:BB",
+  }];
+  app.notify = () => {};
+
+  app.exportVoucherRevenueReport();
+
+  const csv = await createdBlob.text();
+  assert.equal(link.download, "laporan-pendapatan-voucher-2026-11.csv");
+  assert.match(csv, /"'=voucher-formula"/);
+  assert.match(csv, /"40000"/);
+});
+
 test("sidebar dan panel laporan pendapatan tersedia dengan filter serta ekspor", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const script = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
 
   assert.match(script, /key: "revenue"[^\n]*label: "Laporan Pendapatan"/);
   assert.match(html, /activeMenu === 'revenue'/);
-  assert.match(html, /Pendapatan tercatat/);
-  assert.match(html, /Total pendapatan/);
+  assert.match(html, /Laporan pendapatan/);
+  assert.match(html, /Pendapatan pelanggan/);
+  assert.match(html, /Pendapatan voucher/);
+  assert.match(html, /Total pendapatan pelanggan/);
+  assert.match(html, /Total pendapatan voucher/);
   assert.match(html, /Pembayaran tercatat/);
   assert.match(html, /Pembayaran lunas/);
   assert.doesNotMatch(html, /<span class="metric-label">Pembayaran sebagian<\/span>/);
   assert.doesNotMatch(html, /<span class="metric-label">Rata-rata pembayaran<\/span>/);
   assert.match(html, /x-model="revenuePeriod"/);
   assert.match(html, /exportRevenueReport\(\)/);
-  assert.match(html, /Belum ada pendapatan tercatat pada periode ini/);
+  assert.match(html, /exportVoucherRevenueReport\(\)/);
+  assert.match(html, /Belum ada pendapatan pelanggan pada periode ini/);
+  assert.match(html, /Belum ada pemakaian voucher yang tercatat pada periode ini/);
 });
 
 test("modal aksi tagihan hanya aktif ketika pelanggan memiliki tindakan", () => {

@@ -311,6 +311,59 @@ test("statistik voucher menghitung total, terpakai, dan belum terpakai per profi
   assert.equal(stats.profiles[1].total, 0);
 });
 
+test("laporan voucher menghitung pendapatan dari catatan pemakaian pertama per periode", async () => {
+  const profiles = [
+    { name: "VCR-1D", "on-login": ':put (",remc,25000,1d,40000,,Disable,0,")' },
+    { name: "VCR-4H", "on-login": ':put (",ntfc,5000,4h,10000,,Disable,0,")' },
+    { name: "TANPA-RIWAYAT", "on-login": ':put (",rem,0,1d,50000,,Disable,0,")' },
+  ];
+  const scripts = [
+    {
+      ".id": "*1",
+      name: "nov/03/2026-|-08:00:00-|-voucher-1-|-40000-|-10.0.0.2-|-AA:BB-|-1d-|-VCR-1D-|-vc|batch-1-|-hotspot-|-0",
+      comment: "mikhmon",
+    },
+    {
+      ".id": "*2",
+      name: "nov/02/2026-|-09:15:00-|-voucher-2-|-0-|-10.0.0.3-|-CC:DD-|-4h-|-VCR-4H-|-vc|batch-2-|-hotspot-|-0",
+      comment: "mikhmon",
+    },
+    {
+      ".id": "*3",
+      name: "oct/31/2026-|-20:00:00-|-voucher-lama-|-40000-|-10.0.0.4-|-EE:FF-|-1d-|-VCR-1D-|-vc|batch-1-|-hotspot-|-0",
+      comment: "mikhmon",
+    },
+    {
+      ".id": "*4",
+      name: "nov/03/2026-|-10:00:00-|-voucher-tanpa-riwayat-|-50000-|-10.0.0.5-|-11:22-|-1d-|-TANPA-RIWAYAT-|-vc|batch-3-|-hotspot-|-0",
+      comment: "mikhmon",
+    },
+  ];
+  const service = new MikrotikService({ push() {} });
+  service.withConnection = async (operation) => operation({
+    menu(path) {
+      if (path === "/ip/hotspot/user/profile") return { print: async () => profiles };
+      if (path === "/system/script") return { print: async () => scripts };
+      throw new Error(`Menu tidak dikenal: ${path}`);
+    },
+  }, {});
+
+  const report = await service.getVoucherRevenueReport({ period: "2026-11" });
+
+  assert.deepEqual(report.summary, { revenue: 50000, quantity: 2, profiles: 2 });
+  assert.deepEqual(report.profileSummary, [
+    { profile: "VCR-1D", quantity: 1, revenue: 40000 },
+    { profile: "VCR-4H", quantity: 1, revenue: 10000 },
+  ]);
+  assert.equal(report.entries[0].username, "voucher-1");
+  assert.equal(report.entries[0].usedAt, "2026-11-03T01:00:00.000Z");
+  assert.equal(report.entries[1].amount, 10000);
+  await assert.rejects(
+    () => service.getVoucherRevenueReport({ period: "November 2026" }),
+    /Periode laporan voucher tidak valid/,
+  );
+});
+
 test("voucher ditolak ketika profile belum memiliki aturan kedaluwarsa", async () => {
   const { service, getAddCalls } = createServiceWithUsers();
   service.withConnection = async (operation) => operation({

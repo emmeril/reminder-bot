@@ -1968,6 +1968,73 @@ span[class*="rounded-full"][class*="text-xs"],
   box-shadow: 0 1px 3px rgb(20 33 27 / 9%);
 }
 
+.revenue-tabs {
+  display: inline-flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  padding: 4px;
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  background: var(--ui-surface-soft);
+}
+
+.revenue-tabs button {
+  display: inline-flex;
+  min-height: 42px;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  color: var(--ui-muted);
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.revenue-tabs button.active {
+  color: var(--ui-primary-dark);
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(20 33 27 / 9%);
+}
+
+.revenue-info-note {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  color: var(--ui-primary-dark);
+  border: 1px solid color-mix(in srgb, var(--ui-primary) 22%, transparent);
+  border-radius: 9px;
+  background: var(--ui-primary-soft);
+}
+
+.revenue-info-note > i {
+  margin-top: 2px;
+}
+
+.revenue-info-note p {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+
+.revenue-info-note strong {
+  font-size: 12px;
+}
+
+.revenue-info-note span {
+  color: var(--ui-ink-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.voucher-username {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 .voucher-workspace {
   display: grid;
   grid-template-columns: minmax(340px, .78fr) minmax(0, 1.22fr);
@@ -2850,6 +2917,19 @@ span[class*="rounded-full"][class*="text-xs"],
     justify-content: center;
     padding-inline: 6px;
     font-size: 10px;
+  }
+
+  .revenue-tabs {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .revenue-tabs button {
+    min-width: 0;
+    padding-inline: 8px;
+    font-size: 11px;
+    line-height: 1.25;
   }
 
   .voucher-heading-actions {

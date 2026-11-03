@@ -75,6 +75,7 @@ const {
   sanitizeTimeHHMM,
   serializeCookie,
   sleep,
+  zonedDateTimeToDate,
 } = require("./utils");
 
 const BILLING_START_PERIOD = { year: 2026, month: 4 };
@@ -274,6 +275,80 @@ function parseVoucherProfileMetadata(onLogin = "") {
     sellingPrice: Math.max(0, Number(parts[4]) || 0),
     lockUser: String(parts[6] || "").trim().toLowerCase() === "enable",
     commission: Math.max(0, Number(parts[7]) || 0),
+  };
+}
+
+const ROUTER_MONTH_NUMBERS = Object.freeze({
+  jan: 1,
+  feb: 2,
+  mar: 3,
+  apr: 4,
+  may: 5,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  oct: 10,
+  nov: 11,
+  dec: 12,
+});
+
+function parseRouterVoucherUsageDate(dateValue, timeValue, timeZone = DEFAULT_SETTINGS.timezone) {
+  const rawDate = String(dateValue || "").trim().toLowerCase();
+  const rawTime = String(timeValue || "").trim();
+  let year = 0;
+  let month = 0;
+  let day = 0;
+  let match = rawDate.match(/^([a-z]{3})\/(\d{1,2})\/(\d{4})$/i);
+  if (match) {
+    month = ROUTER_MONTH_NUMBERS[match[1].toLowerCase()] || 0;
+    day = Number(match[2]);
+    year = Number(match[3]);
+  } else {
+    match = rawDate.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (match) {
+      year = Number(match[1]);
+      month = Number(match[2]);
+      day = Number(match[3]);
+    }
+  }
+  const timeMatch = rawTime.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (!year || !month || !day || !timeMatch) return null;
+  const date = zonedDateTimeToDate({
+    year,
+    month,
+    day,
+    hour: Number(timeMatch[1]),
+    minute: Number(timeMatch[2]),
+    second: Number(timeMatch[3] || 0),
+  }, timeZone);
+  if (!date || Number.isNaN(date.getTime())) return null;
+  return {
+    date,
+    period: `${year}-${String(month).padStart(2, "0")}`,
+  };
+}
+
+function parseVoucherUsageRecord(script, profilePrices, timeZone = DEFAULT_SETTINGS.timezone) {
+  if (String(script?.comment || "").trim().toLowerCase() !== "mikhmon") return null;
+  const parts = String(script.name || "").split("-|-");
+  if (parts.length < 10) return null;
+  const service = String(parts[9] || "hotspot").trim().toLowerCase();
+  const profile = sanitizeInput(String(parts[7] || ""));
+  const username = sanitizeInput(String(parts[2] || ""));
+  const usageDate = parseRouterVoucherUsageDate(parts[0], parts[1], timeZone);
+  if (service !== "hotspot" || !profile || !username || !usageDate) return null;
+  const recordedPrice = Math.max(0, Number(parts[3]) || 0);
+  return {
+    id: sanitizeInput(String(script[".id"] || script.id || script.name || `${profile}-${username}`)),
+    username,
+    profile,
+    amount: recordedPrice || Math.max(0, Number(profilePrices.get(profile)) || 0),
+    usedAt: usageDate.date.toISOString(),
+    period: usageDate.period,
+    validity: sanitizeInput(String(parts[6] || "")),
+    address: sanitizeInput(String(parts[4] || "")),
+    macAddress: sanitizeInput(String(parts[5] || "")),
   };
 }
 
@@ -645,6 +720,60 @@ class MikrotikService {
       }), { total: 0, used: 0, unused: 0 });
 
       return { summary, profiles: profileStats };
+    });
+  }
+
+  async getVoucherRevenueReport(options = {}) {
+    const period = sanitizeInput(String(options.period || ""));
+    if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(period)) throw new Error("Periode laporan voucher tidak valid.");
+    const timeZone = sanitizeInput(String(options.timeZone || DEFAULT_SETTINGS.timezone)) || DEFAULT_SETTINGS.timezone;
+    return this.withConnection(async (conn) => {
+      const [profiles, reportScripts] = await Promise.all([
+        conn.menu("/ip/hotspot/user/profile").print(),
+        conn.menu("/system/script").print(),
+      ]);
+      const profilePrices = new Map();
+      const recordProfiles = new Set();
+      for (const profile of profiles || []) {
+        const name = sanitizeInput(String(profile.name || ""));
+        if (!name) continue;
+        const metadata = parseVoucherProfileMetadata(readRouterValue(profile, "on-login", "onLogin", ""));
+        const mode = VOUCHER_EXPIRY_MODES[metadata.expiredMode];
+        if (!mode?.recordsUsage || !metadata.validity) continue;
+        recordProfiles.add(name);
+        profilePrices.set(name, Math.max(0, Number(metadata.sellingPrice || metadata.costPrice) || 0));
+      }
+
+      const entriesById = new Map();
+      for (const script of reportScripts || []) {
+        const entry = parseVoucherUsageRecord(script, profilePrices, timeZone);
+        if (!entry || entry.period !== period || !recordProfiles.has(entry.profile)) continue;
+        entriesById.set(entry.id, entry);
+      }
+      const entries = Array.from(entriesById.values()).sort((a, b) => (
+        new Date(b.usedAt).getTime() - new Date(a.usedAt).getTime()
+        || a.username.localeCompare(b.username, "id-ID")
+      ));
+      const profileMap = new Map();
+      for (const entry of entries) {
+        const row = profileMap.get(entry.profile) || { profile: entry.profile, quantity: 0, revenue: 0 };
+        row.quantity += 1;
+        row.revenue += entry.amount;
+        profileMap.set(entry.profile, row);
+      }
+      const profileSummary = Array.from(profileMap.values()).sort((a, b) => (
+        b.revenue - a.revenue || a.profile.localeCompare(b.profile, "id-ID")
+      ));
+      return {
+        period,
+        summary: {
+          revenue: entries.reduce((total, entry) => total + entry.amount, 0),
+          quantity: entries.length,
+          profiles: profileSummary.length,
+        },
+        profileSummary,
+        entries,
+      };
     });
   }
 
@@ -8807,6 +8936,12 @@ class WebServer {
     )));
     this.app.get("/api/mikrotik/voucher-stats", requireApiAuth, handleApi(async () => (
       this.mikrotikService.getVoucherProfileStats()
+    )));
+    this.app.get("/api/mikrotik/voucher-revenue", requireApiAuth, handleApi(async (req) => (
+      this.mikrotikService.getVoucherRevenueReport({
+        period: req.query.period,
+        timeZone: this.dataManager.getTimezone(),
+      })
     )));
     this.app.post("/api/mikrotik/voucher-profiles", requireApiAuth, handleApi(async (req) => (
       this.voucherProfileLock.runExclusive("mikrotik-voucher-profiles", async () => {
