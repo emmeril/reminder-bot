@@ -571,8 +571,8 @@
             <div class="voucher-heading-actions">
               <button x-show="activeVoucherTab === 'create'" id="voucher-create-button" type="button" @click="openVoucherCreateModal($event.currentTarget)" class="ui-primary-button"><i class="fa-solid fa-ticket-simple"></i>Buat voucher</button>
               <button x-show="activeVoucherTab === 'profiles'" id="voucher-profile-button" type="button" @click="resetVoucherProfileForm(); openVoucherProfileModal($event.currentTarget)" class="ui-primary-button"><i class="fa-solid fa-plus"></i>Profile voucher baru</button>
-              <button type="button" @click="loadVoucherOptions(); loadVoucherBatches()" :disabled="loading.voucherOptions || loading.voucherHistory" class="ui-secondary-button voucher-refresh-button disabled:cursor-not-allowed disabled:opacity-50" aria-label="Muat ulang data voucher">
-                <i class="fa-solid" :class="loading.voucherOptions || loading.voucherHistory ? 'fa-circle-notch fa-spin' : 'fa-rotate'"></i>
+              <button type="button" @click="loadVoucherOptions(); loadVoucherBatches(); loadVoucherStats()" :disabled="loading.voucherOptions || loading.voucherHistory || loading.voucherStats" class="ui-secondary-button voucher-refresh-button disabled:cursor-not-allowed disabled:opacity-50" aria-label="Muat ulang data voucher">
+                <i class="fa-solid" :class="loading.voucherOptions || loading.voucherHistory || loading.voucherStats ? 'fa-circle-notch fa-spin' : 'fa-rotate'"></i>
               </button>
             </div>
           </div>
@@ -580,6 +580,7 @@
           <div class="voucher-tabs" role="tablist" aria-label="Menu voucher">
             <button type="button" role="tab" :aria-selected="activeVoucherTab === 'create'" :class="activeVoucherTab === 'create' ? 'active' : ''" @click="activeVoucherTab = 'create'"><i class="fa-solid fa-ticket-simple"></i>Voucher</button>
             <button type="button" role="tab" :aria-selected="activeVoucherTab === 'profiles'" :class="activeVoucherTab === 'profiles' ? 'active' : ''" @click="activeVoucherTab = 'profiles'"><i class="fa-solid fa-sliders"></i>Profile voucher</button>
+            <button type="button" role="tab" :aria-selected="activeVoucherTab === 'stats'" :class="activeVoucherTab === 'stats' ? 'active' : ''" @click="activeVoucherTab = 'stats'; loadVoucherStats({ silent: true })"><i class="fa-solid fa-chart-column"></i>Statistik voucher</button>
           </div>
 
           <div x-cloak x-show="activeVoucherTab === 'create'" class="voucher-workspace voucher-history-workspace">
@@ -933,6 +934,49 @@
 
             </div>
           </div>
+          </div>
+
+          <div x-cloak x-show="activeVoucherTab === 'stats'" class="voucher-stats-page">
+            <div class="voucher-stats-summary">
+              <article>
+                <span class="voucher-stat-icon total"><i class="fa-solid fa-ticket"></i></span>
+                <div><small>Total voucher</small><strong x-text="voucherStats.summary.total"></strong></div>
+              </article>
+              <article>
+                <span class="voucher-stat-icon used"><i class="fa-solid fa-circle-check"></i></span>
+                <div><small>Voucher terpakai</small><strong x-text="voucherStats.summary.used"></strong></div>
+              </article>
+              <article>
+                <span class="voucher-stat-icon unused"><i class="fa-solid fa-ticket-simple"></i></span>
+                <div><small>Belum terpakai</small><strong x-text="voucherStats.summary.unused"></strong></div>
+              </article>
+            </div>
+
+            <div class="voucher-stats-panel">
+              <div class="voucher-stats-heading">
+                <div><h3>Jumlah voucher per profile</h3><p>Status dihitung dari akun dan catatan pemakaian di MikroTik.</p></div>
+                <button type="button" @click="loadVoucherStats()" :disabled="loading.voucherStats" class="ui-secondary-button"><i class="fa-solid" :class="loading.voucherStats ? 'fa-circle-notch fa-spin' : 'fa-rotate'"></i><span>Perbarui</span></button>
+              </div>
+              <p x-cloak x-show="voucherStatsError" class="voucher-history-error" role="alert" x-text="voucherStatsError"></p>
+              <div class="voucher-stats-table-wrap">
+                <table class="voucher-stats-table">
+                  <thead><tr><th>Profile</th><th>Masa berlaku</th><th>Total voucher</th><th>Terpakai</th><th>Belum terpakai</th></tr></thead>
+                  <tbody>
+                    <template x-for="row in voucherStats.profiles" :key="'voucher-stat-' + row.profile">
+                      <tr>
+                        <td><strong x-text="row.profile"></strong><small x-text="voucherExpiryModes.find(mode => mode.value === row.expiredMode)?.label || row.expiredMode"></small></td>
+                        <td x-text="row.validity || '-'"></td>
+                        <td><strong x-text="row.total"></strong></td>
+                        <td><span class="voucher-count-badge used" x-text="row.used"></span></td>
+                        <td><span class="voucher-count-badge unused" x-text="row.unused"></span></td>
+                      </tr>
+                    </template>
+                    <tr x-show="!loading.voucherStats && !voucherStats.profiles.length"><td colspan="5" class="voucher-profile-empty">Belum ada voucher pada profile MikroTik.</td></tr>
+                    <tr x-show="loading.voucherStats && !voucherStats.profiles.length"><td colspan="5" class="voucher-profile-empty"><i class="fa-solid fa-circle-notch fa-spin"></i> Memuat statistik voucher...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
 

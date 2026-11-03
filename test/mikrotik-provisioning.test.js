@@ -266,6 +266,51 @@ test("profile voucher memasang script login, monitor expired, dan memigrasikan k
   assert.equal(profile.sellingPrice, 3000);
 });
 
+test("statistik voucher menghitung total, terpakai, dan belum terpakai per profile", async () => {
+  const profiles = [
+    { name: "VCR-1D", "on-login": ':put (",remc,0,1d,40000,,Disable,0,")' },
+    { name: "VCR-4H", "on-login": ':put (",ntf,0,4h,10000,,Disable,0,")' },
+    { name: "Bulanan", "on-login": "" },
+  ];
+  const users = [
+    { name: "stock-1", profile: "VCR-1D", comment: "vc|batch-1|November", disabled: "false" },
+    { name: "used-1", profile: "VCR-1D", comment: "nov/04/2026 08:00:00", disabled: "false" },
+    { name: "expired-1", profile: "VCR-1D", comment: "nov/01/2026 08:00:00", disabled: "true" },
+    { name: "customer-monthly", profile: "Bulanan", comment: "" },
+  ];
+  const scripts = [
+    {
+      name: "nov/03/2026-|-08:00:00-|-used-deleted-|-40000-|-10.0.0.2-|-AA-|-1d-|-VCR-1D-|-vc|batch-1-|-hotspot-|-0",
+      comment: "mikhmon",
+    },
+    { name: "script-lain", comment: "operasional" },
+  ];
+  const service = new MikrotikService({ push() {} });
+  service.withConnection = async (operation) => operation({
+    menu(path) {
+      if (path === "/ip/hotspot/user/profile") return { print: async () => profiles };
+      if (path === "/ip/hotspot/user") return { print: async () => users };
+      if (path === "/system/script") return { print: async () => scripts };
+      throw new Error(`Menu tidak dikenal: ${path}`);
+    },
+  }, {});
+
+  const stats = await service.getVoucherProfileStats();
+
+  assert.deepEqual(stats.summary, { total: 4, used: 3, unused: 1 });
+  assert.equal(stats.profiles.length, 2);
+  assert.deepEqual(stats.profiles[0], {
+    profile: "VCR-1D",
+    expiredMode: "remc",
+    validity: "1d",
+    total: 4,
+    used: 3,
+    unused: 1,
+  });
+  assert.equal(stats.profiles[1].profile, "VCR-4H");
+  assert.equal(stats.profiles[1].total, 0);
+});
+
 test("voucher ditolak ketika profile belum memiliki aturan kedaluwarsa", async () => {
   const { service, getAddCalls } = createServiceWithUsers();
   service.withConnection = async (operation) => operation({

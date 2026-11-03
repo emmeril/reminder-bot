@@ -919,6 +919,10 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(html, /role="dialog" aria-modal="true" aria-labelledby="voucher-create-title"/);
   assert.match(html, /role="dialog" aria-modal="true" aria-labelledby="voucher-profile-title"/);
   assert.match(html, /x-show="activeVoucherTab === 'profiles'" class="voucher-profile-page"/);
+  assert.match(html, /x-show="activeVoucherTab === 'stats'" class="voucher-stats-page"/);
+  assert.match(html, /Jumlah voucher per profile/);
+  assert.match(html, /Voucher terpakai/);
+  assert.match(html, /Belum terpakai/);
   assert.match(html, /Profile voucher baru/);
   assert.match(styles, /\.voucher-workspace \{[\s\S]*?grid-template-columns:/);
   assert.match(styles, /@media \(max-width: 620px\) \{[\s\S]*?\.voucher-fields\.two-columns/);
@@ -933,6 +937,18 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.deepEqual(Array.from(app.getVoucherPrintPages(), (page) => page.length), [15, 15, 1]);
   assert.deepEqual(Array.from(app.getVoucherRewardPrintPages(), (page) => page.length), [20, 11]);
   assert.match(app.getVoucherPriceLabel(), /25\.000/);
+
+  app.api = async (url) => {
+    assert.equal(url, "/api/mikrotik/voucher-stats");
+    return {
+      summary: { total: 12, used: 7, unused: 5 },
+      profiles: [{ profile: "VCR-1H", total: 12, used: 7, unused: 5 }],
+    };
+  };
+  app.notify = () => {};
+  await app.loadVoucherStats({ silent: true });
+  assert.deepEqual({ ...app.voucherStats.summary }, { total: 12, used: 7, unused: 5 });
+  assert.equal(app.voucherStats.profiles[0].profile, "VCR-1H");
 
   app.forms.voucher = {
     ...app.forms.voucher,
@@ -954,6 +970,7 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
     };
   };
   app.loadHotspotUsers = async () => { reloadedUsers = true; };
+  app.loadVoucherStats = async () => {};
   app.notify = () => {};
 
   await app.createVouchers();

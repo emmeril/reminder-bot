@@ -184,6 +184,10 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
         { username: "lama-2", password: "password-2" },
       ],
     }],
+    getVoucherProfileStats: async () => ({
+      summary: { total: 2, used: 1, unused: 1 },
+      profiles: [{ profile: "100M", total: 2, used: 1, unused: 1 }],
+    }),
     createHotspotVouchers: async (payload) => {
       receivedPayload = payload;
       return {
@@ -207,6 +211,11 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
   assert.equal(historyResponse.status, 200);
   assert.equal(historyPayload.data.length, 1);
   assert.equal(historyPayload.data[0].vouchers.length, 2);
+
+  const statsResponse = await fetch(`${baseUrl}/api/mikrotik/voucher-stats`, { headers });
+  const statsPayload = await statsResponse.json();
+  assert.equal(statsResponse.status, 200);
+  assert.deepEqual(statsPayload.data.summary, { total: 2, used: 1, unused: 1 });
 
   const createResponse = await fetch(`${baseUrl}/api/mikrotik/vouchers`, {
     method: "POST",

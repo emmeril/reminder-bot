@@ -569,6 +569,85 @@ class MikrotikService {
     });
   }
 
+  async getVoucherProfileStats() {
+    return this.withConnection(async (conn) => {
+      const [profiles, users, reportScripts] = await Promise.all([
+        conn.menu("/ip/hotspot/user/profile").print(),
+        conn.menu("/ip/hotspot/user").print(),
+        conn.menu("/system/script").print(),
+      ]);
+      const statsByProfile = new Map();
+
+      for (const profile of profiles || []) {
+        const name = sanitizeInput(String(profile.name || ""));
+        if (!name) continue;
+        const metadata = parseVoucherProfileMetadata(readRouterValue(profile, "on-login", "onLogin", ""));
+        if (!VOUCHER_EXPIRY_MODES[metadata.expiredMode] || !metadata.validity) continue;
+        statsByProfile.set(name, {
+          profile: name,
+          expiredMode: metadata.expiredMode,
+          validity: metadata.validity,
+          totalUsers: new Set(),
+          usedUsers: new Set(),
+          unusedUsers: new Set(),
+        });
+      }
+
+      const markUsed = (row, username) => {
+        row.totalUsers.add(username);
+        row.unusedUsers.delete(username);
+        row.usedUsers.add(username);
+      };
+
+      for (const user of users || []) {
+        const profileName = sanitizeInput(String(user.profile || ""));
+        const row = statsByProfile.get(profileName);
+        if (!row) continue;
+        const username = sanitizeInput(String(user.name || user.user || user[".id"] || ""));
+        if (!username) continue;
+        const comment = String(user.comment || "").trim();
+        const disabled = ["true", "yes"].includes(String(user.disabled || "").trim().toLowerCase());
+        const expiredByLimit = String(readRouterValue(user, "limit-uptime", "limitUptime", "")) === "1s";
+        const unused = !disabled
+          && !expiredByLimit
+          && /^(?:vc\||vc-|up-|voucher-)/i.test(comment);
+        row.totalUsers.add(username);
+        if (unused) row.unusedUsers.add(username);
+        else row.usedUsers.add(username);
+      }
+
+      for (const script of reportScripts || []) {
+        if (String(script.comment || "").trim().toLowerCase() !== "mikhmon") continue;
+        const parts = String(script.name || "").split("-|-");
+        const username = sanitizeInput(String(parts[2] || ""));
+        const profileName = sanitizeInput(String(parts[7] || ""));
+        const service = String(parts[9] || "hotspot").trim().toLowerCase();
+        const row = statsByProfile.get(profileName);
+        if (!row || !username || service !== "hotspot") continue;
+        if (!VOUCHER_EXPIRY_MODES[row.expiredMode]?.recordsUsage) continue;
+        markUsed(row, username);
+      }
+
+      const profileStats = Array.from(statsByProfile.values())
+        .map((row) => ({
+          profile: row.profile,
+          expiredMode: row.expiredMode,
+          validity: row.validity,
+          total: row.totalUsers.size,
+          used: row.usedUsers.size,
+          unused: row.unusedUsers.size,
+        }))
+        .sort((a, b) => b.total - a.total || a.profile.localeCompare(b.profile, "id-ID"));
+      const summary = profileStats.reduce((totals, row) => ({
+        total: totals.total + row.total,
+        used: totals.used + row.used,
+        unused: totals.unused + row.unused,
+      }), { total: 0, used: 0, unused: 0 });
+
+      return { summary, profiles: profileStats };
+    });
+  }
+
   async saveVoucherProfile(payload) {
     const request = normalizeVoucherProfilePayload(payload);
     const scripts = buildVoucherProfileScripts(request);
@@ -8725,6 +8804,9 @@ class WebServer {
     this.app.get("/api/mikrotik/hotspot-users", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotUsers()));
     this.app.get("/api/mikrotik/voucher-profiles", requireApiAuth, handleApi(async () => (
       this.mikrotikService.getVoucherProfiles()
+    )));
+    this.app.get("/api/mikrotik/voucher-stats", requireApiAuth, handleApi(async () => (
+      this.mikrotikService.getVoucherProfileStats()
     )));
     this.app.post("/api/mikrotik/voucher-profiles", requireApiAuth, handleApi(async (req) => (
       this.voucherProfileLock.runExclusive("mikrotik-voucher-profiles", async () => {

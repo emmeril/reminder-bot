@@ -6,6 +6,7 @@
           hotspotOptions: false,
           voucherOptions: false,
           voucherHistory: false,
+          voucherStats: false,
           voucherProfile: false,
           templates: false,
         },
@@ -154,6 +155,11 @@
         voucherBatches: [],
         selectedVoucherBatchId: "",
         voucherHistoryError: "",
+        voucherStatsError: "",
+        voucherStats: {
+          summary: { total: 0, used: 0, unused: 0 },
+          profiles: [],
+        },
         voucherProfiles: [],
         voucherPools: [],
         voucherParentQueues: [],
@@ -322,6 +328,7 @@
           if (this.activeMenu === "vouchers") {
             void this.loadVoucherOptions({ silent: true });
             void this.loadVoucherBatches({ silent: true });
+            void this.loadVoucherStats({ silent: true });
           }
 
           setTimeout(() => {
@@ -371,6 +378,9 @@
           }
           if (key === "vouchers" && !this.voucherBatches.length) {
             void this.loadVoucherBatches({ silent: true });
+          }
+          if (key === "vouchers" && !this.voucherStats.profiles.length) {
+            void this.loadVoucherStats({ silent: true });
           }
           window.scrollTo({ top: 0, behavior: "smooth" });
         },
@@ -1820,6 +1830,30 @@
           }
         },
 
+        async loadVoucherStats(options = {}) {
+          if (this.loading.voucherStats) return;
+          this.loading.voucherStats = true;
+          this.voucherStatsError = "";
+          try {
+            const stats = await this.api("/api/mikrotik/voucher-stats", {
+              silent: Boolean(options.silent),
+            });
+            this.voucherStats = {
+              summary: {
+                total: Number(stats?.summary?.total || 0),
+                used: Number(stats?.summary?.used || 0),
+                unused: Number(stats?.summary?.unused || 0),
+              },
+              profiles: Array.isArray(stats?.profiles) ? stats.profiles : [],
+            };
+            if (!options.silent) this.notify("Statistik voucher diperbarui dari MikroTik.");
+          } catch (error) {
+            this.voucherStatsError = error.message || "Statistik voucher gagal dimuat.";
+          } finally {
+            this.loading.voucherStats = false;
+          }
+        },
+
         selectVoucherBatch(batchId) {
           const selected = this.voucherBatches.find((batch) => batch.batchId === batchId) || null;
           this.selectedVoucherBatchId = selected?.batchId || "";
@@ -1874,6 +1908,7 @@
               } catch (error) {
                 this.notify("Voucher berhasil dibuat, tetapi daftar user hotspot belum dapat dimuat ulang.");
               }
+              void this.loadVoucherStats({ silent: true });
               this.closeVoucherCreateModal();
               this.notify(`${this.voucherResult.quantity} voucher berhasil dibuat dan ditambahkan ke riwayat batch.`);
             });
