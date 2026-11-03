@@ -405,6 +405,9 @@ function normalizeVoucherProfilePayload(payload = {}) {
     return Math.floor(amount);
   };
 
+  const costPrice = normalizeMoney(payload.costPrice, "HPP");
+  const sellingPrice = normalizeMoney(payload.sellingPrice, "Harga jual");
+
   return {
     originalName,
     name,
@@ -414,9 +417,9 @@ function normalizeVoucherProfilePayload(payload = {}) {
     parentQueue,
     expiredMode,
     validity,
-    costPrice: normalizeMoney(payload.costPrice, "HPP"),
-    sellingPrice: normalizeMoney(payload.sellingPrice, "Harga jual"),
-    commission: normalizeMoney(payload.commission, "Keuntungan"),
+    costPrice,
+    sellingPrice,
+    commission: Math.max(0, sellingPrice - costPrice),
     lockUser: parseBoolean(payload.lockUser, false),
   };
 }

@@ -287,7 +287,7 @@ test("profile voucher memasang script login, monitor expired, dan memigrasikan k
 
   assert.equal(saved.voucherReady, true);
   assert.equal(saved.migratedVoucherComments, 1);
-  assert.match(profiles[0]["on-login"], /^:put \(",rem,2000,4h,3000,,Enable,500,"\)/);
+  assert.match(profiles[0]["on-login"], /^:put \(",rem,2000,4h,3000,,Enable,1000,"\)/);
   assert.match(schedulers[0]["on-event"], /profile="4Jam"/);
   assert.equal(schedulers[0].disabled, "no");
   assert.equal(users[0].comment, "vc|mh123-abc123|Batch lama");

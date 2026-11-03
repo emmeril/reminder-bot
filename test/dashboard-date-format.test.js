@@ -1166,6 +1166,19 @@ test("profile voucher dapat dibuat dan dipilih untuk batch baru", async () => {
   assert.equal(app.forms.voucherProfile.name, "");
 });
 
+test("keuntungan profile voucher dihitung otomatis dari harga jual dikurangi HPP", () => {
+  const app = createDashboardApp();
+  app.forms.voucherProfile.costPrice = 2000;
+  app.forms.voucherProfile.sellingPrice = 3000;
+
+  app.updateVoucherProfileProfit();
+
+  assert.equal(app.forms.voucherProfile.commission, 1000);
+  app.forms.voucherProfile.sellingPrice = 1500;
+  app.updateVoucherProfileProfit();
+  assert.equal(app.forms.voucherProfile.commission, 0);
+});
+
 test("riwayat voucher memilih kembali batch yang tersimpan di MikroTik", async () => {
   const app = createDashboardApp();
   app.api = async () => [{

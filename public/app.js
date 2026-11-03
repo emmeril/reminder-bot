@@ -1905,6 +1905,13 @@
           this.clearFormError("voucherProfile");
         },
 
+        updateVoucherProfileProfit() {
+          const form = this.forms.voucherProfile;
+          const costPrice = Math.max(0, Number(form.costPrice) || 0);
+          const sellingPrice = Math.max(0, Number(form.sellingPrice) || 0);
+          form.commission = Math.max(0, sellingPrice - costPrice);
+        },
+
         editVoucherProfile(profile) {
           this.forms.voucherProfile = {
             originalName: profile.name,
@@ -1920,12 +1927,14 @@
             commission: Number(profile.commission || 0),
             lockUser: Boolean(profile.lockUser),
           };
+          this.updateVoucherProfileProfit();
           this.clearFormError("voucherProfile");
           document.getElementById("voucher-profile-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
         },
 
         async saveVoucherProfile() {
           this.clearFormError("voucherProfile");
+          this.updateVoucherProfileProfit();
           const form = this.forms.voucherProfile;
           try {
             await this.withProcessing(`${form.originalName ? "Memperbarui" : "Membuat"} profile voucher...`, async () => {

@@ -930,9 +930,9 @@
               </div>
               <div class="voucher-section-divider"><span>Harga dan keuntungan</span></div>
               <div class="voucher-fields voucher-money-fields">
-                <label><span>HPP</span><input type="number" x-model.number="forms.voucherProfile.costPrice" min="0" max="1000000000"></label>
-                <label><span>Harga jual</span><input type="number" x-model.number="forms.voucherProfile.sellingPrice" min="0" max="1000000000"></label>
-                <label><span>Keuntungan</span><input type="number" x-model.number="forms.voucherProfile.commission" min="0" max="1000000000"></label>
+                <label><span>HPP</span><input type="number" x-model.number="forms.voucherProfile.costPrice" @input="updateVoucherProfileProfit()" min="0" max="1000000000"></label>
+                <label><span>Harga jual</span><input type="number" x-model.number="forms.voucherProfile.sellingPrice" @input="updateVoucherProfileProfit()" min="0" max="1000000000"></label>
+                <label class="voucher-profit-field"><span>Keuntungan</span><input type="number" x-model.number="forms.voucherProfile.commission" min="0" max="1000000000" readonly aria-readonly="true" aria-describedby="voucher-profit-help"><small id="voucher-profit-help">Terisi otomatis dari harga jual dikurangi HPP.</small></label>
               </div>
               <p x-cloak x-show="formErrors.voucherProfile" class="voucher-form-error" role="alert" x-text="formErrors.voucherProfile"></p>
               <button type="submit" class="ui-primary-button voucher-submit-button"><i class="fa-solid fa-floppy-disk mr-2"></i><span x-text="forms.voucherProfile.originalName ? 'Simpan perubahan profile' : 'Buat profile voucher'"></span></button>

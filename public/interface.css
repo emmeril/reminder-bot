@@ -2235,6 +2235,13 @@ span[class*="rounded-full"][class*="text-xs"],
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.voucher-profit-field input[readonly] {
+  color: var(--ui-ink);
+  border-color: var(--ui-border);
+  background: var(--ui-surface-muted);
+  cursor: default;
+}
+
 .voucher-profile-list {
   min-width: 0;
   padding: 18px;
