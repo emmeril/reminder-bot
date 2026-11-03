@@ -35,6 +35,23 @@ function createManager(contact) {
   return manager;
 }
 
+test("riwayat batch voucher disimpan terpisah dari komentar user MikroTik", async () => {
+  const manager = createManager({ id: "contact-placeholder", phoneNumber: "6281234567890" });
+  let saveCalls = 0;
+  manager.saveVoucherBatches = async () => { saveCalls += 1; };
+  await manager.storeVoucherBatches([{
+    batchId: "batch-voucher-1",
+    createdAt: "2026-11-02T12:00:00.000Z",
+    profile: "4Jam",
+    quantity: 1,
+    vouchers: [{ username: "voucher-1", password: "rahasia-1" }],
+  }]);
+
+  assert.equal(saveCalls, 1);
+  assert.equal(manager.getVoucherBatches()[0].vouchers[0].password, "rahasia-1");
+  assert.notEqual(manager.getVoucherBatches()[0], manager.voucherBatches.get("batch-voucher-1"));
+});
+
 test("jatuh tempo memakai reminder aktif berikutnya dan status pembayaran periodenya", () => {
   const now = new Date();
   const timeZone = "Asia/Jakarta";

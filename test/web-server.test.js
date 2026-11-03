@@ -169,6 +169,64 @@ test("API Netwatch menggabungkan AP dengan pelanggan terkait", async () => {
   assert.equal(missing.availableInNetwatch, false);
 });
 
+test("API voucher memuat server dan membuat batch melalui MikroTik", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  let receivedPayload = null;
+  const baseUrl = await startServer({}, {}, {
+    getHotspotServers: async () => ["hotspot-utama"],
+    getHotspotVoucherBatches: async () => [{
+      batchId: "batch-lama",
+      quantity: 2,
+      profile: "100M",
+      server: "all",
+      vouchers: [
+        { username: "lama-1", password: "password-1" },
+        { username: "lama-2", password: "password-2" },
+      ],
+    }],
+    createHotspotVouchers: async (payload) => {
+      receivedPayload = payload;
+      return {
+        batchId: "batch-test",
+        quantity: 1,
+        profile: payload.profile,
+        server: payload.server,
+        vouchers: [{ username: payload.username, password: payload.password }],
+      };
+    },
+  });
+  const headers = { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" };
+
+  const serverResponse = await fetch(`${baseUrl}/api/mikrotik/hotspot-servers`, { headers });
+  const serverPayload = await serverResponse.json();
+  assert.equal(serverResponse.status, 200);
+  assert.deepEqual(serverPayload.data, ["hotspot-utama"]);
+
+  const historyResponse = await fetch(`${baseUrl}/api/mikrotik/voucher-batches?limit=20`, { headers });
+  const historyPayload = await historyResponse.json();
+  assert.equal(historyResponse.status, 200);
+  assert.equal(historyPayload.data.length, 1);
+  assert.equal(historyPayload.data[0].vouchers.length, 2);
+
+  const createResponse = await fetch(`${baseUrl}/api/mikrotik/vouchers`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      generationType: "SINGLE",
+      username: "voucher-api",
+      password: "password-api",
+      profile: "100M",
+      server: "hotspot-utama",
+    }),
+  });
+  const createPayload = await createResponse.json();
+
+  assert.equal(createResponse.status, 200);
+  assert.equal(createPayload.data.quantity, 1);
+  assert.equal(receivedPayload.username, "voucher-api");
+  assert.equal(receivedPayload.profile, "100M");
+});
+
 test("API pelanggan memvalidasi AP tujuan terhadap Netwatch", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   const savedPayloads = [];

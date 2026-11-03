@@ -7,8 +7,8 @@
   <link rel="stylesheet" href="/public/tailwind.css?v=20261028-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261028-1">
-  <link rel="stylesheet" href="/public/interface.css?v=20261030-1">
-  <script defer src="/public/app.js?v=20261028-2"></script>
+  <link rel="stylesheet" href="/public/interface.css?v=20261103-1">
+  <script defer src="/public/app.js?v=20261102-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -559,6 +559,315 @@
                 <button type="button" aria-label="Halaman berikutnya" @click="setPage('contactHotspot', filters.contactHotspot.page + 1)" :disabled="filters.contactHotspot.page >= totalPages('contactHotspot', filteredHotspotContacts.length)" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section x-show="activeMenu === 'vouchers'" x-transition.opacity class="panel-shell voucher-panel rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
+          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 class="font-display text-2xl"><i class="fa-solid fa-ticket mr-2 text-moss"></i>Voucher hotspot</h2>
+              <p class="card-description mt-1">Kelola profile masa berlaku, lalu buat dan cetak voucher dari satu tempat.</p>
+            </div>
+            <div class="voucher-heading-actions">
+              <button x-show="activeVoucherTab === 'create'" id="voucher-create-button" type="button" @click="openVoucherCreateModal($event.currentTarget)" class="ui-primary-button"><i class="fa-solid fa-ticket-simple"></i>Buat voucher</button>
+              <button x-show="activeVoucherTab === 'profiles'" id="voucher-profile-button" type="button" @click="resetVoucherProfileForm(); openVoucherProfileModal($event.currentTarget)" class="ui-primary-button"><i class="fa-solid fa-plus"></i>Profile voucher baru</button>
+              <button type="button" @click="loadVoucherOptions(); loadVoucherBatches()" :disabled="loading.voucherOptions || loading.voucherHistory" class="ui-secondary-button voucher-refresh-button disabled:cursor-not-allowed disabled:opacity-50" aria-label="Muat ulang data voucher">
+                <i class="fa-solid" :class="loading.voucherOptions || loading.voucherHistory ? 'fa-circle-notch fa-spin' : 'fa-rotate'"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="voucher-tabs" role="tablist" aria-label="Menu voucher">
+            <button type="button" role="tab" :aria-selected="activeVoucherTab === 'create'" :class="activeVoucherTab === 'create' ? 'active' : ''" @click="activeVoucherTab = 'create'"><i class="fa-solid fa-ticket-simple"></i>Voucher</button>
+            <button type="button" role="tab" :aria-selected="activeVoucherTab === 'profiles'" :class="activeVoucherTab === 'profiles' ? 'active' : ''" @click="activeVoucherTab = 'profiles'"><i class="fa-solid fa-sliders"></i>Profile voucher</button>
+          </div>
+
+          <div x-cloak x-show="activeVoucherTab === 'create'" class="voucher-workspace voucher-history-workspace">
+            <div
+              x-cloak
+              x-show="voucherCreateModal.open"
+              @keydown.escape.window="closeVoucherCreateModal()"
+              @click.self="closeVoucherCreateModal()"
+              class="dashboard-modal-overlay voucher-modal-overlay fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+            >
+              <div id="voucher-create-dialog" x-show="voucherCreateModal.open" @keydown.tab="trapModalFocus($event, 'voucher-create-dialog')" role="dialog" aria-modal="true" aria-labelledby="voucher-create-title" class="voucher-modal-dialog">
+                <div class="voucher-modal-heading">
+                  <div><h3 id="voucher-create-title">Buat voucher hotspot</h3><p>Buat satu akun atau satu batch voucher langsung di MikroTik.</p></div>
+                  <button type="button" @click="closeVoucherCreateModal()" class="voucher-modal-close" aria-label="Tutup modal buat voucher"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            <form @submit.prevent="createVouchers()" class="voucher-form" autocomplete="off">
+              <fieldset class="voucher-mode-fieldset">
+                <legend>Jenis pembuatan</legend>
+                <div class="voucher-mode-options">
+                  <label :class="forms.voucher.generationType === 'SINGLE' ? 'active' : ''">
+                    <input type="radio" x-model="forms.voucher.generationType" value="SINGLE">
+                    <span><strong>Satu voucher</strong><small>Tentukan username dan password sendiri.</small></span>
+                  </label>
+                  <label :class="forms.voucher.generationType === 'BULK' ? 'active' : ''">
+                    <input type="radio" x-model="forms.voucher.generationType" value="BULK">
+                    <span><strong>Banyak voucher</strong><small>Buat kode acak dalam satu batch.</small></span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <div x-cloak x-show="forms.voucher.generationType === 'SINGLE'" class="voucher-fields two-columns">
+                <label>
+                  <span>Username</span>
+                  <input x-model.trim="forms.voucher.username" maxlength="64" spellcheck="false" placeholder="contoh: voucher001" :required="forms.voucher.generationType === 'SINGLE'">
+                </label>
+                <label>
+                  <span>Password</span>
+                  <input x-model.trim="forms.voucher.password" maxlength="64" spellcheck="false" placeholder="Masukkan password" :required="forms.voucher.generationType === 'SINGLE'">
+                </label>
+              </div>
+
+              <div x-cloak x-show="forms.voucher.generationType === 'BULK'" class="voucher-fields two-columns">
+                <label>
+                  <span>Jumlah voucher</span>
+                  <input type="number" x-model.number="forms.voucher.quantity" min="1" max="500" :required="forms.voucher.generationType === 'BULK'">
+                  <small>Maksimal 500 voucher sekali proses.</small>
+                </label>
+                <label>
+                  <span>Pola login</span>
+                  <select x-model="forms.voucher.credentialMode">
+                    <option value="SEPARATE">Username dan password berbeda</option>
+                    <option value="SAME">Username sama dengan password</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Panjang kode</span>
+                  <select x-model.number="forms.voucher.codeLength">
+                    <template x-for="length in [4, 5, 6, 7, 8, 9, 10, 11, 12]" :key="'voucher-length-' + length">
+                      <option :value="length" x-text="length + ' karakter'"></option>
+                    </template>
+                  </select>
+                </label>
+                <label>
+                  <span>Jenis karakter</span>
+                  <select x-model="forms.voucher.characterSet">
+                    <option value="LOWER">Huruf kecil dan angka</option>
+                    <option value="UPPER">Huruf besar dan angka</option>
+                    <option value="MIXED">Huruf campuran dan angka</option>
+                    <option value="NUMERIC">Angka saja</option>
+                  </select>
+                </label>
+                <label class="voucher-field-wide">
+                  <span>Prefix <small>Opsional</small></span>
+                  <input x-model.trim="forms.voucher.prefix" maxlength="12" spellcheck="false" placeholder="contoh: WIFI-">
+                </label>
+              </div>
+
+              <div class="voucher-section-divider"><span>Pengaturan akun</span></div>
+              <div class="voucher-fields two-columns">
+                <label>
+                  <span>Profile MikroTik</span>
+                  <select x-model="forms.voucher.profile" required>
+                    <option value="" disabled>Pilih profile</option>
+                    <template x-for="profile in voucherProfiles.filter(item => item.voucherReady)" :key="'voucher-profile-' + profile.name">
+                      <option :value="profile.name" x-text="profile.rateLimit ? profile.name + ' · ' + profile.rateLimit : profile.name"></option>
+                    </template>
+                  </select>
+                  <small x-show="!voucherProfiles.some(profile => profile.voucherReady)">Belum ada profile siap voucher. Tutup modal ini lalu atur melalui tombol Profile voucher.</small>
+                </label>
+                <label>
+                  <span>Server hotspot</span>
+                  <select x-model="forms.voucher.server">
+                    <option value="all">Semua server</option>
+                    <template x-for="server in mikrotikServers" :key="'voucher-server-' + server">
+                      <option :value="server" x-text="server"></option>
+                    </template>
+                  </select>
+                </label>
+                <label>
+                  <span>Batas waktu <small>Opsional</small></span>
+                  <input x-model.trim="forms.voucher.limitUptime" maxlength="64" spellcheck="false" placeholder="contoh: 12h atau 1d">
+                  <small>Kosong berarti mengikuti profile.</small>
+                </label>
+                <label>
+                  <span>Batas data <small>Opsional</small></span>
+                  <span class="voucher-data-limit">
+                    <input type="number" x-model.number="forms.voucher.dataLimit" min="0" max="9999" placeholder="0">
+                    <select x-model="forms.voucher.dataUnit" aria-label="Satuan batas data">
+                      <option value="MB">MB</option>
+                      <option value="GB">GB</option>
+                    </select>
+                  </span>
+                  <small>0 atau kosong berarti tanpa batas tambahan.</small>
+                </label>
+                <label class="voucher-field-wide">
+                  <span>Catatan batch <small>Opsional</small></span>
+                  <input x-model.trim="forms.voucher.comment" maxlength="80" placeholder="contoh: Voucher acara November">
+                </label>
+              </div>
+
+              <p x-cloak x-show="formErrors.voucher" class="voucher-form-error" role="alert" x-text="formErrors.voucher"></p>
+              <button type="submit" class="ui-primary-button voucher-submit-button inline-flex items-center justify-center gap-2 px-5 py-3 font-semibold" :disabled="loading.voucherOptions || !forms.voucher.profile">
+                <i class="fa-solid fa-ticket"></i>
+                <span x-text="forms.voucher.generationType === 'SINGLE' ? 'Buat satu voucher' : 'Buat ' + forms.voucher.quantity + ' voucher'"></span>
+              </button>
+            </form>
+              </div>
+            </div>
+
+            <aside class="voucher-result-panel" aria-live="polite">
+              <div class="voucher-batch-toolbar">
+                <label>
+                  <span>Riwayat batch</span>
+                  <select x-model="selectedVoucherBatchId" @change="selectVoucherBatch(selectedVoucherBatchId)" :disabled="loading.voucherHistory || !voucherBatches.length">
+                    <option value="" x-text="loading.voucherHistory ? 'Memuat riwayat...' : 'Belum ada batch voucher'"></option>
+                    <template x-for="batch in voucherBatches" :key="'voucher-batch-' + batch.batchId">
+                      <option :value="batch.batchId" x-text="getVoucherBatchLabel(batch)"></option>
+                    </template>
+                  </select>
+                </label>
+                <button type="button" @click="loadVoucherBatches()" :disabled="loading.voucherHistory" class="ui-secondary-button" aria-label="Muat ulang riwayat batch voucher">
+                  <i class="fa-solid" :class="loading.voucherHistory ? 'fa-circle-notch fa-spin' : 'fa-rotate'"></i>
+                </button>
+              </div>
+              <p x-cloak x-show="voucherHistoryError" class="voucher-history-error" role="alert" x-text="voucherHistoryError"></p>
+              <template x-if="!voucherResult">
+                <div class="voucher-empty-state">
+                  <span><i class="fa-solid fa-ticket-simple"></i></span>
+                  <strong>Belum ada batch voucher</strong>
+                  <p>Voucher yang dibuat tersimpan di MikroTik. Username dan password batch disimpan di database aplikasi agar riwayat tetap tersedia setelah voucher dipakai.</p>
+                </div>
+              </template>
+
+              <div x-cloak x-show="voucherResult" class="voucher-print-sheet">
+                <div class="voucher-result-heading">
+                  <div>
+                    <span class="voucher-print-brand" x-text="forms.settings.companyName || 'Emmeril Hotspot'"></span>
+                    <h3>Voucher hotspot</h3>
+                    <p><strong x-text="voucherResult?.quantity || 0"></strong> voucher · <span x-text="voucherResult?.profile || '-'"></span> · <span x-text="voucherResult?.server === 'all' ? 'Semua server' : voucherResult?.server"></span></p>
+                  </div>
+                  <div class="voucher-result-actions">
+                    <button type="button" @click="copyVoucherCredentials()" class="ui-secondary-button" aria-label="Salin semua username dan password"><i class="fa-solid fa-copy"></i><span>Salin</span></button>
+                    <button type="button" @click="printVouchers()" class="ui-primary-button" aria-label="Cetak voucher"><i class="fa-solid fa-print"></i><span>Cetak</span></button>
+                  </div>
+                </div>
+                <div class="voucher-result-meta">
+                  <span x-show="voucherResult?.limitUptime"><strong>Batas waktu</strong><span x-text="voucherResult?.limitUptime"></span></span>
+                  <span x-show="Number(voucherResult?.dataLimit || 0) > 0"><strong>Batas data</strong><span x-text="voucherResult?.dataLimit + ' ' + voucherResult?.dataUnit"></span></span>
+                  <span x-show="voucherResult?.comment"><strong>Catatan</strong><span x-text="voucherResult?.comment"></span></span>
+                </div>
+                <div class="voucher-card-grid">
+                  <template x-for="(voucher, index) in voucherResult?.vouchers || []" :key="'generated-voucher-' + voucher.username">
+                    <article class="voucher-card">
+                      <div><span>Voucher</span><strong x-text="String(index + 1).padStart(3, '0')"></strong></div>
+                      <dl>
+                        <div><dt>Username</dt><dd x-text="voucher.username"></dd></div>
+                        <div><dt>Password</dt><dd x-text="voucher.password"></dd></div>
+                        <div><dt>Profile</dt><dd x-text="voucherResult?.profile || '-'"></dd></div>
+                      </dl>
+                    </article>
+                  </template>
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          <div x-cloak x-show="activeVoucherTab === 'profiles'" class="voucher-profile-page">
+            <div class="voucher-profile-list">
+              <div class="voucher-profile-list-heading">
+                <div><h3>Profile di MikroTik</h3><p>Profile pelanggan bulanan tetap terlihat, tetapi tidak dapat dipakai membuat voucher sebelum masa berlaku diatur.</p></div>
+                <span><strong x-text="voucherProfiles.filter(profile => profile.voucherReady).length"></strong> siap voucher</span>
+              </div>
+              <div class="voucher-profile-table-wrap">
+                <table class="voucher-profile-table">
+                  <thead><tr><th>Profile</th><th>Masa berlaku</th><th>Aturan expired</th><th>Status</th><th>Aksi</th></tr></thead>
+                  <tbody>
+                    <template x-for="profile in voucherProfiles" :key="'profile-row-' + profile.name">
+                      <tr>
+                        <td><strong x-text="profile.name"></strong><small x-text="profile.rateLimit || 'Tanpa rate limit'"></small></td>
+                        <td x-text="profile.validity || '-' "></td>
+                        <td x-text="voucherExpiryModes.find(mode => mode.value === profile.expiredMode)?.label || 'Belum diatur'"></td>
+                        <td><span class="voucher-profile-status" :class="profile.voucherReady ? 'ready' : 'warning'" x-text="profile.voucherReady ? 'Siap voucher' : (profile.status === 'SCHEDULER_MISSING' ? 'Monitor tidak aktif' : 'Masa berlaku belum diatur')"></span></td>
+                        <td><button :id="'voucher-profile-edit-' + profile.name" type="button" @click="editVoucherProfile(profile); openVoucherProfileModal($event.currentTarget)" class="ui-secondary-button">Atur</button></td>
+                      </tr>
+                    </template>
+                    <tr x-show="!voucherProfiles.length"><td colspan="5" class="voucher-profile-empty">Belum ada profile MikroTik.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div
+            x-cloak
+            x-show="voucherProfileModal.open"
+            @keydown.escape.window="closeVoucherProfileModal()"
+            @click.self="closeVoucherProfileModal()"
+            class="dashboard-modal-overlay voucher-modal-overlay fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+          >
+            <div id="voucher-profile-dialog" x-show="voucherProfileModal.open" @keydown.tab="trapModalFocus($event, 'voucher-profile-dialog')" role="dialog" aria-modal="true" aria-labelledby="voucher-profile-title" tabindex="-1" class="voucher-modal-dialog">
+              <div class="voucher-modal-heading">
+                <div><h3 id="voucher-profile-title">Profile voucher</h3><p>Kelola masa berlaku, harga, dan aturan expired voucher MikroTik.</p></div>
+                <button type="button" @click="closeVoucherProfileModal()" class="voucher-modal-close" aria-label="Tutup modal profile voucher"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+            <form id="voucher-profile-form" @submit.prevent="saveVoucherProfile()" class="voucher-form voucher-profile-form" autocomplete="off">
+              <div class="voucher-profile-form-heading">
+                <div>
+                  <h3 x-text="forms.voucherProfile.originalName ? 'Edit profile voucher' : 'Profile voucher baru'"></h3>
+                  <p>Masa berlaku mulai dihitung saat voucher pertama kali login.</p>
+                </div>
+                <button x-show="forms.voucherProfile.originalName" type="button" @click="resetVoucherProfileForm()" class="ui-secondary-button">Batal edit</button>
+              </div>
+              <div class="voucher-fields two-columns">
+                <label>
+                  <span>Nama profile</span>
+                  <input x-model.trim="forms.voucherProfile.name" maxlength="64" placeholder="contoh: VCR-4JAM" required>
+                </label>
+                <label>
+                  <span>Shared users</span>
+                  <input type="number" x-model.number="forms.voucherProfile.sharedUsers" min="1" max="10000" required>
+                </label>
+                <label>
+                  <span>Rate limit <small>Opsional</small></span>
+                  <input x-model.trim="forms.voucherProfile.rateLimit" maxlength="64" placeholder="contoh: 1M/3M">
+                </label>
+                <label>
+                  <span>Masa berlaku</span>
+                  <input x-model.trim="forms.voucherProfile.validity" maxlength="32" placeholder="contoh: 4h, 1d, atau 30d" required>
+                  <small>Mulai pada login pertama, bukan saat voucher dibuat.</small>
+                </label>
+                <label>
+                  <span>Saat masa berlaku habis</span>
+                  <select x-model="forms.voucherProfile.expiredMode" required>
+                    <template x-for="mode in voucherExpiryModes" :key="mode.value">
+                      <option :value="mode.value" x-text="mode.label"></option>
+                    </template>
+                  </select>
+                </label>
+                <label>
+                  <span>Address pool</span>
+                  <select x-model="forms.voucherProfile.addressPool">
+                    <option value="none">none</option>
+                    <template x-for="pool in voucherPools" :key="'pool-' + pool"><option :value="pool" x-text="pool"></option></template>
+                  </select>
+                </label>
+                <label>
+                  <span>Parent queue</span>
+                  <select x-model="forms.voucherProfile.parentQueue">
+                    <option value="none">none</option>
+                    <template x-for="queue in voucherParentQueues" :key="'queue-' + queue"><option :value="queue" x-text="queue"></option></template>
+                  </select>
+                </label>
+                <label class="voucher-check-field">
+                  <input type="checkbox" x-model="forms.voucherProfile.lockUser">
+                  <span><strong>Kunci perangkat pertama</strong><small>MAC address voucher akan mengikuti perangkat pertama yang berhasil login.</small></span>
+                </label>
+              </div>
+              <div class="voucher-section-divider"><span>Harga dan komisi</span></div>
+              <div class="voucher-fields voucher-money-fields">
+                <label><span>HPP</span><input type="number" x-model.number="forms.voucherProfile.costPrice" min="0" max="1000000000"></label>
+                <label><span>Harga jual</span><input type="number" x-model.number="forms.voucherProfile.sellingPrice" min="0" max="1000000000"></label>
+                <label><span>Komisi</span><input type="number" x-model.number="forms.voucherProfile.commission" min="0" max="1000000000"></label>
+              </div>
+              <p x-cloak x-show="formErrors.voucherProfile" class="voucher-form-error" role="alert" x-text="formErrors.voucherProfile"></p>
+              <button type="submit" class="ui-primary-button voucher-submit-button"><i class="fa-solid fa-floppy-disk mr-2"></i><span x-text="forms.voucherProfile.originalName ? 'Simpan perubahan profile' : 'Buat profile voucher'"></span></button>
+            </form>
+
+            </div>
+          </div>
           </div>
         </section>
 

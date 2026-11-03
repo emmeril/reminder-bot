@@ -4,6 +4,9 @@
           status: false,
           mikrotikBackup: false,
           hotspotOptions: false,
+          voucherOptions: false,
+          voucherHistory: false,
+          voucherProfile: false,
           templates: false,
         },
         toast: {
@@ -40,6 +43,8 @@
           contactEdit: "",
           hotspotAccount: "",
           hotspotSchedule: "",
+          voucher: "",
+          voucherProfile: "",
           accountDelivery: "",
           reminder: "",
           reminderEdit: "",
@@ -92,9 +97,18 @@
           originalName: "",
           returnFocusId: "",
         },
+        voucherCreateModal: {
+          open: false,
+          returnFocusId: "voucher-create-button",
+        },
+        voucherProfileModal: {
+          open: false,
+          returnFocusId: "voucher-profile-button",
+        },
         activeMenu: "overview",
         activeContactTab: "data",
         activeSettingsTab: "general",
+        activeVoucherTab: "create",
         sidebarHidden: false,
         mobileSidebarOpen: false,
         navGroups: [
@@ -106,6 +120,7 @@
         navMenus: [
           { key: "overview", group: "workspace", label: "Ringkasan", icon: "fa-solid fa-table-cells-large", description: "Lihat kondisi layanan dan pekerjaan hari ini." },
           { key: "contacts", group: "operations", label: "Pelanggan", icon: "fa-solid fa-users", description: "Kelola data, tagihan, dan akun hotspot pelanggan." },
+          { key: "vouchers", group: "operations", label: "Voucher", icon: "fa-solid fa-ticket", description: "Buat satu atau banyak akun voucher hotspot." },
           { key: "revenue", group: "operations", label: "Laporan Pendapatan", icon: "fa-solid fa-chart-line", description: "Periksa pembayaran yang tercatat pada setiap periode." },
           { key: "reminders", group: "operations", label: "Jadwal", icon: "fa-solid fa-calendar-check", description: "Atur waktu dan isi pesan pengingat pelanggan." },
           { key: "monitor-ap", group: "operations", label: "Jaringan", icon: "fa-solid fa-tower-broadcast", description: "Pantau koneksi access point pelanggan." },
@@ -117,6 +132,7 @@
         ],
         contacts: [],
         mikrotikProfiles: [],
+        mikrotikServers: [],
         hotspotUsers: [],
         apMonitors: [],
         reminders: [],
@@ -134,6 +150,14 @@
         expandedMessages: {},
         billingPeriod: "",
         revenuePeriod: "",
+        voucherResult: null,
+        voucherBatches: [],
+        selectedVoucherBatchId: "",
+        voucherHistoryError: "",
+        voucherProfiles: [],
+        voucherPools: [],
+        voucherParentQueues: [],
+        voucherExpiryModes: [],
         pageSizes: [10, 25, 50, 100],
         filters: {
           contacts: { search: "", page: 1, pageSize: 10 },
@@ -190,6 +214,36 @@
             mode: "NONE",
             date: "",
             time: "00:00",
+          },
+          voucher: {
+            generationType: "SINGLE",
+            username: "",
+            password: "",
+            quantity: 10,
+            credentialMode: "SEPARATE",
+            codeLength: 6,
+            prefix: "",
+            characterSet: "LOWER",
+            profile: "",
+            server: "all",
+            limitUptime: "",
+            dataLimit: "",
+            dataUnit: "MB",
+            comment: "",
+          },
+          voucherProfile: {
+            originalName: "",
+            name: "",
+            sharedUsers: 1,
+            rateLimit: "",
+            addressPool: "none",
+            parentQueue: "none",
+            expiredMode: "rem",
+            validity: "1d",
+            costPrice: 0,
+            sellingPrice: 0,
+            commission: 0,
+            lockUser: false,
           },
           reminderEdit: { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
           template: { name: "", content: "" },
@@ -265,6 +319,11 @@
             this.loadTemplates(),
           ]);
 
+          if (this.activeMenu === "vouchers") {
+            void this.loadVoucherOptions({ silent: true });
+            void this.loadVoucherBatches({ silent: true });
+          }
+
           setTimeout(() => {
             this.loadNonCriticalData();
           }, this.isMobile ? 900 : 250);
@@ -307,6 +366,12 @@
           }
           this.activeMenu = key;
           this.mobileSidebarOpen = false;
+          if (key === "vouchers" && (!this.voucherProfiles.length || !this.mikrotikServers.length)) {
+            void this.loadVoucherOptions({ silent: true });
+          }
+          if (key === "vouchers" && !this.voucherBatches.length) {
+            void this.loadVoucherBatches({ silent: true });
+          }
           window.scrollTo({ top: 0, behavior: "smooth" });
         },
 
@@ -1592,6 +1657,262 @@
           this.mikrotikProfiles = await this.api("/api/mikrotik/profiles", { silent: Boolean(options.silent) });
           this.syncProfileMonthlyAmountFields();
           if (!options.silent) this.notify(`${this.mikrotikProfiles.length} profile MikroTik dimuat.`);
+        },
+
+        async loadVoucherServers(options = {}) {
+          this.mikrotikServers = await this.api("/api/mikrotik/hotspot-servers", { silent: Boolean(options.silent) });
+          if (!options.silent) this.notify(`${this.mikrotikServers.length} server hotspot dimuat.`);
+        },
+
+        async loadVoucherOptions(options = {}) {
+          if (this.loading.voucherOptions) return;
+          this.loading.voucherOptions = true;
+          try {
+            const results = await Promise.allSettled([
+              this.loadVoucherProfiles({ silent: true }),
+              this.loadVoucherServers({ silent: true }),
+            ]);
+            const failed = results.find((item) => item.status === "rejected");
+            if (failed) throw failed.reason;
+            const readyProfiles = this.voucherProfiles.filter((profile) => profile.voucherReady);
+            if (!readyProfiles.some((profile) => profile.name === this.forms.voucher.profile)) {
+              this.forms.voucher.profile = readyProfiles[0]?.name || "";
+            }
+            if (this.forms.voucher.server !== "all"
+              && !this.mikrotikServers.includes(this.forms.voucher.server)) {
+              this.forms.voucher.server = "all";
+            }
+            if (!options.silent) {
+              this.notify(`${readyProfiles.length} profile voucher siap dan ${this.mikrotikServers.length} server hotspot dimuat.`);
+            }
+          } catch (error) {
+            this.setFormError("voucher", error);
+            if (!options.silent) this.notify(error.message || "Data voucher gagal dimuat.");
+          } finally {
+            this.loading.voucherOptions = false;
+          }
+        },
+
+        async openVoucherCreateModal(trigger = null) {
+          this.voucherCreateModal.returnFocusId = trigger?.id || "voucher-create-button";
+          this.clearFormError("voucher");
+          this.voucherCreateModal.open = true;
+          if (!this.voucherProfiles.length || !this.mikrotikServers.length) {
+            await this.loadVoucherOptions({ silent: true });
+          }
+          this.$nextTick(() => document.getElementById("voucher-create-dialog")?.querySelector("input, select")?.focus());
+        },
+
+        closeVoucherCreateModal() {
+          if (!this.voucherCreateModal.open) return;
+          this.voucherCreateModal.open = false;
+          this.$nextTick(() => document.getElementById(this.voucherCreateModal.returnFocusId)?.focus());
+        },
+
+        async openVoucherProfileModal(trigger = null) {
+          this.voucherProfileModal.returnFocusId = trigger?.id || "voucher-profile-button";
+          this.clearFormError("voucherProfile");
+          this.voucherProfileModal.open = true;
+          if (!this.voucherProfiles.length) await this.loadVoucherOptions({ silent: true });
+          this.$nextTick(() => document.getElementById("voucher-profile-dialog")?.focus());
+        },
+
+        closeVoucherProfileModal() {
+          if (!this.voucherProfileModal.open) return;
+          this.voucherProfileModal.open = false;
+          this.resetVoucherProfileForm();
+          this.$nextTick(() => document.getElementById(this.voucherProfileModal.returnFocusId)?.focus());
+        },
+
+        async loadVoucherProfiles(options = {}) {
+          const data = await this.api("/api/mikrotik/voucher-profiles", { silent: Boolean(options.silent) });
+          this.voucherProfiles = Array.isArray(data?.profiles) ? data.profiles : [];
+          this.voucherPools = Array.isArray(data?.pools) ? data.pools : [];
+          this.voucherParentQueues = Array.isArray(data?.parentQueues) ? data.parentQueues : [];
+          this.voucherExpiryModes = Array.isArray(data?.expiryModes) ? data.expiryModes : [];
+          if (!options.silent) this.notify(`${this.voucherProfiles.length} profile hotspot diperiksa.`);
+        },
+
+        resetVoucherProfileForm() {
+          this.forms.voucherProfile = {
+            originalName: "",
+            name: "",
+            sharedUsers: 1,
+            rateLimit: "",
+            addressPool: "none",
+            parentQueue: "none",
+            expiredMode: "rem",
+            validity: "1d",
+            costPrice: 0,
+            sellingPrice: 0,
+            commission: 0,
+            lockUser: false,
+          };
+          this.clearFormError("voucherProfile");
+        },
+
+        editVoucherProfile(profile) {
+          this.forms.voucherProfile = {
+            originalName: profile.name,
+            name: profile.name,
+            sharedUsers: Number(profile.sharedUsers || 1),
+            rateLimit: profile.rateLimit || "",
+            addressPool: profile.addressPool || "none",
+            parentQueue: profile.parentQueue || "none",
+            expiredMode: profile.expiredMode === "0" ? "rem" : profile.expiredMode,
+            validity: profile.validity || "1d",
+            costPrice: Number(profile.costPrice || 0),
+            sellingPrice: Number(profile.sellingPrice || 0),
+            commission: Number(profile.commission || 0),
+            lockUser: Boolean(profile.lockUser),
+          };
+          this.clearFormError("voucherProfile");
+          document.getElementById("voucher-profile-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        },
+
+        async saveVoucherProfile() {
+          this.clearFormError("voucherProfile");
+          const form = this.forms.voucherProfile;
+          try {
+            await this.withProcessing(`${form.originalName ? "Memperbarui" : "Membuat"} profile voucher...`, async () => {
+              const saved = await this.api("/api/mikrotik/voucher-profiles", {
+                method: "POST",
+                body: JSON.stringify({
+                  ...form,
+                  sharedUsers: Number(form.sharedUsers || 1),
+                  costPrice: Number(form.costPrice || 0),
+                  sellingPrice: Number(form.sellingPrice || 0),
+                  commission: Number(form.commission || 0),
+                }),
+              });
+              await this.loadVoucherProfiles({ silent: true });
+              this.forms.voucher.profile = saved.name;
+              if (this.voucherProfileModal.open) this.closeVoucherProfileModal();
+              else this.resetVoucherProfileForm();
+              this.notify(`Profile ${saved.name} siap dipakai untuk voucher.`);
+            });
+          } catch (error) {
+            this.setFormError("voucherProfile", error);
+          }
+        },
+
+        async loadVoucherBatches(options = {}) {
+          if (this.loading.voucherHistory) return;
+          this.loading.voucherHistory = true;
+          this.voucherHistoryError = "";
+          try {
+            const batches = await this.api("/api/mikrotik/voucher-batches?limit=50", {
+              silent: Boolean(options.silent),
+            });
+            this.voucherBatches = Array.isArray(batches) ? batches : [];
+            const preferredBatchId = options.batchId
+              || this.selectedVoucherBatchId
+              || this.voucherBatches[0]?.batchId
+              || "";
+            this.selectVoucherBatch(preferredBatchId);
+            if (!options.silent) {
+              this.notify(`${this.voucherBatches.length} batch voucher dimuat dari riwayat aplikasi.`);
+            }
+          } catch (error) {
+            this.voucherHistoryError = error.message || "Riwayat voucher gagal dimuat.";
+          } finally {
+            this.loading.voucherHistory = false;
+          }
+        },
+
+        selectVoucherBatch(batchId) {
+          const selected = this.voucherBatches.find((batch) => batch.batchId === batchId) || null;
+          this.selectedVoucherBatchId = selected?.batchId || "";
+          this.voucherResult = selected;
+        },
+
+        getVoucherBatchLabel(batch) {
+          if (!batch) return "Batch voucher";
+          const dateLabel = batch.createdAt ? this.formatDateTime(batch.createdAt) : batch.batchId;
+          return `${dateLabel} · ${batch.quantity} voucher · ${batch.profile || "Tanpa profile"}`;
+        },
+
+        async createVouchers() {
+          this.clearFormError("voucher");
+          const form = this.forms.voucher;
+          const quantity = form.generationType === "SINGLE" ? 1 : Number(form.quantity || 0);
+          const payload = {
+            ...form,
+            quantity,
+            codeLength: Number(form.codeLength || 0),
+            dataLimit: form.dataLimit === "" ? 0 : Number(form.dataLimit),
+          };
+          try {
+            await this.withProcessing(`Membuat ${quantity} voucher di MikroTik...`, async () => {
+              const createdBatch = await this.api("/api/mikrotik/vouchers", {
+                method: "POST",
+                body: JSON.stringify(payload),
+              });
+              this.voucherBatches = [
+                createdBatch,
+                ...this.voucherBatches.filter((batch) => batch.batchId !== createdBatch.batchId),
+              ];
+              this.selectVoucherBatch(createdBatch.batchId);
+              if (form.generationType === "SINGLE") {
+                form.username = "";
+                form.password = "";
+              }
+              try {
+                await this.loadHotspotUsers({ silent: true });
+              } catch (error) {
+                this.notify("Voucher berhasil dibuat, tetapi daftar user hotspot belum dapat dimuat ulang.");
+              }
+              this.closeVoucherCreateModal();
+              this.notify(`${this.voucherResult.quantity} voucher berhasil dibuat dan ditambahkan ke riwayat batch.`);
+            });
+          } catch (error) {
+            this.setFormError("voucher", error);
+          }
+        },
+
+        getVoucherCredentialText() {
+          if (!this.voucherResult?.vouchers?.length) return "";
+          const heading = [
+            `Voucher Hotspot - ${this.voucherResult.profile}`,
+            `Server: ${this.voucherResult.server === "all" ? "Semua server" : this.voucherResult.server}`,
+            "",
+          ];
+          const rows = this.voucherResult.vouchers.map((voucher, index) => (
+            `${index + 1}. Username: ${voucher.username} | Password: ${voucher.password}`
+          ));
+          return [...heading, ...rows].join("\n");
+        },
+
+        async copyVoucherCredentials() {
+          const text = this.getVoucherCredentialText();
+          if (!text) return;
+          try {
+            if (navigator.clipboard?.writeText) {
+              await navigator.clipboard.writeText(text);
+            } else {
+              const input = document.createElement("textarea");
+              input.value = text;
+              input.setAttribute("readonly", "");
+              input.style.position = "fixed";
+              input.style.opacity = "0";
+              document.body.appendChild(input);
+              input.select();
+              document.execCommand("copy");
+              input.remove();
+            }
+            this.notify("Username dan password voucher disalin.");
+          } catch (error) {
+            this.notify("Voucher tidak dapat disalin otomatis. Pilih teks lalu salin secara manual.");
+          }
+        },
+
+        printVouchers() {
+          if (!this.voucherResult?.vouchers?.length) return;
+          document.body.classList.add("voucher-print-mode");
+          const cleanup = () => document.body.classList.remove("voucher-print-mode");
+          window.addEventListener("afterprint", cleanup, { once: true });
+          window.print();
+          window.setTimeout(cleanup, 1_000);
         },
 
         async loadHotspotUsers(options = {}) {

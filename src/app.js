@@ -249,6 +249,211 @@ function styleReportSheet(sheet) {
   });
 }
 
+const VOUCHER_CHARACTER_SETS = Object.freeze({
+  LOWER: "abcdefghjkmnpqrstuvwxyz23456789",
+  UPPER: "ABCDEFGHJKMNPQRSTUVWXYZ23456789",
+  MIXED: "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789",
+  NUMERIC: "23456789",
+});
+
+const VOUCHER_EXPIRY_MODES = Object.freeze({
+  rem: { label: "Hapus saat kedaluwarsa", action: "remove", recordsUsage: false },
+  ntf: { label: "Batasi saat kedaluwarsa", action: "set limit-uptime=1s", recordsUsage: false },
+  remc: { label: "Hapus dan catat pemakaian", action: "remove", recordsUsage: true },
+  ntfc: { label: "Batasi dan catat pemakaian", action: "set limit-uptime=1s", recordsUsage: true },
+});
+
+function parseVoucherProfileMetadata(onLogin = "") {
+  const parts = String(onLogin || "").split(",");
+  const expiredMode = String(parts[1] || "").trim().toLowerCase();
+  const validity = String(parts[3] || "").trim();
+  return {
+    expiredMode: VOUCHER_EXPIRY_MODES[expiredMode] ? expiredMode : "0",
+    validity,
+    costPrice: Math.max(0, Number(parts[2]) || 0),
+    sellingPrice: Math.max(0, Number(parts[4]) || 0),
+    lockUser: String(parts[6] || "").trim().toLowerCase() === "enable",
+    commission: Math.max(0, Number(parts[7]) || 0),
+  };
+}
+
+function normalizeVoucherProfilePayload(payload = {}) {
+  const originalName = sanitizeInput(String(payload.originalName || ""));
+  const name = sanitizeInput(String(payload.name || "")).replace(/\s+/g, "-");
+  if (!name) throw new Error("Nama profile voucher wajib diisi.");
+  if (name.length > 64 || !/^[A-Za-z0-9._-]+$/.test(name)) {
+    throw new Error("Nama profile hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung.");
+  }
+  if (originalName && (originalName.length > 64 || !/^[A-Za-z0-9._-]+$/.test(originalName))) {
+    throw new Error("Nama profile lama tidak valid.");
+  }
+
+  const expiredMode = String(payload.expiredMode || "").trim().toLowerCase();
+  if (!VOUCHER_EXPIRY_MODES[expiredMode]) throw new Error("Aturan kedaluwarsa voucher wajib dipilih.");
+  const validity = sanitizeInput(String(payload.validity || "")).toLowerCase();
+  if (!validity || validity.length > 32 || !/^(?:\d+[wdhms])+$/i.test(validity)) {
+    throw new Error("Masa berlaku harus memakai format seperti 4h, 1d, atau 30d.");
+  }
+
+  const sharedUsers = Number(payload.sharedUsers ?? 1);
+  if (!Number.isInteger(sharedUsers) || sharedUsers < 1 || sharedUsers > 10_000) {
+    throw new Error("Shared users harus berupa angka 1 sampai 10.000.");
+  }
+  const rateLimit = sanitizeInput(String(payload.rateLimit || ""));
+  if (rateLimit.length > 64 || (rateLimit && !/^[A-Za-z0-9./\s-]+$/.test(rateLimit))) {
+    throw new Error("Rate limit tidak valid.");
+  }
+  const addressPool = sanitizeInput(String(payload.addressPool || "none")) || "none";
+  const parentQueue = sanitizeInput(String(payload.parentQueue || "none")) || "none";
+  if (addressPool.length > 64 || parentQueue.length > 64) {
+    throw new Error("Address pool atau parent queue terlalu panjang.");
+  }
+
+  const normalizeMoney = (value, label) => {
+    const amount = value === "" || value === null || value === undefined ? 0 : Number(value);
+    if (!Number.isFinite(amount) || amount < 0 || amount > 1_000_000_000) {
+      throw new Error(`${label} harus antara 0 sampai 1 miliar.`);
+    }
+    return Math.floor(amount);
+  };
+
+  return {
+    originalName,
+    name,
+    sharedUsers,
+    rateLimit,
+    addressPool,
+    parentQueue,
+    expiredMode,
+    validity,
+    costPrice: normalizeMoney(payload.costPrice, "HPP"),
+    sellingPrice: normalizeMoney(payload.sellingPrice, "Harga jual"),
+    commission: normalizeMoney(payload.commission, "Komisi"),
+    lockUser: parseBoolean(payload.lockUser, false),
+  };
+}
+
+function buildVoucherProfileScripts(profile) {
+  const lockMode = profile.lockUser ? "Enable" : "Disable";
+  const lockScript = profile.lockUser
+    ? '; :local lockUserId [/ip hotspot user find where name=$user]; :if ([:len $lockUserId] > 0) do={ :local currentLock [/ip hotspot user get $lockUserId mac-address]; :if ([:len $currentLock] = 0 or $currentLock = "00:00:00:00:00:00") do={ /ip hotspot user set mac-address=$"mac-address" $lockUserId; } }'
+    : "";
+  const mode = VOUCHER_EXPIRY_MODES[profile.expiredMode];
+  const reportPrice = profile.sellingPrice || profile.costPrice;
+  const recordScript = mode.recordsUsage
+    ? `; :local mac $"mac-address"; :local time [/system clock get time ]; /system script add name="$date-|-$time-|-$user-|-${reportPrice}-|-$address-|-$mac-|-${profile.validity}-|-${profile.name}-|-$comment-|-hotspot-|-${profile.costPrice}-|-${profile.commission}" owner="$month$year" source="$date" comment="mikhmon"`
+    : "";
+  const header = `:put (",${profile.expiredMode},${profile.costPrice},${profile.validity},${profile.sellingPrice},,${lockMode},${profile.commission},")`;
+  const activation = `; {:local comment [ /ip hotspot user get [/ip hotspot user find where name="$user"] comment]; :local ucode [:pic $comment 0 2]; :if ($ucode = "vc" or $ucode = "up" or $comment = "") do={ :local date [ /system clock get date ];:local year [ :pick $date 7 11 ];:local month [ :pick $date 0 3 ]; /system scheduler add name="$user" disabled=no start-date=$date interval="${profile.validity}"; :delay 5s; :local exp [ /system scheduler get [ /system scheduler find where name="$user" ] next-run]; :local getxp [len $exp]; :if ($getxp = 15) do={ :local d [:pick $exp 0 6]; :local t [:pick $exp 7 16]; :local s ("/"); :local exp ("$d$s$year $t"); /ip hotspot user set comment="$exp" [find where name="$user"];}; :if ($getxp = 8) do={ /ip hotspot user set comment="$date $exp" [find where name="$user"];}; :if ($getxp > 15) do={ /ip hotspot user set comment="$exp" [find where name="$user"];};:delay 5s; /system scheduler remove [find where name="$user"]${recordScript}}}${lockScript}`;
+  const monitor = `:local dateint do={:local montharray ( "jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec" );:local days [ :pick $d 4 6 ];:local month [ :pick $d 0 3 ];:local year [ :pick $d 7 11 ];:local monthint ([ :find $montharray $month]);:local month ($monthint + 1);:if ( [len $month] = 1) do={:local zero ("0");:return [:tonum ("$year$zero$month$days")];} else={:return [:tonum ("$year$month$days")];}}; :local timeint do={ :local hours [ :pick $t 0 2 ]; :local minutes [ :pick $t 3 5 ]; :return ($hours * 60 + $minutes) ; }; :local date [ /system clock get date ]; :local time [ /system clock get time ]; :local today [$dateint d=$date] ; :local curtime [$timeint t=$time] ; :foreach i in [ /ip hotspot user find where profile="${profile.name}" ] do={ :local comment [ /ip hotspot user get $i comment]; :local name [ /ip hotspot user get $i name]; :local gettime [:pick $comment 12 20]; :if ([:pick $comment 3] = "/" and [:pick $comment 6] = "/") do={:local expd [$dateint d=$comment] ; :local expt [$timeint t=$gettime] ; :if (($expd < $today and $expt < $curtime) or ($expd < $today and $expt > $curtime) or ($expd = $today and $expt < $curtime)) do={ [ /ip hotspot user ${mode.action} $i ]; [ /ip hotspot active remove [find where user=$name] ];}}}`;
+  return { onLogin: `${header}${activation}`, monitor };
+}
+
+function readRouterValue(record, apiName, camelName, fallback = "") {
+  if (!record || typeof record !== "object") return fallback;
+  if (record[apiName] !== undefined && record[apiName] !== null) return record[apiName];
+  if (record[camelName] !== undefined && record[camelName] !== null) return record[camelName];
+  return fallback;
+}
+
+function normalizeVoucherCredential(value, label, { required = true, maxLength = 64 } = {}) {
+  const normalized = sanitizeInput(String(value ?? ""));
+  if (!normalized && required) throw new Error(`${label} wajib diisi.`);
+  if (!normalized) return "";
+  if (normalized.length > maxLength) throw new Error(`${label} maksimal ${maxLength} karakter.`);
+  if (!/^[A-Za-z0-9._-]+$/.test(normalized)) {
+    throw new Error(`${label} hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung.`);
+  }
+  return normalized;
+}
+
+function normalizeVoucherGenerationPayload(payload = {}) {
+  const generationType = String(payload.generationType || "SINGLE").trim().toUpperCase();
+  if (!["SINGLE", "BULK"].includes(generationType)) {
+    throw new Error("Jenis pembuatan voucher tidak valid.");
+  }
+
+  const profile = sanitizeInput(String(payload.profile || ""));
+  const server = sanitizeInput(String(payload.server || "all")) || "all";
+  if (!profile) throw new Error("Profile voucher wajib dipilih.");
+  if (profile.length > 64 || server.length > 64) throw new Error("Profile atau server hotspot terlalu panjang.");
+
+  const limitUptime = sanitizeInput(String(payload.limitUptime || "")).toLowerCase();
+  if (limitUptime && (limitUptime.length > 64 || !/^[0-9wdhms:.]+$/.test(limitUptime))) {
+    throw new Error("Batas waktu harus memakai format MikroTik, misalnya 1h, 12h, atau 1d.");
+  }
+
+  const dataLimit = payload.dataLimit === "" || payload.dataLimit === null || payload.dataLimit === undefined
+    ? 0
+    : Number(payload.dataLimit);
+  if (!Number.isInteger(dataLimit) || dataLimit < 0 || dataLimit > 9_999) {
+    throw new Error("Batas data harus berupa angka 0 sampai 9.999.");
+  }
+  const dataUnit = String(payload.dataUnit || "MB").trim().toUpperCase();
+  if (!["MB", "GB"].includes(dataUnit)) throw new Error("Satuan batas data tidak valid.");
+
+  const comment = sanitizeInput(String(payload.comment || ""));
+  if (comment.length > 80) throw new Error("Catatan voucher maksimal 80 karakter.");
+
+  if (generationType === "SINGLE") {
+    return {
+      generationType,
+      quantity: 1,
+      username: normalizeVoucherCredential(payload.username, "Username voucher"),
+      password: normalizeVoucherCredential(payload.password, "Password voucher"),
+      profile,
+      server,
+      limitUptime,
+      dataLimit,
+      dataUnit,
+      comment,
+    };
+  }
+
+  const quantity = Number(payload.quantity);
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 500) {
+    throw new Error("Jumlah voucher harus antara 1 sampai 500.");
+  }
+  const credentialMode = String(payload.credentialMode || "SEPARATE").trim().toUpperCase();
+  if (!["SAME", "SEPARATE"].includes(credentialMode)) {
+    throw new Error("Pola username dan password tidak valid.");
+  }
+  const characterSet = String(payload.characterSet || "LOWER").trim().toUpperCase();
+  if (!VOUCHER_CHARACTER_SETS[characterSet]) throw new Error("Jenis karakter voucher tidak valid.");
+  const codeLength = Number(payload.codeLength);
+  if (!Number.isInteger(codeLength) || codeLength < 4 || codeLength > 12) {
+    throw new Error("Panjang kode voucher harus antara 4 sampai 12 karakter.");
+  }
+  const prefix = normalizeVoucherCredential(payload.prefix, "Prefix voucher", {
+    required: false,
+    maxLength: 12,
+  });
+  if (prefix.length + codeLength > 64) throw new Error("Gabungan prefix dan kode voucher terlalu panjang.");
+
+  return {
+    generationType,
+    quantity,
+    credentialMode,
+    characterSet,
+    codeLength,
+    prefix,
+    profile,
+    server,
+    limitUptime,
+    dataLimit,
+    dataUnit,
+    comment,
+  };
+}
+
+function generateSecureVoucherCode(length, characters) {
+  let value = "";
+  for (let index = 0; index < length; index += 1) {
+    value += characters[crypto.randomInt(0, characters.length)];
+  }
+  return value;
+}
+
 // ===============================
 // MIKROTIK SERVICE
 // ===============================
@@ -308,11 +513,380 @@ class MikrotikService {
       return (profiles || [])
         .map((profile) => ({
           name: profile.name,
-          rateLimit: profile["rate-limit"] || "",
+          rateLimit: readRouterValue(profile, "rate-limit", "rateLimit", ""),
         }))
         .filter((profile) => profile.name)
         .sort((a, b) => a.name.localeCompare(b.name, "id-ID"));
     });
+  }
+
+  async getVoucherProfiles() {
+    return this.withConnection(async (conn) => {
+      const [profiles, schedulers, pools, queues] = await Promise.all([
+        conn.menu("/ip/hotspot/user/profile").print(),
+        conn.menu("/system/scheduler").print(),
+        conn.menu("/ip/pool").print(),
+        conn.menu("/queue/simple").print(),
+      ]);
+      const schedulerByName = new Map((schedulers || []).map((scheduler) => [
+        String(scheduler.name || ""),
+        scheduler,
+      ]));
+      const rows = (profiles || []).map((profile) => {
+        const metadata = parseVoucherProfileMetadata(readRouterValue(profile, "on-login", "onLogin", ""));
+        const scheduler = schedulerByName.get(String(profile.name || ""));
+        const schedulerEnabled = Boolean(scheduler)
+          && String(scheduler.disabled || "false").toLowerCase() !== "true";
+        const hasExpiryRule = Boolean(VOUCHER_EXPIRY_MODES[metadata.expiredMode] && metadata.validity);
+        return {
+          id: profile[".id"] || profile.id || "",
+          name: sanitizeInput(String(profile.name || "")),
+          sharedUsers: Math.max(1, Number(readRouterValue(profile, "shared-users", "sharedUsers", 1)) || 1),
+          rateLimit: sanitizeInput(String(readRouterValue(profile, "rate-limit", "rateLimit", ""))),
+          addressPool: sanitizeInput(String(readRouterValue(profile, "address-pool", "addressPool", ""))) || "none",
+          parentQueue: sanitizeInput(String(readRouterValue(profile, "parent-queue", "parentQueue", ""))) || "none",
+          ...metadata,
+          schedulerEnabled,
+          voucherReady: hasExpiryRule && schedulerEnabled,
+          status: hasExpiryRule
+            ? (schedulerEnabled ? "READY" : "SCHEDULER_MISSING")
+            : "EXPIRY_MISSING",
+        };
+      }).filter((profile) => profile.name)
+        .sort((a, b) => a.name.localeCompare(b.name, "id-ID"));
+
+      return {
+        profiles: rows,
+        pools: (pools || []).map((pool) => sanitizeInput(String(pool.name || ""))).filter(Boolean).sort(),
+        parentQueues: (queues || [])
+          .filter((queue) => String(queue.dynamic || "false").toLowerCase() !== "true")
+          .map((queue) => sanitizeInput(String(queue.name || ""))).filter(Boolean).sort(),
+        expiryModes: Object.entries(VOUCHER_EXPIRY_MODES).map(([value, mode]) => ({
+          value,
+          label: mode.label,
+        })),
+      };
+    });
+  }
+
+  async saveVoucherProfile(payload) {
+    const request = normalizeVoucherProfilePayload(payload);
+    const scripts = buildVoucherProfileScripts(request);
+    return this.withConnection(async (conn) => {
+      const profileMenu = conn.menu("/ip/hotspot/user/profile");
+      const schedulerMenu = conn.menu("/system/scheduler");
+      const userMenu = conn.menu("/ip/hotspot/user");
+      const [profiles, schedulers, pools, queues] = await Promise.all([
+        profileMenu.print(),
+        schedulerMenu.print(),
+        conn.menu("/ip/pool").print(),
+        conn.menu("/queue/simple").print(),
+      ]);
+      const lookupName = request.originalName || request.name;
+      const existing = (profiles || []).find((profile) => String(profile.name || "") === lookupName);
+      const conflicting = (profiles || []).find((profile) => (
+        String(profile.name || "") === request.name
+        && String(profile[".id"] || profile.id || "") !== String(existing?.[".id"] || existing?.id || "")
+      ));
+      if (conflicting) throw new Error(`Profile "${request.name}" sudah ada di MikroTik.`);
+
+      const poolNames = new Set((pools || []).map((pool) => String(pool.name || "")));
+      if (request.addressPool !== "none" && !poolNames.has(request.addressPool)) {
+        throw new Error(`Address pool "${request.addressPool}" tidak ditemukan.`);
+      }
+      const queueNames = new Set((queues || [])
+        .filter((queue) => String(queue.dynamic || "false").toLowerCase() !== "true")
+        .map((queue) => String(queue.name || "")));
+      if (request.parentQueue !== "none" && !queueNames.has(request.parentQueue)) {
+        throw new Error(`Parent queue "${request.parentQueue}" tidak ditemukan.`);
+      }
+
+      const scheduler = (schedulers || []).find((item) => String(item.name || "") === lookupName);
+      if (scheduler && !/^Monitor Profile /i.test(String(scheduler.comment || ""))) {
+        throw new Error(`Scheduler "${lookupName}" sudah dipakai untuk fungsi lain. Ubah nama profile voucher.`);
+      }
+
+      const profilePayload = {
+        name: request.name,
+        "address-pool": request.addressPool,
+        "rate-limit": request.rateLimit,
+        "shared-users": String(request.sharedUsers),
+        "status-autorefresh": "1m",
+        "on-login": scripts.onLogin,
+        "parent-queue": request.parentQueue,
+      };
+      if (existing) {
+        const id = existing[".id"] || existing.id;
+        await profileMenu.update(profilePayload, String(id));
+      } else {
+        await profileMenu.add(profilePayload);
+      }
+
+      const schedulerPayload = {
+        name: request.name,
+        "start-time": "01:17:31",
+        interval: "00:02:31",
+        "on-event": scripts.monitor,
+        disabled: "no",
+        comment: `Monitor Profile ${request.name}`,
+      };
+      if (scheduler) {
+        await schedulerMenu.update(schedulerPayload, String(scheduler[".id"] || scheduler.id));
+      } else {
+        await schedulerMenu.add(schedulerPayload);
+      }
+
+      const users = await userMenu.print();
+      let migratedVoucherComments = 0;
+      for (const user of users || []) {
+        if (String(user.profile || "") !== request.name) continue;
+        const comment = String(user.comment || "");
+        const match = comment.match(/^voucher-([a-z0-9]+-[a-f0-9]+)(?:\s+(.*))?$/i);
+        if (!match) continue;
+        await userMenu.update({ comment: `vc|${match[1]}|${sanitizeInput(String(match[2] || ""))}` }, String(user[".id"] || user.id));
+        migratedVoucherComments += 1;
+      }
+
+      this.activityLog.push("info", "voucher-profile", `${existing ? "Profile diperbarui" : "Profile dibuat"}: ${request.name}`, {
+        expiredMode: request.expiredMode,
+        validity: request.validity,
+        migratedVoucherComments,
+      });
+      return {
+        ...request,
+        voucherReady: true,
+        schedulerEnabled: true,
+        status: "READY",
+        migratedVoucherComments,
+      };
+    });
+  }
+
+  async getHotspotServers() {
+    return this.withConnection(async (conn) => {
+      const servers = await conn.menu("/ip/hotspot").print();
+      return (servers || [])
+        .map((server) => sanitizeInput(String(server.name || "")))
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, "id-ID"));
+    });
+  }
+
+  async getHotspotVoucherBatches(options = {}) {
+    const requestedLimit = Number(options.limit ?? 50);
+    const limit = Number.isInteger(requestedLimit) && requestedLimit > 0
+      ? Math.min(requestedLimit, 100)
+      : 50;
+    return this.withConnection(async (conn) => {
+      const users = await conn.menu("/ip/hotspot/user").print();
+      const batches = new Map();
+
+      for (const user of users || []) {
+        const comment = sanitizeInput(String(user.comment || ""));
+        const match = comment.match(/^(?:voucher-([a-z0-9]+-[a-f0-9]+)(?:\s+(.*))?|vc\|([a-z0-9]+-[a-f0-9]+)\|(.*))$/i);
+        if (!match) continue;
+        const username = sanitizeInput(String(user.name || user.user || ""));
+        if (!username) continue;
+
+        const batchId = match[1] || match[3];
+        const batchComment = match[2] || match[4] || "";
+        if (!batches.has(batchId)) {
+          const timestamp = Number.parseInt(batchId.split("-", 1)[0], 36);
+          const timestampIsValid = Number.isFinite(timestamp)
+            && timestamp >= Date.UTC(2020, 0, 1)
+            && timestamp <= Date.now() + 86_400_000;
+          batches.set(batchId, {
+            batchId,
+            createdAt: timestampIsValid ? new Date(timestamp).toISOString() : null,
+            generationType: "BULK",
+            server: sanitizeInput(String(user.server || "")) || "all",
+            profile: sanitizeInput(String(user.profile || "")),
+            limitUptime: sanitizeInput(String(readRouterValue(user, "limit-uptime", "limitUptime", ""))) || null,
+            dataLimitBytes: Math.max(0, Number(readRouterValue(user, "limit-bytes-total", "limitBytesTotal", 0)) || 0),
+            comment: sanitizeInput(String(batchComment)),
+            vouchers: [],
+          });
+        }
+
+        const batch = batches.get(batchId);
+        batch.vouchers.push({
+          username,
+          password: sanitizeInput(String(user.password || "")),
+          disabled: String(user.disabled || "false").toLowerCase() === "true",
+        });
+        if (!batch.profile && user.profile) batch.profile = sanitizeInput(String(user.profile));
+        if ((!batch.server || batch.server === "all") && user.server) {
+          batch.server = sanitizeInput(String(user.server));
+        }
+        batch.dataLimitBytes = Math.max(
+          batch.dataLimitBytes,
+          Math.max(0, Number(readRouterValue(user, "limit-bytes-total", "limitBytesTotal", 0)) || 0)
+        );
+      }
+
+      return Array.from(batches.values())
+        .map((batch) => {
+          const useGigabytes = batch.dataLimitBytes > 0
+            && batch.dataLimitBytes % 1_073_741_824 === 0;
+          const dataUnit = useGigabytes ? "GB" : "MB";
+          const divisor = useGigabytes ? 1_073_741_824 : 1_048_576;
+          const vouchers = batch.vouchers.sort((a, b) => a.username.localeCompare(b.username, "id-ID"));
+          return {
+            ...batch,
+            generationType: vouchers.length === 1 ? "SINGLE" : "BULK",
+            quantity: vouchers.length,
+            dataLimit: batch.dataLimitBytes > 0 ? batch.dataLimitBytes / divisor : 0,
+            dataUnit,
+            vouchers,
+            disabledCount: vouchers.filter((voucher) => voucher.disabled).length,
+            dataLimitBytes: undefined,
+          };
+        })
+        .sort((a, b) => {
+          const timeDifference = new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+          return timeDifference || b.batchId.localeCompare(a.batchId, "id-ID");
+        })
+        .slice(0, limit);
+    });
+  }
+
+  async createHotspotVouchers(payload) {
+    const request = normalizeVoucherGenerationPayload(payload);
+    const batchId = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}`;
+    const routerComment = `vc|${batchId}|${request.comment || ""}`;
+
+    const result = await this.withConnection(async (conn) => {
+      const userMenu = conn.menu("/ip/hotspot/user");
+      const [users, profiles, servers] = await Promise.all([
+        userMenu.print(),
+        conn.menu("/ip/hotspot/user/profile").print(),
+        conn.menu("/ip/hotspot").print(),
+      ]);
+      const selectedProfile = (profiles || []).find((profile) => String(profile.name || "") === request.profile);
+      if (!selectedProfile) {
+        throw new Error(`Profile "${request.profile}" tidak ditemukan di MikroTik.`);
+      }
+      const profileMetadata = parseVoucherProfileMetadata(
+        readRouterValue(selectedProfile, "on-login", "onLogin", "")
+      );
+      const schedulers = await conn.menu("/system/scheduler").print();
+      const profileScheduler = (schedulers || []).find((scheduler) => (
+        String(scheduler.name || "") === request.profile
+        && String(scheduler.disabled || "false").toLowerCase() !== "true"
+      ));
+      if (!VOUCHER_EXPIRY_MODES[profileMetadata.expiredMode] || !profileMetadata.validity || !profileScheduler) {
+        throw new Error(`Profile "${request.profile}" belum siap untuk voucher. Atur masa berlaku dan monitor expired terlebih dahulu.`);
+      }
+      const serverNames = new Set((servers || []).map((server) => String(server.name || "")));
+      if (request.server !== "all" && !serverNames.has(request.server)) {
+        throw new Error(`Server hotspot "${request.server}" tidak ditemukan di MikroTik.`);
+      }
+
+      const reservedUsernames = new Set((users || [])
+        .map((user) => String(user.name || "").toLowerCase())
+        .filter(Boolean));
+      const vouchers = [];
+
+      if (request.generationType === "SINGLE") {
+        if (reservedUsernames.has(request.username.toLowerCase())) {
+          throw new Error(`Username "${request.username}" sudah digunakan di MikroTik.`);
+        }
+        vouchers.push({ username: request.username, password: request.password });
+      } else {
+        const characters = VOUCHER_CHARACTER_SETS[request.characterSet];
+        for (let index = 0; index < request.quantity; index += 1) {
+          let username = "";
+          for (let attempt = 0; attempt < 250; attempt += 1) {
+            const candidate = `${request.prefix}${generateSecureVoucherCode(request.codeLength, characters)}`;
+            if (!reservedUsernames.has(candidate.toLowerCase())) {
+              username = candidate;
+              reservedUsernames.add(candidate.toLowerCase());
+              break;
+            }
+          }
+          if (!username) {
+            throw new Error("Kode voucher unik tidak dapat dibuat. Tambah panjang kode atau ubah prefix.");
+          }
+          const password = request.credentialMode === "SAME"
+            ? username
+            : generateSecureVoucherCode(request.codeLength, characters);
+          vouchers.push({ username, password });
+        }
+      }
+
+      const dataLimitMultiplier = request.dataUnit === "GB" ? 1_073_741_824 : 1_048_576;
+      const dataLimitBytes = request.dataLimit * dataLimitMultiplier;
+      const createdUsernames = [];
+      try {
+        for (const voucher of vouchers) {
+          const addPayload = {
+            server: request.server,
+            name: voucher.username,
+            password: voucher.password,
+            profile: request.profile,
+            comment: routerComment,
+          };
+          if (request.limitUptime) addPayload["limit-uptime"] = request.limitUptime;
+          if (dataLimitBytes > 0) addPayload["limit-bytes-total"] = String(dataLimitBytes);
+          const addResult = await userMenu.add(addPayload);
+          if (addResult?.["!trap"]) {
+            const message = addResult["!trap"]?.[0]?.message || "Error tidak diketahui dari MikroTik.";
+            throw new Error(`MikroTik menolak voucher "${voucher.username}": ${message}`);
+          }
+          createdUsernames.push(voucher.username);
+        }
+
+        const verifiedUsers = await userMenu.print();
+        const verifiedByName = new Map((verifiedUsers || []).map((user) => [
+          String(user.name || "").toLowerCase(),
+          user,
+        ]));
+        const invalidVoucher = vouchers.find((voucher) => {
+          const verified = verifiedByName.get(voucher.username.toLowerCase());
+          return !verified || String(verified.profile || "") !== request.profile;
+        });
+        if (invalidVoucher) {
+          throw new Error(`Voucher "${invalidVoucher.username}" gagal diverifikasi setelah dibuat.`);
+        }
+      } catch (error) {
+        const cleanupFailures = [];
+        for (const username of [...createdUsernames].reverse()) {
+          try {
+            await this.removeHotspotUsersByName(conn, username);
+          } catch (cleanupError) {
+            cleanupFailures.push(username);
+          }
+        }
+        if (cleanupFailures.length > 0) {
+          error.message = `${error.message} ${cleanupFailures.length} voucher gagal dibersihkan; periksa MikroTik.`;
+        } else if (createdUsernames.length > 0) {
+          error.message = `${error.message} Voucher yang sempat dibuat sudah dibatalkan.`;
+        }
+        throw error;
+      }
+
+      return {
+        batchId,
+        createdAt: new Date().toISOString(),
+        generationType: request.generationType,
+        quantity: vouchers.length,
+        server: request.server,
+        profile: request.profile,
+        limitUptime: request.limitUptime || null,
+        dataLimit: request.dataLimit,
+        dataUnit: request.dataUnit,
+        comment: request.comment,
+        vouchers,
+      };
+    });
+
+    this.activityLog.push("info", "voucher", `${result.quantity} voucher hotspot berhasil dibuat`, {
+      batchId: result.batchId,
+      profile: result.profile,
+      server: result.server,
+      quantity: result.quantity,
+    });
+    return result;
   }
 
   async getHotspotUsers() {
@@ -1044,6 +1618,7 @@ class DataManager {
     this.paymentGatewayTransactions = new Map();
     this.reminders = new Map();
     this.sentReminders = new Map();
+    this.voucherBatches = new Map();
     this.roles = new Map();
     this.settings = { ...DEFAULT_SETTINGS };
     this.fileLocks = new Map();
@@ -1112,6 +1687,7 @@ class DataManager {
     );
     this.models.Reminder = jsonPayloadModel("Reminder", "reminders", "id");
     this.models.SentReminder = jsonPayloadModel("SentReminder", "sent_reminders", "id");
+    this.models.VoucherBatch = jsonPayloadModel("VoucherBatch", "voucher_batches", "batchId");
     this.models.Role = this.sequelize.define("Role", {
       phoneNumber: {
         type: DataTypes.STRING,
@@ -1200,6 +1776,7 @@ class DataManager {
         paymentGatewayTransactions: structuredClone(this.paymentGatewayTransactions),
         reminders: structuredClone(this.reminders),
         sentReminders: structuredClone(this.sentReminders),
+        voucherBatches: structuredClone(this.voucherBatches),
         roles: structuredClone(this.roles),
         settings: structuredClone(this.settings),
       };
@@ -1213,6 +1790,7 @@ class DataManager {
         this.paymentGatewayTransactions = snapshot.paymentGatewayTransactions;
         this.reminders = snapshot.reminders;
         this.sentReminders = snapshot.sentReminders;
+        this.voucherBatches = snapshot.voucherBatches;
         this.roles = snapshot.roles;
         this.settings = snapshot.settings;
         throw error;
@@ -1346,6 +1924,7 @@ class DataManager {
       this.models.PaymentGatewayTransaction.count(),
       this.models.Reminder.count(),
       this.models.SentReminder.count(),
+      this.models.VoucherBatch.count(),
       this.models.Role.count(),
       this.models.Setting.count(),
     ]);
@@ -1362,6 +1941,7 @@ class DataManager {
     );
     this.reminders = await this.loadJsonPayloadMap(this.models.Reminder, "id");
     this.sentReminders = await this.loadJsonPayloadMap(this.models.SentReminder, "id");
+    this.voucherBatches = await this.loadJsonPayloadMap(this.models.VoucherBatch, "batchId");
 
     const roleRows = await this.models.Role.findAll({ raw: true });
     this.roles = new Map(roleRows.map((row) => [String(row.phoneNumber), row.role]));
@@ -1385,6 +1965,7 @@ class DataManager {
     this.paymentGatewayTransactions = new Map();
     this.reminders = await this.loadLegacyMapFromFile(this.getPath("reminders.json"), "id");
     this.sentReminders = await this.loadLegacyMapFromFile(this.getPath("sent_reminders.json"), "id");
+    this.voucherBatches = new Map();
     this.roles = await this.loadLegacyRoles();
     this.settings = await this.loadLegacySettings();
   }
@@ -1425,6 +2006,7 @@ class DataManager {
       paymentGatewayTransactions: this.paymentGatewayTransactions.size,
       reminders: this.reminders.size,
       sentReminders: this.sentReminders.size,
+      voucherBatches: this.voucherBatches.size,
       adminRecipients: this.getAdminRecipients().length,
       portalAccountsCreated,
     });
@@ -1505,6 +2087,50 @@ class DataManager {
       (transaction) => this.replaceJsonPayloadTable(this.models.SentReminder, "id", this.sentReminders.values(), { transaction }),
       options
     );
+  }
+
+  async saveVoucherBatches(options = {}) {
+    if (!this.models.VoucherBatch) return;
+    await this.runSaveOperation(
+      (transaction) => this.replaceJsonPayloadTable(
+        this.models.VoucherBatch,
+        "batchId",
+        this.voucherBatches.values(),
+        { transaction }
+      ),
+      options
+    );
+  }
+
+  getVoucherBatches(limit = 50) {
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
+    return Array.from(this.voucherBatches.values())
+      .sort((a, b) => (
+        new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+        || String(b.batchId).localeCompare(String(a.batchId), "id-ID")
+      ))
+      .slice(0, safeLimit)
+      .map((batch) => structuredClone(batch));
+  }
+
+  async storeVoucherBatches(batches = []) {
+    const validBatches = (Array.isArray(batches) ? batches : [])
+      .filter((batch) => batch?.batchId && Array.isArray(batch.vouchers));
+    if (!validBatches.length) return { saved: 0, total: this.voucherBatches.size };
+    return this.withDataMutation(async () => {
+      for (const batch of validBatches) {
+        const batchId = String(batch.batchId);
+        const existing = this.voucherBatches.get(batchId) || {};
+        this.voucherBatches.set(batchId, {
+          ...existing,
+          ...structuredClone(batch),
+          batchId,
+          storedAt: existing.storedAt || new Date().toISOString(),
+        });
+      }
+      await this.saveVoucherBatches();
+      return { saved: validBatches.length, total: this.voucherBatches.size };
+    });
   }
 
   async cleanupSentHistory(options = {}) {
@@ -2499,6 +3125,7 @@ class DataManager {
           await this.savePaymentGatewayTransactions(options);
           await this.saveReminders(options);
           await this.saveSentReminders(options);
+          await this.saveVoucherBatches(options);
           await this.saveRoles(options);
           await this.saveSettings(options);
         })
@@ -6423,6 +7050,8 @@ class WebServer {
     this.hotspotReactivationScheduler = hotspotReactivationScheduler;
     this.midtransService = midtransService || new MidtransService();
     this.hotspotProvisioningLock = new AsyncLock();
+    this.voucherGenerationLock = new AsyncLock();
+    this.voucherProfileLock = new AsyncLock();
     this.activePeriodPurchaseLock = new AsyncLock();
     this.paymentGatewayLock = new AsyncLock();
     this.server = null;
@@ -8078,7 +8707,51 @@ class WebServer {
     }));
 
     this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotProfiles()));
+    this.app.get("/api/mikrotik/hotspot-servers", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotServers()));
     this.app.get("/api/mikrotik/hotspot-users", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotUsers()));
+    this.app.get("/api/mikrotik/voucher-profiles", requireApiAuth, handleApi(async () => (
+      this.mikrotikService.getVoucherProfiles()
+    )));
+    this.app.post("/api/mikrotik/voucher-profiles", requireApiAuth, handleApi(async (req) => (
+      this.voucherProfileLock.runExclusive("mikrotik-voucher-profiles", async () => {
+        if (typeof this.dataManager.storeVoucherBatches === "function") {
+          const legacyBatches = await this.mikrotikService.getHotspotVoucherBatches({ limit: 100 });
+          await this.dataManager.storeVoucherBatches(legacyBatches);
+        }
+        return this.mikrotikService.saveVoucherProfile(req.body);
+      })
+    )));
+    this.app.get("/api/mikrotik/voucher-batches", requireApiAuth, handleApi(async (req) => {
+      const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+      try {
+        const routerBatches = await this.mikrotikService.getHotspotVoucherBatches({ limit: 100 });
+        if (typeof this.dataManager.storeVoucherBatches === "function") {
+          await this.dataManager.storeVoucherBatches(routerBatches);
+          return this.dataManager.getVoucherBatches(limit);
+        }
+        return routerBatches.slice(0, limit);
+      } catch (error) {
+        const stored = typeof this.dataManager.getVoucherBatches === "function"
+          ? this.dataManager.getVoucherBatches(limit)
+          : [];
+        if (stored.length > 0) {
+          this.activityLog.push("error", "voucher", "MikroTik tidak dapat dibaca; memakai riwayat voucher database", {
+            error: error.message,
+          });
+          return stored;
+        }
+        throw error;
+      }
+    }));
+    this.app.post("/api/mikrotik/vouchers", requireApiAuth, handleApi(async (req) => (
+      this.voucherGenerationLock.runExclusive("mikrotik-vouchers", async () => {
+        const batch = await this.mikrotikService.createHotspotVouchers(req.body);
+        if (typeof this.dataManager.storeVoucherBatches === "function") {
+          await this.dataManager.storeVoucherBatches([batch]);
+        }
+        return batch;
+      })
+    )));
     this.app.get("/api/mikrotik/netwatch", requireApiAuth, handleApi(async () => (
       this.buildNetworkMonitorView(await this.mikrotikService.getNetwatchStatus())
     )));

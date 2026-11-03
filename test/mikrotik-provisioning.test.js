@@ -5,6 +5,7 @@ const { MikrotikService } = require("../src/app");
 
 function createServiceWithUsers(initialUsers = []) {
   const users = initialUsers.map((user) => ({ ...user }));
+  const addedPayloads = [];
   let addCalls = 0;
   let updateCalls = 0;
   let removeCalls = 0;
@@ -13,6 +14,7 @@ function createServiceWithUsers(initialUsers = []) {
     print: async () => users.map((user) => ({ ...user })),
     add: async (payload) => {
       addCalls += 1;
+      addedPayloads.push({ ...payload });
       users.push({ ".id": `*${users.length + 1}`, ...payload, disabled: "false" });
       return {};
     },
@@ -34,7 +36,13 @@ function createServiceWithUsers(initialUsers = []) {
     menu: (path) => {
       if (path === "/ip/hotspot/user") return userMenu;
       if (path === "/ip/hotspot/user/profile") {
-        return { print: async () => [{ name: "100M" }] };
+        return { print: async () => [{ name: "100M", "on-login": ':put (",rem,0,1d,0,,Disable,0,")' }] };
+      }
+      if (path === "/system/scheduler") {
+        return { print: async () => [{ name: "100M", disabled: "false", comment: "Monitor Profile 100M" }] };
+      }
+      if (path === "/ip/hotspot") {
+        return { print: async () => [{ name: "hotspot-utama" }] };
       }
       if (path === "/ip/hotspot/active") {
         return {
@@ -58,8 +66,225 @@ function createServiceWithUsers(initialUsers = []) {
     getUpdateCalls: () => updateCalls,
     getRemoveCalls: () => removeCalls,
     getKilledSessions: () => killedSessions,
+    getAddedPayloads: () => addedPayloads.map((payload) => ({ ...payload })),
   };
 }
+
+test("membuat satu voucher hotspot dengan kredensial yang ditentukan", async () => {
+  const { service, users, getAddedPayloads } = createServiceWithUsers();
+
+  const result = await service.createHotspotVouchers({
+    generationType: "SINGLE",
+    username: "voucher-001",
+    password: "rahasia-001",
+    profile: "100M",
+    server: "hotspot-utama",
+    limitUptime: "12h",
+    dataLimit: 2,
+    dataUnit: "GB",
+    comment: "Event November",
+  });
+
+  assert.equal(result.quantity, 1);
+  assert.deepEqual(result.vouchers, [{ username: "voucher-001", password: "rahasia-001" }]);
+  assert.equal(users[0].name, "voucher-001");
+  assert.equal(users[0].profile, "100M");
+  assert.equal(getAddedPayloads()[0].server, "hotspot-utama");
+  assert.equal(getAddedPayloads()[0]["limit-uptime"], "12h");
+  assert.equal(getAddedPayloads()[0]["limit-bytes-total"], String(2 * 1_073_741_824));
+  assert.match(getAddedPayloads()[0].comment, /^vc\|[a-z0-9]+-[a-f0-9]+\|Event November$/);
+});
+
+test("membuat banyak voucher unik dengan username dan password yang sama", async () => {
+  const { service, users } = createServiceWithUsers([{ ".id": "*1", name: "wifi-abcd", profile: "100M" }]);
+
+  const result = await service.createHotspotVouchers({
+    generationType: "BULK",
+    quantity: 25,
+    credentialMode: "SAME",
+    codeLength: 6,
+    characterSet: "LOWER",
+    prefix: "wifi-",
+    profile: "100M",
+    server: "all",
+  });
+
+  assert.equal(result.quantity, 25);
+  assert.equal(new Set(result.vouchers.map((voucher) => voucher.username.toLowerCase())).size, 25);
+  assert.equal(result.vouchers.every((voucher) => voucher.username === voucher.password), true);
+  assert.equal(result.vouchers.every((voucher) => /^wifi-[a-z0-9]{6}$/.test(voucher.username)), true);
+  assert.equal(users.length, 26);
+});
+
+test("riwayat batch voucher dibaca kembali dari data MikroTik", async () => {
+  const { service } = createServiceWithUsers();
+  const firstBatch = await service.createHotspotVouchers({
+    generationType: "SINGLE",
+    username: "voucher-lama",
+    password: "password-lama",
+    profile: "100M",
+    server: "all",
+    comment: "Batch pertama",
+  });
+  const secondBatch = await service.createHotspotVouchers({
+    generationType: "BULK",
+    quantity: 2,
+    credentialMode: "SAME",
+    codeLength: 6,
+    characterSet: "UPPER",
+    prefix: "NEW-",
+    profile: "100M",
+    server: "hotspot-utama",
+    comment: "Batch kedua",
+  });
+
+  const batches = await service.getHotspotVoucherBatches();
+
+  assert.equal(batches.length, 2);
+  assert.deepEqual(new Set(batches.map((batch) => batch.batchId)), new Set([
+    firstBatch.batchId,
+    secondBatch.batchId,
+  ]));
+  const restoredFirst = batches.find((batch) => batch.batchId === firstBatch.batchId);
+  const restoredSecond = batches.find((batch) => batch.batchId === secondBatch.batchId);
+  assert.equal(restoredFirst.quantity, 1);
+  assert.equal(restoredFirst.comment, "Batch pertama");
+  assert.deepEqual(restoredFirst.vouchers[0], {
+    username: "voucher-lama",
+    password: "password-lama",
+    disabled: false,
+  });
+  assert.equal(restoredSecond.quantity, 2);
+  assert.equal(restoredSecond.server, "hotspot-utama");
+  assert.equal(restoredSecond.vouchers.every((voucher) => voucher.username === voucher.password), true);
+});
+
+test("pembuatan voucher menolak username yang sudah ada", async () => {
+  const { service, getAddCalls } = createServiceWithUsers([{ ".id": "*1", name: "voucher-001", profile: "100M" }]);
+
+  await assert.rejects(() => service.createHotspotVouchers({
+    generationType: "SINGLE",
+    username: "VOUCHER-001",
+    password: "baru-001",
+    profile: "100M",
+    server: "all",
+  }), /sudah digunakan/);
+  assert.equal(getAddCalls(), 0);
+});
+
+test("batch voucher dibatalkan jika pembuatan gagal di tengah proses", async () => {
+  const users = [];
+  let addCalls = 0;
+  const userMenu = {
+    async print() {
+      return users.map((user) => ({ ...user }));
+    },
+    async add(payload) {
+      addCalls += 1;
+      if (addCalls === 2) throw new Error("router terputus");
+      users.push({ ".id": "*1", ...payload });
+      return {};
+    },
+    async remove(id) {
+      const index = users.findIndex((user) => String(user[".id"]) === String(id));
+      if (index >= 0) users.splice(index, 1);
+    },
+  };
+  const service = new MikrotikService({ push() {} });
+  service.withConnection = async (operation) => operation({
+    menu(path) {
+      if (path === "/ip/hotspot/user") return userMenu;
+      if (path === "/ip/hotspot/user/profile") return { print: async () => [{ name: "100M", "on-login": ':put (",rem,0,1d,0,,Disable,0,")' }] };
+      if (path === "/system/scheduler") return { print: async () => [{ name: "100M", disabled: "false" }] };
+      if (path === "/ip/hotspot") return { print: async () => [{ name: "hotspot-utama" }] };
+      throw new Error(`Menu tidak dikenal: ${path}`);
+    },
+  }, {});
+
+  await assert.rejects(() => service.createHotspotVouchers({
+    generationType: "BULK",
+    quantity: 3,
+    credentialMode: "SEPARATE",
+    codeLength: 6,
+    characterSet: "UPPER",
+    profile: "100M",
+    server: "all",
+  }), /sudah dibatalkan/);
+  assert.equal(users.length, 0);
+});
+
+test("profile voucher memasang script login, monitor expired, dan memigrasikan komentar lama", async () => {
+  const profiles = [{ ".id": "*p1", name: "4Jam", "shared-users": "1", "on-login": "" }];
+  const schedulers = [{ ".id": "*s1", name: "4Jam", disabled: "false", comment: "Monitor Profile 4Jam" }];
+  const users = [{ ".id": "*u1", name: "voucher-lama", profile: "4Jam", comment: "voucher-mh123-abc123 Batch lama" }];
+  const menuFor = (rows) => ({
+    print: async () => rows.map((row) => ({ ...row })),
+    add: async (payload) => { rows.push({ ".id": `*${rows.length + 1}`, ...payload }); },
+    update: async (payload, id) => {
+      const row = rows.find((item) => String(item[".id"]) === String(id));
+      Object.assign(row, payload);
+    },
+  });
+  const menus = {
+    "/ip/hotspot/user/profile": menuFor(profiles),
+    "/system/scheduler": menuFor(schedulers),
+    "/ip/hotspot/user": menuFor(users),
+    "/ip/pool": menuFor([{ name: "pool-voucher" }]),
+    "/queue/simple": menuFor([]),
+  };
+  const service = new MikrotikService({ push() {} });
+  service.withConnection = async (operation) => operation({ menu: (path) => menus[path] }, {});
+
+  const saved = await service.saveVoucherProfile({
+    originalName: "4Jam",
+    name: "4Jam",
+    sharedUsers: 1,
+    rateLimit: "1M/3M",
+    addressPool: "pool-voucher",
+    parentQueue: "none",
+    expiredMode: "rem",
+    validity: "4h",
+    costPrice: 2000,
+    sellingPrice: 3000,
+    commission: 500,
+    lockUser: true,
+  });
+
+  assert.equal(saved.voucherReady, true);
+  assert.equal(saved.migratedVoucherComments, 1);
+  assert.match(profiles[0]["on-login"], /^:put \(",rem,2000,4h,3000,,Enable,500,"\)/);
+  assert.match(schedulers[0]["on-event"], /profile="4Jam"/);
+  assert.equal(schedulers[0].disabled, "no");
+  assert.equal(users[0].comment, "vc|mh123-abc123|Batch lama");
+
+  const listed = await service.getVoucherProfiles();
+  const profile = listed.profiles.find((item) => item.name === "4Jam");
+  assert.equal(profile.voucherReady, true);
+  assert.equal(profile.validity, "4h");
+  assert.equal(profile.sellingPrice, 3000);
+});
+
+test("voucher ditolak ketika profile belum memiliki aturan kedaluwarsa", async () => {
+  const { service, getAddCalls } = createServiceWithUsers();
+  service.withConnection = async (operation) => operation({
+    menu(path) {
+      if (path === "/ip/hotspot/user") return { print: async () => [], add: async () => {} };
+      if (path === "/ip/hotspot/user/profile") return { print: async () => [{ name: "Bulanan", "on-login": "" }] };
+      if (path === "/ip/hotspot") return { print: async () => [{ name: "hotspot-utama" }] };
+      if (path === "/system/scheduler") return { print: async () => [] };
+      throw new Error(`Menu tidak dikenal: ${path}`);
+    },
+  }, {});
+
+  await assert.rejects(() => service.createHotspotVouchers({
+    generationType: "SINGLE",
+    username: "belum-siap",
+    password: "password",
+    profile: "Bulanan",
+    server: "all",
+  }), /belum siap untuk voucher/);
+  assert.equal(getAddCalls(), 0);
+});
 
 test("membuat akun hotspot lalu membacanya kembali dari MikroTik", async () => {
   const { service, getAddCalls } = createServiceWithUsers();

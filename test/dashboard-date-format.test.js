@@ -889,3 +889,154 @@ test("baris akun pelanggan membuka modal ganti password melalui ikon chevron", (
   assert.match(script, /this\.\$refs\.portalPasswordTrigger/);
   assert.match(script, /trigger\?\.focus\(\)/);
 });
+
+test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
+  const app = createDashboardApp();
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const styles = fs.readFileSync(path.join(__dirname, "../public/interface.css"), "utf8");
+  let request = null;
+  let reloadedUsers = false;
+
+  assert.equal(app.navMenus.some((menu) => menu.key === "vouchers"), true);
+  assert.equal(app.forms.voucher.generationType, "SINGLE");
+  assert.equal(app.forms.voucher.quantity, 10);
+  assert.match(html, /Voucher hotspot/);
+  assert.match(html, /value="SINGLE"/);
+  assert.match(html, /value="BULK"/);
+  assert.match(html, /@click="copyVoucherCredentials\(\)"/);
+  assert.match(html, /@click="printVouchers\(\)"/);
+  assert.match(html, /Riwayat batch/);
+  assert.match(html, /@change="selectVoucherBatch\(selectedVoucherBatchId\)"/);
+  assert.match(html, /Profile voucher/);
+  assert.match(html, /Masa berlaku mulai dihitung saat voucher pertama kali login/);
+  assert.match(html, /x-show="voucherCreateModal\.open"/);
+  assert.match(html, /x-show="voucherProfileModal\.open"/);
+  assert.match(html, /role="dialog" aria-modal="true" aria-labelledby="voucher-create-title"/);
+  assert.match(html, /role="dialog" aria-modal="true" aria-labelledby="voucher-profile-title"/);
+  assert.match(html, /x-show="activeVoucherTab === 'profiles'" class="voucher-profile-page"/);
+  assert.match(html, /Profile voucher baru/);
+  assert.match(styles, /\.voucher-workspace \{[\s\S]*?grid-template-columns:/);
+  assert.match(styles, /@media \(max-width: 620px\) \{[\s\S]*?\.voucher-fields\.two-columns/);
+  assert.match(styles, /@media print \{[\s\S]*?body\.voucher-print-mode/);
+
+  app.forms.voucher = {
+    ...app.forms.voucher,
+    generationType: "SINGLE",
+    username: "voucher-ui",
+    password: "password-ui",
+    profile: "100M",
+    server: "all",
+  };
+  app.withProcessing = async (_message, action) => action();
+  app.api = async (url, options) => {
+    request = { url, payload: JSON.parse(options.body) };
+    return {
+      batchId: "batch-ui",
+      quantity: 1,
+      profile: "100M",
+      server: "all",
+      vouchers: [{ username: "voucher-ui", password: "password-ui" }],
+    };
+  };
+  app.loadHotspotUsers = async () => { reloadedUsers = true; };
+  app.notify = () => {};
+
+  await app.createVouchers();
+
+  assert.equal(request.url, "/api/mikrotik/vouchers");
+  assert.equal(request.payload.quantity, 1);
+  assert.equal(request.payload.username, "voucher-ui");
+  assert.equal(app.voucherResult.quantity, 1);
+  assert.equal(app.voucherBatches.length, 1);
+  assert.equal(app.selectedVoucherBatchId, app.voucherBatches[0].batchId);
+  assert.equal(app.forms.voucher.username, "");
+  assert.equal(app.forms.voucher.password, "");
+  assert.equal(reloadedUsers, true);
+});
+
+test("tombol voucher membuka modal dan penutupan mengembalikan fokus", async () => {
+  const focused = [];
+  const elements = new Map([
+    ["voucher-create-button", { focus: () => focused.push("voucher-create-button") }],
+    ["voucher-profile-button", { focus: () => focused.push("voucher-profile-button") }],
+    ["voucher-create-dialog", { querySelector: () => ({ focus: () => focused.push("voucher-create-input") }) }],
+    ["voucher-profile-dialog", { focus: () => focused.push("voucher-profile-dialog") }],
+  ]);
+  const app = createDashboardApp({ document: { getElementById: (id) => elements.get(id) || null } });
+  app.$nextTick = (callback) => callback();
+  app.voucherProfiles = [{ name: "4Jam", voucherReady: true }];
+  app.mikrotikServers = ["hotspot1"];
+
+  await app.openVoucherCreateModal({ id: "voucher-create-button" });
+  assert.equal(app.voucherCreateModal.open, true);
+  assert.equal(focused.at(-1), "voucher-create-input");
+  app.closeVoucherCreateModal();
+  assert.equal(app.voucherCreateModal.open, false);
+  assert.equal(focused.at(-1), "voucher-create-button");
+
+  await app.openVoucherProfileModal({ id: "voucher-profile-button" });
+  assert.equal(app.voucherProfileModal.open, true);
+  assert.equal(focused.at(-1), "voucher-profile-dialog");
+  app.closeVoucherProfileModal();
+  assert.equal(app.voucherProfileModal.open, false);
+  assert.equal(focused.at(-1), "voucher-profile-button");
+});
+
+test("profile voucher dapat dibuat dan dipilih untuk batch baru", async () => {
+  const app = createDashboardApp();
+  let request = null;
+  app.withProcessing = async (_message, action) => action();
+  app.loadVoucherProfiles = async () => {
+    app.voucherProfiles = [{ name: "VCR-4JAM", voucherReady: true }];
+  };
+  app.notify = () => {};
+  app.forms.voucherProfile = {
+    ...app.forms.voucherProfile,
+    name: "VCR-4JAM",
+    validity: "4h",
+    expiredMode: "rem",
+  };
+  app.api = async (url, options) => {
+    request = { url, payload: JSON.parse(options.body) };
+    return { ...request.payload, voucherReady: true };
+  };
+
+  await app.saveVoucherProfile();
+
+  assert.equal(request.url, "/api/mikrotik/voucher-profiles");
+  assert.equal(request.payload.validity, "4h");
+  assert.equal(request.payload.expiredMode, "rem");
+  assert.equal(app.forms.voucher.profile, "VCR-4JAM");
+  assert.equal(app.forms.voucherProfile.name, "");
+});
+
+test("riwayat voucher memilih kembali batch yang tersimpan di MikroTik", async () => {
+  const app = createDashboardApp();
+  app.api = async () => [{
+    batchId: "batch-baru",
+    createdAt: "2026-11-02T12:00:00.000Z",
+    quantity: 2,
+    profile: "30H-2user",
+    server: "all",
+    vouchers: [
+      { username: "voucher-1", password: "password-1" },
+      { username: "voucher-2", password: "password-2" },
+    ],
+  }, {
+    batchId: "batch-lama",
+    createdAt: "2026-11-01T12:00:00.000Z",
+    quantity: 1,
+    profile: "12JAM",
+    server: "all",
+    vouchers: [{ username: "voucher-lama", password: "password-lama" }],
+  }];
+
+  await app.loadVoucherBatches({ silent: true, batchId: "batch-lama" });
+
+  assert.equal(app.voucherBatches.length, 2);
+  assert.equal(app.selectedVoucherBatchId, "batch-lama");
+  assert.equal(app.voucherResult.vouchers[0].username, "voucher-lama");
+  app.selectVoucherBatch("batch-baru");
+  assert.equal(app.voucherResult.quantity, 2);
+  assert.match(app.getVoucherBatchLabel(app.voucherResult), /2 voucher/);
+});
