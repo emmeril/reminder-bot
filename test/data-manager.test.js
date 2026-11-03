@@ -54,6 +54,34 @@ test("riwayat batch voucher disimpan terpisah dari komentar user MikroTik", asyn
   assert.notEqual(manager.getVoucherBatches()[0], manager.voucherBatches.get("batch-voucher-1"));
 });
 
+test("menghapus voucher memperbarui jumlah batch dan menghapus batch yang sudah kosong", async () => {
+  const manager = createManager({ id: "contact-placeholder", phoneNumber: "6281234567890" });
+  let saveCalls = 0;
+  manager.saveVoucherBatches = async () => { saveCalls += 1; };
+  await manager.storeVoucherBatches([{
+    batchId: "batch-voucher-delete",
+    quantity: 2,
+    generationType: "BULK",
+    vouchers: [
+      { username: "voucher-1", password: "rahasia-1" },
+      { username: "voucher-2", password: "rahasia-2" },
+    ],
+  }]);
+
+  const first = await manager.removeVoucherFromBatch("batch-voucher-delete", "voucher-1");
+  const remainingBatch = manager.getVoucherBatch("batch-voucher-delete");
+  assert.equal(first.remaining, 1);
+  assert.equal(first.batchRemoved, false);
+  assert.equal(remainingBatch.quantity, 1);
+  assert.equal(remainingBatch.generationType, "SINGLE");
+  assert.equal(remainingBatch.vouchers[0].username, "voucher-2");
+
+  const second = await manager.removeVoucherFromBatch("batch-voucher-delete", "voucher-2");
+  assert.equal(second.batchRemoved, true);
+  assert.equal(manager.getVoucherBatch("batch-voucher-delete"), null);
+  assert.equal(saveCalls, 3);
+});
+
 test("jatuh tempo memakai reminder aktif berikutnya dan status pembayaran periodenya", () => {
   const now = new Date();
   const timeZone = "Asia/Jakarta";

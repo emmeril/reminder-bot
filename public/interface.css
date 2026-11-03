@@ -2862,6 +2862,39 @@ span[class*="rounded-full"][class*="text-xs"],
   white-space: nowrap;
 }
 
+.voucher-card-heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 7px;
+  align-items: center;
+}
+
+.voucher-delete-button {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--ui-danger);
+  border: 1px solid #e3b8aa;
+  border-radius: 7px;
+  background: #fff7f4;
+  font-size: 12px;
+  transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
+}
+
+.voucher-delete-button:hover {
+  color: #fff;
+  border-color: var(--ui-danger);
+  background: var(--ui-danger);
+}
+
+.voucher-delete-button:focus-visible {
+  outline: 3px solid rgba(201, 87, 42, .28);
+  outline-offset: 2px;
+}
+
 .voucher-card dl {
   display: grid;
   gap: 7px;
@@ -2917,6 +2950,11 @@ span[class*="rounded-full"][class*="text-xs"],
     justify-content: center;
     padding-inline: 6px;
     font-size: 10px;
+  }
+
+  .voucher-delete-button {
+    width: 44px;
+    height: 44px;
   }
 
   .revenue-tabs {

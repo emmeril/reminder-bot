@@ -755,7 +755,13 @@
                 <div class="voucher-card-grid">
                   <template x-for="(voucher, index) in voucherResult?.vouchers || []" :key="'generated-voucher-' + voucher.username">
                     <article class="voucher-card">
-                      <div><span x-text="forms.settings.companyName || 'Emmeril Hotspot'"></span><strong x-text="String(index + 1).padStart(3, '0')"></strong></div>
+                      <div class="voucher-card-heading">
+                        <span x-text="forms.settings.companyName || 'Emmeril Hotspot'"></span>
+                        <div class="voucher-card-heading-actions">
+                          <strong x-text="String(index + 1).padStart(3, '0')"></strong>
+                          <button type="button" @click="removeVoucher(voucher)" class="voucher-delete-button" :aria-label="'Hapus voucher ' + voucher.username" :title="'Hapus voucher ' + voucher.username"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                        </div>
+                      </div>
                       <dl>
                         <div><dt>Username</dt><dd x-text="voucher.username"></dd></div>
                         <div><dt>Password</dt><dd x-text="voucher.password"></dd></div>
@@ -2410,8 +2416,15 @@
       class="dashboard-modal-overlay fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
     >
       <div
+        id="delete-confirm-dialog"
         x-show="deleteConfirm.open"
         x-transition.scale.origin.center
+        @keydown.tab="trapModalFocus($event, 'delete-confirm-dialog')"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-confirm-title"
+        aria-describedby="delete-confirm-description"
+        tabindex="-1"
         class="w-full max-w-md rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
       >
         <div class="flex items-start gap-3">
@@ -2419,12 +2432,13 @@
             <i class="fa-solid fa-triangle-exclamation"></i>
           </div>
           <div class="min-w-0">
-            <h3 class="text-lg font-semibold text-ink" x-text="deleteConfirm.title"></h3>
-            <p class="mt-2 text-sm leading-6 text-ink/65" x-text="deleteConfirm.description"></p>
+            <h3 id="delete-confirm-title" class="text-lg font-semibold text-ink" x-text="deleteConfirm.title"></h3>
+            <p id="delete-confirm-description" class="mt-2 text-sm leading-6 text-ink/65" x-text="deleteConfirm.description"></p>
           </div>
         </div>
         <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
+            id="delete-confirm-cancel"
             type="button"
             @click="closeDeleteConfirm()"
             class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze"

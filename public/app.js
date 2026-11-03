@@ -36,6 +36,7 @@
           confirmLabel: "Hapus",
           processingMessage: "Memproses tindakan...",
           action: null,
+          returnFocusElement: null,
         },
         formErrors: {
           manual: "",
@@ -603,6 +604,9 @@
         },
 
         openDeleteConfirm({ title, description, confirmLabel = "Hapus", processingMessage = "Memproses tindakan...", action }) {
+          const returnFocusElement = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
           this.deleteConfirm = {
             open: true,
             loading: false,
@@ -611,12 +615,15 @@
             confirmLabel,
             processingMessage,
             action,
+            returnFocusElement,
           };
           this.clearFormError("deleteConfirm");
           document.body.classList.add("overflow-hidden");
+          this.$nextTick(() => document.getElementById("delete-confirm-cancel")?.focus());
         },
 
         closeDeleteConfirm() {
+          const returnFocusElement = this.deleteConfirm.returnFocusElement;
           this.deleteConfirm.open = false;
           this.deleteConfirm.loading = false;
           this.deleteConfirm.title = "";
@@ -624,8 +631,12 @@
           this.deleteConfirm.confirmLabel = "Hapus";
           this.deleteConfirm.processingMessage = "Memproses tindakan...";
           this.deleteConfirm.action = null;
+          this.deleteConfirm.returnFocusElement = null;
           this.clearFormError("deleteConfirm");
           document.body.classList.remove("overflow-hidden");
+          this.$nextTick(() => {
+            if (returnFocusElement?.isConnected) returnFocusElement.focus();
+          });
         },
 
         async confirmDeleteAction() {
@@ -1984,6 +1995,33 @@
           const selected = this.voucherBatches.find((batch) => batch.batchId === batchId) || null;
           this.selectedVoucherBatchId = selected?.batchId || "";
           this.voucherResult = selected;
+        },
+
+        removeVoucher(voucher) {
+          const batchId = this.voucherResult?.batchId;
+          const username = voucher?.username;
+          if (!batchId || !username) return;
+          this.openDeleteConfirm({
+            title: "Hapus voucher?",
+            description: `Voucher "${username}" akan dihapus dari MikroTik dan riwayat batch. Jika voucher sedang digunakan, sesi hotspotnya akan diputus. Tindakan ini tidak bisa dibatalkan.`,
+            confirmLabel: "Hapus voucher",
+            processingMessage: `Menghapus voucher ${username}...`,
+            action: async () => {
+              const result = await this.api(
+                `/api/mikrotik/voucher-batches/${encodeURIComponent(batchId)}/vouchers/${encodeURIComponent(username)}`,
+                { method: "DELETE" }
+              );
+              await this.loadVoucherBatches({
+                silent: true,
+                batchId: result.batchRemoved ? "" : batchId,
+              });
+              await Promise.allSettled([
+                this.loadHotspotUsers({ silent: true }),
+                this.loadVoucherStats({ silent: true }),
+              ]);
+              this.notify(`Voucher ${username} berhasil dihapus.`);
+            },
+          });
         },
 
         getVoucherBatchLabel(batch) {

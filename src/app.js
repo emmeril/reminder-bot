@@ -1110,6 +1110,46 @@ class MikrotikService {
     return result;
   }
 
+  async deleteHotspotVoucher(payload = {}) {
+    const batchId = normalizeVoucherCredential(payload.batchId, "ID batch voucher", { maxLength: 128 });
+    const username = normalizeVoucherCredential(payload.username, "Username voucher");
+    return this.withConnection(async (conn) => {
+      const users = await conn.menu("/ip/hotspot/user").print();
+      const matches = (users || []).filter((user) => (
+        String(user.name || user.user || "").toLowerCase() === username.toLowerCase()
+      ));
+      if (matches.length > 0) {
+        const normalizedBatchId = batchId.toLowerCase();
+        const belongsToBatch = matches.every((user) => {
+          const comment = String(user.comment || "").trim().toLowerCase();
+          const legacyComment = `voucher-${normalizedBatchId}`;
+          return comment.startsWith(`vc|${normalizedBatchId}|`)
+            || comment === legacyComment
+            || comment.startsWith(`${legacyComment} `);
+        });
+        if (!belongsToBatch) {
+          throw new Error(`Voucher "${username}" tidak lagi terhubung ke batch yang dipilih.`);
+        }
+      }
+
+      const activeResult = await this.removeActiveHotspotSessionsByName(conn, username);
+      const removeResult = await this.removeHotspotUsersByName(conn, username);
+      const remainingUsers = await conn.menu("/ip/hotspot/user").print();
+      const stillExists = (remainingUsers || []).some((user) => (
+        String(user.name || user.user || "").toLowerCase() === username.toLowerCase()
+      ));
+      if (stillExists) throw new Error(`Voucher "${username}" masih ditemukan setelah penghapusan.`);
+
+      return {
+        batchId,
+        username,
+        activeSessionsKilled: activeResult.killed,
+        removedUsers: removeResult.removed,
+        alreadyAbsent: matches.length === 0,
+      };
+    });
+  }
+
   async getHotspotUsers() {
     return this.withConnection(async (conn) => {
       const userMenu = conn.menu("/ip/hotspot/user")
@@ -2334,6 +2374,11 @@ class DataManager {
       .map((batch) => structuredClone(batch));
   }
 
+  getVoucherBatch(batchId) {
+    const batch = this.voucherBatches.get(String(batchId || ""));
+    return batch ? structuredClone(batch) : null;
+  }
+
   async storeVoucherBatches(batches = []) {
     const validBatches = (Array.isArray(batches) ? batches : [])
       .filter((batch) => batch?.batchId && Array.isArray(batch.vouchers));
@@ -2352,6 +2397,41 @@ class DataManager {
       }
       await this.saveVoucherBatches();
       return { saved: validBatches.length, total: this.voucherBatches.size };
+    });
+  }
+
+  async removeVoucherFromBatch(batchId, username) {
+    const safeBatchId = String(batchId || "");
+    const safeUsername = String(username || "").toLowerCase();
+    return this.withDataMutation(async () => {
+      const batch = this.voucherBatches.get(safeBatchId);
+      if (!batch) throw new Error("Batch voucher tidak ditemukan di riwayat aplikasi.");
+      const vouchers = Array.isArray(batch.vouchers) ? batch.vouchers : [];
+      const remainingVouchers = vouchers.filter((voucher) => (
+        String(voucher.username || "").toLowerCase() !== safeUsername
+      ));
+      if (remainingVouchers.length === vouchers.length) {
+        throw new Error("Voucher tidak ditemukan di batch yang dipilih.");
+      }
+
+      if (remainingVouchers.length === 0) {
+        this.voucherBatches.delete(safeBatchId);
+      } else {
+        this.voucherBatches.set(safeBatchId, {
+          ...batch,
+          vouchers: remainingVouchers,
+          quantity: remainingVouchers.length,
+          generationType: remainingVouchers.length === 1 ? "SINGLE" : "BULK",
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      await this.saveVoucherBatches();
+      return {
+        batchId: safeBatchId,
+        username,
+        batchRemoved: remainingVouchers.length === 0,
+        remaining: remainingVouchers.length,
+      };
     });
   }
 
@@ -8981,6 +9061,33 @@ class WebServer {
           await this.dataManager.storeVoucherBatches([batch]);
         }
         return batch;
+      })
+    )));
+    this.app.delete("/api/mikrotik/voucher-batches/:batchId/vouchers/:username", requireApiAuth, handleApi(async (req) => (
+      this.voucherGenerationLock.runExclusive("mikrotik-vouchers", async () => {
+        const batchId = sanitizeInput(req.params.batchId);
+        const username = sanitizeInput(req.params.username);
+        const storedBatch = typeof this.dataManager.getVoucherBatch === "function"
+          ? this.dataManager.getVoucherBatch(batchId)
+          : null;
+        const storedVoucher = storedBatch?.vouchers?.find((voucher) => (
+          String(voucher.username || "").toLowerCase() === username.toLowerCase()
+        ));
+        if (!storedBatch || !storedVoucher) {
+          const error = new Error("Voucher tidak ditemukan pada batch yang dipilih.");
+          error.statusCode = 404;
+          throw error;
+        }
+
+        const routerResult = await this.mikrotikService.deleteHotspotVoucher({ batchId, username });
+        const storageResult = await this.dataManager.removeVoucherFromBatch(batchId, username);
+        this.activityLog.push("info", "voucher", `Voucher ${username} dihapus`, {
+          batchId,
+          username,
+          removedFromRouter: routerResult.removedUsers > 0,
+          activeSessionsKilled: routerResult.activeSessionsKilled,
+        });
+        return { ...routerResult, ...storageResult };
       })
     )));
     this.app.get("/api/mikrotik/netwatch", requireApiAuth, handleApi(async () => (

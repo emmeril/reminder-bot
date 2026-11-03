@@ -117,6 +117,39 @@ test("membuat banyak voucher unik dengan username dan password yang sama", async
   assert.equal(users.length, 26);
 });
 
+test("menghapus voucher memutus sesi aktif dan hanya menerima voucher dari batch yang sama", async () => {
+  const batchId = "batch-delete-1";
+  const { service, users, getRemoveCalls, getKilledSessions } = createServiceWithUsers([
+    {
+      ".id": "*1",
+      name: "voucher-delete",
+      profile: "100M",
+      comment: `vc|${batchId}|Batch test`,
+      active: true,
+    },
+  ]);
+
+  const result = await service.deleteHotspotVoucher({ batchId, username: "voucher-delete" });
+
+  assert.equal(result.removedUsers, 1);
+  assert.equal(result.activeSessionsKilled, 1);
+  assert.equal(result.alreadyAbsent, false);
+  assert.equal(getRemoveCalls(), 1);
+  assert.equal(getKilledSessions(), 1);
+  assert.equal(users.length, 0);
+
+  const unrelated = createServiceWithUsers([{
+    ".id": "*2",
+    name: "voucher-reused",
+    profile: "100M",
+    comment: "vc|batch-lain|Bukan batch ini",
+  }]).service;
+  await assert.rejects(
+    () => unrelated.deleteHotspotVoucher({ batchId, username: "voucher-reused" }),
+    /tidak lagi terhubung ke batch yang dipilih/,
+  );
+});
+
 test("riwayat batch voucher dibaca kembali dari data MikroTik", async () => {
   const { service } = createServiceWithUsers();
   const firstBatch = await service.createHotspotVouchers({

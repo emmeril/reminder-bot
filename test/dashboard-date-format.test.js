@@ -977,6 +977,10 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(html, /@click="copyVoucherCredentials\(\)"/);
   assert.match(html, /@click="printVouchers\(\)"/);
   assert.match(html, /@click="printRewardVouchers\(\)"/);
+  assert.match(html, /@click="removeVoucher\(voucher\)"/);
+  assert.match(html, /:aria-label="'Hapus voucher ' \+ voucher\.username"/);
+  assert.match(html, /id="delete-confirm-dialog"[\s\S]*?role="dialog"[\s\S]*?aria-modal="true"/);
+  assert.match(html, /@keydown\.tab="trapModalFocus\(\$event, 'delete-confirm-dialog'\)"/);
   assert.match(script, /voucher-print-root/);
   assert.match(html, /getVoucherPriceLabel\(\)/);
   assert.match(html, /Gunakan voucher ini untuk terhubung ke jaringan WiFi\./);
@@ -998,6 +1002,7 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(styles, /@media \(max-width: 620px\) \{[\s\S]*?\.voucher-fields\.two-columns/);
   assert.match(styles, /@media print \{[\s\S]*?body\.voucher-print-mode/);
   assert.match(styles, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);[\s\S]*?grid-template-rows: repeat\(5, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /\.voucher-delete-button:focus-visible/);
 
   app.voucherResult = {
     profile: "VCR-1H",
@@ -1054,6 +1059,49 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.equal(app.forms.voucher.username, "");
   assert.equal(app.forms.voucher.password, "");
   assert.equal(reloadedUsers, true);
+});
+
+test("ikon X voucher membuka konfirmasi lalu menghapus akun dari MikroTik dan riwayat", async () => {
+  const app = createDashboardApp();
+  let confirmation = null;
+  let request = null;
+  let reloadOptions = null;
+  let statsReloaded = false;
+  let usersReloaded = false;
+  let notification = "";
+  app.voucherResult = {
+    batchId: "batch-ui-delete",
+    quantity: 2,
+    vouchers: [
+      { username: "voucher-hapus", password: "rahasia" },
+      { username: "voucher-sisa", password: "rahasia" },
+    ],
+  };
+  app.openDeleteConfirm = (options) => { confirmation = options; };
+  app.api = async (url, options) => {
+    request = { url, method: options.method };
+    return { batchRemoved: false, remaining: 1 };
+  };
+  app.loadVoucherBatches = async (options) => { reloadOptions = options; };
+  app.loadVoucherStats = async () => { statsReloaded = true; };
+  app.loadHotspotUsers = async () => { usersReloaded = true; };
+  app.notify = (message) => { notification = message; };
+
+  app.removeVoucher(app.voucherResult.vouchers[0]);
+
+  assert.equal(confirmation.title, "Hapus voucher?");
+  assert.match(confirmation.description, /voucher-hapus/);
+  assert.equal(confirmation.confirmLabel, "Hapus voucher");
+  await confirmation.action();
+  assert.deepEqual(request, {
+    url: "/api/mikrotik/voucher-batches/batch-ui-delete/vouchers/voucher-hapus",
+    method: "DELETE",
+  });
+  assert.equal(reloadOptions.silent, true);
+  assert.equal(reloadOptions.batchId, "batch-ui-delete");
+  assert.equal(statsReloaded, true);
+  assert.equal(usersReloaded, true);
+  assert.equal(notification, "Voucher voucher-hapus berhasil dihapus.");
 });
 
 test("tombol voucher membuka modal dan penutupan mengembalikan fokus", async () => {

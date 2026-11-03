@@ -172,7 +172,17 @@ test("API Netwatch menggabungkan AP dengan pelanggan terkait", async () => {
 test("API voucher memuat server dan membuat batch melalui MikroTik", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   let receivedPayload = null;
-  const baseUrl = await startServer({}, {}, {
+  let removedStoredVoucher = null;
+  const baseUrl = await startServer({
+    getVoucherBatch: (batchId) => (batchId === "batch-lama" ? {
+      batchId,
+      vouchers: [{ username: "lama-1", password: "password-1" }],
+    } : null),
+    removeVoucherFromBatch: async (batchId, username) => {
+      removedStoredVoucher = { batchId, username };
+      return { batchId, username, batchRemoved: false, remaining: 1 };
+    },
+  }, {}, {
     getHotspotServers: async () => ["hotspot-utama"],
     getHotspotVoucherBatches: async () => [{
       batchId: "batch-lama",
@@ -193,6 +203,13 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
       summary: { revenue: 40000, quantity: 1, profiles: 1 },
       profileSummary: [{ profile: "100M", quantity: 1, revenue: 40000 }],
       entries: [{ id: "*1", username: "voucher-api", profile: "100M", amount: 40000 }],
+    }),
+    deleteHotspotVoucher: async ({ batchId, username }) => ({
+      batchId,
+      username,
+      removedUsers: 1,
+      activeSessionsKilled: 0,
+      alreadyAbsent: false,
     }),
     createHotspotVouchers: async (payload) => {
       receivedPayload = payload;
@@ -246,6 +263,15 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
   assert.equal(createPayload.data.quantity, 1);
   assert.equal(receivedPayload.username, "voucher-api");
   assert.equal(receivedPayload.profile, "100M");
+
+  const deleteResponse = await fetch(`${baseUrl}/api/mikrotik/voucher-batches/batch-lama/vouchers/lama-1`, {
+    method: "DELETE",
+    headers,
+  });
+  const deletePayload = await deleteResponse.json();
+  assert.equal(deleteResponse.status, 200);
+  assert.equal(deletePayload.data.removedUsers, 1);
+  assert.deepEqual(removedStoredVoucher, { batchId: "batch-lama", username: "lama-1" });
 });
 
 test("API pelanggan memvalidasi AP tujuan terhadap Netwatch", async () => {
