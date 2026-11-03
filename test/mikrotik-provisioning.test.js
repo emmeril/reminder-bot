@@ -346,19 +346,19 @@ test("statistik voucher menghitung total, terpakai, dan belum terpakai per profi
 
 test("laporan voucher menghitung pendapatan dari catatan pemakaian pertama per periode", async () => {
   const profiles = [
-    { name: "VCR-1D", "on-login": ':put (",remc,25000,1d,40000,,Disable,0,")' },
-    { name: "VCR-4H", "on-login": ':put (",ntfc,5000,4h,10000,,Disable,0,")' },
+    { name: "VCR-1D", "on-login": ':put (",remc,25000,1d,40000,,Disable,15000,")' },
+    { name: "VCR-4H", "on-login": ':put (",ntfc,5000,4h,10000,,Disable,5000,")' },
     { name: "TANPA-RIWAYAT", "on-login": ':put (",rem,0,1d,50000,,Disable,0,")' },
   ];
   const scripts = [
     {
       ".id": "*1",
-      name: "nov/03/2026-|-08:00:00-|-voucher-1-|-40000-|-10.0.0.2-|-AA:BB-|-1d-|-VCR-1D-|-vc|batch-1-|-hotspot-|-0",
+      name: "nov/03/2026-|-08:00:00-|-voucher-1-|-40000-|-10.0.0.2-|-AA:BB-|-1d-|-VCR-1D-|-vc|batch-1-|-hotspot-|-25000-|-15000",
       comment: "mikhmon",
     },
     {
       ".id": "*2",
-      name: "nov/02/2026-|-09:15:00-|-voucher-2-|-0-|-10.0.0.3-|-CC:DD-|-4h-|-VCR-4H-|-vc|batch-2-|-hotspot-|-0",
+      name: "nov/02/2026-|-09:15:00-|-voucher-2-|-0-|-10.0.0.3-|-CC:DD-|-4h-|-VCR-4H-|-vc|batch-2-|-hotspot-|-5000-|-5000",
       comment: "mikhmon",
     },
     {
@@ -383,14 +383,22 @@ test("laporan voucher menghitung pendapatan dari catatan pemakaian pertama per p
 
   const report = await service.getVoucherRevenueReport({ period: "2026-11" });
 
-  assert.deepEqual(report.summary, { revenue: 50000, quantity: 2, profiles: 2 });
+  assert.deepEqual(report.summary, {
+    revenue: 50000,
+    costPrice: 30000,
+    commission: 20000,
+    quantity: 2,
+    profiles: 2,
+  });
   assert.deepEqual(report.profileSummary, [
-    { profile: "VCR-1D", quantity: 1, revenue: 40000 },
-    { profile: "VCR-4H", quantity: 1, revenue: 10000 },
+    { profile: "VCR-1D", quantity: 1, revenue: 40000, costPrice: 25000, commission: 15000 },
+    { profile: "VCR-4H", quantity: 1, revenue: 10000, costPrice: 5000, commission: 5000 },
   ]);
   assert.equal(report.entries[0].username, "voucher-1");
   assert.equal(report.entries[0].usedAt, "2026-11-03T01:00:00.000Z");
   assert.equal(report.entries[1].amount, 10000);
+  assert.equal(report.entries[1].costPrice, 5000);
+  assert.equal(report.entries[1].commission, 5000);
   await assert.rejects(
     () => service.getVoucherRevenueReport({ period: "November 2026" }),
     /Periode laporan voucher tidak valid/,

@@ -200,9 +200,9 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
     }),
     getVoucherRevenueReport: async ({ period }) => ({
       period,
-      summary: { revenue: 40000, quantity: 1, profiles: 1 },
-      profileSummary: [{ profile: "100M", quantity: 1, revenue: 40000 }],
-      entries: [{ id: "*1", username: "voucher-api", profile: "100M", amount: 40000 }],
+      summary: { revenue: 40000, costPrice: 25000, commission: 15000, quantity: 1, profiles: 1 },
+      profileSummary: [{ profile: "100M", quantity: 1, revenue: 40000, costPrice: 25000, commission: 15000 }],
+      entries: [{ id: "*1", username: "voucher-api", profile: "100M", amount: 40000, costPrice: 25000, commission: 15000 }],
     }),
     deleteHotspotVoucher: async ({ batchId, username }) => ({
       batchId,
@@ -243,7 +243,7 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
   const revenueResponse = await fetch(`${baseUrl}/api/mikrotik/voucher-revenue?period=2026-11`, { headers });
   const revenuePayload = await revenueResponse.json();
   assert.equal(revenueResponse.status, 200);
-  assert.deepEqual(revenuePayload.data.summary, { revenue: 40000, quantity: 1, profiles: 1 });
+  assert.deepEqual(revenuePayload.data.summary, { revenue: 40000, costPrice: 25000, commission: 15000, quantity: 1, profiles: 1 });
   assert.equal(revenuePayload.data.period, "2026-11");
 
   const createResponse = await fetch(`${baseUrl}/api/mikrotik/vouchers`, {

@@ -158,7 +158,7 @@
         voucherRevenueRequestId: 0,
         voucherRevenue: {
           period: "",
-          summary: { revenue: 0, quantity: 0, profiles: 0 },
+          summary: { revenue: 0, costPrice: 0, commission: 0, quantity: 0, profiles: 0 },
           profileSummary: [],
           entries: [],
         },
@@ -1146,7 +1146,7 @@
           if (this.voucherRevenue.period !== period) {
             this.voucherRevenue = {
               period,
-              summary: { revenue: 0, quantity: 0, profiles: 0 },
+              summary: { revenue: 0, costPrice: 0, commission: 0, quantity: 0, profiles: 0 },
               profileSummary: [],
               entries: [],
             };
@@ -1156,10 +1156,15 @@
               silent: Boolean(options.silent),
             });
             if (requestId !== this.voucherRevenueRequestId) return;
+            const revenue = Number(report?.summary?.revenue || 0);
+            const costPrice = Number(report?.summary?.costPrice || 0);
+            const commission = Number(report?.summary?.commission || 0);
             this.voucherRevenue = {
               period: report?.period || period,
               summary: {
-                revenue: Number(report?.summary?.revenue || 0),
+                revenue,
+                costPrice,
+                commission,
                 quantity: Number(report?.summary?.quantity || 0),
                 profiles: Number(report?.summary?.profiles || 0),
               },
@@ -1186,7 +1191,7 @@
             if (selectedProfile !== "ALL" && entry.profile !== selectedProfile) return false;
             return this.searchMatches(
               entry,
-              ["username", "profile", "amount", "validity", "address", "macAddress"],
+              ["username", "profile", "amount", "costPrice", "commission", "validity", "address", "macAddress"],
               this.filters.voucherRevenue.search
             );
           });
@@ -1322,12 +1327,14 @@
 
         exportVoucherRevenueReport() {
           const rows = [
-            ["Periode", "Username Voucher", "Profile", "Nilai Voucher", "Tanggal Digunakan", "Masa Berlaku", "Alamat IP", "MAC Address"],
+            ["Periode", "Username Voucher", "Profile", "Harga Jual", "HPP", "Keuntungan", "Tanggal Digunakan", "Masa Berlaku", "Alamat IP", "MAC Address"],
             ...this.filteredVoucherRevenueEntries.map((entry) => [
               this.getRevenuePeriodLabel(entry.period),
               entry.username,
               entry.profile,
               entry.amount,
+              entry.costPrice,
+              entry.commission,
               entry.usedAt ? this.formatDateTime(entry.usedAt) : "-",
               entry.validity || "-",
               entry.address || "-",

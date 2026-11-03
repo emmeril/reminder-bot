@@ -605,14 +605,14 @@ test("laporan pendapatan voucher dimuat dan difilter terpisah dari pelanggan", a
     assert.equal(url, "/api/mikrotik/voucher-revenue?period=2026-11");
     return {
       period: "2026-11",
-      summary: { revenue: 50000, quantity: 2, profiles: 2 },
+      summary: { revenue: 50000, costPrice: 30000, commission: 20000, quantity: 2, profiles: 2 },
       profileSummary: [
         { profile: "VCR-1D", quantity: 1, revenue: 40000 },
         { profile: "VCR-4H", quantity: 1, revenue: 10000 },
       ],
       entries: [
-        { id: "*1", username: "voucher-satu", profile: "VCR-1D", amount: 40000, usedAt: "2026-11-03T01:00:00.000Z", validity: "1d", address: "10.0.0.2", macAddress: "AA:BB" },
-        { id: "*2", username: "voucher-dua", profile: "VCR-4H", amount: 10000, usedAt: "2026-11-02T02:00:00.000Z", validity: "4h", address: "10.0.0.3", macAddress: "CC:DD" },
+        { id: "*1", username: "voucher-satu", profile: "VCR-1D", amount: 40000, costPrice: 25000, commission: 15000, usedAt: "2026-11-03T01:00:00.000Z", validity: "1d", address: "10.0.0.2", macAddress: "AA:BB" },
+        { id: "*2", username: "voucher-dua", profile: "VCR-4H", amount: 10000, costPrice: 5000, commission: 5000, usedAt: "2026-11-02T02:00:00.000Z", validity: "4h", address: "10.0.0.3", macAddress: "CC:DD" },
       ],
     };
   };
@@ -620,7 +620,7 @@ test("laporan pendapatan voucher dimuat dan difilter terpisah dari pelanggan", a
 
   await app.loadVoucherRevenue({ silent: true });
 
-  assert.deepEqual({ ...app.voucherRevenue.summary }, { revenue: 50000, quantity: 2, profiles: 2 });
+  assert.deepEqual({ ...app.voucherRevenue.summary }, { revenue: 50000, costPrice: 30000, commission: 20000, quantity: 2, profiles: 2 });
   assert.deepEqual(Array.from(app.voucherRevenueProfiles), ["VCR-1D", "VCR-4H"]);
   app.filters.voucherRevenue.profile = "VCR-4H";
   assert.equal(app.filteredVoucherRevenueEntries.length, 1);
@@ -647,6 +647,8 @@ test("ekspor laporan voucher membuat berkas CSV tersendiri", async () => {
     username: "=voucher-formula",
     profile: "VCR-1D",
     amount: 40000,
+    costPrice: 25000,
+    commission: 15000,
     period: "2026-11",
     usedAt: "2026-11-03T01:00:00.000Z",
     validity: "1d",
@@ -661,6 +663,9 @@ test("ekspor laporan voucher membuat berkas CSV tersendiri", async () => {
   assert.equal(link.download, "laporan-pendapatan-voucher-2026-11.csv");
   assert.match(csv, /"'=voucher-formula"/);
   assert.match(csv, /"40000"/);
+  assert.match(csv, /"HPP"/);
+  assert.match(csv, /"25000"/);
+  assert.match(csv, /"Keuntungan"/);
 });
 
 test("sidebar dan panel laporan pendapatan tersedia dengan filter serta ekspor", () => {
@@ -673,7 +678,8 @@ test("sidebar dan panel laporan pendapatan tersedia dengan filter serta ekspor",
   assert.match(html, /Pendapatan pelanggan/);
   assert.match(html, /Pendapatan voucher/);
   assert.match(html, /Total pendapatan pelanggan/);
-  assert.match(html, /Total pendapatan voucher/);
+  assert.match(html, /Total harga jual/);
+  assert.match(html, /<span class="metric-label">Keuntungan<\/span>/);
   assert.match(html, /Pembayaran tercatat/);
   assert.match(html, /Pembayaran lunas/);
   assert.doesNotMatch(html, /<span class="metric-label">Pembayaran sebagian<\/span>/);

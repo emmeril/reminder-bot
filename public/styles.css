@@ -1233,6 +1233,19 @@ input:focus, textarea:focus, select:focus, .currency-input-group:focus-within {
   transform: none;
 }
 
+.voucher-revenue-volume {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+  color: #667085;
+  font-size: 0.8125rem;
+}
+.voucher-revenue-volume i { color: var(--primary); }
+.voucher-revenue-volume strong { color: var(--ink); }
+.voucher-revenue-table { min-width: 1120px; }
+
 @media (max-width: 1199px) {
   .revenue-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }

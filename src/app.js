@@ -329,7 +329,7 @@ function parseRouterVoucherUsageDate(dateValue, timeValue, timeZone = DEFAULT_SE
   };
 }
 
-function parseVoucherUsageRecord(script, profilePrices, timeZone = DEFAULT_SETTINGS.timezone) {
+function parseVoucherUsageRecord(script, profileFinancials, timeZone = DEFAULT_SETTINGS.timezone) {
   if (String(script?.comment || "").trim().toLowerCase() !== "mikhmon") return null;
   const parts = String(script.name || "").split("-|-");
   if (parts.length < 10) return null;
@@ -338,12 +338,25 @@ function parseVoucherUsageRecord(script, profilePrices, timeZone = DEFAULT_SETTI
   const username = sanitizeInput(String(parts[2] || ""));
   const usageDate = parseRouterVoucherUsageDate(parts[0], parts[1], timeZone);
   if (service !== "hotspot" || !profile || !username || !usageDate) return null;
+  const financials = profileFinancials.get(profile) || {};
   const recordedPrice = Math.max(0, Number(parts[3]) || 0);
+  const readRecordedMoney = (index, fallback) => {
+    if (index < parts.length && String(parts[index] ?? "").trim() !== "") {
+      const value = Number(parts[index]);
+      if (Number.isFinite(value) && value >= 0) return value;
+    }
+    return Math.max(0, Number(fallback) || 0);
+  };
+  const amount = recordedPrice || Math.max(0, Number(financials.sellingPrice || financials.costPrice) || 0);
+  const costPrice = readRecordedMoney(10, financials.costPrice);
+  const commission = readRecordedMoney(11, financials.commission);
   return {
     id: sanitizeInput(String(script[".id"] || script.id || script.name || `${profile}-${username}`)),
     username,
     profile,
-    amount: recordedPrice || Math.max(0, Number(profilePrices.get(profile)) || 0),
+    amount,
+    costPrice,
+    commission,
     usedAt: usageDate.date.toISOString(),
     period: usageDate.period,
     validity: sanitizeInput(String(parts[6] || "")),
@@ -403,7 +416,7 @@ function normalizeVoucherProfilePayload(payload = {}) {
     validity,
     costPrice: normalizeMoney(payload.costPrice, "HPP"),
     sellingPrice: normalizeMoney(payload.sellingPrice, "Harga jual"),
-    commission: normalizeMoney(payload.commission, "Komisi"),
+    commission: normalizeMoney(payload.commission, "Keuntungan"),
     lockUser: parseBoolean(payload.lockUser, false),
   };
 }
@@ -732,7 +745,7 @@ class MikrotikService {
         conn.menu("/ip/hotspot/user/profile").print(),
         conn.menu("/system/script").print(),
       ]);
-      const profilePrices = new Map();
+      const profileFinancials = new Map();
       const recordProfiles = new Set();
       for (const profile of profiles || []) {
         const name = sanitizeInput(String(profile.name || ""));
@@ -741,12 +754,16 @@ class MikrotikService {
         const mode = VOUCHER_EXPIRY_MODES[metadata.expiredMode];
         if (!mode?.recordsUsage || !metadata.validity) continue;
         recordProfiles.add(name);
-        profilePrices.set(name, Math.max(0, Number(metadata.sellingPrice || metadata.costPrice) || 0));
+        profileFinancials.set(name, {
+          sellingPrice: metadata.sellingPrice,
+          costPrice: metadata.costPrice,
+          commission: metadata.commission,
+        });
       }
 
       const entriesById = new Map();
       for (const script of reportScripts || []) {
-        const entry = parseVoucherUsageRecord(script, profilePrices, timeZone);
+        const entry = parseVoucherUsageRecord(script, profileFinancials, timeZone);
         if (!entry || entry.period !== period || !recordProfiles.has(entry.profile)) continue;
         entriesById.set(entry.id, entry);
       }
@@ -756,9 +773,17 @@ class MikrotikService {
       ));
       const profileMap = new Map();
       for (const entry of entries) {
-        const row = profileMap.get(entry.profile) || { profile: entry.profile, quantity: 0, revenue: 0 };
+        const row = profileMap.get(entry.profile) || {
+          profile: entry.profile,
+          quantity: 0,
+          revenue: 0,
+          costPrice: 0,
+          commission: 0,
+        };
         row.quantity += 1;
         row.revenue += entry.amount;
+        row.costPrice += entry.costPrice;
+        row.commission += entry.commission;
         profileMap.set(entry.profile, row);
       }
       const profileSummary = Array.from(profileMap.values()).sort((a, b) => (
@@ -768,6 +793,8 @@ class MikrotikService {
         period,
         summary: {
           revenue: entries.reduce((total, entry) => total + entry.amount, 0),
+          costPrice: entries.reduce((total, entry) => total + entry.costPrice, 0),
+          commission: entries.reduce((total, entry) => total + entry.commission, 0),
           quantity: entries.length,
           profiles: profileSummary.length,
         },

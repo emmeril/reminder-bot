@@ -928,11 +928,11 @@
                   <span><strong>Kunci perangkat pertama</strong><small>MAC address voucher akan mengikuti perangkat pertama yang berhasil login.</small></span>
                 </label>
               </div>
-              <div class="voucher-section-divider"><span>Harga dan komisi</span></div>
+              <div class="voucher-section-divider"><span>Harga dan keuntungan</span></div>
               <div class="voucher-fields voucher-money-fields">
                 <label><span>HPP</span><input type="number" x-model.number="forms.voucherProfile.costPrice" min="0" max="1000000000"></label>
                 <label><span>Harga jual</span><input type="number" x-model.number="forms.voucherProfile.sellingPrice" min="0" max="1000000000"></label>
-                <label><span>Komisi</span><input type="number" x-model.number="forms.voucherProfile.commission" min="0" max="1000000000"></label>
+                <label><span>Keuntungan</span><input type="number" x-model.number="forms.voucherProfile.commission" min="0" max="1000000000"></label>
               </div>
               <p x-cloak x-show="formErrors.voucherProfile" class="voucher-form-error" role="alert" x-text="formErrors.voucherProfile"></p>
               <button type="submit" class="ui-primary-button voucher-submit-button"><i class="fa-solid fa-floppy-disk mr-2"></i><span x-text="forms.voucherProfile.originalName ? 'Simpan perubahan profile' : 'Buat profile voucher'"></span></button>
@@ -1076,13 +1076,15 @@
           </div>
 
           <div x-cloak x-show="activeRevenueTab === 'vouchers'" role="tabpanel">
-            <div class="summary-metric-grid revenue-summary-grid mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <article class="metric-card revenue-metric tone-green"><span class="icon-chip"><i class="fa-solid fa-money-bill-trend-up"></i></span><span class="metric-copy"><span class="metric-label">Total pendapatan voucher</span><strong class="metric-value" x-text="formatRupiah(voucherRevenue.summary.revenue)"></strong></span></article>
-              <article class="metric-card revenue-metric tone-cyan"><span class="icon-chip"><i class="fa-solid fa-ticket"></i></span><span class="metric-copy"><span class="metric-label">Voucher terpakai</span><strong class="metric-value" x-text="voucherRevenue.summary.quantity"></strong></span></article>
-              <article class="metric-card revenue-metric tone-violet"><span class="icon-chip"><i class="fa-solid fa-layer-group"></i></span><span class="metric-copy"><span class="metric-label">Profile tercatat</span><strong class="metric-value" x-text="voucherRevenue.summary.profiles"></strong></span></article>
+            <div class="summary-metric-grid revenue-summary-grid mb-4 grid gap-4">
+              <article class="metric-card revenue-metric tone-cyan"><span class="icon-chip"><i class="fa-solid fa-money-bill-trend-up"></i></span><span class="metric-copy"><span class="metric-label">Total harga jual</span><strong class="metric-value" x-text="formatRupiah(voucherRevenue.summary.revenue)"></strong></span></article>
+              <article class="metric-card revenue-metric tone-violet"><span class="icon-chip"><i class="fa-solid fa-boxes-stacked"></i></span><span class="metric-copy"><span class="metric-label">HPP</span><strong class="metric-value" x-text="formatRupiah(voucherRevenue.summary.costPrice)"></strong></span></article>
+              <article class="metric-card revenue-metric tone-green"><span class="icon-chip"><i class="fa-solid fa-wallet"></i></span><span class="metric-copy"><span class="metric-label">Keuntungan</span><strong class="metric-value" x-text="formatRupiah(voucherRevenue.summary.commission)"></strong></span></article>
             </div>
 
-            <div class="revenue-info-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><p><strong>Sumber laporan voucher</strong><span>Pendapatan dihitung saat voucher pertama kali digunakan. Riwayat tersedia untuk profile dengan aturan “Hapus dan catat pemakaian” atau “Batasi dan catat pemakaian”.</span></p></div>
+            <p class="voucher-revenue-volume"><i class="fa-solid fa-ticket" aria-hidden="true"></i><span><strong x-text="voucherRevenue.summary.quantity"></strong> voucher terpakai</span><span aria-hidden="true">·</span><span><strong x-text="voucherRevenue.summary.profiles"></strong> profile tercatat</span></p>
+
+            <div class="revenue-info-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><p><strong>Sumber laporan voucher</strong><span>Nilai dihitung saat voucher pertama kali digunakan. Keuntungan menunjukkan nominal yang diperoleh dari setiap voucher. Riwayat tersedia untuk profile yang mencatat pemakaian.</span></p></div>
             <p x-cloak x-show="voucherRevenueError" class="voucher-history-error" role="alert" x-text="voucherRevenueError"></p>
 
             <div class="filter-inline revenue-voucher-filter">
@@ -1095,15 +1097,17 @@
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Rincian pendapatan voucher">
                 <table class="customer-workspace-table revenue-table voucher-revenue-table min-w-full text-sm">
-                  <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50"><tr><th class="px-4 py-3">Voucher</th><th class="px-4 py-3">Profile</th><th class="px-4 py-3">Nilai voucher</th><th class="px-4 py-3">Masa berlaku</th><th class="px-4 py-3">Tanggal digunakan</th><th class="px-4 py-3">Perangkat</th></tr></thead>
+                  <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50"><tr><th class="px-4 py-3">Voucher</th><th class="px-4 py-3">Profile</th><th class="px-4 py-3">Harga jual</th><th class="px-4 py-3">HPP</th><th class="px-4 py-3">Keuntungan</th><th class="px-4 py-3">Masa berlaku</th><th class="px-4 py-3">Tanggal digunakan</th><th class="px-4 py-3">Perangkat</th></tr></thead>
                   <tbody class="divide-y divide-ink/6 bg-white/70">
-                    <tr x-show="loading.voucherRevenue && !voucherRevenue.entries.length"><td colspan="6" class="px-4 py-8 text-center text-ink/45"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memuat pendapatan voucher...</td></tr>
-                    <tr x-show="!loading.voucherRevenue && !filteredVoucherRevenueEntries.length"><td colspan="6" class="px-4 py-8 text-center text-ink/45">Belum ada pemakaian voucher yang tercatat pada periode ini.</td></tr>
+                    <tr x-show="loading.voucherRevenue && !voucherRevenue.entries.length"><td colspan="8" class="px-4 py-8 text-center text-ink/45"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memuat pendapatan voucher...</td></tr>
+                    <tr x-show="!loading.voucherRevenue && !filteredVoucherRevenueEntries.length"><td colspan="8" class="px-4 py-8 text-center text-ink/45">Belum ada pemakaian voucher yang tercatat pada periode ini.</td></tr>
                     <template x-for="entry in paginatedVoucherRevenueEntries" :key="entry.id">
                       <tr>
                         <td class="px-4 py-4" data-label="Voucher"><strong class="customer-name voucher-username" x-text="entry.username"></strong></td>
                         <td class="px-4 py-4" data-label="Profile"><span x-text="entry.profile"></span></td>
-                        <td class="px-4 py-4" data-label="Nilai voucher"><strong x-text="formatRupiah(entry.amount)"></strong></td>
+                        <td class="px-4 py-4" data-label="Harga jual"><strong x-text="formatRupiah(entry.amount)"></strong></td>
+                        <td class="px-4 py-4" data-label="HPP"><span x-text="formatRupiah(entry.costPrice)"></span></td>
+                        <td class="px-4 py-4" data-label="Keuntungan"><span x-text="formatRupiah(entry.commission)"></span></td>
                         <td class="px-4 py-4" data-label="Masa berlaku"><span x-text="entry.validity || '-' "></span></td>
                         <td class="px-4 py-4" data-label="Tanggal digunakan"><span x-text="entry.usedAt ? formatDateTime(entry.usedAt) : '-' "></span></td>
                         <td class="px-4 py-4" data-label="Perangkat"><span x-text="entry.address || '-' "></span><small class="customer-meta" x-text="entry.macAddress || 'MAC tidak tercatat'"></small></td>
