@@ -1095,8 +1095,9 @@ class MikrotikService {
     });
   }
 
-  async createHotspotVouchers(payload) {
+  async createHotspotVouchers(payload, options = {}) {
     const request = normalizeVoucherGenerationPayload(payload);
+    const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => {};
     const batchId = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}`;
     const routerComment = `vc|${batchId}|${request.comment || ""}`;
 
@@ -1179,8 +1180,14 @@ class MikrotikService {
             throw new Error(`MikroTik menolak voucher "${voucher.username}": ${message}`);
           }
           createdUsernames.push(voucher.username);
+          onProgress({
+            phase: "CREATING",
+            completed: createdUsernames.length,
+            total: vouchers.length,
+          });
         }
 
+        onProgress({ phase: "VERIFYING", completed: vouchers.length, total: vouchers.length });
         const verifiedUsers = await userMenu.print();
         const verifiedByName = new Map((verifiedUsers || []).map((user) => [
           String(user.name || "").toLowerCase(),
@@ -7088,6 +7095,11 @@ class NotificationBot {
       } catch (error) {
         results.push({ phoneNumber, status: "failed", error: error.message });
       }
+      options.onProgress?.({
+        phase: "SENDING",
+        completed: results.length,
+        total: recipients.length,
+      });
     }
 
     if (!options.silentLog) {
@@ -7114,9 +7126,14 @@ class NotificationBot {
       } catch (error) {
         results.push({ phoneNumber: contact.phoneNumber, name: contact.name, status: "failed", error: error.message });
       }
+      options.onProgress?.({
+        phase: "SENDING",
+        completed: results.length,
+        total: contacts.length,
+      });
     }
 
-    const successCount = results.filter((result) => ["sent", "delivered", "read"].includes(result.status)).length;
+    const successCount = results.filter((result) => ["accepted", "sent", "delivered", "read"].includes(result.status)).length;
     const failedCount = results.filter((result) => result.status === "failed").length;
 
     if (!options.silentLog) {
@@ -7499,11 +7516,133 @@ class WebServer {
     this.hotspotProvisioningLock = new AsyncLock();
     this.voucherGenerationLock = new AsyncLock();
     this.voucherProfileLock = new AsyncLock();
+    this.backgroundJobs = new Map();
+    this.backgroundOperationLock = new AsyncLock();
     this.activePeriodPurchaseLock = new AsyncLock();
     this.paymentGatewayLock = new AsyncLock();
     this.server = null;
     this.ready = true;
     this.setupRoutes();
+  }
+
+  pruneBackgroundJobs() {
+    const expiresBefore = Date.now() - (6 * 60 * 60 * 1000);
+    for (const [jobId, job] of this.backgroundJobs.entries()) {
+      if (job.finishedAt && new Date(job.finishedAt).getTime() < expiresBefore) {
+        this.backgroundJobs.delete(jobId);
+      }
+    }
+  }
+
+  toPublicBackgroundJob(job) {
+    return {
+      id: job.id,
+      type: job.type,
+      status: job.status,
+      phase: job.phase,
+      progress: job.progress,
+      total: job.total,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+      finishedAt: job.finishedAt,
+      result: job.status === "COMPLETED" ? structuredClone(job.result ?? null) : null,
+      error: job.status === "FAILED" ? job.error : "",
+    };
+  }
+
+  createBackgroundJob({ type, total = 1, run }) {
+    this.pruneBackgroundJobs();
+    if (this.backgroundJobs.size >= 100) {
+      const completedJobs = Array.from(this.backgroundJobs.values())
+        .filter((job) => job.finishedAt)
+        .sort((a, b) => new Date(a.finishedAt).getTime() - new Date(b.finishedAt).getTime());
+      for (const completedJob of completedJobs) {
+        this.backgroundJobs.delete(completedJob.id);
+        if (this.backgroundJobs.size < 100) break;
+      }
+    }
+    if (this.backgroundJobs.size >= 100) {
+      const error = new Error("Antrean pekerjaan sedang penuh. Coba lagi setelah pekerjaan sebelumnya selesai.");
+      error.statusCode = 429;
+      throw error;
+    }
+    if (typeof run !== "function") throw new Error("Pelaksana pekerjaan latar belakang tidak tersedia.");
+
+    const now = new Date().toISOString();
+    const job = {
+      id: crypto.randomUUID(),
+      type: String(type || "BACKGROUND_OPERATION"),
+      status: "QUEUED",
+      phase: "QUEUED",
+      progress: 0,
+      total: Math.max(1, Number(total) || 1),
+      createdAt: now,
+      updatedAt: now,
+      finishedAt: null,
+      result: null,
+      error: "",
+    };
+    this.backgroundJobs.set(job.id, job);
+
+    setImmediate(() => {
+      void (async () => {
+        job.status = "PROCESSING";
+        job.phase = "STARTING";
+        job.updatedAt = new Date().toISOString();
+        try {
+          job.result = await run(({ phase, completed, total: progressTotal }) => {
+            if (phase) job.phase = phase;
+            if (completed !== undefined) job.progress = Math.max(0, Number(completed) || 0);
+            if (progressTotal !== undefined) job.total = Math.max(1, Number(progressTotal) || job.total);
+            job.updatedAt = new Date().toISOString();
+          });
+          job.status = "COMPLETED";
+          job.phase = "COMPLETED";
+          job.progress = job.total;
+        } catch (error) {
+          job.status = "FAILED";
+          job.phase = "FAILED";
+          job.error = error.message || "Pekerjaan gagal diselesaikan.";
+          this.activityLog.push("error", "background-job", `Pekerjaan ${job.type} gagal: ${job.error}`, {
+            jobId: job.id,
+            progress: job.progress,
+            total: job.total,
+          });
+        } finally {
+          job.updatedAt = new Date().toISOString();
+          job.finishedAt = job.updatedAt;
+        }
+      })();
+    });
+
+    return this.toPublicBackgroundJob(job);
+  }
+
+  getBackgroundJob(jobId, expectedType = "") {
+    this.pruneBackgroundJobs();
+    const job = this.backgroundJobs.get(String(jobId || ""));
+    if (!job || (expectedType && job.type !== expectedType)) {
+      const error = new Error("Pekerjaan tidak ditemukan atau sudah kedaluwarsa.");
+      error.statusCode = 404;
+      throw error;
+    }
+    return this.toPublicBackgroundJob(job);
+  }
+
+  createVoucherGenerationJob(payload) {
+    const request = normalizeVoucherGenerationPayload(payload);
+    return this.createBackgroundJob({
+      type: "VOUCHER_GENERATION",
+      total: request.quantity,
+      run: (update) => this.voucherGenerationLock.runExclusive("mikrotik-vouchers", async () => {
+        update({ phase: "CONNECTING", completed: 0, total: request.quantity });
+        const batch = await this.mikrotikService.createHotspotVouchers(request, { onProgress: update });
+        if (typeof this.dataManager.storeVoucherBatches === "function") {
+          await this.dataManager.storeVoucherBatches([batch]);
+        }
+        return batch;
+      }),
+    });
   }
 
   buildNetworkMonitorView(monitors) {
@@ -9206,15 +9345,31 @@ class WebServer {
         throw error;
       }
     }));
-    this.app.post("/api/mikrotik/vouchers", requireApiAuth, handleApi(async (req) => (
-      this.voucherGenerationLock.runExclusive("mikrotik-vouchers", async () => {
+    this.app.post("/api/mikrotik/voucher-jobs", requireApiAuth, handleApi(async (req, res) => {
+      const job = this.createVoucherGenerationJob(req.body);
+      res.status(202);
+      return job;
+    }));
+    this.app.get("/api/mikrotik/voucher-jobs/:jobId", requireApiAuth, handleApi(async (req) => (
+      this.getBackgroundJob(req.params.jobId, "VOUCHER_GENERATION")
+    )));
+    this.app.get("/api/jobs/:jobId", requireApiAuth, handleApi(async (req) => (
+      this.getBackgroundJob(req.params.jobId)
+    )));
+    this.app.post("/api/mikrotik/vouchers", requireApiAuth, handleApi(async (req, res) => {
+      if (String(req.body.generationType || "SINGLE").toUpperCase() === "BULK") {
+        const job = this.createVoucherGenerationJob(req.body);
+        res.status(202);
+        return job;
+      }
+      return this.voucherGenerationLock.runExclusive("mikrotik-vouchers", async () => {
         const batch = await this.mikrotikService.createHotspotVouchers(req.body);
         if (typeof this.dataManager.storeVoucherBatches === "function") {
           await this.dataManager.storeVoucherBatches([batch]);
         }
         return batch;
-      })
-    )));
+      });
+    }));
     this.app.delete("/api/mikrotik/voucher-batches/:batchId/vouchers/:username", requireApiAuth, handleApi(async (req) => (
       this.voucherGenerationLock.runExclusive("mikrotik-vouchers", async () => {
         const batchId = sanitizeInput(req.params.batchId);
@@ -9342,7 +9497,21 @@ class WebServer {
         notificationError,
       };
     }));
-    this.app.post("/api/hotspot/reactivations/run", requireApiAuth, handleApi(async () => this.hotspotReactivationScheduler.processDueReactivations()));
+    this.app.post("/api/hotspot/reactivations/run", requireApiAuth, handleApi(async (_req, res) => {
+      const total = Math.max(1, Number(this.dataManager.getDueHotspotReactivationContacts?.().length) || 0);
+      const job = this.createBackgroundJob({
+        type: "HOTSPOT_REACTIVATION",
+        total,
+        run: (update) => this.backgroundOperationLock.runExclusive("hotspot-reactivation", async () => {
+          update({ phase: "PROCESSING", completed: 0, total });
+          const results = await this.hotspotReactivationScheduler.processDueReactivations();
+          update({ phase: "VERIFYING", completed: total, total });
+          return results || [];
+        }),
+      });
+      res.status(202);
+      return job;
+    }));
     this.app.post("/api/mikrotik/customers", requireApiAuth, handleApi(async (req) => {
       await requireRegisteredWhatsAppNumber(req.body.phoneNumber);
       const persisted = await this.dataManager.prepareHotspotRegistration(req.body);
@@ -9350,7 +9519,7 @@ class WebServer {
         sendCredentials: req.body.sendCredentials,
       });
     }));
-    this.app.post("/api/mikrotik/backup/send", requireApiAuth, handleApi(async () => {
+    this.app.post("/api/mikrotik/backup/send", requireApiAuth, handleApi(async (_req, res) => {
       if (!TelegramManager.isConfigured()) {
         throw new Error("Transport backup Telegram belum siap. Isi TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_IDS.");
       }
@@ -9360,34 +9529,44 @@ class WebServer {
         throw new Error("TELEGRAM_CHAT_IDS masih kosong.");
       }
 
-      const backup = await this.mikrotikService.generateDailyBackupFile();
-      try {
-        const caption = `Backup MikroTik manual\nWaktu: ${new Date().toLocaleString("id-ID", { timeZone: this.dataManager.getTimezone() })}`;
-        const results = [];
-
-        for (const chatId of recipients) {
+      const job = this.createBackgroundJob({
+        type: "MIKROTIK_BACKUP",
+        total: recipients.length,
+        run: (update) => this.backgroundOperationLock.runExclusive("mikrotik-backup", async () => {
+          update({ phase: "CREATING_BACKUP", completed: 0, total: recipients.length });
+          const backup = await this.mikrotikService.generateDailyBackupFile();
           try {
-            await this.notificationBot.sendTelegramFile(chatId, backup.filePath, caption);
-            results.push({ chatId, status: "sent", provider: "telegram" });
-          } catch (error) {
-            results.push({ chatId, status: "failed", error: error.message, provider: "telegram" });
+            const caption = `Backup MikroTik manual\nWaktu: ${new Date().toLocaleString("id-ID", { timeZone: this.dataManager.getTimezone() })}`;
+            const results = [];
+
+            for (const chatId of recipients) {
+              try {
+                await this.notificationBot.sendTelegramFile(chatId, backup.filePath, caption);
+                results.push({ chatId, status: "sent", provider: "telegram" });
+              } catch (error) {
+                results.push({ chatId, status: "failed", error: error.message, provider: "telegram" });
+              }
+              update({ phase: "SENDING", completed: results.length, total: recipients.length });
+            }
+
+            this.activityLog.push("info", "mikrotik-backup", "Pengiriman backup MikroTik manual dieksekusi", {
+              fileName: backup.fileName,
+              results,
+            });
+
+            return {
+              fileName: backup.fileName,
+              results,
+            };
+          } finally {
+            await backup.cleanup().catch((error) => {
+              this.activityLog.push("warn", "mikrotik-backup", `Gagal membersihkan file backup sementara: ${error.message}`);
+            });
           }
-        }
-
-        this.activityLog.push("info", "mikrotik-backup", "Pengiriman backup MikroTik manual dieksekusi", {
-          fileName: backup.fileName,
-          results,
-        });
-
-        return {
-          fileName: backup.fileName,
-          results,
-        };
-      } finally {
-        await backup.cleanup().catch((error) => {
-          this.activityLog.push("warn", "mikrotik-backup", `Gagal membersihkan file backup sementara: ${error.message}`);
-        });
-      }
+        }),
+      });
+      res.status(202);
+      return job;
     }));
 
     this.app.post("/api/contacts/:id/payment", requireApiAuth, handleApi(async (req) => {
@@ -9646,14 +9825,23 @@ class WebServer {
       };
     }));
 
-    this.app.post("/api/notifications/admin-broadcast", requireApiAuth, handleApi(async (req) => {
+    this.app.post("/api/notifications/admin-broadcast", requireApiAuth, handleApi(async (req, res) => {
       const title = sanitizeInput(req.body.title) || "Status Bot";
       const body = sanitizeMultilineText(req.body.message);
       if (!body) throw new Error("Pesan broadcast wajib diisi.");
-      return this.notificationBot.sendAdminBroadcast(title, body);
+      const total = Math.max(1, Number(this.dataManager.getAdminRecipients().length) || 0);
+      const job = this.createBackgroundJob({
+        type: "ADMIN_BROADCAST",
+        total,
+        run: (update) => this.backgroundOperationLock.runExclusive("admin-broadcast", () => (
+          this.notificationBot.sendAdminBroadcast(title, body, { onProgress: update })
+        )),
+      });
+      res.status(202);
+      return job;
     }));
 
-    this.app.post("/api/notifications/broadcast", requireApiAuth, handleApi(async (req) => {
+    this.app.post("/api/notifications/broadcast", requireApiAuth, handleApi(async (req, res) => {
       const title = sanitizeInput(req.body.title) || "Pengumuman";
       const templateName = sanitizeInput(req.body.templateName || "");
       let body = sanitizeMultilineText(req.body.message);
@@ -9662,19 +9850,39 @@ class WebServer {
         body = sanitizeMultilineText(await fs.readFile(templatePath, "utf-8"));
       }
       if (!body) throw new Error("Pesan broadcast wajib diisi.");
-      return this.notificationBot.sendContactBroadcast(title, body, {
-        renderMessage: (contact, content) =>
-          this.templateManager.applyTemplate(content, {
-            name: contact?.name || "",
-            phoneNumber: contact?.phoneNumber || "",
-            date: new Date().toLocaleDateString("id-ID", { timeZone: this.dataManager.getTimezone() }),
-          }),
+      const total = Math.max(1, Number(this.dataManager.getContacts().length) || 0);
+      const job = this.createBackgroundJob({
+        type: "CONTACT_BROADCAST",
+        total,
+        run: (update) => this.backgroundOperationLock.runExclusive("contact-broadcast", async () => (
+          this.notificationBot.sendContactBroadcast(title, body, {
+            onProgress: update,
+            renderMessage: (contact, content) =>
+              this.templateManager.applyTemplate(content, {
+                name: contact?.name || "",
+                phoneNumber: contact?.phoneNumber || "",
+                date: new Date().toLocaleDateString("id-ID", { timeZone: this.dataManager.getTimezone() }),
+              }),
+          })
+        )),
       });
+      res.status(202);
+      return job;
     }));
 
-    this.app.post("/api/scheduler/run", requireApiAuth, handleApi(async () => {
-      await this.reminderScheduler.processDueReminders();
-      return { queued: true };
+    this.app.post("/api/scheduler/run", requireApiAuth, handleApi(async (_req, res) => {
+      const job = this.createBackgroundJob({
+        type: "REMINDER_SCHEDULER",
+        total: 1,
+        run: (update) => this.backgroundOperationLock.runExclusive("reminder-scheduler", async () => {
+          update({ phase: "PROCESSING", completed: 0, total: 1 });
+          await this.reminderScheduler.processDueReminders();
+          update({ phase: "COMPLETED", completed: 1, total: 1 });
+          return { completed: true };
+        }),
+      });
+      res.status(202);
+      return job;
     }));
 
     this.app.get("/api/payments/history", requireApiAuth, handleApi(async () => {

@@ -102,6 +102,7 @@ test("membuat satu voucher hotspot dengan kredensial yang ditentukan", async () 
 
 test("membuat banyak voucher unik dengan username dan password yang sama", async () => {
   const { service, users } = createServiceWithUsers([{ ".id": "*1", name: "wifi-abcd", profile: "100M" }]);
+  const progress = [];
 
   const result = await service.createHotspotVouchers({
     generationType: "BULK",
@@ -112,6 +113,8 @@ test("membuat banyak voucher unik dengan username dan password yang sama", async
     prefix: "wifi-",
     profile: "100M",
     server: "all",
+  }, {
+    onProgress: (update) => progress.push(update),
   });
 
   assert.equal(result.quantity, 25);
@@ -119,6 +122,7 @@ test("membuat banyak voucher unik dengan username dan password yang sama", async
   assert.equal(result.vouchers.every((voucher) => voucher.username === voucher.password), true);
   assert.equal(result.vouchers.every((voucher) => /^wifi-[a-z0-9]{6}$/.test(voucher.username)), true);
   assert.equal(users.length, 26);
+  assert.deepEqual(progress.at(-1), { phase: "VERIFYING", completed: 25, total: 25 });
 });
 
 test("menghapus voucher memutus sesi aktif dan hanya menerima voucher dari batch yang sama", async () => {

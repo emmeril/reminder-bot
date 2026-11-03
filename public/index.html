@@ -88,7 +88,7 @@
           </div>
         </div>
         <div x-cloak x-show="activeMenu === 'overview'" class="page-actions">
-          <button type="button" @click="runScheduler()" class="secondary-action"><i class="fa-solid fa-play"></i><span>Jalankan scheduler</span></button>
+          <button type="button" @click="runScheduler()" :disabled="loading.scheduler" class="secondary-action disabled:cursor-not-allowed disabled:opacity-60"><i class="fa-solid" :class="loading.scheduler ? 'fa-circle-notch fa-spin' : 'fa-play'"></i><span x-text="loading.scheduler ? 'Menjalankan...' : 'Jalankan scheduler'"></span></button>
           <button type="button" @click="selectMenu('notifications')" class="primary-action"><i class="fa-solid fa-paper-plane"></i><span>Kirim pesan</span></button>
         </div>
       </section>
@@ -223,8 +223,8 @@
               Pesan
               <textarea x-model="forms.broadcast.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Tulis pesan broadcast..." required></textarea>
             </label>
-            <button type="submit" class="w-full rounded-full bg-gradient-to-r from-moss to-green-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20">
-              <i class="fa-solid fa-bullhorn mr-2"></i>Kirim Broadcast
+            <button type="submit" :disabled="loading.broadcast" class="w-full rounded-full bg-gradient-to-r from-moss to-green-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20 disabled:cursor-not-allowed disabled:opacity-60">
+              <i class="fa-solid mr-2" :class="loading.broadcast ? 'fa-circle-notch fa-spin' : 'fa-bullhorn'"></i><span x-text="loading.broadcast ? 'Mengirim broadcast...' : 'Kirim Broadcast'"></span>
             </button>
             <p x-cloak x-show="formErrors.broadcast" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.broadcast"></p>
           </form>
@@ -702,9 +702,9 @@
               </div>
 
               <p x-cloak x-show="formErrors.voucher" class="voucher-form-error" role="alert" x-text="formErrors.voucher"></p>
-              <button type="submit" class="ui-primary-button voucher-submit-button inline-flex items-center justify-center gap-2 px-5 py-3 font-semibold" :disabled="loading.voucherOptions || !forms.voucher.profile">
-                <i class="fa-solid fa-ticket"></i>
-                <span x-text="forms.voucher.generationType === 'SINGLE' ? 'Buat satu voucher' : 'Buat ' + forms.voucher.quantity + ' voucher'"></span>
+              <button type="submit" class="ui-primary-button voucher-submit-button inline-flex items-center justify-center gap-2 px-5 py-3 font-semibold" :disabled="loading.voucherOptions || loading.voucherGeneration || !forms.voucher.profile">
+                <i class="fa-solid" :class="loading.voucherGeneration ? 'fa-circle-notch fa-spin' : 'fa-ticket'"></i>
+                <span x-text="loading.voucherGeneration ? 'Membuat voucher...' : (forms.voucher.generationType === 'SINGLE' ? 'Buat satu voucher' : 'Buat ' + forms.voucher.quantity + ' voucher')"></span>
               </button>
             </form>
               </div>

@@ -1078,6 +1078,95 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.equal(reloadedUsers, true);
 });
 
+test("pembuatan banyak voucher memakai pekerjaan latar belakang", async () => {
+  const app = createDashboardApp();
+  const requests = [];
+  app.forms.voucher = {
+    ...app.forms.voucher,
+    generationType: "BULK",
+    quantity: 450,
+    profile: "100M",
+    server: "all",
+  };
+  app.withProcessing = async (_message, action) => action();
+  app.api = async (url, options = {}) => {
+    requests.push({ url, method: options.method || "GET" });
+    if (url === "/api/mikrotik/voucher-jobs") {
+      return {
+        id: "job-voucher-ui",
+        status: "COMPLETED",
+        total: 450,
+        progress: 450,
+        result: {
+          batchId: "batch-bulk-ui",
+          quantity: 450,
+          profile: "100M",
+          server: "all",
+          vouchers: [{ username: "bulk-1", password: "bulk-1" }],
+        },
+      };
+    }
+    throw new Error(`Endpoint tidak dikenal: ${url}`);
+  };
+  app.loadHotspotUsers = async () => {};
+  app.loadVoucherStats = async () => {};
+  app.notify = () => {};
+
+  await app.createVouchers();
+
+  assert.deepEqual(requests, [{ url: "/api/mikrotik/voucher-jobs", method: "POST" }]);
+  assert.equal(app.voucherResult.batchId, "batch-bulk-ui");
+  assert.equal(app.voucherResult.quantity, 450);
+  assert.equal(app.getVoucherJobMessage({ phase: "CREATING", progress: 125, total: 450 }), "Membuat voucher 125 dari 450 di MikroTik...");
+});
+
+test("respons HTML dari proxy tidak ditampilkan mentah sebagai pesan error", async () => {
+  let notification = "";
+  const app = createDashboardApp({
+    fetch: async () => ({
+      status: 524,
+      ok: false,
+      headers: { get: () => "text/html" },
+      text: async () => "<!DOCTYPE html><html><title>524 timeout</title></html>",
+    }),
+  });
+  app.notify = (message) => { notification = message; };
+
+  await assert.rejects(() => app.api("/api/test"), /Permintaan terlalu lama diproses/);
+  assert.doesNotMatch(notification, /doctype|<html/i);
+});
+
+test("broadcast massal memakai pekerjaan latar belakang dan menghitung status accepted", async () => {
+  const app = createDashboardApp();
+  const requests = [];
+  let notification = "";
+  app.forms.broadcast = { title: "Info", templateName: "", message: "Pesan" };
+  app.withProcessing = async (_message, action) => action();
+  app.api = async (url, options = {}) => {
+    requests.push({ url, method: options.method || "GET" });
+    return {
+      id: "job-broadcast-ui",
+      type: "CONTACT_BROADCAST",
+      status: "COMPLETED",
+      progress: 2,
+      total: 2,
+      result: [
+        { phoneNumber: "628111111111", status: "accepted" },
+        { phoneNumber: "628222222222", status: "failed" },
+      ],
+    };
+  };
+  app.loadLogs = async () => {};
+  app.notify = (message) => { notification = message; };
+
+  await app.sendBroadcast();
+
+  assert.deepEqual(requests, [{ url: "/api/notifications/broadcast", method: "POST" }]);
+  assert.equal(notification, "Broadcast terkirim: 1 berhasil, 1 gagal.");
+  assert.equal(app.getOperationJobMessage({ type: "CONTACT_BROADCAST", progress: 7, total: 10 }), "Mengirim pesan 7 dari 10 pelanggan...");
+  assert.equal(app.getOperationJobMessage({ type: "MIKROTIK_BACKUP", phase: "CREATING_BACKUP" }), "Membuat file backup MikroTik...");
+});
+
 test("ikon X voucher membuka konfirmasi lalu menghapus akun dari MikroTik dan riwayat", async () => {
   const app = createDashboardApp();
   let confirmation = null;

@@ -3,13 +3,15 @@ const test = require("node:test");
 
 const { NotificationBot } = require("../src/app");
 
-test("log broadcast menghitung status delivered dan read sebagai sukses", async () => {
+test("broadcast menghitung accepted, delivered, dan read sebagai sukses serta melaporkan progres", async () => {
   const logs = [];
+  const progress = [];
   const contacts = [
     { name: "Ayu", phoneNumber: "628111111111" },
     { name: "Budi", phoneNumber: "628222222222" },
+    { name: "Citra", phoneNumber: "628333333333" },
   ];
-  const deliveries = ["delivered", "read"];
+  const deliveries = ["accepted", "delivered", "read"];
   const bot = new NotificationBot({
     getContacts: () => contacts,
     getSettings: () => ({ waRandomDelayMinSeconds: 0, waRandomDelayMaxSeconds: 0 }),
@@ -23,7 +25,14 @@ test("log broadcast menghitung status delivered dan read sebagai sukses", async 
     },
   });
 
-  await bot.sendContactBroadcast("Info", "Pesan");
+  await bot.sendContactBroadcast("Info", "Pesan", {
+    onProgress: (update) => progress.push(update),
+  });
 
-  assert.match(logs.at(-1).message, /2 contact\(s\), 0 gagal/);
+  assert.match(logs.at(-1).message, /3 contact\(s\), 0 gagal/);
+  assert.deepEqual(progress, [
+    { phase: "SENDING", completed: 1, total: 3 },
+    { phase: "SENDING", completed: 2, total: 3 },
+    { phase: "SENDING", completed: 3, total: 3 },
+  ]);
 });

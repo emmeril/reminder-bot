@@ -274,6 +274,119 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
   assert.deepEqual(removedStoredVoucher, { batchId: "batch-lama", username: "lama-1" });
 });
 
+test("pembuatan batch voucher berjalan sebagai pekerjaan latar belakang", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  let storedBatch = null;
+  const baseUrl = await startServer({
+    storeVoucherBatches: async ([batch]) => { storedBatch = batch; },
+  }, {}, {
+    createHotspotVouchers: async (payload, options = {}) => {
+      options.onProgress?.({ phase: "CREATING", completed: 1, total: payload.quantity });
+      options.onProgress?.({ phase: "VERIFYING", completed: payload.quantity, total: payload.quantity });
+      return {
+        batchId: "batch-background",
+        quantity: payload.quantity,
+        profile: payload.profile,
+        server: payload.server,
+        vouchers: [{ username: "voucher-background", password: "rahasia" }],
+      };
+    },
+  });
+  const headers = { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" };
+  const createResponse = await fetch(`${baseUrl}/api/mikrotik/vouchers`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      generationType: "BULK",
+      quantity: 450,
+      credentialMode: "SAME",
+      codeLength: 6,
+      characterSet: "LOWER",
+      prefix: "wifi-",
+      profile: "100M",
+      server: "all",
+    }),
+  });
+  const createdJob = await createResponse.json();
+
+  assert.equal(createResponse.status, 202);
+  assert.equal(createdJob.data.total, 450);
+  assert.match(createdJob.data.id, /^[0-9a-f-]{36}$/);
+
+  let job = createdJob.data;
+  for (let attempt = 0; attempt < 20 && job.status !== "COMPLETED"; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const statusResponse = await fetch(
+      `${baseUrl}/api/mikrotik/voucher-jobs/${encodeURIComponent(job.id)}`,
+      { headers }
+    );
+    const statusPayload = await statusResponse.json();
+    job = statusPayload.data;
+  }
+
+  assert.equal(job.status, "COMPLETED");
+  assert.equal(job.progress, 450);
+  assert.equal(job.result.batchId, "batch-background");
+  assert.equal(storedBatch.batchId, "batch-background");
+});
+
+test("broadcast dan scheduler manual tidak menahan request HTTP", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const baseUrl = await startServer({
+    getContacts: () => [
+      { id: "one", name: "Satu", phoneNumber: "628111111111" },
+      { id: "two", name: "Dua", phoneNumber: "628222222222" },
+    ],
+  }, {
+    sendContactBroadcast: async (_title, _body, options = {}) => {
+      options.onProgress?.({ phase: "SENDING", completed: 1, total: 2 });
+      options.onProgress?.({ phase: "SENDING", completed: 2, total: 2 });
+      return [
+        { phoneNumber: "628111111111", status: "accepted" },
+        { phoneNumber: "628222222222", status: "delivered" },
+      ];
+    },
+  });
+  const headers = { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" };
+
+  const broadcastResponse = await fetch(`${baseUrl}/api/notifications/broadcast`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ title: "Info", message: "Pesan massal" }),
+  });
+  const broadcastPayload = await broadcastResponse.json();
+  assert.equal(broadcastResponse.status, 202);
+  assert.equal(broadcastPayload.data.type, "CONTACT_BROADCAST");
+
+  let broadcastJob = broadcastPayload.data;
+  for (let attempt = 0; attempt < 20 && broadcastJob.status !== "COMPLETED"; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const response = await fetch(`${baseUrl}/api/jobs/${broadcastJob.id}`, { headers });
+    broadcastJob = (await response.json()).data;
+  }
+  assert.equal(broadcastJob.status, "COMPLETED");
+  assert.equal(broadcastJob.progress, 2);
+  assert.equal(broadcastJob.result.length, 2);
+
+  const schedulerServer = await startServer({}, {}, {}, {}, null);
+  const schedulerResponse = await fetch(`${schedulerServer}/api/scheduler/run`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({}),
+  });
+  const schedulerPayload = await schedulerResponse.json();
+  assert.equal(schedulerResponse.status, 202);
+  assert.equal(schedulerPayload.data.type, "REMINDER_SCHEDULER");
+  let schedulerJob = schedulerPayload.data;
+  for (let attempt = 0; attempt < 20 && schedulerJob.status !== "COMPLETED"; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const response = await fetch(`${schedulerServer}/api/jobs/${schedulerJob.id}`, { headers });
+    schedulerJob = (await response.json()).data;
+  }
+  assert.equal(schedulerJob.status, "COMPLETED");
+  assert.deepEqual(schedulerJob.result, { completed: true });
+});
+
 test("API pelanggan memvalidasi AP tujuan terhadap Netwatch", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   const savedPayloads = [];

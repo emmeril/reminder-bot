@@ -9,6 +9,9 @@
           voucherStats: false,
           voucherRevenue: false,
           voucherProfile: false,
+          voucherGeneration: false,
+          broadcast: false,
+          scheduler: false,
           templates: false,
         },
         toast: {
@@ -494,13 +497,29 @@
           }
 
           const contentType = response.headers.get("content-type") || "";
-          const payload = contentType.includes("application/json")
-            ? await response.json()
-            : { success: false, error: await response.text() || "Request failed" };
+          let payload;
+          if (contentType.includes("application/json")) {
+            try {
+              payload = await response.json();
+            } catch {
+              payload = { success: false, error: `Respons server tidak valid (${response.status}).` };
+            }
+          } else {
+            const responseText = await response.text();
+            const isHtmlResponse = /<!doctype\s+html|<html[\s>]/i.test(responseText);
+            const error = response.status === 524
+              ? "Permintaan terlalu lama diproses. Proses di server mungkin masih berjalan; periksa riwayat sebelum mencoba lagi."
+              : (isHtmlResponse
+                ? `Server tidak dapat menyelesaikan permintaan (${response.status}). Silakan coba lagi.`
+                : responseText || `Request failed (${response.status})`);
+            payload = { success: false, error };
+          }
           if (!response.ok || !payload.success) {
             const message = payload.error || `Request failed (${response.status})`;
             if (!silent) this.notify(message);
-            throw new Error(message);
+            const error = new Error(message);
+            error.status = response.status;
+            throw error;
           }
 
           return payload.data;
@@ -2079,7 +2098,90 @@
           return "fa-ticket-simple";
         },
 
+        getVoucherJobMessage(job) {
+          const progress = Math.max(0, Number(job?.progress) || 0);
+          const total = Math.max(1, Number(job?.total) || 1);
+          if (job?.status === "QUEUED" || job?.phase === "QUEUED") {
+            return `Menunggu antrean pembuatan ${total} voucher...`;
+          }
+          if (job?.phase === "CONNECTING") {
+            return `Menghubungkan ke MikroTik untuk membuat ${total} voucher...`;
+          }
+          if (job?.phase === "VERIFYING") {
+            return `Memeriksa ${total} voucher yang sudah dibuat...`;
+          }
+          return `Membuat voucher ${Math.min(progress, total)} dari ${total} di MikroTik...`;
+        },
+
+        getOperationJobMessage(job) {
+          const progress = Math.max(0, Number(job?.progress) || 0);
+          const total = Math.max(1, Number(job?.total) || 1);
+          if (["CONTACT_BROADCAST", "ADMIN_BROADCAST"].includes(job?.type)) {
+            const target = job?.type === "ADMIN_BROADCAST" ? "admin" : "pelanggan";
+            return `Mengirim pesan ${Math.min(progress, total)} dari ${total} ${target}...`;
+          }
+          if (job?.type === "MIKROTIK_BACKUP") {
+            return job?.phase === "CREATING_BACKUP"
+              ? "Membuat file backup MikroTik..."
+              : `Mengirim backup ${Math.min(progress, total)} dari ${total} tujuan...`;
+          }
+          if (job?.type === "REMINDER_SCHEDULER") {
+            return "Memproses reminder yang sudah jatuh tempo...";
+          }
+          if (job?.type === "HOTSPOT_REACTIVATION") {
+            return "Memproses jadwal aktivasi dan penonaktifan hotspot...";
+          }
+          return "Memproses pekerjaan di server...";
+        },
+
+        async waitForBackgroundJob(initialJob, options = {}) {
+          let job = initialJob;
+          let pollingFailures = 0;
+          const deadline = Date.now() + (30 * 60 * 1000);
+          const endpointPrefix = options.endpointPrefix || "/api/jobs";
+          const messageBuilder = typeof options.messageBuilder === "function"
+            ? options.messageBuilder
+            : (currentJob) => this.getOperationJobMessage(currentJob);
+          while (Date.now() < deadline) {
+            if (job?.status === "COMPLETED") return job.result;
+            if (job?.status === "FAILED") {
+              throw new Error(job.error || "Pembuatan voucher gagal.");
+            }
+
+            this.processingModal.message = messageBuilder(job);
+            await new Promise((resolve) => setTimeout(resolve, 1200));
+            try {
+              job = await this.api(`${endpointPrefix}/${encodeURIComponent(job.id)}`, {
+                silent: true,
+              });
+              pollingFailures = 0;
+            } catch (error) {
+              if (error?.status === 404) {
+                throw new Error("Status pekerjaan tidak lagi tersedia. Periksa data atau riwayat terkait sebelum mencoba lagi.");
+              }
+              pollingFailures += 1;
+              if (pollingFailures >= 10) {
+                throw new Error("Koneksi ke server terputus, tetapi pekerjaan mungkin masih berjalan. Periksa hasilnya beberapa saat lagi.");
+              }
+            }
+          }
+          throw new Error("Pekerjaan masih berjalan terlalu lama. Tutup pesan ini dan periksa hasilnya beberapa saat lagi.");
+        },
+
+        waitForVoucherGeneration(initialJob) {
+          return this.waitForBackgroundJob(initialJob, {
+            endpointPrefix: "/api/mikrotik/voucher-jobs",
+            messageBuilder: (job) => this.getVoucherJobMessage(job),
+          });
+        },
+
+        waitForOperationJob(initialJob) {
+          return this.waitForBackgroundJob(initialJob, { endpointPrefix: "/api/jobs" });
+        },
+
         async createVouchers() {
+          if (this.loading.voucherGeneration) return;
+          this.loading.voucherGeneration = true;
           this.clearFormError("voucher");
           const form = this.forms.voucher;
           const quantity = form.generationType === "SINGLE" ? 1 : Number(form.quantity || 0);
@@ -2091,10 +2193,19 @@
           };
           try {
             await this.withProcessing(`Membuat ${quantity} voucher di MikroTik...`, async () => {
-              const createdBatch = await this.api("/api/mikrotik/vouchers", {
-                method: "POST",
-                body: JSON.stringify(payload),
-              });
+              let createdBatch;
+              if (form.generationType === "BULK") {
+                const job = await this.api("/api/mikrotik/voucher-jobs", {
+                  method: "POST",
+                  body: JSON.stringify(payload),
+                });
+                createdBatch = await this.waitForVoucherGeneration(job);
+              } else {
+                createdBatch = await this.api("/api/mikrotik/vouchers", {
+                  method: "POST",
+                  body: JSON.stringify(payload),
+                });
+              }
               this.voucherBatches = [
                 createdBatch,
                 ...this.voucherBatches.filter((batch) => batch.batchId !== createdBatch.batchId),
@@ -2115,6 +2226,8 @@
             });
           } catch (error) {
             this.setFormError("voucher", error);
+          } finally {
+            this.loading.voucherGeneration = false;
           }
         },
 
@@ -3183,14 +3296,17 @@
         },
 
         async sendBroadcast() {
+          if (this.loading.broadcast) return;
+          this.loading.broadcast = true;
           this.clearFormError("broadcast");
           try {
             await this.withProcessing("Mengirim broadcast...", async () => {
-              const response = await this.api("/api/notifications/broadcast", {
+              const job = await this.api("/api/notifications/broadcast", {
                 method: "POST",
                 body: JSON.stringify(this.forms.broadcast),
               });
-              const successCount = response.filter(r => r.status === "sent").length;
+              const response = await this.waitForOperationJob(job);
+              const successCount = response.filter((item) => ["accepted", "sent", "delivered", "read"].includes(item.status)).length;
               const failedCount = response.filter(r => r.status === "failed").length;
               this.forms.broadcast = { title: "", templateName: "", message: "" };
               this.notify(`Broadcast terkirim: ${successCount} berhasil, ${failedCount} gagal.`);
@@ -3198,6 +3314,8 @@
             });
           } catch (error) {
             this.setFormError("broadcast", error);
+          } finally {
+            this.loading.broadcast = false;
           }
         },
 
@@ -3206,10 +3324,11 @@
           this.loading.mikrotikBackup = true;
           try {
             await this.withProcessing("Membuat dan mengirim backup MikroTik...", async () => {
-              const response = await this.api("/api/mikrotik/backup/send", {
+              const job = await this.api("/api/mikrotik/backup/send", {
                 method: "POST",
                 body: JSON.stringify({}),
               });
+              const response = await this.waitForOperationJob(job);
               const results = Array.isArray(response.results) ? response.results : [];
               const successCount = results.filter((item) => item.status === "sent").length;
               const failedCount = results.filter((item) => item.status === "failed").length;
@@ -3247,14 +3366,21 @@
         },
 
         async runScheduler() {
-          await this.withProcessing("Menjalankan scheduler...", async () => {
-            await this.api("/api/scheduler/run", {
-              method: "POST",
-              body: JSON.stringify({}),
+          if (this.loading.scheduler) return;
+          this.loading.scheduler = true;
+          try {
+            await this.withProcessing("Menjalankan scheduler...", async () => {
+              const job = await this.api("/api/scheduler/run", {
+                method: "POST",
+                body: JSON.stringify({}),
+              });
+              await this.waitForOperationJob(job);
+              this.notify("Scheduler selesai dijalankan.");
+              await this.refreshAll();
             });
-            this.notify("Scheduler dipicu manual.");
-            await this.refreshAll();
-          });
+          } finally {
+            this.loading.scheduler = false;
+          }
         },
 
         async logout() {
