@@ -1918,14 +1918,16 @@
           }
         },
 
-        printVouchers() {
+        printVouchers(template = "standard") {
           if (!this.voucherResult?.vouchers?.length) return;
           document.querySelector(".voucher-print-root")?.remove();
-          const source = document.querySelector(".voucher-print-pages");
+          const rewardTemplate = template === "reward";
+          const source = document.querySelector(
+            rewardTemplate ? ".voucher-reward-print-pages" : ".voucher-print-pages"
+          );
           if (!source) return;
           const printRoot = source.cloneNode(true);
-          printRoot.classList.remove("voucher-print-pages");
-          printRoot.classList.add("voucher-print-root");
+          printRoot.className = `voucher-print-root ${rewardTemplate ? "voucher-print-root-reward" : "voucher-print-root-standard"}`;
           printRoot.removeAttribute("aria-hidden");
           document.body.appendChild(printRoot);
           document.body.classList.add("voucher-print-mode");
@@ -1938,6 +1940,10 @@
           window.setTimeout(cleanup, 1_000);
         },
 
+        printRewardVouchers() {
+          this.printVouchers("reward");
+        },
+
         getVoucherPrintPages() {
           const vouchers = Array.isArray(this.voucherResult?.vouchers)
             ? this.voucherResult.vouchers
@@ -1945,6 +1951,17 @@
           const pages = [];
           for (let index = 0; index < vouchers.length; index += 15) {
             pages.push(vouchers.slice(index, index + 15));
+          }
+          return pages;
+        },
+
+        getVoucherRewardPrintPages() {
+          const vouchers = Array.isArray(this.voucherResult?.vouchers)
+            ? this.voucherResult.vouchers
+            : [];
+          const pages = [];
+          for (let index = 0; index < vouchers.length; index += 20) {
+            pages.push(vouchers.slice(index, index + 20));
           }
           return pages;
         },

@@ -742,7 +742,8 @@
                   </div>
                   <div class="voucher-result-actions">
                     <button type="button" @click="copyVoucherCredentials()" class="ui-secondary-button" aria-label="Salin semua username dan password"><i class="fa-solid fa-copy"></i><span>Salin</span></button>
-                    <button type="button" @click="printVouchers()" class="ui-primary-button" aria-label="Cetak voucher"><i class="fa-solid fa-print"></i><span>Cetak</span></button>
+                    <button type="button" @click="printVouchers()" class="ui-secondary-button" aria-label="Cetak voucher standar"><i class="fa-solid fa-print"></i><span>Cetak standar</span></button>
+                    <button type="button" @click="printRewardVouchers()" class="ui-primary-button voucher-reward-print-button" aria-label="Cetak voucher reward"><i class="fa-solid fa-gift"></i><span>Cetak reward</span></button>
                   </div>
                 </div>
                 <div class="voucher-result-meta">
@@ -784,6 +785,42 @@
                               <div><dt>Profile</dt><dd x-text="voucherResult?.profile || '-'"></dd></div>
                               <div><dt>Harga</dt><dd x-text="getVoucherPriceLabel()"></dd></div>
                             </dl>
+                            <p class="voucher-standard-note">Gunakan voucher ini untuk terhubung ke jaringan WiFi.</p>
+                          </article>
+                        </template>
+                      </div>
+                    </section>
+                  </template>
+                </div>
+                <div class="voucher-reward-print-pages" aria-hidden="true">
+                  <template x-for="(page, pageIndex) in getVoucherRewardPrintPages()" :key="'voucher-reward-page-' + pageIndex">
+                    <section class="voucher-print-page voucher-reward-print-page">
+                      <header class="voucher-print-page-heading voucher-reward-page-heading">
+                        <div>
+                          <span class="voucher-print-brand" x-text="forms.settings.companyName || 'Emmeril Hotspot'"></span>
+                          <h3>Voucher reward</h3>
+                          <p>Hadiah untuk pelanggan</p>
+                        </div>
+                        <span>Halaman <strong x-text="pageIndex + 1"></strong> / <strong x-text="getVoucherRewardPrintPages().length"></strong></span>
+                      </header>
+                      <div class="voucher-reward-print-page-grid">
+                        <template x-for="(voucher, voucherIndex) in page" :key="'reward-voucher-' + pageIndex + '-' + voucher.username">
+                          <article class="voucher-reward-card">
+                            <div class="voucher-reward-card-brand">
+                              <strong x-text="forms.settings.companyName || 'Emmeril Hotspot'"></strong>
+                              <span>REWARD</span>
+                            </div>
+                            <div class="voucher-reward-card-title">
+                              <h4>Voucher reward</h4>
+                              <span x-text="'#' + String((pageIndex * 20) + voucherIndex + 1).padStart(3, '0')"></span>
+                            </div>
+                            <dl>
+                              <div><dt>Username</dt><dd x-text="voucher.username"></dd></div>
+                              <div><dt>Password</dt><dd x-text="voucher.password"></dd></div>
+                              <div><dt>Profile</dt><dd x-text="voucherResult?.profile || '-'"></dd></div>
+                              <div><dt>Nilai reward</dt><dd x-text="getVoucherPriceLabel()"></dd></div>
+                            </dl>
+                            <p>Gunakan voucher ini untuk terhubung ke jaringan WiFi.</p>
                           </article>
                         </template>
                       </div>

@@ -906,8 +906,10 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(html, /value="BULK"/);
   assert.match(html, /@click="copyVoucherCredentials\(\)"/);
   assert.match(html, /@click="printVouchers\(\)"/);
+  assert.match(html, /@click="printRewardVouchers\(\)"/);
   assert.match(script, /voucher-print-root/);
   assert.match(html, /getVoucherPriceLabel\(\)/);
+  assert.match(html, /Gunakan voucher ini untuk terhubung ke jaringan WiFi\./);
   assert.match(html, /Riwayat batch/);
   assert.match(html, /@change="selectVoucherBatch\(selectedVoucherBatchId\)"/);
   assert.match(html, /Profile voucher/);
@@ -929,6 +931,7 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
     vouchers: Array.from({ length: 31 }, (_, index) => ({ username: `voucher-${index + 1}` })),
   };
   assert.deepEqual(Array.from(app.getVoucherPrintPages(), (page) => page.length), [15, 15, 1]);
+  assert.deepEqual(Array.from(app.getVoucherRewardPrintPages(), (page) => page.length), [20, 11]);
   assert.match(app.getVoucherPriceLabel(), /25\.000/);
 
   app.forms.voucher = {
