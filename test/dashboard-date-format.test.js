@@ -626,7 +626,7 @@ test("laporan pendapatan voucher dimuat dan difilter terpisah dari pelanggan", a
   assert.equal(app.filteredVoucherRevenueEntries.length, 1);
   assert.equal(app.filteredVoucherRevenueEntries[0].username, "voucher-dua");
   app.filters.voucherRevenue.profile = "ALL";
-  app.filters.voucherRevenue.search = "AA:BB";
+  app.filters.voucherRevenue.search = "voucher-satu";
   assert.equal(app.filteredVoucherRevenueEntries[0].username, "voucher-satu");
 });
 
@@ -689,6 +689,9 @@ test("sidebar dan panel laporan pendapatan tersedia dengan filter serta ekspor",
   assert.match(html, /exportVoucherRevenueReport\(\)/);
   assert.match(html, /Belum ada pendapatan pelanggan pada periode ini/);
   assert.match(html, /Belum ada pemakaian voucher yang tercatat pada periode ini/);
+  assert.doesNotMatch(html, /voucher-revenue-volume/);
+  const voucherRevenueTable = html.match(/<table class="[^"]*voucher-revenue-table[^"]*">[\s\S]*?<\/table>/)?.[0] || "";
+  assert.doesNotMatch(voucherRevenueTable, />Perangkat</);
 });
 
 test("modal aksi tagihan hanya aktif ketika pelanggan memiliki tindakan", () => {

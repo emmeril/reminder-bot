@@ -1191,7 +1191,7 @@
             if (selectedProfile !== "ALL" && entry.profile !== selectedProfile) return false;
             return this.searchMatches(
               entry,
-              ["username", "profile", "amount", "costPrice", "commission", "validity", "address", "macAddress"],
+              ["username", "profile", "amount", "costPrice", "commission", "validity"],
               this.filters.voucherRevenue.search
             );
           });

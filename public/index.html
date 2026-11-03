@@ -932,7 +932,7 @@
               <div class="voucher-fields voucher-money-fields">
                 <label><span>HPP</span><input type="number" x-model.number="forms.voucherProfile.costPrice" @input="updateVoucherProfileProfit()" min="0" max="1000000000"></label>
                 <label><span>Harga jual</span><input type="number" x-model.number="forms.voucherProfile.sellingPrice" @input="updateVoucherProfileProfit()" min="0" max="1000000000"></label>
-                <label class="voucher-profit-field"><span>Keuntungan</span><input type="number" x-model.number="forms.voucherProfile.commission" min="0" max="1000000000" readonly aria-readonly="true" aria-describedby="voucher-profit-help"><small id="voucher-profit-help">Terisi otomatis dari harga jual dikurangi HPP.</small></label>
+                <label class="voucher-profit-field"><span>Keuntungan</span><input type="number" x-model.number="forms.voucherProfile.commission" min="0" max="1000000000" readonly aria-readonly="true"></label>
               </div>
               <p x-cloak x-show="formErrors.voucherProfile" class="voucher-form-error" role="alert" x-text="formErrors.voucherProfile"></p>
               <button type="submit" class="ui-primary-button voucher-submit-button"><i class="fa-solid fa-floppy-disk mr-2"></i><span x-text="forms.voucherProfile.originalName ? 'Simpan perubahan profile' : 'Buat profile voucher'"></span></button>
@@ -1082,14 +1082,12 @@
               <article class="metric-card revenue-metric tone-green"><span class="icon-chip"><i class="fa-solid fa-wallet"></i></span><span class="metric-copy"><span class="metric-label">Keuntungan</span><strong class="metric-value" x-text="formatRupiah(voucherRevenue.summary.commission)"></strong></span></article>
             </div>
 
-            <p class="voucher-revenue-volume"><i class="fa-solid fa-ticket" aria-hidden="true"></i><span><strong x-text="voucherRevenue.summary.quantity"></strong> voucher terpakai</span><span aria-hidden="true">·</span><span><strong x-text="voucherRevenue.summary.profiles"></strong> profile tercatat</span></p>
-
             <div class="revenue-info-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><p><strong>Sumber laporan voucher</strong><span>Nilai dihitung saat voucher pertama kali digunakan. Keuntungan menunjukkan nominal yang diperoleh dari setiap voucher. Riwayat tersedia untuk profile yang mencatat pemakaian.</span></p></div>
             <p x-cloak x-show="voucherRevenueError" class="voucher-history-error" role="alert" x-text="voucherRevenueError"></p>
 
             <div class="filter-inline revenue-voucher-filter">
               <label class="filter-field"><span class="sr-only">Periode laporan voucher</span><input type="month" x-model="revenuePeriod" @change="handleRevenuePeriodChange()" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Periode laporan pendapatan voucher"></label>
-              <input x-model="filters.voucherRevenue.search" @input="resetPage('voucherRevenue')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari voucher, profile, IP, atau MAC" aria-label="Cari laporan pendapatan voucher">
+              <input x-model="filters.voucherRevenue.search" @input="resetPage('voucherRevenue')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari voucher atau profile" aria-label="Cari laporan pendapatan voucher">
               <select x-model="filters.voucherRevenue.profile" @change="resetPage('voucherRevenue')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Filter profile voucher"><option value="ALL">Semua profile</option><template x-for="profile in voucherRevenueProfiles" :key="'voucher-revenue-profile-' + profile"><option :value="profile" x-text="profile"></option></template></select>
               <select x-model.number="filters.voucherRevenue.pageSize" @change="resetPage('voucherRevenue')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Jumlah voucher per halaman"><template x-for="size in pageSizes" :key="'voucher-revenue-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select>
             </div>
@@ -1097,10 +1095,10 @@
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Rincian pendapatan voucher">
                 <table class="customer-workspace-table revenue-table voucher-revenue-table min-w-full text-sm">
-                  <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50"><tr><th class="px-4 py-3">Voucher</th><th class="px-4 py-3">Profile</th><th class="px-4 py-3">Harga jual</th><th class="px-4 py-3">HPP</th><th class="px-4 py-3">Keuntungan</th><th class="px-4 py-3">Masa berlaku</th><th class="px-4 py-3">Tanggal digunakan</th><th class="px-4 py-3">Perangkat</th></tr></thead>
+                  <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50"><tr><th class="px-4 py-3">Voucher</th><th class="px-4 py-3">Profile</th><th class="px-4 py-3">Harga jual</th><th class="px-4 py-3">HPP</th><th class="px-4 py-3">Keuntungan</th><th class="px-4 py-3">Masa berlaku</th><th class="px-4 py-3">Tanggal digunakan</th></tr></thead>
                   <tbody class="divide-y divide-ink/6 bg-white/70">
-                    <tr x-show="loading.voucherRevenue && !voucherRevenue.entries.length"><td colspan="8" class="px-4 py-8 text-center text-ink/45"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memuat pendapatan voucher...</td></tr>
-                    <tr x-show="!loading.voucherRevenue && !filteredVoucherRevenueEntries.length"><td colspan="8" class="px-4 py-8 text-center text-ink/45">Belum ada pemakaian voucher yang tercatat pada periode ini.</td></tr>
+                    <tr x-show="loading.voucherRevenue && !voucherRevenue.entries.length"><td colspan="7" class="px-4 py-8 text-center text-ink/45"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memuat pendapatan voucher...</td></tr>
+                    <tr x-show="!loading.voucherRevenue && !filteredVoucherRevenueEntries.length"><td colspan="7" class="px-4 py-8 text-center text-ink/45">Belum ada pemakaian voucher yang tercatat pada periode ini.</td></tr>
                     <template x-for="entry in paginatedVoucherRevenueEntries" :key="entry.id">
                       <tr>
                         <td class="px-4 py-4" data-label="Voucher"><strong class="customer-name voucher-username" x-text="entry.username"></strong></td>
@@ -1110,7 +1108,6 @@
                         <td class="px-4 py-4" data-label="Keuntungan"><span x-text="formatRupiah(entry.commission)"></span></td>
                         <td class="px-4 py-4" data-label="Masa berlaku"><span x-text="entry.validity || '-' "></span></td>
                         <td class="px-4 py-4" data-label="Tanggal digunakan"><span x-text="entry.usedAt ? formatDateTime(entry.usedAt) : '-' "></span></td>
-                        <td class="px-4 py-4" data-label="Perangkat"><span x-text="entry.address || '-' "></span><small class="customer-meta" x-text="entry.macAddress || 'MAC tidak tercatat'"></small></td>
                       </tr>
                     </template>
                   </tbody>
