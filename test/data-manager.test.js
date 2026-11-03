@@ -43,11 +43,13 @@ test("riwayat batch voucher disimpan terpisah dari komentar user MikroTik", asyn
     batchId: "batch-voucher-1",
     createdAt: "2026-11-02T12:00:00.000Z",
     profile: "4Jam",
+    sellingPrice: 40000,
     quantity: 1,
     vouchers: [{ username: "voucher-1", password: "rahasia-1" }],
   }]);
 
   assert.equal(saveCalls, 1);
+  assert.equal(manager.getVoucherBatches()[0].sellingPrice, 40000);
   assert.equal(manager.getVoucherBatches()[0].vouchers[0].password, "rahasia-1");
   assert.notEqual(manager.getVoucherBatches()[0], manager.voucherBatches.get("batch-voucher-1"));
 });

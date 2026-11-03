@@ -36,7 +36,7 @@ function createServiceWithUsers(initialUsers = []) {
     menu: (path) => {
       if (path === "/ip/hotspot/user") return userMenu;
       if (path === "/ip/hotspot/user/profile") {
-        return { print: async () => [{ name: "100M", "on-login": ':put (",rem,0,1d,0,,Disable,0,")' }] };
+        return { print: async () => [{ name: "100M", "on-login": ':put (",rem,0,1d,40000,,Disable,0,")' }] };
       }
       if (path === "/system/scheduler") {
         return { print: async () => [{ name: "100M", disabled: "false", comment: "Monitor Profile 100M" }] };
@@ -86,6 +86,7 @@ test("membuat satu voucher hotspot dengan kredensial yang ditentukan", async () 
   });
 
   assert.equal(result.quantity, 1);
+  assert.equal(result.sellingPrice, 40000);
   assert.deepEqual(result.vouchers, [{ username: "voucher-001", password: "rahasia-001" }]);
   assert.equal(users[0].name, "voucher-001");
   assert.equal(users[0].profile, "100M");
@@ -148,6 +149,7 @@ test("riwayat batch voucher dibaca kembali dari data MikroTik", async () => {
   const restoredFirst = batches.find((batch) => batch.batchId === firstBatch.batchId);
   const restoredSecond = batches.find((batch) => batch.batchId === secondBatch.batchId);
   assert.equal(restoredFirst.quantity, 1);
+  assert.equal(restoredFirst.sellingPrice, 40000);
   assert.equal(restoredFirst.comment, "Batch pertama");
   assert.deepEqual(restoredFirst.vouchers[0], {
     username: "voucher-lama",

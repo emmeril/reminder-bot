@@ -753,13 +753,41 @@
                 <div class="voucher-card-grid">
                   <template x-for="(voucher, index) in voucherResult?.vouchers || []" :key="'generated-voucher-' + voucher.username">
                     <article class="voucher-card">
-                      <div><span>Voucher</span><strong x-text="String(index + 1).padStart(3, '0')"></strong></div>
+                      <div><span x-text="forms.settings.companyName || 'Emmeril Hotspot'"></span><strong x-text="String(index + 1).padStart(3, '0')"></strong></div>
                       <dl>
                         <div><dt>Username</dt><dd x-text="voucher.username"></dd></div>
                         <div><dt>Password</dt><dd x-text="voucher.password"></dd></div>
                         <div><dt>Profile</dt><dd x-text="voucherResult?.profile || '-'"></dd></div>
+                        <div><dt>Harga</dt><dd x-text="getVoucherPriceLabel()"></dd></div>
                       </dl>
                     </article>
+                  </template>
+                </div>
+                <div class="voucher-print-pages" aria-hidden="true">
+                  <template x-for="(page, pageIndex) in getVoucherPrintPages()" :key="'voucher-print-page-' + pageIndex">
+                    <section class="voucher-print-page">
+                      <header class="voucher-print-page-heading">
+                        <div>
+                          <span class="voucher-print-brand" x-text="forms.settings.companyName || 'Emmeril Hotspot'"></span>
+                          <h3>Voucher hotspot</h3>
+                          <p><span x-text="voucherResult?.profile || '-'"></span> · <span x-text="voucherResult?.server === 'all' ? 'Semua server' : voucherResult?.server"></span></p>
+                        </div>
+                        <span>Halaman <strong x-text="pageIndex + 1"></strong> / <strong x-text="getVoucherPrintPages().length"></strong></span>
+                      </header>
+                      <div class="voucher-print-page-grid">
+                        <template x-for="(voucher, voucherIndex) in page" :key="'printed-voucher-' + pageIndex + '-' + voucher.username">
+                          <article class="voucher-card">
+                            <div><span x-text="forms.settings.companyName || 'Emmeril Hotspot'"></span><strong x-text="String((pageIndex * 15) + voucherIndex + 1).padStart(3, '0')"></strong></div>
+                            <dl>
+                              <div><dt>Username</dt><dd x-text="voucher.username"></dd></div>
+                              <div><dt>Password</dt><dd x-text="voucher.password"></dd></div>
+                              <div><dt>Profile</dt><dd x-text="voucherResult?.profile || '-'"></dd></div>
+                              <div><dt>Harga</dt><dd x-text="getVoucherPriceLabel()"></dd></div>
+                            </dl>
+                          </article>
+                        </template>
+                      </div>
+                    </section>
                   </template>
                 </div>
               </div>

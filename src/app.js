@@ -678,7 +678,17 @@ class MikrotikService {
       ? Math.min(requestedLimit, 100)
       : 50;
     return this.withConnection(async (conn) => {
-      const users = await conn.menu("/ip/hotspot/user").print();
+      const [users, profiles] = await Promise.all([
+        conn.menu("/ip/hotspot/user").print(),
+        conn.menu("/ip/hotspot/user/profile").print(),
+      ]);
+      const profilePrices = new Map((profiles || []).map((profile) => {
+        const metadata = parseVoucherProfileMetadata(readRouterValue(profile, "on-login", "onLogin", ""));
+        return [
+          String(profile.name || ""),
+          Math.max(0, Number(metadata.sellingPrice || metadata.costPrice) || 0),
+        ];
+      }));
       const batches = new Map();
 
       for (const user of users || []) {
@@ -691,6 +701,7 @@ class MikrotikService {
         const batchId = match[1] || match[3];
         const batchComment = match[2] || match[4] || "";
         if (!batches.has(batchId)) {
+          const profileName = sanitizeInput(String(user.profile || ""));
           const timestamp = Number.parseInt(batchId.split("-", 1)[0], 36);
           const timestampIsValid = Number.isFinite(timestamp)
             && timestamp >= Date.UTC(2020, 0, 1)
@@ -700,7 +711,8 @@ class MikrotikService {
             createdAt: timestampIsValid ? new Date(timestamp).toISOString() : null,
             generationType: "BULK",
             server: sanitizeInput(String(user.server || "")) || "all",
-            profile: sanitizeInput(String(user.profile || "")),
+            profile: profileName,
+            sellingPrice: profilePrices.get(profileName) || 0,
             limitUptime: sanitizeInput(String(readRouterValue(user, "limit-uptime", "limitUptime", ""))) || null,
             dataLimitBytes: Math.max(0, Number(readRouterValue(user, "limit-bytes-total", "limitBytesTotal", 0)) || 0),
             comment: sanitizeInput(String(batchComment)),
@@ -872,6 +884,7 @@ class MikrotikService {
         quantity: vouchers.length,
         server: request.server,
         profile: request.profile,
+        sellingPrice: Math.max(0, Number(profileMetadata.sellingPrice || profileMetadata.costPrice) || 0),
         limitUptime: request.limitUptime || null,
         dataLimit: request.dataLimit,
         dataUnit: request.dataUnit,
@@ -2125,6 +2138,7 @@ class DataManager {
           ...existing,
           ...structuredClone(batch),
           batchId,
+          sellingPrice: Math.max(0, Number(existing.sellingPrice || batch.sellingPrice) || 0),
           storedAt: existing.storedAt || new Date().toISOString(),
         });
       }

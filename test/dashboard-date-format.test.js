@@ -894,6 +894,7 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   const app = createDashboardApp();
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "../public/interface.css"), "utf8");
+  const script = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
   let request = null;
   let reloadedUsers = false;
 
@@ -905,6 +906,8 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(html, /value="BULK"/);
   assert.match(html, /@click="copyVoucherCredentials\(\)"/);
   assert.match(html, /@click="printVouchers\(\)"/);
+  assert.match(script, /voucher-print-root/);
+  assert.match(html, /getVoucherPriceLabel\(\)/);
   assert.match(html, /Riwayat batch/);
   assert.match(html, /@change="selectVoucherBatch\(selectedVoucherBatchId\)"/);
   assert.match(html, /Profile voucher/);
@@ -918,6 +921,15 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(styles, /\.voucher-workspace \{[\s\S]*?grid-template-columns:/);
   assert.match(styles, /@media \(max-width: 620px\) \{[\s\S]*?\.voucher-fields\.two-columns/);
   assert.match(styles, /@media print \{[\s\S]*?body\.voucher-print-mode/);
+  assert.match(styles, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);[\s\S]*?grid-template-rows: repeat\(5, minmax\(0, 1fr\)\)/);
+
+  app.voucherResult = {
+    profile: "VCR-1H",
+    sellingPrice: 25000,
+    vouchers: Array.from({ length: 31 }, (_, index) => ({ username: `voucher-${index + 1}` })),
+  };
+  assert.deepEqual(Array.from(app.getVoucherPrintPages(), (page) => page.length), [15, 15, 1]);
+  assert.match(app.getVoucherPriceLabel(), /25\.000/);
 
   app.forms.voucher = {
     ...app.forms.voucher,

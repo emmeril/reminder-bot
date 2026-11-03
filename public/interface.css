@@ -2191,7 +2191,10 @@ span[class*="rounded-full"][class*="text-xs"],
 }
 
 .voucher-profile-table-wrap {
-  overflow-x: auto;
+  max-height: min(520px, 60vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   border: 1px solid var(--ui-border);
   border-radius: 8px;
 }
@@ -2212,8 +2215,12 @@ span[class*="rounded-full"][class*="text-xs"],
 }
 
 .voucher-profile-table th {
+  position: sticky;
+  z-index: 1;
+  top: 0;
   color: var(--ui-muted);
   background: var(--ui-surface-soft);
+  box-shadow: 0 1px 0 var(--ui-border);
   font-size: 10px;
   letter-spacing: .03em;
   text-transform: uppercase;
@@ -2508,6 +2515,14 @@ span[class*="rounded-full"][class*="text-xs"],
   display: none;
 }
 
+.voucher-print-pages {
+  display: none;
+}
+
+.voucher-print-root {
+  display: none;
+}
+
 .voucher-result-heading h3 {
   margin: 0;
   color: var(--ui-ink);
@@ -2583,6 +2598,14 @@ span[class*="rounded-full"][class*="text-xs"],
 .voucher-card > div:first-child strong {
   color: var(--ui-primary-dark);
   font-size: 11px;
+}
+
+.voucher-card > div:first-child span {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .voucher-card dl {
@@ -2664,6 +2687,7 @@ span[class*="rounded-full"][class*="text-xs"],
   }
 
   .voucher-modal-heading {
+    position: static;
     gap: 18px;
     padding: 16px;
   }
@@ -2720,18 +2744,12 @@ span[class*="rounded-full"][class*="text-xs"],
     size: A4 portrait;
   }
 
-  body.voucher-print-mode * {
-    visibility: hidden !important;
+  body.voucher-print-mode > :not(.voucher-print-root) {
+    display: none !important;
   }
 
-  body.voucher-print-mode .voucher-print-sheet,
-  body.voucher-print-mode .voucher-print-sheet * {
-    visibility: visible !important;
-  }
-
-  body.voucher-print-mode .voucher-print-sheet {
-    position: absolute;
-    inset: 0 auto auto 0;
+  body.voucher-print-mode .voucher-print-root {
+    display: block !important;
     width: 100%;
     color: #111;
     background: #fff;
@@ -2746,21 +2764,75 @@ span[class*="rounded-full"][class*="text-xs"],
     display: none !important;
   }
 
-  body.voucher-print-mode .voucher-print-brand {
+  body.voucher-print-mode .voucher-print-root .voucher-print-brand {
     display: block;
     margin-bottom: 2px;
     font-size: 11px;
     font-weight: 700;
   }
 
-  body.voucher-print-mode .voucher-card-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 5mm;
+  body.voucher-print-mode .voucher-result-heading,
+  body.voucher-print-mode .voucher-result-meta,
+  body.voucher-print-mode .voucher-print-sheet > .voucher-card-grid {
+    display: none !important;
   }
 
-  body.voucher-print-mode .voucher-card {
+  body.voucher-print-mode .voucher-print-pages {
+    display: block !important;
+  }
+
+  body.voucher-print-mode .voucher-print-page {
+    display: grid;
+    width: 190mm;
+    height: 277mm;
+    grid-template-rows: auto 1fr;
+    gap: 3mm;
+    overflow: hidden;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  body.voucher-print-mode .voucher-print-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  body.voucher-print-mode .voucher-print-page-heading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding-bottom: 2mm;
+    border-bottom: .3mm solid #333;
+  }
+
+  body.voucher-print-mode .voucher-print-page-heading h3,
+  body.voucher-print-mode .voucher-print-page-heading p {
+    margin: 0;
+  }
+
+  body.voucher-print-mode .voucher-print-page-heading h3 {
+    font-size: 14px;
+  }
+
+  body.voucher-print-mode .voucher-print-page-heading p,
+  body.voucher-print-mode .voucher-print-page-heading > span {
+    color: #444;
+    font-size: 9px;
+  }
+
+  body.voucher-print-mode .voucher-print-page-grid {
+    display: grid;
+    min-height: 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(5, minmax(0, 1fr));
+    gap: 3mm;
+  }
+
+  body.voucher-print-mode .voucher-print-page-grid .voucher-card {
+    min-height: 0;
     padding: 3mm !important;
     border: 1px dashed #555 !important;
+    overflow: hidden;
   }
 }
 

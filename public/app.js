@@ -1832,6 +1832,18 @@
           return `${dateLabel} · ${batch.quantity} voucher · ${batch.profile || "Tanpa profile"}`;
         },
 
+        getVoucherSellingPrice(batch = this.voucherResult) {
+          const storedPrice = Math.max(0, Number(batch?.sellingPrice) || 0);
+          if (storedPrice > 0) return storedPrice;
+          const profile = this.voucherProfiles.find((item) => item.name === batch?.profile);
+          return Math.max(0, Number(profile?.sellingPrice || profile?.costPrice) || 0);
+        },
+
+        getVoucherPriceLabel(batch = this.voucherResult) {
+          const price = this.getVoucherSellingPrice(batch);
+          return price > 0 ? this.formatRupiah(price) : "Harga belum diatur";
+        },
+
         async createVouchers() {
           this.clearFormError("voucher");
           const form = this.forms.voucher;
@@ -1908,11 +1920,33 @@
 
         printVouchers() {
           if (!this.voucherResult?.vouchers?.length) return;
+          document.querySelector(".voucher-print-root")?.remove();
+          const source = document.querySelector(".voucher-print-pages");
+          if (!source) return;
+          const printRoot = source.cloneNode(true);
+          printRoot.classList.remove("voucher-print-pages");
+          printRoot.classList.add("voucher-print-root");
+          printRoot.removeAttribute("aria-hidden");
+          document.body.appendChild(printRoot);
           document.body.classList.add("voucher-print-mode");
-          const cleanup = () => document.body.classList.remove("voucher-print-mode");
+          const cleanup = () => {
+            document.body.classList.remove("voucher-print-mode");
+            printRoot.remove();
+          };
           window.addEventListener("afterprint", cleanup, { once: true });
           window.print();
           window.setTimeout(cleanup, 1_000);
+        },
+
+        getVoucherPrintPages() {
+          const vouchers = Array.isArray(this.voucherResult?.vouchers)
+            ? this.voucherResult.vouchers
+            : [];
+          const pages = [];
+          for (let index = 0; index < vouchers.length; index += 15) {
+            pages.push(vouchers.slice(index, index + 15));
+          }
+          return pages;
         },
 
         async loadHotspotUsers(options = {}) {
