@@ -2058,6 +2058,27 @@
           return price > 0 ? this.formatRupiah(price) : "Harga belum diatur";
         },
 
+        getVoucherUsageStatus(voucher) {
+          const status = String(voucher?.usageStatus || "").toUpperCase();
+          if (status === "USED" || voucher?.used) return "USED";
+          if (status === "MISSING") return "MISSING";
+          return "UNUSED";
+        },
+
+        getVoucherUsageLabel(voucher) {
+          const status = this.getVoucherUsageStatus(voucher);
+          if (status === "USED") return "Sudah digunakan";
+          if (status === "MISSING") return "Tidak ditemukan di MikroTik";
+          return "Belum digunakan";
+        },
+
+        getVoucherUsageIcon(voucher) {
+          const status = this.getVoucherUsageStatus(voucher);
+          if (status === "USED") return "fa-circle-check";
+          if (status === "MISSING") return "fa-triangle-exclamation";
+          return "fa-ticket-simple";
+        },
+
         async createVouchers() {
           this.clearFormError("voucher");
           const form = this.forms.voucher;

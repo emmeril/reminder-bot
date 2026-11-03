@@ -754,13 +754,20 @@
                 </div>
                 <div class="voucher-card-grid">
                   <template x-for="(voucher, index) in voucherResult?.vouchers || []" :key="'generated-voucher-' + voucher.username">
-                    <article class="voucher-card">
+                    <article class="voucher-card" :class="{ 'voucher-card-used': getVoucherUsageStatus(voucher) === 'USED' }">
                       <div class="voucher-card-heading">
                         <span x-text="forms.settings.companyName || 'Emmeril Hotspot'"></span>
                         <div class="voucher-card-heading-actions">
                           <strong x-text="String(index + 1).padStart(3, '0')"></strong>
                           <button type="button" @click="removeVoucher(voucher)" class="voucher-delete-button" :aria-label="'Hapus voucher ' + voucher.username" :title="'Hapus voucher ' + voucher.username"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
                         </div>
+                      </div>
+                      <div class="voucher-usage-row">
+                        <span class="voucher-usage-badge" :class="'status-' + getVoucherUsageStatus(voucher).toLowerCase()">
+                          <i class="fa-solid" :class="getVoucherUsageIcon(voucher)" aria-hidden="true"></i>
+                          <span x-text="getVoucherUsageLabel(voucher)"></span>
+                        </span>
+                        <time x-show="voucher.usedAt" :datetime="voucher.usedAt" x-text="formatDateTime(voucher.usedAt)"></time>
                       </div>
                       <dl>
                         <div><dt>Username</dt><dd x-text="voucher.username"></dd></div>

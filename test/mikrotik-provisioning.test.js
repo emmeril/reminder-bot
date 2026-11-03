@@ -3,8 +3,9 @@ const test = require("node:test");
 
 const { MikrotikService } = require("../src/app");
 
-function createServiceWithUsers(initialUsers = []) {
+function createServiceWithUsers(initialUsers = [], initialScripts = []) {
   const users = initialUsers.map((user) => ({ ...user }));
+  const scripts = initialScripts.map((script) => ({ ...script }));
   const addedPayloads = [];
   let addCalls = 0;
   let updateCalls = 0;
@@ -40,6 +41,9 @@ function createServiceWithUsers(initialUsers = []) {
       }
       if (path === "/system/scheduler") {
         return { print: async () => [{ name: "100M", disabled: "false", comment: "Monitor Profile 100M" }] };
+      }
+      if (path === "/system/script") {
+        return { print: async () => scripts.map((script) => ({ ...script })) };
       }
       if (path === "/ip/hotspot") {
         return { print: async () => [{ name: "hotspot-utama" }] };
@@ -188,10 +192,66 @@ test("riwayat batch voucher dibaca kembali dari data MikroTik", async () => {
     username: "voucher-lama",
     password: "password-lama",
     disabled: false,
+    used: false,
+    usageStatus: "UNUSED",
+    usedAt: null,
   });
   assert.equal(restoredSecond.quantity, 2);
   assert.equal(restoredSecond.server, "hotspot-utama");
   assert.equal(restoredSecond.vouchers.every((voucher) => voucher.username === voucher.password), true);
+});
+
+test("riwayat batch menandai voucher yang sudah digunakan tanpa menghilangkannya", async () => {
+  const batchId = "lxyz-abc123";
+  const { service } = createServiceWithUsers([
+    {
+      ".id": "*1",
+      name: "voucher-belum",
+      password: "router-belum",
+      profile: "100M",
+      comment: `vc|${batchId}|Batch November`,
+    },
+    {
+      ".id": "*2",
+      name: "voucher-sudah",
+      password: "router-sudah",
+      profile: "100M",
+      comment: "nov/03/2026 08:00:00",
+    },
+  ], [{
+    ".id": "*A",
+    comment: "Mikhmon",
+    name: `nov/03/2026-|-08:00:00-|-voucher-sudah-|-40000-|-10.0.0.2-|-AA:BB:CC:DD:EE:FF-|-1d-|-100M-|-vc|${batchId}|Batch November-|-hotspot`,
+  }, {
+    ".id": "*B",
+    comment: "Mikhmon",
+    name: "nov/02/2026-|-08:00:00-|-voucher-belum-|-40000-|-10.0.0.3-|-AA:BB:CC:DD:EE:00-|-1d-|-100M-|-vc|batchlama-aabbcc|Batch lama-|-hotspot",
+  }]);
+
+  const [batch] = await service.getHotspotVoucherBatches({
+    knownBatches: [{
+      batchId,
+      profile: "100M",
+      dataLimit: 2,
+      dataUnit: "GB",
+      vouchers: [
+        { username: "voucher-belum", password: "simpan-belum" },
+        { username: "voucher-sudah", password: "simpan-sudah" },
+        { username: "voucher-hilang", password: "simpan-hilang" },
+      ],
+    }],
+  });
+
+  const vouchers = Object.fromEntries(batch.vouchers.map((voucher) => [voucher.username, voucher]));
+  assert.equal(batch.quantity, 3);
+  assert.equal(batch.dataLimit, 2);
+  assert.equal(batch.dataUnit, "GB");
+  assert.equal(vouchers["voucher-belum"].usageStatus, "UNUSED");
+  assert.equal(vouchers["voucher-sudah"].usageStatus, "USED");
+  assert.equal(vouchers["voucher-sudah"].used, true);
+  assert.match(vouchers["voucher-sudah"].usedAt, /^2026-11-03T/);
+  assert.equal(vouchers["voucher-sudah"].password, "simpan-sudah");
+  assert.equal(vouchers["voucher-hilang"].usageStatus, "MISSING");
 });
 
 test("pembuatan voucher menolak username yang sudah ada", async () => {

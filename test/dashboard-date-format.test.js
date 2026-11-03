@@ -988,6 +988,9 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(html, /@click="printRewardVouchers\(\)"/);
   assert.match(html, /@click="removeVoucher\(voucher\)"/);
   assert.match(html, /:aria-label="'Hapus voucher ' \+ voucher\.username"/);
+  assert.match(html, /voucher-card-used/);
+  assert.match(html, /voucher-usage-badge/);
+  assert.match(html, /getVoucherUsageLabel\(voucher\)/);
   assert.match(html, /id="delete-confirm-dialog"[\s\S]*?role="dialog"[\s\S]*?aria-modal="true"/);
   assert.match(html, /@keydown\.tab="trapModalFocus\(\$event, 'delete-confirm-dialog'\)"/);
   assert.match(script, /voucher-print-root/);
@@ -1012,6 +1015,7 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(styles, /@media print \{[\s\S]*?body\.voucher-print-mode/);
   assert.match(styles, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);[\s\S]*?grid-template-rows: repeat\(5, minmax\(0, 1fr\)\)/);
   assert.match(styles, /\.voucher-delete-button:focus-visible/);
+  assert.match(styles, /\.voucher-usage-badge\.status-used/);
 
   app.voucherResult = {
     profile: "VCR-1H",
@@ -1021,6 +1025,10 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.deepEqual(Array.from(app.getVoucherPrintPages(), (page) => page.length), [15, 15, 1]);
   assert.deepEqual(Array.from(app.getVoucherRewardPrintPages(), (page) => page.length), [20, 11]);
   assert.match(app.getVoucherPriceLabel(), /25\.000/);
+  assert.equal(app.getVoucherUsageStatus({ usageStatus: "USED" }), "USED");
+  assert.equal(app.getVoucherUsageLabel({ used: true }), "Sudah digunakan");
+  assert.equal(app.getVoucherUsageLabel({ usageStatus: "UNUSED" }), "Belum digunakan");
+  assert.equal(app.getVoucherUsageLabel({ usageStatus: "MISSING" }), "Tidak ditemukan di MikroTik");
 
   app.api = async (url) => {
     assert.equal(url, "/api/mikrotik/voucher-stats");

@@ -2850,6 +2850,15 @@ span[class*="rounded-full"][class*="text-xs"],
   break-inside: avoid;
 }
 
+.panel-shell .voucher-card.voucher-card-used {
+  border-color: #cbd5e1 !important;
+  background: #f8fafc !important;
+}
+
+.voucher-card-used dl {
+  opacity: .68;
+}
+
 .voucher-card > div:first-child {
   display: flex;
   align-items: center;
@@ -2878,6 +2887,52 @@ span[class*="rounded-full"][class*="text-xs"],
   flex: 0 0 auto;
   gap: 7px;
   align-items: center;
+}
+
+.voucher-usage-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.voucher-usage-row time {
+  color: var(--ui-muted);
+  font-size: 9px;
+  line-height: 1.3;
+  text-align: right;
+}
+
+.voucher-usage-badge {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.voucher-usage-badge.status-unused {
+  color: #166534;
+  border-color: #bbdfc6;
+  background: #f0fdf4;
+}
+
+.voucher-usage-badge.status-used {
+  color: #475569;
+  border-color: #cbd5e1;
+  background: #eef2f6;
+}
+
+.voucher-usage-badge.status-missing {
+  color: #9f2d20;
+  border-color: #edc4bc;
+  background: #fff5f2;
 }
 
 .voucher-delete-button {

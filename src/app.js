@@ -329,6 +329,16 @@ function parseRouterVoucherUsageDate(dateValue, timeValue, timeZone = DEFAULT_SE
   };
 }
 
+function parseVoucherBatchComment(value) {
+  const comment = sanitizeInput(String(value || ""));
+  const match = comment.match(/^(?:voucher-([a-z0-9]+-[a-f0-9]+)(?:\s+(.*))?|vc\|([a-z0-9]+-[a-f0-9]+)\|(.*))$/i);
+  if (!match) return null;
+  return {
+    batchId: match[1] || match[3],
+    comment: match[2] || match[4] || "",
+  };
+}
+
 function parseVoucherUsageRecord(script, profileFinancials, timeZone = DEFAULT_SETTINGS.timezone) {
   if (String(script?.comment || "").trim().toLowerCase() !== "mikhmon") return null;
   const parts = String(script.name || "").split("-|-");
@@ -916,9 +926,12 @@ class MikrotikService {
       ? Math.min(requestedLimit, 100)
       : 50;
     return this.withConnection(async (conn) => {
-      const [users, profiles] = await Promise.all([
+      const knownBatches = Array.isArray(options.knownBatches) ? options.knownBatches : [];
+      const timeZone = isValidTimeZone(options.timeZone) ? options.timeZone : DEFAULT_SETTINGS.timezone;
+      const [users, profiles, reportScripts] = await Promise.all([
         conn.menu("/ip/hotspot/user").print(),
         conn.menu("/ip/hotspot/user/profile").print(),
+        conn.menu("/system/script").print(),
       ]);
       const profilePrices = new Map((profiles || []).map((profile) => {
         const metadata = parseVoucherProfileMetadata(readRouterValue(profile, "on-login", "onLogin", ""));
@@ -927,17 +940,42 @@ class MikrotikService {
           Math.max(0, Number(metadata.sellingPrice || metadata.costPrice) || 0),
         ];
       }));
+      const usersByName = new Map((users || []).map((user) => [
+        String(user.name || user.user || "").toLowerCase(),
+        user,
+      ]).filter(([username]) => username));
+      const usageByUsername = new Map();
+      for (const script of reportScripts || []) {
+        if (String(script.comment || "").trim().toLowerCase() !== "mikhmon") continue;
+        const parts = String(script.name || "").split("-|-");
+        const username = sanitizeInput(String(parts[2] || ""));
+        if (!username) continue;
+        const usageDate = parseRouterVoucherUsageDate(parts[0], parts[1], timeZone);
+        const batch = parseVoucherBatchComment(parts[8]);
+        const key = username.toLowerCase();
+        const usage = {
+          batchId: batch?.batchId || "",
+          usedAt: usageDate?.date?.toISOString() || null,
+        };
+        const records = usageByUsername.get(key) || [];
+        records.push(usage);
+        usageByUsername.set(key, records);
+      }
+      const findBatchUsage = (username, batchId) => {
+        const records = usageByUsername.get(String(username || "").toLowerCase()) || [];
+        return records.findLast((record) => record.batchId === batchId) || null;
+      };
       const batches = new Map();
 
       for (const user of users || []) {
         const comment = sanitizeInput(String(user.comment || ""));
-        const match = comment.match(/^(?:voucher-([a-z0-9]+-[a-f0-9]+)(?:\s+(.*))?|vc\|([a-z0-9]+-[a-f0-9]+)\|(.*))$/i);
-        if (!match) continue;
+        const parsedComment = parseVoucherBatchComment(comment);
+        if (!parsedComment) continue;
         const username = sanitizeInput(String(user.name || user.user || ""));
         if (!username) continue;
 
-        const batchId = match[1] || match[3];
-        const batchComment = match[2] || match[4] || "";
+        const batchId = parsedComment.batchId;
+        const batchComment = parsedComment.comment;
         if (!batches.has(batchId)) {
           const profileName = sanitizeInput(String(user.profile || ""));
           const timestamp = Number.parseInt(batchId.split("-", 1)[0], 36);
@@ -959,10 +997,14 @@ class MikrotikService {
         }
 
         const batch = batches.get(batchId);
+        const usage = findBatchUsage(username, batchId);
         batch.vouchers.push({
           username,
           password: sanitizeInput(String(user.password || "")),
           disabled: String(user.disabled || "false").toLowerCase() === "true",
+          used: Boolean(usage),
+          usageStatus: usage ? "USED" : "UNUSED",
+          usedAt: usage?.usedAt || null,
         });
         if (!batch.profile && user.profile) batch.profile = sanitizeInput(String(user.profile));
         if ((!batch.server || batch.server === "all") && user.server) {
@@ -974,18 +1016,71 @@ class MikrotikService {
         );
       }
 
+      for (const knownBatch of knownBatches) {
+        if (!knownBatch?.batchId || !Array.isArray(knownBatch.vouchers)) continue;
+        const batchId = String(knownBatch.batchId);
+        if (!batches.has(batchId)) {
+          batches.set(batchId, { ...structuredClone(knownBatch), batchId, vouchers: [] });
+        }
+        const batch = batches.get(batchId);
+        if (!batch.createdAt && knownBatch.createdAt) batch.createdAt = knownBatch.createdAt;
+        if (!batch.profile && knownBatch.profile) batch.profile = knownBatch.profile;
+        if ((!batch.server || batch.server === "all") && knownBatch.server) batch.server = knownBatch.server;
+        if (!batch.limitUptime && knownBatch.limitUptime) batch.limitUptime = knownBatch.limitUptime;
+        if (!batch.comment && knownBatch.comment) batch.comment = knownBatch.comment;
+        if (!batch.sellingPrice && knownBatch.sellingPrice) batch.sellingPrice = knownBatch.sellingPrice;
+        if (!(batch.dataLimitBytes > 0) && Number(knownBatch.dataLimit) > 0) {
+          batch.dataLimit = knownBatch.dataLimit;
+          batch.dataUnit = knownBatch.dataUnit || "MB";
+        }
+        const vouchersByUsername = new Map((batch.vouchers || []).map((voucher) => [
+          String(voucher.username || "").toLowerCase(),
+          voucher,
+        ]).filter(([username]) => username));
+        for (const storedVoucher of knownBatch.vouchers) {
+          const username = sanitizeInput(String(storedVoucher.username || ""));
+          if (!username) continue;
+          const key = username.toLowerCase();
+          const routerUser = usersByName.get(key);
+          const usage = findBatchUsage(key, batchId);
+          const routerBatch = parseVoucherBatchComment(routerUser?.comment);
+          let usageStatus = "MISSING";
+          if (usage || (routerUser && routerBatch?.batchId !== batchId)) usageStatus = "USED";
+          else if (routerUser) usageStatus = "UNUSED";
+          else if (storedVoucher.used || storedVoucher.usageStatus === "USED") usageStatus = "USED";
+          const routerVoucher = vouchersByUsername.get(key) || {};
+          vouchersByUsername.set(key, {
+            ...storedVoucher,
+            ...routerVoucher,
+            username,
+            password: storedVoucher.password || routerVoucher.password || "",
+            disabled: routerUser
+              ? String(routerUser.disabled || "false").toLowerCase() === "true"
+              : Boolean(storedVoucher.disabled),
+            used: usageStatus === "USED",
+            usageStatus,
+            usedAt: usage?.usedAt || storedVoucher.usedAt || null,
+          });
+        }
+        batch.vouchers = Array.from(vouchersByUsername.values());
+      }
+
       return Array.from(batches.values())
         .map((batch) => {
           const useGigabytes = batch.dataLimitBytes > 0
             && batch.dataLimitBytes % 1_073_741_824 === 0;
-          const dataUnit = useGigabytes ? "GB" : "MB";
+          const dataUnit = batch.dataLimitBytes > 0
+            ? (useGigabytes ? "GB" : "MB")
+            : (batch.dataUnit || "MB");
           const divisor = useGigabytes ? 1_073_741_824 : 1_048_576;
           const vouchers = batch.vouchers.sort((a, b) => a.username.localeCompare(b.username, "id-ID"));
           return {
             ...batch,
             generationType: vouchers.length === 1 ? "SINGLE" : "BULK",
             quantity: vouchers.length,
-            dataLimit: batch.dataLimitBytes > 0 ? batch.dataLimitBytes / divisor : 0,
+            dataLimit: batch.dataLimitBytes > 0
+              ? batch.dataLimitBytes / divisor
+              : Math.max(0, Number(batch.dataLimit) || 0),
             dataUnit,
             vouchers,
             disabledCount: vouchers.filter((voucher) => voucher.disabled).length,
@@ -2417,10 +2512,30 @@ class DataManager {
       for (const batch of validBatches) {
         const batchId = String(batch.batchId);
         const existing = this.voucherBatches.get(batchId) || {};
+        const incoming = structuredClone(batch);
+        const vouchersByUsername = new Map(
+          (Array.isArray(existing.vouchers) ? existing.vouchers : [])
+            .map((voucher) => [String(voucher.username || "").toLowerCase(), structuredClone(voucher)])
+            .filter(([username]) => username)
+        );
+        for (const voucher of incoming.vouchers) {
+          const username = String(voucher.username || "").toLowerCase();
+          if (!username) continue;
+          const previous = vouchersByUsername.get(username) || {};
+          vouchersByUsername.set(username, {
+            ...previous,
+            ...voucher,
+            password: previous.password || voucher.password || "",
+          });
+        }
+        const vouchers = Array.from(vouchersByUsername.values());
         this.voucherBatches.set(batchId, {
           ...existing,
-          ...structuredClone(batch),
+          ...incoming,
           batchId,
+          vouchers,
+          quantity: vouchers.length,
+          generationType: vouchers.length === 1 ? "SINGLE" : "BULK",
           sellingPrice: Math.max(0, Number(existing.sellingPrice || batch.sellingPrice) || 0),
           storedAt: existing.storedAt || new Date().toISOString(),
         });
@@ -9065,7 +9180,14 @@ class WebServer {
     this.app.get("/api/mikrotik/voucher-batches", requireApiAuth, handleApi(async (req) => {
       const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
       try {
-        const routerBatches = await this.mikrotikService.getHotspotVoucherBatches({ limit: 100 });
+        const knownBatches = typeof this.dataManager.getVoucherBatches === "function"
+          ? this.dataManager.getVoucherBatches(100)
+          : [];
+        const routerBatches = await this.mikrotikService.getHotspotVoucherBatches({
+          limit: 100,
+          knownBatches,
+          timeZone: this.dataManager.getTimezone(),
+        });
         if (typeof this.dataManager.storeVoucherBatches === "function") {
           await this.dataManager.storeVoucherBatches(routerBatches);
           return this.dataManager.getVoucherBatches(limit);
