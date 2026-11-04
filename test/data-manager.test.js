@@ -7,6 +7,8 @@ const {
   CONFIG,
   DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   DEFAULT_SETTINGS,
+  LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE,
+  LEGACY_PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD,
   PAYMENT_STATUS,
   PAYMENT_TYPES,
   REMINDER_KINDS,
@@ -2310,16 +2312,77 @@ test("migration menerapkan bahasa ringkas pada template notifikasi dan reminder 
   const first = await manager.migrateFormalNotificationTemplates();
   const second = await manager.migrateFormalNotificationTemplates();
 
-  assert.deepEqual(first, { migrated: true, remindersUpdated: 2, version: 2 });
-  assert.deepEqual(second, { migrated: false, remindersUpdated: 0, version: 2 });
+  assert.deepEqual(first, { migrated: true, remindersUpdated: 2, version: 3 });
+  assert.deepEqual(second, { migrated: false, remindersUpdated: 0, version: 3 });
   assert.equal(manager.settings.apDownMessageTemplate, DEFAULT_SETTINGS.apDownMessageTemplate);
   assert.equal(manager.settings.billingReminderMessageTemplate, DEFAULT_SETTINGS.billingReminderMessageTemplate);
   assert.equal(manager.settings.paymentHotspotAccountMessageTemplate, DEFAULT_SETTINGS.paymentHotspotAccountMessageTemplate);
-  assert.equal(manager.settings.notificationTemplateCopyMigrationVersion, 2);
+  assert.equal(manager.settings.notificationTemplateCopyMigrationVersion, 3);
   assert.equal(manager.reminders.get("formal-billing").messageSource, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
   assert.equal(
     manager.reminders.get("formal-active-period").messageSource,
     DEFAULT_SETTINGS.activePeriodReminderMessageTemplate
+  );
+});
+
+test("migration memperjelas template masa aktif lama tanpa menimpa template khusus", async () => {
+  const contact = {
+    id: "contact-temporary-active-copy",
+    name: "Pelanggan Pascabayar",
+    phoneNumber: "6281234567899",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.POSTPAID,
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  };
+  const manager = createManager(contact);
+  manager.settings.notificationTemplateCopyMigrationVersion = 2;
+  manager.settings.paymentMessageTemplateActivePeriod =
+    LEGACY_PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD;
+  manager.settings.activePeriodReminderMessageTemplate =
+    LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE;
+  manager.settings.billingReminderMessageTemplate = "Template tagihan khusus";
+  manager.reminders.set("temporary-active-period", {
+    id: "temporary-active-period",
+    contactId: contact.id,
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    reminderDateTime: "2026-11-27T01:00:00.000Z",
+    activePeriodUntil: "2026-11-30T01:00:00.000Z",
+    templateName: "MasaAktifSementara",
+    message: LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE,
+    messageSource: LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE,
+  });
+  manager.reminders.set("custom-active-period", {
+    id: "custom-active-period",
+    contactId: contact.id,
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    reminderDateTime: "2026-12-27T01:00:00.000Z",
+    activePeriodUntil: "2026-12-30T01:00:00.000Z",
+    templateName: "MasaAktifSementara",
+    message: "Pesan khusus masa aktif",
+    messageSource: "Pesan khusus masa aktif",
+  });
+
+  const result = await manager.migrateFormalNotificationTemplates();
+
+  assert.deepEqual(result, { migrated: true, remindersUpdated: 1, version: 3 });
+  assert.equal(
+    manager.settings.paymentMessageTemplateActivePeriod,
+    DEFAULT_SETTINGS.paymentMessageTemplateActivePeriod
+  );
+  assert.equal(
+    manager.settings.activePeriodReminderMessageTemplate,
+    DEFAULT_SETTINGS.activePeriodReminderMessageTemplate
+  );
+  assert.equal(manager.settings.billingReminderMessageTemplate, "Template tagihan khusus");
+  assert.equal(
+    manager.reminders.get("temporary-active-period").messageSource,
+    DEFAULT_SETTINGS.activePeriodReminderMessageTemplate
+  );
+  assert.equal(
+    manager.reminders.get("custom-active-period").messageSource,
+    "Pesan khusus masa aktif"
   );
 });
 

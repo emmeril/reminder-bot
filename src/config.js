@@ -216,6 +216,11 @@ const BILLING_CYCLES = {
 
 const DEFAULT_REMINDER_MESSAGE_TEMPLATE = "*Pengingat Tagihan*\n\nYth. Bapak/Ibu {{name}},\nTagihan WiFi Anda belum lunas.\n\n{{billingDetails}}\n\nJatuh tempo: {{date}}\nMasa tenggang: {{graceDays}} hari\nLayanan aktif sampai: {{isolationDate}}{{renewalStatusInfo}}\n\nMohon lakukan pembayaran sebelum layanan dinonaktifkan. Abaikan pesan ini jika Anda sudah membayar.\n\nPembayaran:\nBCA 134-266-9497 a.n. Hafriyanto\nDANA 087728972090\n\nTerima kasih,\n{{supportSignature}}";
 
+const LEGACY_PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD = "*Pembelian Masa Aktif*\n\nYth. Bapak/Ibu {{name}},\nMasa aktif WiFi selama satu bulan sudah ditambahkan.\n\nID transaksi: {{transactionId}}\nTanggal: {{paymentDate}}\nNominal: {{paymentAmount}}\nAktif sampai: {{activeUntil}}\nSisa tunggakan: {{remainingDebtAmount}}\nStatus: {{statusText}}\n\nTunggakan tetap tercatat. Perpanjangan otomatis aktif kembali setelah semua tunggakan lunas.\n\n{{hotspotAccountDetails}}\n\nTerima kasih,\n{{supportSignature}}";
+const LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE = "*Masa Aktif Akan Berakhir*\n\nYth. Bapak/Ibu {{name}},\nMasa aktif WiFi Anda akan berakhir pada {{activeUntil}}.\n\nTunggakan: {{debtCount}} bulan\nPeriode: {{debtPeriods}}\nTotal: {{debtAmount}}\n\nLunasi tunggakan atau beli masa aktif agar WiFi tetap dapat digunakan.\n\nTerima kasih,\n{{supportSignature}}";
+const PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD = "*Masa Aktif Sementara Ditambahkan*\n\nYth. Bapak/Ibu {{name}},\nMasa aktif sementara WiFi selama satu bulan sudah ditambahkan.\n\nID transaksi: {{transactionId}}\nTanggal: {{paymentDate}}\nNominal: {{paymentAmount}}\nAktif sampai: {{activeUntil}}\nSisa tunggakan: {{remainingDebtAmount}}\nStatus: {{statusText}}\n\nTunggakan tetap tercatat. Perpanjangan bulanan aktif kembali setelah semua tunggakan lunas.\n\n{{hotspotAccountDetails}}\n\nTerima kasih,\n{{supportSignature}}";
+const ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE = "*Masa Aktif Sementara Akan Berakhir*\n\nYth. Bapak/Ibu {{name}},\nMasa aktif sementara WiFi Anda akan berakhir pada {{activeUntil}}.\n\nTunggakan: {{debtCount}} bulan\nPeriode: {{debtPeriods}}\nTotal: {{debtAmount}}\n\nLunasi tunggakan atau beli masa aktif sementara agar WiFi tetap dapat digunakan.\n\nTerima kasih,\n{{supportSignature}}";
+
 const DEFAULT_SETTINGS = {
   dashboardTitle: "Reminder Bot Control Center",
   companyName: "Emmeril Hotspot",
@@ -226,10 +231,10 @@ const DEFAULT_SETTINGS = {
   paymentMessageTemplateArrearsOnly: "*Pembayaran Tunggakan*\n\nYth. Bapak/Ibu {{name}},\nPembayaran Anda sudah kami terima.\n\nID transaksi: {{transactionId}}\nTanggal: {{paymentDate}}\nNominal: {{paymentAmount}}\nSisa tunggakan: {{remainingDebtAmount}}\nStatus: {{statusText}}\n\n{{hotspotAccountDetails}}\n\nTerima kasih,\n{{supportSignature}}",
   paymentMessageTemplateCurrentOnly: "*Pembayaran Tagihan*\n\nYth. Bapak/Ibu {{name}},\nPembayaran tagihan {{billingPeriod}} sudah kami terima.\n\nID transaksi: {{transactionId}}\nTanggal: {{paymentDate}}\nStatus: {{statusText}}\n\n{{hotspotAccountDetails}}\n\nTerima kasih,\n{{supportSignature}}",
   paymentMessageTemplateFullPaid: "*Pembayaran Lunas*\n\nYth. Bapak/Ibu {{name}},\nSemua tagihan Anda sudah lunas.\n\nID transaksi: {{transactionId}}\nTanggal: {{paymentDate}}\nStatus: {{statusText}}\n\n{{hotspotAccountDetails}}\n\nTerima kasih,\n{{supportSignature}}",
-  paymentMessageTemplateActivePeriod: "*Pembelian Masa Aktif*\n\nYth. Bapak/Ibu {{name}},\nMasa aktif WiFi selama satu bulan sudah ditambahkan.\n\nID transaksi: {{transactionId}}\nTanggal: {{paymentDate}}\nNominal: {{paymentAmount}}\nAktif sampai: {{activeUntil}}\nSisa tunggakan: {{remainingDebtAmount}}\nStatus: {{statusText}}\n\nTunggakan tetap tercatat. Perpanjangan otomatis aktif kembali setelah semua tunggakan lunas.\n\n{{hotspotAccountDetails}}\n\nTerima kasih,\n{{supportSignature}}",
+  paymentMessageTemplateActivePeriod: PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD,
   prepaidPackagePaymentMessageTemplate: "*Pembelian Paket WiFi*\n\nYth. Bapak/Ibu {{name}},\nPembelian paket WiFi selama satu bulan sudah berhasil.\n\nID transaksi: {{transactionId}}\nTanggal: {{paymentDate}}\nNominal: {{paymentAmount}}\nAktif sampai: {{activeUntil}}\nStatus: {{statusText}}\n\n{{hotspotAccountDetails}}\n\nTerima kasih,\n{{supportSignature}}",
   paymentHotspotAccountMessageTemplate: "*Akun WiFi*\nUsername: {{hotspotUsername}}\nPassword: {{hotspotPassword}}\nAktif sampai: {{activeUntil}}\n\nSimpan username dan password ini. Jangan bagikan kepada orang lain.",
-  activePeriodReminderMessageTemplate: "*Masa Aktif Akan Berakhir*\n\nYth. Bapak/Ibu {{name}},\nMasa aktif WiFi Anda akan berakhir pada {{activeUntil}}.\n\nTunggakan: {{debtCount}} bulan\nPeriode: {{debtPeriods}}\nTotal: {{debtAmount}}\n\nLunasi tunggakan atau beli masa aktif agar WiFi tetap dapat digunakan.\n\nTerima kasih,\n{{supportSignature}}",
+  activePeriodReminderMessageTemplate: ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE,
   prepaidPackageReminderMessageTemplate: "*Paket WiFi Akan Berakhir*\n\nYth. Bapak/Ibu {{name}},\nMasa aktif paket WiFi Anda akan berakhir pada {{activeUntil}}.\n\nSilakan beli paket satu bulan berikutnya agar layanan tetap aktif.\n\nTerima kasih,\n{{supportSignature}}",
   gracePeriodReminderMessageTemplate: "*Pengingat Masa Tenggang*\n\nYth. Bapak/Ibu {{name}},\nTagihan WiFi Anda sudah jatuh tempo dan belum lunas.\n\n{{billingDetails}}\n\nJatuh tempo: {{date}}\nMasa tenggang: {{graceDays}} hari\nLayanan aktif sampai: {{isolationDate}}{{renewalStatusInfo}}\n\nMohon lakukan pembayaran sebelum masa tenggang berakhir agar layanan tetap aktif. Abaikan pesan ini jika Anda sudah membayar.\n\nTerima kasih,\n{{supportSignature}}",
   billingReminderMessageTemplate: "*Pengingat Tagihan*\n\nYth. Bapak/Ibu {{name}},\nTagihan WiFi Anda belum lunas.\n\n{{billingDetails}}\n\nJatuh tempo: {{dueDate}}\n\nMohon lakukan pembayaran sesuai total tagihan. Abaikan pesan ini jika Anda sudah membayar.\n\nTerima kasih,\n{{supportSignature}}",
@@ -259,6 +264,8 @@ module.exports = {
   CONFIG,
   DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   DEFAULT_SETTINGS,
+  LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE,
+  LEGACY_PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD,
   MONTH_NAMES,
   PAYMENT_STATUS,
   PAYMENT_TYPES,

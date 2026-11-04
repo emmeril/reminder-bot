@@ -1130,6 +1130,12 @@
             : "Bulanan prabayar";
         },
 
+        getBillingCycleBadgeClass(contact) {
+          return String(contact?.billingCycle || "PREPAID").toUpperCase() === "POSTPAID"
+            ? "border-amber-200 bg-amber-50 text-amber-800"
+            : "border-moss/15 bg-moss/10 text-moss";
+        },
+
         isPrepaidPackage(contact) {
           return String(contact?.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "RECURRING"
             && String(contact?.billingCycle || "").toUpperCase() === "PREPAID";

@@ -408,7 +408,7 @@ test("reminder masa aktif menampilkan batas aktif dan tunggakan yang masih tersi
 
   const message = new ReminderScheduler({}, dataManager, { push() {} }).buildReminderMessage(reminder);
 
-  assert.match(message, /Masa aktif WiFi Anda akan berakhir pada 28 November 2026 pukul 08\.00/);
+  assert.match(message, /Masa aktif sementara WiFi Anda akan berakhir pada 28 November 2026 pukul 08\.00/);
   assert.match(message, /Tunggakan: 2 bulan/);
   assert.match(message, /Total: Rp\s?200\.000/);
   assert.match(message, /September 2026, Oktober 2026/);

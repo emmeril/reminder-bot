@@ -311,7 +311,9 @@
                         <td class="px-4 py-4 font-medium" data-label="Nama" x-text="contact.name"></td>
                         <td class="px-4 py-4 text-ink/65 whitespace-nowrap tabular-nums" data-label="No. WA" x-text="contact.phoneNumber"></td>
                         <td class="px-4 py-4" data-label="Siklus Pembayaran">
-                          <span class="inline-flex whitespace-nowrap rounded-full bg-moss/10 px-3 py-1 text-xs font-semibold text-moss" x-text="getBillingCycleLabel(contact)"></span>
+                          <span class="inline-flex max-w-full items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold" :class="getBillingCycleBadgeClass(contact)">
+                            <span x-text="getBillingCycleLabel(contact)"></span>
+                          </span>
                         </td>
                         <td class="px-4 py-4 text-ink/65" data-label="AP Terkait" x-text="contact.linkedApHost || '-'"></td>
                         <td class="px-4 py-4" data-label="Status AP">
@@ -1309,7 +1311,9 @@
                         </div>
                       </td>
                       <td class="px-5 py-4" data-label="Siklus">
-                        <span class="inline-flex w-fit whitespace-nowrap rounded-full bg-moss/10 px-2.5 py-1 text-[10px] font-bold text-moss" x-text="getBillingCycleLabel(reminder)"></span>
+                        <span class="inline-flex max-w-full items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold" :class="getBillingCycleBadgeClass(reminder)">
+                          <span x-text="getBillingCycleLabel(reminder)"></span>
+                        </span>
                       </td>
                       <td class="px-5 py-4 text-ink/65" data-label="Waktu pengiriman">
                         <span class="inline-flex items-center gap-2 whitespace-nowrap font-semibold text-ink/70">
@@ -1568,8 +1572,8 @@
                 <label class="notification-template-card tone-violet">
                   <span class="notification-template-header">
                     <span class="notification-template-icon"><i class="fa-solid fa-wifi"></i></span>
-                    <span class="notification-template-copy"><strong>Pembelian masa aktif</strong><small>Konfirmasi pembelian masa aktif hotspot selama satu bulan.</small></span>
-                    <span class="notification-template-badge">Masa aktif</span>
+                    <span class="notification-template-copy"><strong>Masa aktif sementara</strong><small>Konfirmasi masa aktif satu bulan untuk pelanggan pascabayar yang masih menunggak.</small></span>
+                    <span class="notification-template-badge">Pascabayar menunggak</span>
                   </span>
                   <textarea x-model="forms.settings.paymentMessageTemplateActivePeriod" placeholder="Tulis konfirmasi pembelian masa aktif..."></textarea>
                   <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{paymentAmount}}</code><code>{{activeUntil}}</code><code>{{remainingDebtAmount}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
@@ -1586,8 +1590,8 @@
                 <label class="notification-template-card tone-amber">
                   <span class="notification-template-header">
                     <span class="notification-template-icon"><i class="fa-solid fa-hourglass-end"></i></span>
-                    <span class="notification-template-copy"><strong>Masa aktif akan berakhir</strong><small>Dikirim sebelum masa aktif sementara berakhir, mengikuti pengaturan masa tenggang.</small></span>
-                    <span class="notification-template-badge">Pengingat masa aktif</span>
+                    <span class="notification-template-copy"><strong>Pengingat masa aktif sementara</strong><small>Dikirim sebelum masa aktif sementara pelanggan menunggak berakhir.</small></span>
+                    <span class="notification-template-badge">Pascabayar menunggak</span>
                   </span>
                   <textarea x-model="forms.settings.activePeriodReminderMessageTemplate" placeholder="Tulis pengingat berakhirnya masa aktif..."></textarea>
                   <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{activeUntil}}</code><code>{{debtCount}}</code><code>{{debtAmount}}</code><code>{{debtPeriods}}</code><code>{{totalAmount}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>

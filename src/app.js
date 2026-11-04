@@ -17,6 +17,8 @@ const {
   CONFIG,
   DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   DEFAULT_SETTINGS,
+  LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE,
+  LEGACY_PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD,
   MONTH_NAMES,
   PAYMENT_STATUS,
   PAYMENT_TYPES,
@@ -4763,8 +4765,9 @@ class DataManager {
   async migrateFormalNotificationTemplates() {
     return this.withDataMutation(async () => {
       const settings = this.getSettings();
-      if (Number(settings.notificationTemplateCopyMigrationVersion) >= 2) {
-        return { migrated: false, remindersUpdated: 0, version: 2 };
+      const currentVersion = Number(settings.notificationTemplateCopyMigrationVersion) || 0;
+      if (currentVersion >= 3) {
+        return { migrated: false, remindersUpdated: 0, version: 3 };
       }
 
       const templateKeys = [
@@ -4781,22 +4784,41 @@ class DataManager {
         "prepaidPackageReminderMessageTemplate",
       ];
       this.settings = { ...settings };
-      for (const key of templateKeys) {
-        this.settings[key] = DEFAULT_SETTINGS[key];
+      if (currentVersion < 2) {
+        for (const key of templateKeys) {
+          this.settings[key] = DEFAULT_SETTINGS[key];
+        }
+      } else {
+        if (settings.paymentMessageTemplateActivePeriod
+          === LEGACY_PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD) {
+          this.settings.paymentMessageTemplateActivePeriod =
+            DEFAULT_SETTINGS.paymentMessageTemplateActivePeriod;
+        }
+        if (settings.activePeriodReminderMessageTemplate
+          === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE) {
+          this.settings.activePeriodReminderMessageTemplate =
+            DEFAULT_SETTINGS.activePeriodReminderMessageTemplate;
+        }
       }
-      this.settings.notificationTemplateCopyMigrationVersion = 2;
+      this.settings.notificationTemplateCopyMigrationVersion = 3;
 
       let remindersUpdated = 0;
       for (const reminder of this.reminders.values()) {
         const templateName = String(reminder.templateName || "").toLowerCase();
         let messageTemplate = null;
-        if (templateName === "penagihan.txt") {
+        if (currentVersion < 2 && templateName === "penagihan.txt") {
           messageTemplate = DEFAULT_REMINDER_MESSAGE_TEMPLATE;
         } else if (reminder.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY) {
           const contact = this.getResolvedReminderContact(reminder);
-          messageTemplate = isPrepaidPackage(contact)
-            ? DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate
-            : DEFAULT_SETTINGS.activePeriodReminderMessageTemplate;
+          const prepaidPackage = isPrepaidPackage(contact);
+          const usesLegacyTemporaryCopy = reminder.messageSource
+            === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE
+            || reminder.message === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE;
+          if (currentVersion < 2 || (!prepaidPackage && usesLegacyTemporaryCopy)) {
+            messageTemplate = prepaidPackage
+              ? DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate
+              : DEFAULT_SETTINGS.activePeriodReminderMessageTemplate;
+          }
         }
         if (!messageTemplate) continue;
 
@@ -4812,11 +4834,11 @@ class DataManager {
         await this.saveSettings(options);
         if (remindersUpdated > 0) await this.saveReminders(options);
       }));
-      this.activityLog.push("info", "storage", "Template notifikasi diperbarui dengan bahasa yang ringkas", {
-        migration: "concise-notification-copy-v2",
+      this.activityLog.push("info", "storage", "Template notifikasi diselaraskan dengan siklus pembayaran", {
+        migration: "billing-cycle-notification-copy-v3",
         remindersUpdated,
       });
-      return { migrated: true, remindersUpdated, version: 2 };
+      return { migrated: true, remindersUpdated, version: 3 };
     });
   }
 

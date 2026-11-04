@@ -234,11 +234,13 @@ test("pelanggan prabayar membeli paket tanpa tunggakan kalender", () => {
   assert.match(html, /x-model="forms\.settings\.prepaidPackageReminderMessageTemplate"/);
 });
 
-test("pengaturan menyediakan template reminder berakhirnya masa aktif", () => {
+test("pengaturan membedakan template masa aktif sementara dan paket prabayar", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const app = createDashboardApp();
 
-  assert.match(html, /Masa aktif akan berakhir/);
+  assert.match(html, /Masa aktif sementara/);
+  assert.match(html, /pelanggan pascabayar yang masih menunggak/);
+  assert.match(html, /Paket prabayar akan berakhir/);
   assert.match(html, /x-model="forms\.settings\.activePeriodReminderMessageTemplate"/);
   assert.match(html, /<code>{{activeUntil}}<\/code>/);
   assert.equal(app.forms.settings.activePeriodReminderMessageTemplate, "");
@@ -316,6 +318,12 @@ test("mode pascabayar memakai periode tagihan dari server dan tersedia di form p
   };
 
   assert.equal(app.getBillingCycleLabel(contact), "Bulanan pascabayar");
+  assert.equal(app.getBillingCycleBadgeClass(contact), "border-amber-200 bg-amber-50 text-amber-800");
+  assert.equal(app.getBillingCycleLabel({ billingCycle: "PREPAID" }), "Bulanan prabayar");
+  assert.equal(
+    app.getBillingCycleBadgeClass({ billingCycle: "PREPAID" }),
+    "border-moss/15 bg-moss/10 text-moss"
+  );
   assert.equal(app.getCurrentBillingActionLabel(contact), "Bayar Oktober 2026 · Rp\u00a0100.000");
   assert.equal(app.blankContactForm().billingCycle, "PREPAID");
   assert.equal(Object.hasOwn(app.blankContactForm(), "subscriptionType"), false);
@@ -334,6 +342,8 @@ test("mode pascabayar memakai periode tagihan dari server dan tersedia di form p
   assert.match(html, /x-model="forms\.contact\.billingCycle"/);
   assert.match(html, /x-model="forms\.contactEdit\.billingCycle"/);
   assert.match(html, /Pascabayar, bayar bulan sebelumnya/);
+  assert.equal((html.match(/:class="getBillingCycleBadgeClass\(/g) || []).length, 2);
+  assert.doesNotMatch(html, /getBillingCycleIcon/);
 });
 
 test("aksi tagihan menyebut periode dan nominal agar pilihan pembayaran tidak tertukar", () => {
