@@ -601,8 +601,10 @@ test("ekspor laporan pendapatan membuat CSV aman dari formula spreadsheet", asyn
 test("laporan pendapatan voucher dimuat dan difilter terpisah dari pelanggan", async () => {
   const app = createDashboardApp();
   app.revenuePeriod = "2026-11";
-  app.api = async (url) => {
+  app.api = async (url, options) => {
     assert.equal(url, "/api/mikrotik/voucher-revenue?period=2026-11");
+    assert.equal(options.timeoutMs, 45_000);
+    assert.match(options.timeoutMessage, /MikroTik belum merespons laporan voucher/);
     return {
       period: "2026-11",
       summary: { revenue: 50000, costPrice: 30000, commission: 20000, quantity: 2, profiles: 2 },
@@ -628,6 +630,46 @@ test("laporan pendapatan voucher dimuat dan difilter terpisah dari pelanggan", a
   app.filters.voucherRevenue.profile = "ALL";
   app.filters.voucherRevenue.search = "voucher-satu";
   assert.equal(app.filteredVoucherRevenueEntries[0].username, "voucher-satu");
+});
+
+test("laporan voucher keluar dari status memuat ketika MikroTik melewati batas waktu", async () => {
+  const app = createDashboardApp({ AbortController, setTimeout, clearTimeout });
+  app.revenuePeriod = "2026-11";
+  app.api = async (_url, options) => {
+    throw new Error(options.timeoutMessage);
+  };
+
+  await app.loadVoucherRevenue({ silent: true });
+
+  assert.equal(app.loading.voucherRevenue, false);
+  assert.match(app.voucherRevenueError, /Periksa koneksi lalu tekan Muat ulang/);
+});
+
+test("pagination laporan voucher berpindah halaman sesuai jumlah data", () => {
+  const app = createDashboardApp();
+  app.voucherRevenue.entries = Array.from({ length: 25 }, (_value, index) => ({
+    id: `voucher-${index + 1}`,
+    username: `voucher-${index + 1}`,
+    profile: "VCR-1D",
+  }));
+
+  app.setPage("voucherRevenue", 2);
+
+  assert.equal(app.filters.voucherRevenue.page, 2);
+  assert.deepEqual(Array.from(app.paginatedVoucherRevenueEntries, (entry) => entry.id), [
+    "voucher-11",
+    "voucher-12",
+    "voucher-13",
+    "voucher-14",
+    "voucher-15",
+    "voucher-16",
+    "voucher-17",
+    "voucher-18",
+    "voucher-19",
+    "voucher-20",
+  ]);
+  app.setPage("voucherRevenue", 3);
+  assert.equal(app.paginationLabel("voucherRevenue", 25), "Menampilkan 21-25 dari 25 data");
 });
 
 test("ekspor laporan voucher membuat berkas CSV tersendiri", async () => {
@@ -689,6 +731,8 @@ test("sidebar dan panel laporan pendapatan tersedia dengan filter serta ekspor",
   assert.match(html, /exportVoucherRevenueReport\(\)/);
   assert.match(html, /Belum ada pendapatan pelanggan pada periode ini/);
   assert.match(html, /Belum ada pemakaian voucher yang tercatat pada periode ini/);
+  assert.match(html, /x-show\.important="loading\.voucherRevenue && !voucherRevenue\.entries\.length"/);
+  assert.match(html, /x-show\.important="!loading\.voucherRevenue && !voucherRevenueError && !filteredVoucherRevenueEntries\.length"/);
   assert.doesNotMatch(html, /voucher-revenue-volume/);
   const voucherRevenueTable = html.match(/<table class="[^"]*voucher-revenue-table[^"]*">[\s\S]*?<\/table>/)?.[0] || "";
   assert.doesNotMatch(voucherRevenueTable, />Perangkat</);
@@ -1134,6 +1178,31 @@ test("respons HTML dari proxy tidak ditampilkan mentah sebagai pesan error", asy
 
   await assert.rejects(() => app.api("/api/test"), /Permintaan terlalu lama diproses/);
   assert.doesNotMatch(notification, /doctype|<html/i);
+});
+
+test("API browser membatalkan permintaan yang melewati batas waktu", async () => {
+  let aborted = false;
+  const app = createDashboardApp({
+    AbortController,
+    setTimeout,
+    clearTimeout,
+    fetch: async (_path, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener("abort", () => {
+        aborted = true;
+        const error = new Error("Request aborted");
+        error.name = "AbortError";
+        reject(error);
+      }, { once: true });
+    }),
+  });
+  app.notify = () => {};
+
+  await assert.rejects(() => app.api("/api/test", {
+    silent: true,
+    timeoutMs: 5,
+    timeoutMessage: "Permintaan uji melewati batas waktu.",
+  }), /Permintaan uji melewati batas waktu/);
+  assert.equal(aborted, true);
 });
 
 test("broadcast massal memakai pekerjaan latar belakang dan menghitung status accepted", async () => {

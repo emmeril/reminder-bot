@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261028-1">
   <link rel="stylesheet" href="/public/interface.css?v=20261103-1">
-  <script defer src="/public/app.js?v=20261102-1"></script>
+  <script defer src="/public/app.js?v=20261104-2"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -1104,8 +1104,8 @@
                 <table class="customer-workspace-table revenue-table voucher-revenue-table min-w-full text-sm">
                   <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50"><tr><th class="px-4 py-3">Voucher</th><th class="px-4 py-3">Profile</th><th class="px-4 py-3">Harga jual</th><th class="px-4 py-3">HPP</th><th class="px-4 py-3">Keuntungan</th><th class="px-4 py-3">Masa berlaku</th><th class="px-4 py-3">Tanggal digunakan</th></tr></thead>
                   <tbody class="divide-y divide-ink/6 bg-white/70">
-                    <tr x-show="loading.voucherRevenue && !voucherRevenue.entries.length"><td colspan="7" class="px-4 py-8 text-center text-ink/45"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memuat pendapatan voucher...</td></tr>
-                    <tr x-show="!loading.voucherRevenue && !filteredVoucherRevenueEntries.length"><td colspan="7" class="px-4 py-8 text-center text-ink/45">Belum ada pemakaian voucher yang tercatat pada periode ini.</td></tr>
+                    <tr x-show.important="loading.voucherRevenue && !voucherRevenue.entries.length"><td colspan="7" class="px-4 py-8 text-center text-ink/45"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memuat pendapatan voucher...</td></tr>
+                    <tr x-show.important="!loading.voucherRevenue && !voucherRevenueError && !filteredVoucherRevenueEntries.length"><td colspan="7" class="px-4 py-8 text-center text-ink/45">Belum ada pemakaian voucher yang tercatat pada periode ini.</td></tr>
                     <template x-for="entry in paginatedVoucherRevenueEntries" :key="entry.id">
                       <tr>
                         <td class="px-4 py-4" data-label="Voucher"><strong class="customer-name voucher-username" x-text="entry.username"></strong></td>

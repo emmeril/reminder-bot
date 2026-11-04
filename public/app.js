@@ -480,16 +480,44 @@
         },
 
         async api(path, options = {}) {
-          const { silent = false, ...fetchOptions } = options;
-          const response = await fetch(path, {
-            ...fetchOptions,
-            cache: "no-store",
-            credentials: "same-origin",
-            headers: {
-              "Content-Type": "application/json",
-              ...(fetchOptions.headers || {}),
-            },
-          });
+          const {
+            silent = false,
+            timeoutMs = 0,
+            timeoutMessage = "Permintaan terlalu lama diproses. Silakan coba lagi.",
+            ...fetchOptions
+          } = options;
+          const requestTimeoutMs = Math.max(0, Number(timeoutMs) || 0);
+          const timeoutController = requestTimeoutMs > 0 ? new AbortController() : null;
+          let timeoutId = null;
+          let timedOut = false;
+          if (timeoutController) {
+            timeoutId = setTimeout(() => {
+              timedOut = true;
+              timeoutController.abort();
+            }, requestTimeoutMs);
+          }
+
+          let response;
+          try {
+            response = await fetch(path, {
+              ...fetchOptions,
+              signal: timeoutController?.signal || fetchOptions.signal,
+              cache: "no-store",
+              credentials: "same-origin",
+              headers: {
+                "Content-Type": "application/json",
+                ...(fetchOptions.headers || {}),
+              },
+            });
+          } catch (error) {
+            if (!timedOut) throw error;
+            if (!silent) this.notify(timeoutMessage);
+            const timeoutError = new Error(timeoutMessage);
+            timeoutError.name = "TimeoutError";
+            throw timeoutError;
+          } finally {
+            if (timeoutId) clearTimeout(timeoutId);
+          }
 
           if (response.status === 401) {
             window.location.href = "/login";
@@ -1173,6 +1201,8 @@
           try {
             const report = await this.api(`/api/mikrotik/voucher-revenue?period=${encodeURIComponent(period)}`, {
               silent: Boolean(options.silent),
+              timeoutMs: 45_000,
+              timeoutMessage: "MikroTik belum merespons laporan voucher. Periksa koneksi lalu tekan Muat ulang.",
             });
             if (requestId !== this.voucherRevenueRequestId) return;
             const revenue = Number(report?.summary?.revenue || 0);
@@ -1664,6 +1694,7 @@
             contactBilling: this.filteredBillingContacts.length,
             contactHotspot: this.filteredHotspotContacts.length,
             revenue: this.filteredRevenueEntries.length,
+            voucherRevenue: this.filteredVoucherRevenueEntries.length,
             monitorAp: this.filteredApMonitors.length,
             reminders: this.filteredReminders.length,
             sent: this.filteredSent.length,
