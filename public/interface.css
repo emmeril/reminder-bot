@@ -2829,6 +2829,99 @@ span[class*="rounded-full"][class*="text-xs"],
   color: var(--ui-ink-soft);
 }
 
+.voucher-list-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, .55fr) auto;
+  gap: 9px;
+  align-items: end;
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: 9px;
+  background: var(--ui-surface-soft);
+}
+
+.voucher-list-field {
+  display: grid;
+  min-width: 0;
+  gap: 9px;
+}
+
+.voucher-list-field > span {
+  color: var(--ui-ink-soft);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.voucher-list-field input,
+.voucher-list-field select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 9px 11px;
+  color: var(--ui-ink);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.voucher-filter-reset {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 18px !important;
+  white-space: nowrap;
+}
+
+.voucher-list-summary {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--ui-muted);
+  font-size: 11px;
+}
+
+.voucher-list-summary strong {
+  color: var(--ui-ink-soft);
+}
+
+.voucher-filter-empty {
+  display: grid;
+  min-height: 210px;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--ui-muted);
+  text-align: center;
+  border: 1px dashed var(--ui-border-strong);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.voucher-filter-empty > i {
+  color: var(--ui-primary);
+  font-size: 22px;
+}
+
+.voucher-filter-empty strong {
+  color: var(--ui-ink);
+  font-size: 14px;
+}
+
+.voucher-filter-empty p {
+  max-width: 360px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.voucher-filter-empty button {
+  min-height: 44px;
+  margin-top: 4px;
+}
+
 .voucher-card-grid {
   display: grid;
   max-height: min(520px, 60vh);
@@ -3121,6 +3214,18 @@ span[class*="rounded-full"][class*="text-xs"],
 
   .voucher-result-actions .voucher-reward-print-button {
     grid-column: 1 / -1;
+  }
+
+  .voucher-list-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .voucher-list-summary {
+    grid-column: auto;
+  }
+
+  .voucher-filter-reset {
+    width: 100%;
   }
 
   .voucher-card-grid {

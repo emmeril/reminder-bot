@@ -1035,6 +1035,12 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(html, /voucher-card-used/);
   assert.match(html, /voucher-usage-badge/);
   assert.match(html, /getVoucherUsageLabel\(voucher\)/);
+  assert.match(html, /x-model\.trim="voucherBatchFilters\.search"/);
+  assert.match(html, /x-model="voucherBatchFilters\.usage"/);
+  assert.match(html, /x-for="\(voucher, index\) in filteredVoucherBatchVouchers"/);
+  assert.match(html, /voucher-filter-reset[\s\S]*?fa-filter-circle-xmark mr-2[\s\S]*?Reset filter/);
+  assert.match(html, />Belum digunakan<\/option>/);
+  assert.match(html, />Sudah digunakan<\/option>/);
   assert.match(html, /id="delete-confirm-dialog"[\s\S]*?role="dialog"[\s\S]*?aria-modal="true"/);
   assert.match(html, /@keydown\.tab="trapModalFocus\(\$event, 'delete-confirm-dialog'\)"/);
   assert.match(script, /voucher-print-root/);
@@ -1060,6 +1066,10 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(styles, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);[\s\S]*?grid-template-rows: repeat\(5, minmax\(0, 1fr\)\)/);
   assert.match(styles, /\.voucher-delete-button:focus-visible/);
   assert.match(styles, /\.voucher-usage-badge\.status-used/);
+  assert.match(styles, /\.voucher-list-tools \{[\s\S]*?grid-template-columns:/);
+  assert.match(styles, /\.voucher-list-field \{[\s\S]*?gap: 9px/);
+  assert.match(styles, /\.voucher-filter-reset \{[\s\S]*?min-height: 44px[\s\S]*?padding: 10px 18px !important/);
+  assert.match(styles, /@media \(max-width: 620px\) \{[\s\S]*?\.voucher-list-tools \{[\s\S]*?grid-template-columns: 1fr/);
 
   app.voucherResult = {
     profile: "VCR-1H",
@@ -1073,6 +1083,26 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.equal(app.getVoucherUsageLabel({ used: true }), "Sudah digunakan");
   assert.equal(app.getVoucherUsageLabel({ usageStatus: "UNUSED" }), "Belum digunakan");
   assert.equal(app.getVoucherUsageLabel({ usageStatus: "MISSING" }), "Tidak ditemukan di MikroTik");
+
+  app.voucherResult = {
+    profile: "VCR-1H",
+    vouchers: [
+      { username: "voucher-belum", password: "kode-belum", usageStatus: "UNUSED" },
+      { username: "voucher-sudah", password: "kode-sudah", usageStatus: "USED" },
+      { username: "voucher-hilang", password: "kode-hilang", usageStatus: "MISSING" },
+    ],
+  };
+  assert.equal(app.filteredVoucherBatchVouchers.length, 3);
+  app.voucherBatchFilters.search = "SUDAH";
+  assert.deepEqual(Array.from(app.filteredVoucherBatchVouchers, (voucher) => voucher.username), ["voucher-sudah"]);
+  app.voucherBatchFilters.search = "";
+  app.voucherBatchFilters.usage = "UNUSED";
+  assert.deepEqual(Array.from(app.filteredVoucherBatchVouchers, (voucher) => voucher.username), ["voucher-belum"]);
+  app.voucherBatchFilters.usage = "USED";
+  assert.deepEqual(Array.from(app.filteredVoucherBatchVouchers, (voucher) => voucher.username), ["voucher-sudah"]);
+  app.resetVoucherBatchFilters();
+  assert.equal(app.hasVoucherBatchFilters, false);
+  assert.equal(app.filteredVoucherBatchVouchers.length, 3);
 
   app.api = async (url) => {
     assert.equal(url, "/api/mikrotik/voucher-stats");

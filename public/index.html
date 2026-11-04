@@ -7,8 +7,8 @@
   <link rel="stylesheet" href="/public/tailwind.css?v=20261028-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261028-1">
-  <link rel="stylesheet" href="/public/interface.css?v=20261103-1">
-  <script defer src="/public/app.js?v=20261104-2"></script>
+  <link rel="stylesheet" href="/public/interface.css?v=20261104-4">
+  <script defer src="/public/app.js?v=20261104-3"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -752,8 +752,30 @@
                   <span x-show="Number(voucherResult?.dataLimit || 0) > 0"><strong>Batas data</strong><span x-text="voucherResult?.dataLimit + ' ' + voucherResult?.dataUnit"></span></span>
                   <span x-show="voucherResult?.comment"><strong>Catatan</strong><span x-text="voucherResult?.comment"></span></span>
                 </div>
-                <div class="voucher-card-grid">
-                  <template x-for="(voucher, index) in voucherResult?.vouchers || []" :key="'generated-voucher-' + voucher.username">
+                <div class="voucher-list-tools">
+                  <label class="voucher-list-field">
+                    <span>Cari voucher</span>
+                    <input type="search" x-model.trim="voucherBatchFilters.search" placeholder="Username atau password" autocomplete="off" spellcheck="false">
+                  </label>
+                  <label class="voucher-list-field">
+                    <span>Status penggunaan</span>
+                    <select x-model="voucherBatchFilters.usage">
+                      <option value="ALL">Semua status</option>
+                      <option value="UNUSED">Belum digunakan</option>
+                      <option value="USED">Sudah digunakan</option>
+                    </select>
+                  </label>
+                  <button x-cloak x-show="hasVoucherBatchFilters" type="button" @click="resetVoucherBatchFilters()" class="ui-secondary-button voucher-filter-reset"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
+                  <p class="voucher-list-summary" role="status" aria-live="polite"><strong x-text="filteredVoucherBatchVouchers.length"></strong><span> dari </span><strong x-text="voucherBatchVouchers.length"></strong><span> voucher ditampilkan</span></p>
+                </div>
+                <div x-cloak x-show="!filteredVoucherBatchVouchers.length" class="voucher-filter-empty" role="status">
+                  <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                  <strong x-text="voucherBatchVouchers.length ? 'Voucher tidak ditemukan' : 'Batch tidak memiliki voucher'"></strong>
+                  <p x-text="voucherBatchVouchers.length ? 'Ubah kata pencarian atau pilih status penggunaan lain.' : 'Pilih batch lain atau muat ulang riwayat voucher.'"></p>
+                  <button x-cloak x-show="hasVoucherBatchFilters" type="button" @click="resetVoucherBatchFilters()" class="ui-secondary-button">Tampilkan semua voucher</button>
+                </div>
+                <div x-show="filteredVoucherBatchVouchers.length" class="voucher-card-grid">
+                  <template x-for="(voucher, index) in filteredVoucherBatchVouchers" :key="'generated-voucher-' + voucher.username">
                     <article class="voucher-card" :class="{ 'voucher-card-used': getVoucherUsageStatus(voucher) === 'USED' }">
                       <div class="voucher-card-heading">
                         <span x-text="forms.settings.companyName || 'Emmeril Hotspot'"></span>

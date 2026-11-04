@@ -169,6 +169,10 @@
         voucherBatches: [],
         selectedVoucherBatchId: "",
         voucherHistoryError: "",
+        voucherBatchFilters: {
+          search: "",
+          usage: "ALL",
+        },
         voucherStatsError: "",
         voucherStats: {
           summary: { total: 0, used: 0, unused: 0 },
@@ -2127,6 +2131,28 @@
           if (status === "USED") return "fa-circle-check";
           if (status === "MISSING") return "fa-triangle-exclamation";
           return "fa-ticket-simple";
+        },
+
+        get voucherBatchVouchers() {
+          return Array.isArray(this.voucherResult?.vouchers) ? this.voucherResult.vouchers : [];
+        },
+
+        get filteredVoucherBatchVouchers() {
+          const usage = String(this.voucherBatchFilters.usage || "ALL").toUpperCase();
+          return this.voucherBatchVouchers.filter((voucher) => {
+            if (usage !== "ALL" && this.getVoucherUsageStatus(voucher) !== usage) return false;
+            return this.searchMatches(voucher, ["username", "password"], this.voucherBatchFilters.search);
+          });
+        },
+
+        get hasVoucherBatchFilters() {
+          return Boolean(String(this.voucherBatchFilters.search || "").trim())
+            || String(this.voucherBatchFilters.usage || "ALL") !== "ALL";
+        },
+
+        resetVoucherBatchFilters() {
+          this.voucherBatchFilters.search = "";
+          this.voucherBatchFilters.usage = "ALL";
         },
 
         getVoucherJobMessage(job) {
