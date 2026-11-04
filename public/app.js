@@ -2099,6 +2099,32 @@
           });
         },
 
+        resetVoucherDevice(voucher) {
+          const batchId = voucher?.batchId || this.voucherResult?.batchId;
+          const username = voucher?.username;
+          const macAddress = this.getVoucherMacAddress(voucher);
+          if (!batchId || !username || !macAddress) return;
+          const returnToAllBatches = this.selectedVoucherBatchId === "ALL";
+          this.openDeleteConfirm({
+            title: "Reset perangkat voucher?",
+            description: `MAC ${macAddress} pada voucher "${username}" akan dilepas. Sesi perangkat lama akan diputus, lalu voucher dapat digunakan pada perangkat baru. Masa berlaku dan riwayat pemakaian tidak berubah.`,
+            confirmLabel: "Reset perangkat",
+            processingMessage: `Mereset perangkat voucher ${username}...`,
+            action: async () => {
+              await this.api(
+                `/api/mikrotik/voucher-batches/${encodeURIComponent(batchId)}/vouchers/${encodeURIComponent(username)}/reset-device`,
+                { method: "POST" }
+              );
+              await this.loadVoucherBatches({
+                silent: true,
+                batchId: returnToAllBatches ? "ALL" : batchId,
+              });
+              await this.loadHotspotUsers({ silent: true }).catch(() => {});
+              this.notify(`Perangkat voucher ${username} berhasil direset.`);
+            },
+          });
+        },
+
         getVoucherBatchLabel(batch) {
           if (!batch) return "Batch voucher";
           const dateLabel = batch.createdAt ? this.formatDateTime(batch.createdAt) : batch.batchId;
@@ -2153,6 +2179,17 @@
           return batch.createdAt ? this.formatDateTime(batch.createdAt) : batch.batchId;
         },
 
+        getVoucherMacAddress(voucher) {
+          const macAddress = String(voucher?.macAddress || "").trim();
+          return macAddress && macAddress !== "00:00:00:00:00:00" ? macAddress : "";
+        },
+
+        getVoucherDeviceLabel(voucher) {
+          const macAddress = this.getVoucherMacAddress(voucher);
+          if (macAddress) return macAddress;
+          return this.getVoucherBatchForVoucher(voucher)?.lockUser ? "Belum terkunci" : "Tidak dikunci";
+        },
+
         getVoucherUsageStatus(voucher) {
           const status = String(voucher?.usageStatus || "").toUpperCase();
           if (status === "USED" || voucher?.used) return "USED";
@@ -2191,7 +2228,7 @@
           const usage = String(this.voucherBatchFilters.usage || "ALL").toUpperCase();
           return this.voucherBatchVouchers.filter((voucher) => {
             if (usage !== "ALL" && this.getVoucherUsageStatus(voucher) !== usage) return false;
-            return this.searchMatches(voucher, ["username", "password"], this.voucherBatchFilters.search);
+            return this.searchMatches(voucher, ["username", "password", "macAddress"], this.voucherBatchFilters.search);
           });
         },
 

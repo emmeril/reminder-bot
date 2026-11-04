@@ -158,6 +158,40 @@ test("menghapus voucher memutus sesi aktif dan hanya menerima voucher dari batch
   );
 });
 
+test("reset perangkat voucher melepas MAC dan memutus sesi aktif tanpa menghapus user", async () => {
+  const batchId = "mh123-abc123";
+  const { service, users, getUpdateCalls, getKilledSessions } = createServiceWithUsers([{
+    ".id": "*1",
+    name: "voucher-reset",
+    profile: "100M",
+    comment: `vc|${batchId}|Batch perangkat`,
+    "mac-address": "AA:BB:CC:DD:EE:FF",
+    active: true,
+  }]);
+
+  const result = await service.resetHotspotVoucherMac({ batchId, username: "voucher-reset" });
+
+  assert.equal(result.previousMacAddress, "AA:BB:CC:DD:EE:FF");
+  assert.equal(result.activeSessionsKilled, 1);
+  assert.equal(result.alreadyReset, false);
+  assert.equal(getUpdateCalls(), 1);
+  assert.equal(getKilledSessions(), 1);
+  assert.equal(users.length, 1);
+  assert.equal(users[0]["mac-address"], "00:00:00:00:00:00");
+
+  const unrelated = createServiceWithUsers([{
+    ".id": "*2",
+    name: "voucher-reset",
+    profile: "100M",
+    comment: "vc|mh456-def456|Batch lain",
+    "mac-address": "11:22:33:44:55:66",
+  }]).service;
+  await assert.rejects(
+    () => unrelated.resetHotspotVoucherMac({ batchId, username: "voucher-reset" }),
+    /tidak lagi terhubung ke batch yang dipilih/,
+  );
+});
+
 test("riwayat batch voucher dibaca kembali dari data MikroTik", async () => {
   const { service } = createServiceWithUsers();
   const firstBatch = await service.createHotspotVouchers({
@@ -196,6 +230,7 @@ test("riwayat batch voucher dibaca kembali dari data MikroTik", async () => {
   assert.deepEqual(restoredFirst.vouchers[0], {
     username: "voucher-lama",
     password: "password-lama",
+    macAddress: "",
     disabled: false,
     used: false,
     usageStatus: "UNUSED",

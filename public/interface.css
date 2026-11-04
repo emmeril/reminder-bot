@@ -2978,8 +2978,23 @@ span[class*="rounded-full"][class*="text-xs"],
 .voucher-card-heading-actions {
   display: flex;
   flex: 0 0 auto;
-  gap: 7px;
+  gap: 10px;
   align-items: center;
+  margin-left: 10px;
+}
+
+.voucher-card-heading {
+  gap: 14px;
+}
+
+.voucher-card-heading > span {
+  flex: 1 1 auto;
+  padding-right: 4px;
+}
+
+.voucher-card-heading-actions > strong {
+  min-width: 24px;
+  text-align: center;
 }
 
 .voucher-usage-row {
@@ -3041,6 +3056,44 @@ span[class*="rounded-full"][class*="text-xs"],
   background: #fff7f4;
   font-size: 12px;
   transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
+}
+
+.voucher-device-reset-button {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--ui-primary-dark);
+  border: 1px solid #b9d8cf;
+  border-radius: 7px;
+  background: #f0f8f6;
+  font-size: 12px;
+  transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
+}
+
+.voucher-device-reset-button:hover {
+  color: #fff;
+  border-color: var(--ui-primary-dark);
+  background: var(--ui-primary-dark);
+}
+
+.voucher-device-reset-button:focus-visible {
+  outline: 3px solid rgba(15, 107, 87, .24);
+  outline-offset: 2px;
+}
+
+.voucher-device-value {
+  color: var(--ui-muted) !important;
+  font-family: inherit !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+}
+
+.voucher-device-value.is-locked {
+  color: var(--ui-primary-dark) !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
 }
 
 .voucher-delete-button:hover {
@@ -3111,9 +3164,15 @@ span[class*="rounded-full"][class*="text-xs"],
     font-size: 10px;
   }
 
-  .voucher-delete-button {
+  .voucher-delete-button,
+  .voucher-device-reset-button {
     width: 44px;
     height: 44px;
+  }
+
+  .voucher-card-heading-actions {
+    gap: 10px;
+    margin-left: 14px;
   }
 
   .revenue-tabs {

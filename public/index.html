@@ -7,8 +7,8 @@
   <link rel="stylesheet" href="/public/tailwind.css?v=20261028-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261028-1">
-  <link rel="stylesheet" href="/public/interface.css?v=20261104-5">
-  <script defer src="/public/app.js?v=20261104-5"></script>
+  <link rel="stylesheet" href="/public/interface.css?v=20261104-8">
+  <script defer src="/public/app.js?v=20261104-6"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -782,6 +782,7 @@
                         <span x-text="forms.settings.companyName || 'Emmeril Hotspot'"></span>
                         <div class="voucher-card-heading-actions">
                           <strong x-text="String(index + 1).padStart(3, '0')"></strong>
+                          <button x-show="getVoucherMacAddress(voucher)" type="button" @click="resetVoucherDevice(voucher)" class="voucher-device-reset-button" :aria-label="'Reset perangkat voucher ' + voucher.username" :title="'Reset perangkat · ' + getVoucherMacAddress(voucher)"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>
                           <button type="button" @click="removeVoucher(voucher)" class="voucher-delete-button" :aria-label="'Hapus voucher ' + voucher.username" :title="'Hapus voucher ' + voucher.username"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
                         </div>
                       </div>
@@ -795,6 +796,7 @@
                       <dl>
                         <div><dt>Username</dt><dd x-text="voucher.username"></dd></div>
                         <div><dt>Password</dt><dd x-text="voucher.password"></dd></div>
+                        <div><dt>Perangkat</dt><dd class="voucher-device-value" :class="{ 'is-locked': getVoucherMacAddress(voucher) }" x-text="getVoucherDeviceLabel(voucher)"></dd></div>
                         <div x-show="selectedVoucherBatchId === 'ALL'"><dt>Batch</dt><dd x-text="getVoucherCardBatchLabel(voucher)"></dd></div>
                         <div><dt>Profile</dt><dd x-text="voucher.batchProfile || voucherResult?.profile || '-'"></dd></div>
                         <div><dt>Harga</dt><dd x-text="getVoucherPriceLabel(getVoucherBatchForVoucher(voucher))"></dd></div>

@@ -173,6 +173,7 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
   CONFIG.WEB_API_KEY = "test-api-key";
   let receivedPayload = null;
   let removedStoredVoucher = null;
+  let resetStoredVoucher = null;
   let receivedHistoryOptions = null;
   const baseUrl = await startServer({
     getVoucherBatch: (batchId) => (batchId === "batch-lama" ? {
@@ -215,6 +216,16 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
       activeSessionsKilled: 0,
       alreadyAbsent: false,
     }),
+    resetHotspotVoucherMac: async ({ batchId, username }) => {
+      resetStoredVoucher = { batchId, username };
+      return {
+        batchId,
+        username,
+        previousMacAddress: "AA:BB:CC:DD:EE:FF",
+        activeSessionsKilled: 1,
+        alreadyReset: false,
+      };
+    },
     createHotspotVouchers: async (payload) => {
       receivedPayload = payload;
       return {
@@ -256,6 +267,15 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
   assert.equal(revenueResponse.status, 200);
   assert.deepEqual(revenuePayload.data.summary, { revenue: 40000, costPrice: 25000, commission: 15000, quantity: 1, profiles: 1 });
   assert.equal(revenuePayload.data.period, "2026-11");
+
+  const resetDeviceResponse = await fetch(`${baseUrl}/api/mikrotik/voucher-batches/batch-lama/vouchers/lama-1/reset-device`, {
+    method: "POST",
+    headers,
+  });
+  const resetDevicePayload = await resetDeviceResponse.json();
+  assert.equal(resetDeviceResponse.status, 200);
+  assert.equal(resetDevicePayload.data.activeSessionsKilled, 1);
+  assert.deepEqual(resetStoredVoucher, { batchId: "batch-lama", username: "lama-1" });
 
   const createResponse = await fetch(`${baseUrl}/api/mikrotik/vouchers`, {
     method: "POST",

@@ -941,6 +941,7 @@ class MikrotikService {
           {
             sellingPrice: Math.max(0, Number(metadata.sellingPrice || metadata.costPrice) || 0),
             validity: sanitizeInput(String(metadata.validity || "")),
+            lockUser: Boolean(metadata.lockUser),
           },
         ];
       }));
@@ -995,6 +996,7 @@ class MikrotikService {
             profile: profileName,
             sellingPrice: profileDetail.sellingPrice || 0,
             validity: profileDetail.validity || "",
+            lockUser: Boolean(profileDetail.lockUser),
             limitUptime: sanitizeInput(String(readRouterValue(user, "limit-uptime", "limitUptime", ""))) || null,
             dataLimitBytes: Math.max(0, Number(readRouterValue(user, "limit-bytes-total", "limitBytesTotal", 0)) || 0),
             comment: sanitizeInput(String(batchComment)),
@@ -1007,6 +1009,7 @@ class MikrotikService {
         batch.vouchers.push({
           username,
           password: sanitizeInput(String(user.password || "")),
+          macAddress: sanitizeInput(String(readRouterValue(user, "mac-address", "macAddress", ""))),
           disabled: String(user.disabled || "false").toLowerCase() === "true",
           used: Boolean(usage),
           usageStatus: usage ? "USED" : "UNUSED",
@@ -1032,6 +1035,9 @@ class MikrotikService {
         if (!batch.createdAt && knownBatch.createdAt) batch.createdAt = knownBatch.createdAt;
         if (!batch.profile && knownBatch.profile) batch.profile = knownBatch.profile;
         if (!batch.validity && knownBatch.validity) batch.validity = knownBatch.validity;
+        if (batch.lockUser === undefined && knownBatch.lockUser !== undefined) {
+          batch.lockUser = Boolean(knownBatch.lockUser);
+        }
         if ((!batch.server || batch.server === "all") && knownBatch.server) batch.server = knownBatch.server;
         if (!batch.limitUptime && knownBatch.limitUptime) batch.limitUptime = knownBatch.limitUptime;
         if (!batch.comment && knownBatch.comment) batch.comment = knownBatch.comment;
@@ -1051,6 +1057,9 @@ class MikrotikService {
           const routerUser = usersByName.get(key);
           const usage = findBatchUsage(key, batchId);
           const routerBatch = parseVoucherBatchComment(routerUser?.comment);
+          const belongsToAnotherBatch = Boolean(
+            routerBatch?.batchId && routerBatch.batchId.toLowerCase() !== batchId.toLowerCase()
+          );
           let usageStatus = "MISSING";
           if (usage || (routerUser && routerBatch?.batchId !== batchId)) usageStatus = "USED";
           else if (routerUser) usageStatus = "UNUSED";
@@ -1061,6 +1070,9 @@ class MikrotikService {
             ...routerVoucher,
             username,
             password: storedVoucher.password || routerVoucher.password || "",
+            macAddress: routerUser && !belongsToAnotherBatch
+              ? sanitizeInput(String(readRouterValue(routerUser, "mac-address", "macAddress", "")))
+              : "",
             disabled: routerUser
               ? String(routerUser.disabled || "false").toLowerCase() === "true"
               : Boolean(storedVoucher.disabled),
@@ -1233,6 +1245,7 @@ class MikrotikService {
         profile: request.profile,
         sellingPrice: Math.max(0, Number(profileMetadata.sellingPrice || profileMetadata.costPrice) || 0),
         validity: sanitizeInput(String(profileMetadata.validity || "")),
+        lockUser: Boolean(profileMetadata.lockUser),
         limitUptime: request.limitUptime || null,
         dataLimit: request.dataLimit,
         dataUnit: request.dataUnit,
@@ -1286,6 +1299,62 @@ class MikrotikService {
         activeSessionsKilled: activeResult.killed,
         removedUsers: removeResult.removed,
         alreadyAbsent: matches.length === 0,
+      };
+    });
+  }
+
+  async resetHotspotVoucherMac(payload = {}) {
+    const batchId = normalizeVoucherCredential(payload.batchId, "ID batch voucher", { maxLength: 128 });
+    const username = normalizeVoucherCredential(payload.username, "Username voucher");
+    return this.withConnection(async (conn) => {
+      const userMenu = conn.menu("/ip/hotspot/user");
+      const users = await userMenu.print();
+      const user = (users || []).find((item) => (
+        String(item.name || item.user || "").toLowerCase() === username.toLowerCase()
+      ));
+      if (!user) {
+        const error = new Error(`Voucher "${username}" tidak ditemukan di MikroTik.`);
+        error.statusCode = 404;
+        throw error;
+      }
+
+      const linkedBatch = parseVoucherBatchComment(user.comment)?.batchId;
+      if (linkedBatch && linkedBatch.toLowerCase() !== batchId.toLowerCase()) {
+        throw new Error(`Voucher "${username}" tidak lagi terhubung ke batch yang dipilih.`);
+      }
+
+      const previousMacAddress = sanitizeInput(String(readRouterValue(user, "mac-address", "macAddress", "")));
+      const normalizedMac = previousMacAddress.toLowerCase();
+      const alreadyReset = !normalizedMac || normalizedMac === "00:00:00:00:00:00";
+      if (alreadyReset) {
+        return { batchId, username, previousMacAddress: "", activeSessionsKilled: 0, alreadyReset: true };
+      }
+
+      const userId = String(user[".id"] || user.id || "");
+      if (!userId) throw new Error(`ID voucher "${username}" tidak ditemukan di MikroTik.`);
+      await userMenu.update({ "mac-address": "00:00:00:00:00:00" }, userId);
+
+      const refreshedUsers = await userMenu.print();
+      const refreshed = (refreshedUsers || []).find((item) => (
+        String(item.name || item.user || "").toLowerCase() === username.toLowerCase()
+      ));
+      const currentMacAddress = sanitizeInput(String(readRouterValue(
+        refreshed,
+        "mac-address",
+        "macAddress",
+        ""
+      ))).toLowerCase();
+      if (currentMacAddress && currentMacAddress !== "00:00:00:00:00:00") {
+        throw new Error(`MAC perangkat voucher "${username}" belum berhasil direset.`);
+      }
+
+      const activeResult = await this.removeActiveHotspotSessionsByName(conn, username);
+      return {
+        batchId,
+        username,
+        previousMacAddress,
+        activeSessionsKilled: activeResult.killed,
+        alreadyReset: false,
       };
     });
   }
@@ -9407,6 +9476,32 @@ class WebServer {
           activeSessionsKilled: routerResult.activeSessionsKilled,
         });
         return { ...routerResult, ...storageResult };
+      })
+    )));
+    this.app.post("/api/mikrotik/voucher-batches/:batchId/vouchers/:username/reset-device", requireApiAuth, handleApi(async (req) => (
+      this.voucherGenerationLock.runExclusive("mikrotik-vouchers", async () => {
+        const batchId = sanitizeInput(req.params.batchId);
+        const username = sanitizeInput(req.params.username);
+        const storedBatch = typeof this.dataManager.getVoucherBatch === "function"
+          ? this.dataManager.getVoucherBatch(batchId)
+          : null;
+        const storedVoucher = storedBatch?.vouchers?.find((voucher) => (
+          String(voucher.username || "").toLowerCase() === username.toLowerCase()
+        ));
+        if (!storedBatch || !storedVoucher) {
+          const error = new Error("Voucher tidak ditemukan pada batch yang dipilih.");
+          error.statusCode = 404;
+          throw error;
+        }
+
+        const result = await this.mikrotikService.resetHotspotVoucherMac({ batchId, username });
+        this.activityLog.push("info", "voucher", `Perangkat voucher ${username} direset`, {
+          batchId,
+          username,
+          previousMacAddress: result.previousMacAddress,
+          activeSessionsKilled: result.activeSessionsKilled,
+        });
+        return result;
       })
     )));
     this.app.get("/api/mikrotik/netwatch", requireApiAuth, handleApi(async () => (

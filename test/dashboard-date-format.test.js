@@ -1031,6 +1031,8 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(html, /@click="printVouchers\(\)"/);
   assert.match(html, /@click="printRewardVouchers\(\)"/);
   assert.match(html, /@click="removeVoucher\(voucher\)"/);
+  assert.match(html, /@click="resetVoucherDevice\(voucher\)"/);
+  assert.match(html, /getVoucherDeviceLabel\(voucher\)/);
   assert.match(html, /:aria-label="'Hapus voucher ' \+ voucher\.username"/);
   assert.match(html, /voucher-card-used/);
   assert.match(html, /voucher-usage-badge/);
@@ -1070,6 +1072,9 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(styles, /voucher-print-page-grid \.voucher-card dd \{[\s\S]*?font-size: 14px/);
   assert.match(styles, /voucher-reward-card dd \{[\s\S]*?font-size: 13px/);
   assert.match(styles, /\.voucher-delete-button:focus-visible/);
+  assert.match(styles, /\.voucher-card-heading-actions \{[\s\S]*?gap: 10px;[\s\S]*?margin-left: 10px/);
+  assert.match(styles, /\.voucher-card-heading \{[\s\S]*?gap: 14px/);
+  assert.match(styles, /\.voucher-card-heading > span \{[\s\S]*?padding-right: 4px/);
   assert.match(styles, /\.voucher-usage-badge\.status-used/);
   assert.match(styles, /\.voucher-list-tools \{[\s\S]*?grid-template-columns:/);
   assert.match(styles, /\.voucher-list-field \{[\s\S]*?gap: 9px/);
@@ -1105,12 +1110,14 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
     profile: "VCR-4H",
     comment: "Batch malam",
     vouchers: [
-      { username: "voucher-sudah", password: "kode-sudah", usageStatus: "USED" },
+      { username: "voucher-sudah", password: "kode-sudah", macAddress: "AA:BB:CC:DD:EE:FF", usageStatus: "USED" },
     ],
   }];
   app.selectVoucherBatch("ALL");
   assert.equal(app.filteredVoucherBatchVouchers.length, 3);
   app.voucherBatchFilters.search = "SUDAH";
+  assert.deepEqual(Array.from(app.filteredVoucherBatchVouchers, (voucher) => voucher.username), ["voucher-sudah"]);
+  app.voucherBatchFilters.search = "AA:BB:CC";
   assert.deepEqual(Array.from(app.filteredVoucherBatchVouchers, (voucher) => voucher.username), ["voucher-sudah"]);
   app.voucherBatchFilters.search = "";
   app.voucherBatchFilters.usage = "UNUSED";
@@ -1329,6 +1336,50 @@ test("ikon X voucher membuka konfirmasi lalu menghapus akun dari MikroTik dan ri
   assert.equal(statsReloaded, true);
   assert.equal(usersReloaded, true);
   assert.equal(notification, "Voucher voucher-hapus berhasil dihapus.");
+});
+
+test("reset perangkat voucher melepas MAC melalui konfirmasi dan memuat ulang batch", async () => {
+  const app = createDashboardApp();
+  let confirmation = null;
+  let request = null;
+  let reloadOptions = null;
+  let notification = "";
+  const voucher = {
+    batchId: "batch-ui-reset",
+    username: "voucher-reset",
+    macAddress: "AA:BB:CC:DD:EE:FF",
+  };
+  app.voucherBatches = [{
+    batchId: "batch-ui-reset",
+    lockUser: true,
+    vouchers: [voucher],
+  }];
+  app.selectVoucherBatch("ALL");
+  app.openDeleteConfirm = (options) => { confirmation = options; };
+  app.api = async (url, options) => {
+    request = { url, method: options.method };
+    return { activeSessionsKilled: 1 };
+  };
+  app.loadVoucherBatches = async (options) => { reloadOptions = options; };
+  app.loadHotspotUsers = async () => {};
+  app.notify = (message) => { notification = message; };
+
+  assert.equal(app.getVoucherMacAddress(voucher), "AA:BB:CC:DD:EE:FF");
+  assert.equal(app.getVoucherDeviceLabel(voucher), "AA:BB:CC:DD:EE:FF");
+  assert.equal(app.getVoucherDeviceLabel({ batchId: "batch-ui-reset" }), "Belum terkunci");
+  app.resetVoucherDevice(voucher);
+
+  assert.equal(confirmation.title, "Reset perangkat voucher?");
+  assert.match(confirmation.description, /Masa berlaku dan riwayat pemakaian tidak berubah/);
+  assert.equal(confirmation.confirmLabel, "Reset perangkat");
+  await confirmation.action();
+  assert.deepEqual(request, {
+    url: "/api/mikrotik/voucher-batches/batch-ui-reset/vouchers/voucher-reset/reset-device",
+    method: "POST",
+  });
+  assert.equal(reloadOptions.silent, true);
+  assert.equal(reloadOptions.batchId, "ALL");
+  assert.equal(notification, "Perangkat voucher voucher-reset berhasil direset.");
 });
 
 test("tombol voucher membuka modal dan penutupan mengembalikan fokus", async () => {
