@@ -7,8 +7,8 @@
   <link rel="stylesheet" href="/public/tailwind.css?v=20261028-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261028-1">
-  <link rel="stylesheet" href="/public/interface.css?v=20261104-8">
-  <script defer src="/public/app.js?v=20261104-8"></script>
+  <link rel="stylesheet" href="/public/interface.css?v=20261104-9">
+  <script defer src="/public/app.js?v=20261104-9"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -296,7 +296,7 @@
                     <tr>
                       <th class="px-4 py-3"><i class="fa-solid fa-user mr-2"></i>Nama</th>
                       <th class="px-4 py-3"><i class="fa-brands fa-whatsapp mr-2"></i>No. WA</th>
-                      <th class="px-4 py-3"><i class="fa-solid fa-repeat mr-2"></i>Jenis Berlangganan</th>
+                      <th class="px-4 py-3"><i class="fa-solid fa-repeat mr-2"></i>Siklus Pembayaran</th>
                       <th class="px-4 py-3"><i class="fa-solid fa-link mr-2"></i>AP Terkait</th>
                       <th class="px-4 py-3"><i class="fa-solid fa-signal mr-2"></i>Status AP</th>
                       <th class="px-4 py-3"><i class="fa-solid fa-bolt mr-2"></i>Aksi</th>
@@ -310,8 +310,8 @@
                       <tr>
                         <td class="px-4 py-4 font-medium" data-label="Nama" x-text="contact.name"></td>
                         <td class="px-4 py-4 text-ink/65 whitespace-nowrap tabular-nums" data-label="No. WA" x-text="contact.phoneNumber"></td>
-                        <td class="px-4 py-4" data-label="Jenis Berlangganan">
-                          <span class="inline-flex whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold" :class="String(contact.subscriptionType || 'RECURRING').toUpperCase() === 'ONE_TIME' ? 'bg-clay/10 text-clay' : 'bg-moss/10 text-moss'" x-text="getSubscriptionTypeLabel(contact)"></span>
+                        <td class="px-4 py-4" data-label="Siklus Pembayaran">
+                          <span class="inline-flex whitespace-nowrap rounded-full bg-moss/10 px-3 py-1 text-xs font-semibold text-moss" x-text="getBillingCycleLabel(contact)"></span>
                         </td>
                         <td class="px-4 py-4 text-ink/65" data-label="AP Terkait" x-text="contact.linkedApHost || '-'"></td>
                         <td class="px-4 py-4" data-label="Status AP">
@@ -358,7 +358,6 @@
               <select x-model="filters.contactBilling.dueStatus" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Filter jadwal jatuh tempo">
                 <option value="ALL">Semua jadwal</option>
                 <option value="NOT_SCHEDULED">Belum ada jadwal</option>
-                <option value="NOT_APPLICABLE">Tanpa jadwal bulanan</option>
                 <option value="UPCOMING">Belum jatuh tempo</option>
                 <option value="OVERDUE">Sudah jatuh tempo</option>
                 <option value="PAID">Sudah dibayar</option>
@@ -1285,7 +1284,7 @@
                 <thead class="bg-haze/90 text-left text-xs uppercase text-ink/50">
                   <tr>
                     <th class="w-[22%] px-5 py-4"><i class="fa-solid fa-user mr-2 text-moss"></i>Tujuan</th>
-                    <th class="w-[14%] px-5 py-4"><i class="fa-solid fa-repeat mr-2 text-moss"></i>Langganan</th>
+                    <th class="w-[14%] px-5 py-4"><i class="fa-solid fa-repeat mr-2 text-moss"></i>Siklus</th>
                     <th class="w-[18%] px-5 py-4"><i class="fa-solid fa-clock mr-2 text-clay"></i>Waktu pengiriman</th>
                     <th class="w-[14%] px-5 py-4"><i class="fa-solid fa-file-lines mr-2 text-moss"></i>Template</th>
                     <th class="px-5 py-4"><i class="fa-solid fa-message mr-2 text-ink/45"></i>Pesan</th>
@@ -1309,8 +1308,8 @@
                           </div>
                         </div>
                       </td>
-                      <td class="px-5 py-4" data-label="Langganan">
-                        <span class="inline-flex w-fit whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold" :class="String(reminder.subscriptionType || 'RECURRING').toUpperCase() === 'ONE_TIME' ? 'bg-clay/10 text-clay' : 'bg-moss/10 text-moss'" x-text="getSubscriptionTypeLabel(reminder)"></span>
+                      <td class="px-5 py-4" data-label="Siklus">
+                        <span class="inline-flex w-fit whitespace-nowrap rounded-full bg-moss/10 px-2.5 py-1 text-[10px] font-bold text-moss" x-text="getBillingCycleLabel(reminder)"></span>
                       </td>
                       <td class="px-5 py-4 text-ink/65" data-label="Waktu pengiriman">
                         <span class="inline-flex items-center gap-2 whitespace-nowrap font-semibold text-ink/70">
@@ -1984,20 +1983,12 @@
             <span class="mt-1 block text-xs text-ink/45">Nomor akan diperiksa langsung ke WhatsApp sebelum pelanggan disimpan.</span>
           </label>
           <label class="block text-sm text-ink/60">
-            Jenis berlangganan
-            <select x-model="forms.contact.subscriptionType" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
-              <option value="RECURRING">Berlangganan bulanan</option>
-              <option value="ONE_TIME">Sekali berlangganan</option>
-            </select>
-            <span class="mt-1 block text-xs text-ink/45">Berlangganan bulanan membuat tagihan dan tunggakan setiap periode. Sekali berlangganan hanya mencatat periode mulai.</span>
-          </label>
-          <label x-show="forms.contact.subscriptionType === 'RECURRING'" class="block text-sm text-ink/60">
             Siklus pembayaran
             <select x-model="forms.contact.billingCycle" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
               <option value="PREPAID">Prabayar, bayar bulan berjalan</option>
               <option value="POSTPAID">Pascabayar, bayar bulan sebelumnya</option>
             </select>
-            <span class="mt-1 block text-xs text-ink/45">Pascabayar menagih periode sebelumnya saat jatuh tempo. Pembayaran memperpanjang masa aktif satu bulan.</span>
+            <span class="mt-1 block text-xs text-ink/45">Prabayar membeli paket satu bulan. Pascabayar menagih periode sebelumnya saat jatuh tempo.</span>
           </label>
           <label class="block text-sm text-ink/60">
             AP tujuan (opsional)
@@ -2281,14 +2272,6 @@
             <span class="mt-1 block text-xs text-ink/45">Jika nomor diubah, nomor baru akan diperiksa langsung ke WhatsApp.</span>
           </label>
           <label class="block text-sm text-ink/60">
-            Jenis berlangganan
-            <select x-model="forms.contactEdit.subscriptionType" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
-              <option value="RECURRING">Berlangganan bulanan</option>
-              <option value="ONE_TIME">Sekali berlangganan</option>
-            </select>
-            <span class="mt-1 block text-xs text-ink/45">Mengubah menjadi sekali berlangganan akan menghentikan tagihan periode berikutnya dan menonaktifkan reaktivasi otomatis.</span>
-          </label>
-          <label x-show="forms.contactEdit.subscriptionType === 'RECURRING'" class="block text-sm text-ink/60">
             Siklus pembayaran
             <select x-model="forms.contactEdit.billingCycle" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
               <option value="PREPAID">Prabayar, bayar bulan berjalan</option>

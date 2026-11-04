@@ -938,6 +938,91 @@ test("sekali berlangganan hanya menghitung periode mulai dan tidak membuat hutan
   assert.equal(debtInfo.debtPeriods[0].key, "2026-07");
 });
 
+test("data sekali berlangganan lama otomatis menjadi prabayar tanpa menghidupkan paket kedaluwarsa", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.saveContacts = async () => {};
+  manager.saveSettings = async () => {};
+
+  manager.contacts.set("legacy-active", {
+    id: "legacy-active",
+    name: "Pelanggan Lama Aktif",
+    phoneNumber: "6281234567001",
+    createdAt: "2026-10-01T00:00:00.000Z",
+    subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
+    monthlyPaymentAmount: 50_000,
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentDate: "2026-10-20T00:00:00.000Z",
+    paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+    paymentMonths: {
+      "2026-10": {
+        status: PAYMENT_STATUS.PAID,
+        paidDate: "2026-10-20T00:00:00.000Z",
+        paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+      },
+    },
+    hotspotReactivationEnabled: false,
+    hotspotReactivationAt: "2026-12-01T00:00:00.000Z",
+  });
+  manager.contacts.set("legacy-expired", {
+    id: "legacy-expired",
+    name: "Pelanggan Lama Kedaluwarsa",
+    phoneNumber: "6281234567002",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
+    monthlyPaymentAmount: 75_000,
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentDate: "2026-09-01T00:00:00.000Z",
+    paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+    paymentMonths: {
+      "2026-09": {
+        status: PAYMENT_STATUS.PAID,
+        paidDate: "2026-09-01T00:00:00.000Z",
+        paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+      },
+    },
+    hotspotReactivationEnabled: false,
+    hotspotReactivationAt: "2026-10-01T00:00:00.000Z",
+  });
+
+  manager.normalizeLoadedContacts();
+  const migrated = await manager.migrateOneTimeSubscriptionsToPrepaid({
+    now: "2026-11-04T00:00:00.000Z",
+    save: false,
+  });
+
+  const active = manager.getContact("legacy-active");
+  const expired = manager.getContact("legacy-expired");
+  assert.deepEqual(migrated, { migrated: 2, purchasesMigrated: 2 });
+  assert.equal(active.subscriptionType, SUBSCRIPTION_TYPES.RECURRING);
+  assert.equal(active.billingCycle, BILLING_CYCLES.PREPAID);
+  assert.equal(active.hotspotReactivationEnabled, true);
+  assert.equal(active.hotspotReactivationAt, "2026-12-01T00:00:00.000Z");
+  assert.equal(active.paymentStatus, PAYMENT_STATUS.PAID);
+  assert.equal(active.paymentType, PAYMENT_TYPES.ACTIVE_PERIOD);
+  assert.equal(active.activePeriodPurchases[0].paymentProvider, "migration");
+  assert.equal(expired.subscriptionType, SUBSCRIPTION_TYPES.RECURRING);
+  assert.equal(expired.billingCycle, BILLING_CYCLES.PREPAID);
+  assert.equal(expired.hotspotReactivationEnabled, false);
+  assert.equal(expired.hotspotReactivationAt, null);
+  assert.equal(expired.paymentStatus, PAYMENT_STATUS.UNPAID);
+  assert.equal(expired.activePeriodPurchases[0].activeUntil, "2026-10-01T00:00:00.000Z");
+
+  const scheduleMigration = await manager.migrateServiceSchedulesFromRegistration({
+    now: "2026-11-04T00:00:00.000Z",
+  });
+  assert.equal(scheduleMigration.migrated, 0);
+  assert.equal(scheduleMigration.skipped, 2);
+  assert.equal(expired.hotspotReactivationAt, null);
+
+  const repeated = await manager.migrateOneTimeSubscriptionsToPrepaid({
+    now: "2026-11-04T00:00:00.000Z",
+    save: false,
+  });
+  assert.deepEqual(repeated, { migrated: 0, purchasesMigrated: 0 });
+});
+
 test("pelanggan berlangganan tetap menghitung periode berjalan dan tunggakan bulanan", () => {
   const contact = {
     id: "contact-recurring",
@@ -1291,7 +1376,7 @@ test("reminder tidak dapat dibuat untuk pelanggan sekali berlangganan", async ()
   );
 });
 
-test("perubahan pelanggan menjadi sekali berlangganan menghapus reminder aktif", async () => {
+test("permintaan mengubah pelanggan menjadi sekali berlangganan tetap memakai bulanan prabayar", async () => {
   const contact = {
     id: "contact-change-one-time",
     name: "Pelanggan Bulanan",
@@ -1316,7 +1401,8 @@ test("perubahan pelanggan menjadi sekali berlangganan menghapus reminder aktif",
     subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
   });
 
-  assert.equal(updated.subscriptionType, SUBSCRIPTION_TYPES.ONE_TIME);
+  assert.equal(updated.subscriptionType, SUBSCRIPTION_TYPES.RECURRING);
+  assert.equal(updated.billingCycle, BILLING_CYCLES.PREPAID);
   assert.equal(manager.reminders.size, 0);
   assert.equal(reminderSaves, 1);
 });
@@ -2430,7 +2516,7 @@ test("registrasi pelanggan MikroTik membuat jadwal sebulan dari waktu registrasi
   assert.equal(manager.reminders.size, 1);
 });
 
-test("sekali berlangganan mengubah jadwal menjadi penonaktifan tanpa menghapus tanggal", async () => {
+test("pelanggan baru mengabaikan tipe sekali berlangganan dan memakai bulanan prabayar", async () => {
   const manager = new DataManager({ push() {} });
   manager.sequelize = { transaction: async (operation) => operation({}) };
   manager.withDatabaseWrite = async (operation) => operation();
@@ -2449,16 +2535,13 @@ test("sekali berlangganan mengubah jadwal menjadi penonaktifan tanpa menghapus t
     hotspotReactivationAt: "2026-09-01 00:00",
   });
 
-  assert.equal(result.subscriptionType, SUBSCRIPTION_TYPES.ONE_TIME);
-  assert.equal(result.hotspotReactivationEnabled, false);
+  assert.equal(result.subscriptionType, SUBSCRIPTION_TYPES.RECURRING);
+  assert.equal(result.billingCycle, BILLING_CYCLES.PREPAID);
+  assert.equal(result.hotspotReactivationEnabled, true);
   assert.equal(
     result.hotspotReactivationAt,
     addMonthsSafely(result.createdAt, 1, manager.getTimezone()).toISOString()
   );
-
-  const reactivated = await manager.markHotspotReactivated(result.id, { password: "hotspot-pass", profile: "default" });
-  assert.equal(reactivated.hotspotReactivationEnabled, false);
-  assert.equal(reactivated.hotspotReactivationAt, null);
 });
 
 test("migrasi jadwal layanan memakai tanggal dan jam registrasi pertama", async () => {

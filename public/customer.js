@@ -188,8 +188,6 @@ function customerPortalApp() {
           : "Belum memiliki paket aktif";
       }
       if (this.data?.billing?.billingPausedForArrears) return "Tagihan baru dijeda selama layanan nonaktif";
-      if (this.data?.billing?.subscriptionType === "ONE_TIME") return "Tidak ada perpanjangan otomatis";
-      if (this.data?.billing?.subscriptionActive === false) return "Sekali berlangganan telah selesai";
       return this.data?.billing?.dueDate ? `Jatuh tempo ${this.date(this.data.billing.dueDate)}` : "Jadwal jatuh tempo perlu ditentukan";
     },
     maskedPassword() {

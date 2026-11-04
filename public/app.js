@@ -203,7 +203,6 @@
             name: "",
             phoneNumber: "",
             linkedApHost: "",
-            subscriptionType: "RECURRING",
             billingCycle: "PREPAID",
             mikrotikUsername: "",
             mikrotikProfile: "",
@@ -220,7 +219,6 @@
             name: "",
             phoneNumber: "",
             linkedApHost: "",
-            subscriptionType: "RECURRING",
             billingCycle: "PREPAID",
             mikrotikUsername: "",
             mikrotikProfile: "",
@@ -776,7 +774,6 @@
             name: "",
             phoneNumber: "",
             linkedApHost: "",
-            subscriptionType: "RECURRING",
             billingCycle: "PREPAID",
           };
         },
@@ -1127,12 +1124,10 @@
             : `Bayar ${period}`;
         },
 
-        getSubscriptionTypeLabel(contact) {
-          return String(contact?.subscriptionType || "RECURRING").toUpperCase() === "ONE_TIME"
-            ? "Sekali berlangganan"
-            : (String(contact?.billingCycle || "PREPAID").toUpperCase() === "POSTPAID"
-              ? "Bulanan pascabayar"
-              : "Bulanan prabayar");
+        getBillingCycleLabel(contact) {
+          return String(contact?.billingCycle || "PREPAID").toUpperCase() === "POSTPAID"
+            ? "Bulanan pascabayar"
+            : "Bulanan prabayar";
         },
 
         isPrepaidPackage(contact) {
@@ -1455,7 +1450,6 @@
         getDueStatusLabel(status) {
           const labels = {
             NOT_SCHEDULED: "Perlu Dijadwalkan",
-            NOT_APPLICABLE: "Tidak Dijadwalkan",
             UPCOMING: "Belum Jatuh Tempo",
             OVERDUE: "Jatuh Tempo",
             PAID: "Lunas",
@@ -1465,9 +1459,7 @@
 
         getDueDateLabel(contact) {
           if (contact?.dueDate) return this.formatDateTime(contact.dueDate);
-          return String(contact?.dueStatus || "").toUpperCase() === "NOT_APPLICABLE"
-            ? "Tidak ada perpanjangan otomatis"
-            : "Jadwal belum tersedia";
+          return "Jadwal belum tersedia";
         },
 
         getDueStatusClass(status) {
@@ -2593,7 +2585,6 @@
             name: this.forms.contact.name,
             phoneNumber: this.forms.contact.phoneNumber,
             linkedApHost: this.forms.contact.linkedApHost,
-            subscriptionType: this.forms.contact.subscriptionType,
             billingCycle: this.forms.contact.billingCycle,
           };
         },
@@ -2648,7 +2639,6 @@
             name: contact.name || "",
             phoneNumber: contact.phoneNumber || "",
             linkedApHost: contact.linkedApHost || "",
-            subscriptionType: contact.subscriptionType || "RECURRING",
             billingCycle: contact.billingCycle || "PREPAID",
           };
           this.clearFormError("contactEdit");
@@ -2676,7 +2666,6 @@
                   name: this.forms.contactEdit.name,
                   phoneNumber: this.forms.contactEdit.phoneNumber,
                   linkedApHost: this.forms.contactEdit.linkedApHost,
-                  subscriptionType: this.forms.contactEdit.subscriptionType,
                   billingCycle: this.forms.contactEdit.billingCycle,
                 }),
               });

@@ -315,9 +315,22 @@ test("mode pascabayar memakai periode tagihan dari server dan tersedia di form p
     monthlyPaymentAmount: 100_000,
   };
 
-  assert.equal(app.getSubscriptionTypeLabel(contact), "Bulanan pascabayar");
+  assert.equal(app.getBillingCycleLabel(contact), "Bulanan pascabayar");
   assert.equal(app.getCurrentBillingActionLabel(contact), "Bayar Oktober 2026 · Rp\u00a0100.000");
   assert.equal(app.blankContactForm().billingCycle, "PREPAID");
+  assert.equal(Object.hasOwn(app.blankContactForm(), "subscriptionType"), false);
+  app.forms.contact = {
+    name: "Pelanggan Baru",
+    phoneNumber: "6281234567000",
+    linkedApHost: "",
+    billingCycle: "POSTPAID",
+  };
+  const createPayload = app.getContactCreatePayload();
+  assert.equal(createPayload.name, "Pelanggan Baru");
+  assert.equal(createPayload.phoneNumber, "6281234567000");
+  assert.equal(createPayload.linkedApHost, "");
+  assert.equal(createPayload.billingCycle, "POSTPAID");
+  assert.equal(Object.hasOwn(createPayload, "subscriptionType"), false);
   assert.match(html, /x-model="forms\.contact\.billingCycle"/);
   assert.match(html, /x-model="forms\.contactEdit\.billingCycle"/);
   assert.match(html, /Pascabayar, bayar bulan sebelumnya/);
@@ -366,19 +379,14 @@ test("form template reminder menampilkan variabel masa tenggang dan tanggal isol
   assert.match(html, /\{\{renewalStatusInfo\}\}/);
 });
 
-test("status jatuh tempo membedakan jadwal yang perlu dibuat dan sekali berlangganan", () => {
+test("filter jatuh tempo hanya menampilkan jadwal pelanggan bulanan", () => {
   const app = createDashboardApp();
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
 
   assert.equal(app.getDueStatusLabel("NOT_SCHEDULED"), "Perlu Dijadwalkan");
-  assert.equal(app.getDueStatusLabel("NOT_APPLICABLE"), "Tidak Dijadwalkan");
   assert.equal(app.getDueDateLabel({ dueStatus: "NOT_SCHEDULED" }), "Jadwal belum tersedia");
-  assert.equal(
-    app.getDueDateLabel({ dueStatus: "NOT_APPLICABLE" }),
-    "Tidak ada perpanjangan otomatis"
-  );
   assert.match(html, /<option value="NOT_SCHEDULED">Belum ada jadwal<\/option>/);
-  assert.match(html, /<option value="NOT_APPLICABLE">Tanpa jadwal bulanan<\/option>/);
+  assert.doesNotMatch(html, /ONE_TIME|Sekali berlangganan|Tanpa jadwal bulanan/);
   assert.match(html, /x-text="getDueDateLabel\(contact\)"/);
 });
 

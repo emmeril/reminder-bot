@@ -2477,6 +2477,7 @@ class DataManager {
     }
 
     this.normalizeLoadedContacts();
+    await this.migrateOneTimeSubscriptionsToPrepaid();
     await this.migrateServiceSchedulesFromRegistration();
     const portalAccountsCreated = await this.synchronizeCustomerPortalAccounts();
     await this.normalizeReminderRelations();
@@ -2917,6 +2918,85 @@ class DataManager {
     }
   }
 
+  async migrateOneTimeSubscriptionsToPrepaid(options = {}) {
+    const requestedAt = options.now ? new Date(options.now) : new Date();
+    const now = Number.isNaN(requestedAt.getTime()) ? new Date() : requestedAt;
+    const updatedAt = now.toISOString();
+    let migrated = 0;
+    let purchasesMigrated = 0;
+
+    for (const contact of this.contacts.values()) {
+      if (normalizeSubscriptionType(contact.subscriptionType) !== SUBSCRIPTION_TYPES.ONE_TIME) continue;
+
+      const storedSchedule = this.normalizeOptionalDate(contact.hotspotReactivationAt);
+      const scheduleDate = storedSchedule ? new Date(storedSchedule) : null;
+      const packageActive = Boolean(
+        scheduleDate
+        && Number.isFinite(scheduleDate.getTime())
+        && scheduleDate.getTime() > now.getTime()
+      );
+      const paidDates = Object.values(contact.paymentMonths || {})
+        .filter((payment) => payment?.status === PAYMENT_STATUS.PAID && payment.paidDate)
+        .map((payment) => new Date(payment.paidDate))
+        .filter((date) => Number.isFinite(date.getTime()))
+        .sort((left, right) => right.getTime() - left.getTime());
+      const storedPaymentDate = contact.paymentDate ? new Date(contact.paymentDate) : null;
+      const paidAt = paidDates[0]
+        || (storedPaymentDate && Number.isFinite(storedPaymentDate.getTime()) ? storedPaymentDate : null);
+      const amount = Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0));
+      const migrationId = `MIG-ONE-TIME-${contact.id}`;
+
+      contact.subscriptionType = SUBSCRIPTION_TYPES.RECURRING;
+      contact.billingCycle = BILLING_CYCLES.PREPAID;
+      contact.subscriptionChangedByArrears = false;
+      contact.arrearsSubscriptionDebtPeriods = [];
+      contact.billingPausedForArrears = false;
+      contact.billingPausedAfterPeriod = null;
+      contact.hotspotSuspendedForArrears = false;
+      contact.hotspotManualActivationWithArrears = false;
+      contact.hotspotReactivationEnabled = packageActive;
+      contact.hotspotReactivationAt = packageActive ? storedSchedule : null;
+      contact.paymentStatus = packageActive ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.UNPAID;
+      contact.paymentDate = packageActive && paidAt ? paidAt.toISOString() : null;
+      contact.paymentType = packageActive ? PAYMENT_TYPES.ACTIVE_PERIOD : null;
+      contact.subscriptionMigratedFromOneTimeAt = updatedAt;
+      contact.updatedAt = updatedAt;
+
+      if (paidAt && amount > 0) {
+        if (!Array.isArray(contact.activePeriodPurchases)) contact.activePeriodPurchases = [];
+        const existing = contact.activePeriodPurchases.some((purchase) => String(purchase.id) === migrationId);
+        if (!existing) {
+          const historicalActiveUntil = packageActive
+            ? storedSchedule
+            : addMonthsSafely(paidAt, 1, this.getTimezone()).toISOString();
+          contact.activePeriodPurchases.push({
+            id: migrationId,
+            paymentType: PAYMENT_TYPES.ACTIVE_PERIOD,
+            status: PAYMENT_STATUS.PAID,
+            amount,
+            purchasedAt: paidAt.toISOString(),
+            activeFrom: paidAt.toISOString(),
+            activeUntil: historicalActiveUntil,
+            paymentProvider: "migration",
+          });
+          purchasesMigrated += 1;
+        }
+      }
+      migrated += 1;
+    }
+
+    if (migrated > 0 && options.save !== false) {
+      await this.saveContacts();
+      this.activityLog.push("info", "storage", `${migrated} pelanggan lama dikonversi ke bulanan prabayar`, {
+        migration: "one-time-to-prepaid-v1",
+        migrated,
+        purchasesMigrated,
+      });
+    }
+
+    return { migrated, purchasesMigrated };
+  }
+
   getContactRegistrationAt(contact) {
     const pelanggan = this.pelanggan.get(String(contact.mikrotikUsername || ""))
       || Array.from(this.pelanggan.values()).find(
@@ -2956,6 +3036,10 @@ class DataManager {
       let skipped = 0;
       const updatedAt = new Date().toISOString();
       for (const contact of this.contacts.values()) {
+        if (contact.subscriptionMigratedFromOneTimeAt) {
+          skipped += 1;
+          continue;
+        }
         const schedule = this.getNextServiceScheduleFromRegistration(contact, options);
         if (!schedule) {
           skipped += 1;
@@ -3976,6 +4060,7 @@ class DataManager {
       contactName: contact?.name || reminder.contactName || null,
       phoneNumber: contact?.phoneNumber || reminder.phoneNumber || null,
       subscriptionType: normalizeSubscriptionType(contact?.subscriptionType || reminder.subscriptionType),
+      billingCycle: normalizeBillingCycle(contact?.billingCycle || reminder.billingCycle),
       paymentAmount: Math.max(0, Number(reminder.paymentAmount ?? contact?.monthlyPaymentAmount) || 0),
       deliveryDateTime: Number.isNaN(deliveryDate.getTime()) ? reminder.reminderDateTime : deliveryDate.toISOString(),
       deliveryScheduleType,
@@ -5235,10 +5320,8 @@ class DataManager {
       const name = sanitizeInput(payload.name);
       const phoneNumber = normalizePhoneNumber(payload.phoneNumber);
       const linkedApHost = sanitizeInput(String(payload.linkedApHost || ""));
-      const subscriptionType = normalizeSubscriptionType(payload.subscriptionType);
-      const billingCycle = subscriptionType === SUBSCRIPTION_TYPES.RECURRING
-        ? normalizeBillingCycle(payload.billingCycle)
-        : BILLING_CYCLES.PREPAID;
+      const subscriptionType = SUBSCRIPTION_TYPES.RECURRING;
+      const billingCycle = normalizeBillingCycle(payload.billingCycle);
       const hotspotFields = this.normalizeContactHotspotFields({ ...payload, subscriptionType });
 
       if (!name) throw new Error("Nama kontak wajib diisi.");
@@ -5249,8 +5332,7 @@ class DataManager {
       const initialServiceSchedule = addMonthsSafely(now, 1, this.getTimezone()).toISOString();
       const { year: initialYear, month: initialMonth } = getBillingPeriodParts(new Date(now), this.getTimezone());
       const initialPeriod = makeBillingPeriodKey(initialYear, initialMonth);
-      const prepaidPackage = subscriptionType === SUBSCRIPTION_TYPES.RECURRING
-        && billingCycle === BILLING_CYCLES.PREPAID;
+      const prepaidPackage = billingCycle === BILLING_CYCLES.PREPAID;
       const monthlyPaymentAmount = sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000);
       const contact = {
         id: generateId(),
@@ -5289,7 +5371,7 @@ class DataManager {
         },
         linkedApHost,
         ...hotspotFields,
-        hotspotReactivationEnabled: subscriptionType === SUBSCRIPTION_TYPES.RECURRING,
+        hotspotReactivationEnabled: true,
         hotspotReactivationAt: initialServiceSchedule,
         hotspotLastReactivatedAt: this.normalizeOptionalDate(payload.hotspotLastReactivatedAt),
         hotspotLastDeactivatedAt: this.normalizeOptionalDate(payload.hotspotLastDeactivatedAt),
@@ -5352,7 +5434,6 @@ class DataManager {
       const { year: initialYear, month: initialMonth } = getBillingPeriodParts(new Date(now), this.getTimezone());
       const initialPeriod = makeBillingPeriodKey(initialYear, initialMonth);
       let contact = this.findContactByPhone(phoneNumber);
-      let remindersRemoved = 0;
       let reminderMessagesChanged = 0;
       const usernameOwner = this.pelanggan.get(username);
       if (usernameOwner
@@ -5365,19 +5446,16 @@ class DataManager {
         : sanitizeInput(String(contact?.linkedApHost || ""));
       const hotspotFields = this.normalizeContactHotspotFields({
         ...payload,
-        subscriptionType: normalizeSubscriptionType(payload.subscriptionType, contact?.subscriptionType),
+        subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
         mikrotikUsername: username,
         mikrotikProfile: profile,
         mikrotikPassword: password,
       }, contact || {});
 
       if (!contact) {
-        const subscriptionType = normalizeSubscriptionType(payload.subscriptionType);
-        const billingCycle = subscriptionType === SUBSCRIPTION_TYPES.RECURRING
-          ? normalizeBillingCycle(payload.billingCycle)
-          : BILLING_CYCLES.PREPAID;
-        const prepaidPackage = subscriptionType === SUBSCRIPTION_TYPES.RECURRING
-          && billingCycle === BILLING_CYCLES.PREPAID;
+        const subscriptionType = SUBSCRIPTION_TYPES.RECURRING;
+        const billingCycle = normalizeBillingCycle(payload.billingCycle);
+        const prepaidPackage = billingCycle === BILLING_CYCLES.PREPAID;
         contact = {
           id: String(generateId()),
           name,
@@ -5405,7 +5483,7 @@ class DataManager {
           },
           linkedApHost,
           ...hotspotFields,
-          hotspotReactivationEnabled: normalizeSubscriptionType(payload.subscriptionType) === SUBSCRIPTION_TYPES.RECURRING,
+          hotspotReactivationEnabled: true,
           hotspotReactivationAt: initialServiceSchedule,
           hotspotProvisioningStatus: provisioningStatus,
           hotspotProvisioningError: provisioningError,
@@ -5436,13 +5514,8 @@ class DataManager {
       } else {
         contact.name = name;
         const previousSubscriptionType = contact.subscriptionType;
-        contact.subscriptionType = normalizeSubscriptionType(payload.subscriptionType, previousSubscriptionType);
-        contact.billingCycle = contact.subscriptionType === SUBSCRIPTION_TYPES.RECURRING
-          ? normalizeBillingCycle(payload.billingCycle, contact.billingCycle)
-          : BILLING_CYCLES.PREPAID;
-        if (!isRecurringSubscription(contact)) {
-          remindersRemoved = this.removeRemindersForContact(contact.id);
-        }
+        contact.subscriptionType = SUBSCRIPTION_TYPES.RECURRING;
+        contact.billingCycle = normalizeBillingCycle(payload.billingCycle, contact.billingCycle);
         contact.linkedApHost = linkedApHost;
         if (payload.monthlyPaymentAmount !== undefined) {
           contact.monthlyPaymentAmount = sanitizePositiveInteger(
@@ -5454,7 +5527,7 @@ class DataManager {
           contact.monthlyPaymentAmountCustomized = true;
         }
         Object.assign(contact, hotspotFields);
-        const subscriptionTransition = payload.subscriptionType !== undefined
+        const subscriptionTransition = previousSubscriptionType !== contact.subscriptionType
           ? this.applySubscriptionTypeTransition(
               contact,
               previousSubscriptionType,
@@ -5519,7 +5592,7 @@ class DataManager {
         await this.saveContacts(options);
         await this.savePelanggan(options);
         await this.saveCustomerAccounts(options);
-        if (reminderCreated || remindersRemoved > 0 || reminderMessagesChanged > 0) {
+        if (reminderCreated || reminderMessagesChanged > 0) {
           await this.saveReminders(options);
         }
       }));
@@ -5629,10 +5702,8 @@ class DataManager {
       const nextLinkedApHost = payload.linkedApHost !== undefined
         ? sanitizeInput(String(payload.linkedApHost || ""))
         : sanitizeInput(String(contact.linkedApHost || ""));
-      const nextSubscriptionType = normalizeSubscriptionType(payload.subscriptionType, contact.subscriptionType);
-      const nextBillingCycle = nextSubscriptionType === SUBSCRIPTION_TYPES.RECURRING
-        ? normalizeBillingCycle(payload.billingCycle, contact.billingCycle)
-        : BILLING_CYCLES.PREPAID;
+      const nextSubscriptionType = SUBSCRIPTION_TYPES.RECURRING;
+      const nextBillingCycle = normalizeBillingCycle(payload.billingCycle, contact.billingCycle);
       const nextUsername = payload.mikrotikUsername !== undefined
         ? sanitizeInput(String(payload.mikrotikUsername || ""))
         : previousHotspot.username;
@@ -5691,7 +5762,7 @@ class DataManager {
         contact.monthlyPaymentAmountCustomized = true;
       }
       Object.assign(contact, hotspotFields);
-      if (payload.subscriptionType !== undefined && subscriptionTypeChanged) {
+      if (subscriptionTypeChanged) {
         this.applySubscriptionTypeTransition(
           contact,
           previousSubscriptionType,
