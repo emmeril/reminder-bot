@@ -3326,9 +3326,9 @@ span[class*="rounded-full"][class*="text-xs"],
   body.voucher-print-mode .voucher-reward-print-page-grid {
     display: grid;
     min-height: 0;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-template-rows: repeat(5, minmax(0, 1fr));
-    gap: 2mm;
+    gap: 3mm;
   }
 
   body.voucher-print-mode .voucher-print-page-grid .voucher-card {
@@ -3341,10 +3341,38 @@ span[class*="rounded-full"][class*="text-xs"],
     overflow: hidden;
   }
 
+  body.voucher-print-mode .voucher-print-page-grid .voucher-card > div:first-child {
+    padding-bottom: 1.5mm;
+    font-size: 11px;
+  }
+
+  body.voucher-print-mode .voucher-print-page-grid .voucher-card > div:first-child strong {
+    font-size: 12px;
+  }
+
+  body.voucher-print-mode .voucher-print-page-grid .voucher-card dl {
+    align-content: center;
+    gap: 1.2mm;
+  }
+
+  body.voucher-print-mode .voucher-print-page-grid .voucher-card dl > div {
+    grid-template-columns: 22mm minmax(0, 1fr);
+    gap: 1.5mm;
+  }
+
+  body.voucher-print-mode .voucher-print-page-grid .voucher-card dt {
+    font-size: 11px;
+  }
+
+  body.voucher-print-mode .voucher-print-page-grid .voucher-card dd {
+    font-size: 14px;
+    line-height: 1.25;
+  }
+
   body.voucher-print-mode .voucher-standard-note {
     margin: 0;
     color: #52645e;
-    font-size: 7px;
+    font-size: 9px;
     line-height: 1.35;
     text-align: center;
   }
@@ -3353,8 +3381,8 @@ span[class*="rounded-full"][class*="text-xs"],
     display: grid;
     min-height: 0;
     grid-template-rows: auto auto 1fr auto;
-    gap: 1mm;
-    padding: 2mm;
+    gap: 1.3mm;
+    padding: 2.5mm;
     overflow: hidden;
     border: .35mm solid #0f6b57;
     border-radius: 2mm;
@@ -3369,9 +3397,9 @@ span[class*="rounded-full"][class*="text-xs"],
   }
 
   body.voucher-print-mode .voucher-reward-card-brand strong {
-    max-width: 29mm;
+    max-width: 42mm;
     overflow: hidden;
-    font-size: 8px;
+    font-size: 10px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -3381,7 +3409,7 @@ span[class*="rounded-full"][class*="text-xs"],
     color: #fff;
     border-radius: 999px;
     background: #0f6b57;
-    font-size: 6px;
+    font-size: 8px;
     font-weight: 800;
     letter-spacing: .08em;
   }
@@ -3393,32 +3421,32 @@ span[class*="rounded-full"][class*="text-xs"],
 
   body.voucher-print-mode .voucher-reward-card-title h4 {
     margin: 0;
-    font-size: 11px;
+    font-size: 13px;
   }
 
   body.voucher-print-mode .voucher-reward-card-title span {
     color: #0f6b57;
-    font-size: 8px;
+    font-size: 10px;
     font-weight: 800;
   }
 
   body.voucher-print-mode .voucher-reward-card dl {
     display: grid;
     align-content: center;
-    gap: .7mm;
+    gap: 1mm;
     margin: 0;
   }
 
   body.voucher-print-mode .voucher-reward-card dl > div {
     display: grid;
-    grid-template-columns: 14mm minmax(0, 1fr);
-    gap: 1mm;
+    grid-template-columns: 20mm minmax(0, 1fr);
+    gap: 1.5mm;
     align-items: baseline;
   }
 
   body.voucher-print-mode .voucher-reward-card dt {
     color: #52645e;
-    font-size: 7px;
+    font-size: 10px;
   }
 
   body.voucher-print-mode .voucher-reward-card dd {
@@ -3426,14 +3454,16 @@ span[class*="rounded-full"][class*="text-xs"],
     margin: 0;
     overflow-wrap: anywhere;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 8.5px;
+    font-size: 13px;
+    line-height: 1.2;
     font-weight: 800;
   }
 
   body.voucher-print-mode .voucher-reward-card > p {
     margin: 0;
     color: #52645e;
-    font-size: 6.5px;
+    font-size: 9px;
+    line-height: 1.3;
     text-align: center;
   }
 }

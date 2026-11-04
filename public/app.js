@@ -2416,8 +2416,8 @@
             ? this.voucherResult.vouchers
             : [];
           const pages = [];
-          for (let index = 0; index < vouchers.length; index += 20) {
-            pages.push(vouchers.slice(index, index + 20));
+          for (let index = 0; index < vouchers.length; index += 15) {
+            pages.push(vouchers.slice(index, index + 15));
           }
           return pages;
         },

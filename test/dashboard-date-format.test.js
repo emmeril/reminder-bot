@@ -1067,6 +1067,8 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(styles, /@media \(max-width: 620px\) \{[\s\S]*?\.voucher-fields\.two-columns/);
   assert.match(styles, /@media print \{[\s\S]*?body\.voucher-print-mode/);
   assert.match(styles, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);[\s\S]*?grid-template-rows: repeat\(5, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /voucher-print-page-grid \.voucher-card dd \{[\s\S]*?font-size: 14px/);
+  assert.match(styles, /voucher-reward-card dd \{[\s\S]*?font-size: 13px/);
   assert.match(styles, /\.voucher-delete-button:focus-visible/);
   assert.match(styles, /\.voucher-usage-badge\.status-used/);
   assert.match(styles, /\.voucher-list-tools \{[\s\S]*?grid-template-columns:/);
@@ -1081,7 +1083,7 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   };
   app.voucherProfiles = [{ name: "VCR-1H", validity: "1d" }];
   assert.deepEqual(Array.from(app.getVoucherPrintPages(), (page) => page.length), [15, 15, 1]);
-  assert.deepEqual(Array.from(app.getVoucherRewardPrintPages(), (page) => page.length), [20, 11]);
+  assert.deepEqual(Array.from(app.getVoucherRewardPrintPages(), (page) => page.length), [15, 15, 1]);
   assert.match(app.getVoucherPriceLabel(), /25\.000/);
   assert.equal(app.getVoucherValidityLabel(), "1 hari");
   assert.equal(app.getVoucherValidityLabel({ profile: "VCR-1H", validity: "1w2d4h" }), "1 minggu 2 hari 4 jam");
