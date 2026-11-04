@@ -52,8 +52,6 @@
           voucher: "",
           voucherProfile: "",
           accountDelivery: "",
-          reminder: "",
-          reminderEdit: "",
           template: "",
           settings: "",
           deleteConfirm: "",
@@ -88,14 +86,6 @@
           includePortal: true,
           includeHotspot: false,
         },
-        reminderEditModal: {
-          open: false,
-          loading: false,
-        },
-        reminderCreateModal: {
-          open: false,
-          loading: false,
-        },
         templateModal: {
           open: false,
           loading: false,
@@ -129,7 +119,7 @@
           { key: "contacts", group: "operations", label: "Pelanggan", icon: "fa-solid fa-users", description: "Kelola data, tagihan, dan akun hotspot pelanggan." },
           { key: "vouchers", group: "operations", label: "Voucher", icon: "fa-solid fa-ticket", description: "Buat satu atau banyak akun voucher hotspot." },
           { key: "revenue", group: "operations", label: "Laporan Pendapatan", icon: "fa-solid fa-chart-line", description: "Periksa pendapatan pelanggan dan voucher pada setiap periode." },
-          { key: "reminders", group: "operations", label: "Jadwal", icon: "fa-solid fa-calendar-check", description: "Atur waktu dan isi pesan pengingat pelanggan." },
+          { key: "reminders", group: "operations", label: "Jadwal", icon: "fa-solid fa-calendar-check", description: "Pantau jadwal pengingat otomatis pelanggan." },
           { key: "monitor-ap", group: "operations", label: "Jaringan", icon: "fa-solid fa-tower-broadcast", description: "Pantau koneksi access point pelanggan." },
           { key: "notifications", group: "messages", label: "Kirim pesan", icon: "fa-solid fa-paper-plane", description: "Kirim pesan ke satu pelanggan atau banyak pelanggan." },
           { key: "templates", group: "messages", label: "Template", icon: "fa-solid fa-file-lines", description: "Simpan isi pesan yang sering digunakan." },
@@ -213,7 +203,6 @@
             hotspotReactivationDate: "",
             hotspotReactivationTime: "",
           },
-          reminder: { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
           contactEdit: {
             id: "",
             name: "",
@@ -270,7 +259,6 @@
             commission: 0,
             lockUser: false,
           },
-          reminderEdit: { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" },
           template: { name: "", content: "" },
           settings: {
             dashboardTitle: "",
@@ -3182,13 +3170,6 @@
           return msg;
         },
 
-        applySelectedTemplate() {
-          const name = this.forms.reminder.templateName;
-          if (!name) return;
-          const tpl = this.templates.find((t) => t.name === name);
-          if (!tpl) return;
-          this.forms.reminder.message = tpl.content || "";
-        },
         onManualContactChange() {
           const selected = this.contacts.find((c) => String(c.id) === String(this.forms.manual.contactId));
           if (selected) {
@@ -3213,155 +3194,6 @@
           const tpl = this.templates.find((t) => t.name === name);
           if (!tpl) return;
           this.forms.broadcast.message = tpl.content || "";
-        },
-
-        onReminderContactChange() {
-          if (this.forms.reminder.templateName) {
-            this.applySelectedTemplate();
-          }
-        },
-
-        async createReminder() {
-          this.clearFormError("reminder");
-          const date = this.forms.reminder.reminderDate;
-          const time = this.forms.reminder.reminderTime || '00:00';
-          if (!date) {
-            this.setFormError("reminder", "Pilih tanggal pengiriman.");
-            return false;
-          }
-          const datetime = `${date} ${time}`;
-
-          const payload = {
-            contactId: this.forms.reminder.contactId,
-            reminderDateTime: datetime,
-            message: this.forms.reminder.message,
-            templateName: this.forms.reminder.templateName,
-          };
-
-          await this.api("/api/reminders", {
-            method: "POST",
-            body: JSON.stringify(payload),
-          });
-
-          this.forms.reminder = { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" };
-          await Promise.all([this.loadReminders(), this.loadStatus()]);
-          return true;
-        },
-
-        openReminderCreateModal() {
-          this.forms.reminder = { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" };
-          this.clearFormError("reminder");
-          this.reminderCreateModal.open = true;
-          document.body.classList.add("overflow-hidden");
-        },
-
-        closeReminderCreateModal() {
-          this.reminderCreateModal.open = false;
-          this.reminderCreateModal.loading = false;
-          this.forms.reminder = { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" };
-          this.clearFormError("reminder");
-          document.body.classList.remove("overflow-hidden");
-        },
-
-        async submitCreateReminder() {
-          if (this.reminderCreateModal.loading) return;
-          this.reminderCreateModal.loading = true;
-          this.clearFormError("reminder");
-          try {
-            await this.withProcessing("Menyimpan reminder...", async () => {
-              const created = await this.createReminder();
-              if (created) {
-                this.notify("Reminder dibuat.");
-                this.closeReminderCreateModal();
-              }
-            });
-          } catch (error) {
-            this.setFormError("reminder", error);
-          } finally {
-            this.reminderCreateModal.loading = false;
-          }
-        },
-
-        openReminderEditModal(reminder) {
-          this.forms.reminderEdit = {
-            id: reminder.id,
-            contactId: reminder.contactId || "",
-            reminderDate: this.formatDateInput(reminder.reminderDateTime),
-            reminderTime: this.formatTimeInput(reminder.reminderDateTime),
-            templateName: reminder.templateName || "",
-            message: reminder.messageSource || reminder.message || "",
-          };
-          this.clearFormError("reminderEdit");
-          this.reminderEditModal.open = true;
-          document.body.classList.add("overflow-hidden");
-        },
-
-        closeReminderEditModal() {
-          this.reminderEditModal.open = false;
-          this.reminderEditModal.loading = false;
-          this.forms.reminderEdit = { id: "", contactId: "", reminderDate: "", reminderTime: "", templateName: "", message: "" };
-          this.clearFormError("reminderEdit");
-          document.body.classList.remove("overflow-hidden");
-        },
-
-        applyReminderEditTemplate() {
-          const name = this.forms.reminderEdit.templateName;
-          if (!name) return;
-          const tpl = this.templates.find((t) => t.name === name);
-          if (!tpl) return;
-          this.forms.reminderEdit.message = tpl.content || "";
-        },
-
-        onReminderEditContactChange() {
-          if (this.forms.reminderEdit.templateName) {
-            this.applyReminderEditTemplate();
-          }
-        },
-
-        async saveReminderEdit() {
-          if (!this.forms.reminderEdit.id || this.reminderEditModal.loading) return;
-          const date = this.forms.reminderEdit.reminderDate;
-          const time = this.forms.reminderEdit.reminderTime || "00:00";
-          if (!date) {
-            this.setFormError("reminderEdit", "Pilih tanggal pengiriman.");
-            return;
-          }
-
-          this.reminderEditModal.loading = true;
-          this.clearFormError("reminderEdit");
-          try {
-            await this.withProcessing("Menyimpan perubahan reminder...", async () => {
-              await this.api(`/api/reminders/${this.forms.reminderEdit.id}`, {
-                method: "PUT",
-                body: JSON.stringify({
-                  contactId: this.forms.reminderEdit.contactId,
-                  reminderDateTime: `${date} ${time}`,
-                  message: this.forms.reminderEdit.message,
-                  templateName: this.forms.reminderEdit.templateName,
-                }),
-              });
-              this.notify("Reminder diperbarui.");
-              this.closeReminderEditModal();
-              await Promise.all([this.loadReminders(), this.loadStatus(), this.loadContacts()]);
-            });
-          } catch (error) {
-            this.setFormError("reminderEdit", error);
-          } finally {
-            this.reminderEditModal.loading = false;
-          }
-        },
-
-        removeReminder(reminder) {
-          const label = reminder?.contactName ? `untuk "${reminder.contactName}"` : "ini";
-          this.openDeleteConfirm({
-            title: "Hapus reminder?",
-            description: `Reminder ${label} akan dihapus. Tindakan ini tidak bisa dibatalkan.`,
-            action: async () => {
-              await this.api(`/api/reminders/${reminder.id}`, { method: "DELETE" });
-              this.notify("Reminder dihapus.");
-              await Promise.all([this.loadReminders(), this.loadStatus()]);
-            },
-          });
         },
 
         openTemplateCreateModal(trigger = null) {

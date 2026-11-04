@@ -6529,74 +6529,6 @@ class DataManager {
     });
   }
 
-  async updateReminder(id, payload) {
-    return this.withDataMutation(async () => {
-      const reminder = this.getReminder(id);
-      if (!reminder) throw new Error("Reminder tidak ditemukan.");
-      if (reminder.processingAt) throw new Error("Reminder sedang diproses scheduler.");
-
-      if (payload.contactId !== undefined) {
-        const contact = this.getContact(payload.contactId);
-        if (!contact) throw new Error("Contact reminder tidak ditemukan.");
-        if (this.isReminderSuppressedForArrears(contact)) {
-          throw new Error("Reminder tidak dibuat untuk pelanggan dengan 2 tunggakan atau lebih.");
-        }
-        reminder.contactId = String(contact.id);
-        reminder.contactName = contact.name;
-        reminder.phoneNumber = contact.phoneNumber;
-      }
-
-      if (payload.message !== undefined) {
-        const message = sanitizeMultilineText(payload.message);
-        if (!message) throw new Error("Isi reminder wajib diisi.");
-        reminder.message = message;
-        reminder.messageSource = message;
-      }
-
-      if (payload.paymentAmount !== undefined) {
-        const paymentAmount = Number(payload.paymentAmount);
-        if (!Number.isFinite(paymentAmount) || paymentAmount < 0 || paymentAmount > 1_000_000_000) {
-          throw new Error("Nominal reminder harus antara 0 sampai 1 miliar.");
-        }
-        reminder.paymentAmount = Math.floor(paymentAmount);
-      }
-
-      if (payload.reminderDateTime !== undefined) {
-        const reminderDate = payload.reminderDateTime instanceof Date
-          ? payload.reminderDateTime
-          : new Date(payload.reminderDateTime);
-        if (Number.isNaN(reminderDate.getTime())) throw new Error("Tanggal reminder tidak valid.");
-        reminder.reminderDateTime = reminderDate.toISOString();
-      }
-
-      if (payload.templateName !== undefined) {
-        reminder.templateName = payload.templateName ? sanitizeInput(payload.templateName) : null;
-      }
-
-      const contact = this.getResolvedReminderContact(reminder);
-      if (contact) {
-        if (this.isReminderSuppressedForArrears(contact)) {
-          throw new Error("Reminder tidak dibuat untuk pelanggan dengan 2 tunggakan atau lebih.");
-        }
-        this.rewriteReminderPaymentMessage(reminder, contact);
-      }
-
-      await this.saveReminders();
-      return this.hydrateReminder(reminder);
-    });
-  }
-
-  async deleteReminder(id) {
-    return this.withDataMutation(async () => {
-      const reminder = this.getReminder(id);
-      if (!reminder) throw new Error("Reminder tidak ditemukan.");
-      if (reminder.processingAt) throw new Error("Reminder sedang diproses scheduler.");
-      this.reminders.delete(String(id));
-      await this.saveReminders();
-      return reminder;
-    });
-  }
-
   async claimDueReminder(id, now = new Date()) {
     return this.withDataMutation(async () => {
       const reminder = this.getReminder(id);
@@ -10465,27 +10397,6 @@ class WebServer {
     }));
 
     this.app.get("/api/reminders", requireApiAuth, handleApi(async () => this.dataManager.getSortedReminders()));
-    this.app.post("/api/reminders", requireApiAuth, handleApi(async (req) => {
-      const when = parseDateTimeInput(req.body.reminderDateTime, this.dataManager.getTimezone());
-      if (!when) throw new Error("Format reminderDateTime harus YYYY-MM-DD HH:mm.");
-      if (when.getTime() <= Date.now()) throw new Error("Reminder harus dijadwalkan di masa depan.");
-      return this.dataManager.addReminder({
-        contactId: req.body.contactId,
-        reminderDateTime: when,
-        message: req.body.message,
-        templateName: req.body.templateName,
-      });
-    }));
-    this.app.put("/api/reminders/:id", requireApiAuth, handleApi(async (req) => {
-      const payload = { ...req.body };
-      if (payload.reminderDateTime !== undefined) {
-        const when = parseDateTimeInput(payload.reminderDateTime, this.dataManager.getTimezone());
-        if (!when) throw new Error("Format reminderDateTime harus YYYY-MM-DD HH:mm.");
-        payload.reminderDateTime = when;
-      }
-      return this.dataManager.updateReminder(req.params.id, payload);
-    }));
-    this.app.delete("/api/reminders/:id", requireApiAuth, handleApi(async (req) => this.dataManager.deleteReminder(req.params.id)));
     this.app.get("/api/reminders/sent", requireApiAuth, handleApi(async () => this.dataManager.getSentReminders()));
 
     this.app.get("/api/templates", requireApiAuth, handleApi(async () => this.templateManager.listTemplates()));

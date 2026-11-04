@@ -1067,6 +1067,36 @@ test("jadwal reminder memakai waktu kirim H-1 dan tetap menampilkan jatuh tempo"
   assert.match(script, /this\.isToday\(deliveryDateTime\)/);
 });
 
+test("menu jadwal hanya memantau reminder otomatis tanpa CRUD manual", () => {
+  let scrolledToTop = false;
+  const app = createDashboardApp({
+    window: {
+      matchMedia: () => ({ matches: false }),
+      scrollTo: ({ top }) => { scrolledToTop = top === 0; },
+    },
+  });
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const script = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
+  const server = fs.readFileSync(path.join(__dirname, "../src/app.js"), "utf8");
+  const remindersSection = html.match(/<section x-show="activeMenu === 'reminders'"[\s\S]*?<\/section>/)?.[0] || "";
+
+  assert.match(remindersSection, /Jadwal dibuat otomatis dari siklus pembayaran dan masa aktif pelanggan\./);
+  assert.match(remindersSection, /Ubah jadwal melalui data pelanggan\./);
+  assert.match(html, /@click="selectMenu\('reminders'\)"[\s\S]*?<strong>Lihat jadwal<\/strong>/);
+  assert.doesNotMatch(remindersSection, /Buat Reminder|data-label="Aksi"|openReminderEditModal|removeReminder/);
+  assert.doesNotMatch(html, /reminderCreateModal|reminderEditModal/);
+  assert.equal(typeof app.openReminderCreateModal, "undefined");
+  assert.equal(typeof app.openReminderEditModal, "undefined");
+  assert.equal(typeof app.removeReminder, "undefined");
+  app.mobileSidebarOpen = true;
+  app.selectMenu("reminders");
+  assert.equal(app.activeMenu, "reminders");
+  assert.equal(app.mobileSidebarOpen, false);
+  assert.equal(scrolledToTop, true);
+  assert.doesNotMatch(script, /method:\s*"(?:POST|PUT|DELETE)"[\s\S]{0,160}\/api\/reminders/);
+  assert.doesNotMatch(server, /this\.app\.(?:post|put|delete)\("\/api\/reminders/);
+});
+
 test("baris akun pelanggan membuka modal ganti password melalui ikon chevron", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/customer.html"), "utf8");
   const script = fs.readFileSync(path.join(__dirname, "../public/customer.js"), "utf8");

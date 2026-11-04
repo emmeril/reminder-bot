@@ -159,7 +159,7 @@
           <div class="mb-4"><div><h2>Aksi cepat</h2><p class="card-description">Buka pekerjaan yang paling sering digunakan</p></div></div>
           <div class="quick-grid">
             <button type="button" @click="openContactCreateModal()"><span><i class="fa-solid fa-user-plus"></i></span><span class="quick-copy"><strong>Tambah pelanggan</strong><small>Daftarkan pelanggan baru</small></span></button>
-            <button type="button" @click="openReminderCreateModal()"><span><i class="fa-solid fa-calendar-plus"></i></span><span class="quick-copy"><strong>Buat reminder</strong><small>Jadwalkan pesan tagihan</small></span></button>
+            <button type="button" @click="selectMenu('reminders')"><span><i class="fa-solid fa-calendar-check"></i></span><span class="quick-copy"><strong>Lihat jadwal</strong><small>Pantau reminder otomatis</small></span></button>
             <button type="button" @click="selectMenu('notifications')"><span><i class="fa-solid fa-paper-plane"></i></span><span class="quick-copy"><strong>Kirim pesan</strong><small>Personal atau broadcast</small></span></button>
             <button type="button" @click="exportPaymentRecap()"><span><i class="fa-solid fa-file-excel"></i></span><span class="quick-copy"><strong>Unduh rekap</strong><small>Ekspor pembayaran Excel</small></span></button>
           </div>
@@ -1257,14 +1257,12 @@
           <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
             <div>
               <h2 class="font-display text-2xl"><i class="fa-solid fa-calendar-check mr-2 text-clay"></i>Reminders</h2>
-              <!-- <p class="mt-1 text-sm text-ink/60">Seluruh jadwal outbound dibuat dan diubah dari sini.</p> -->
+              <p class="card-description mt-1">Jadwal dibuat otomatis dari siklus pembayaran dan masa aktif pelanggan.</p>
             </div>
             <button type="button" @click="withProcessing('Memuat reminders...', () => loadReminders())" class="ui-secondary-button rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white"><i class="fa-solid fa-rotate mr-2"></i>Muat ulang</button>
           </div>
-          <div class="mb-4 flex flex-nowrap items-center justify-start gap-2 overflow-x-auto pb-1">
-            <button type="button" @click="openReminderCreateModal()" class="shrink-0 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss">
-              <i class="fa-solid fa-calendar-plus mr-2"></i>Buat Reminder
-            </button>
+          <div class="mb-4 rounded-xl border border-moss/20 bg-moss/5 px-4 py-3 text-sm text-ink/70">
+            Ubah jadwal melalui data pelanggan. Ubah isi pesan melalui Pengaturan, lalu buka Template notifikasi.
           </div>
           <div class="filter-inline mt-5">
             <input x-model="filters.reminders.search" @input="resetPage('reminders')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari tujuan, nomor, template, atau pesan">
@@ -1285,17 +1283,16 @@
               <table class="dashboard-table min-w-full text-sm">
                 <thead class="bg-haze/90 text-left text-xs uppercase text-ink/50">
                   <tr>
-                    <th class="w-[22%] px-5 py-4"><i class="fa-solid fa-user mr-2 text-moss"></i>Tujuan</th>
+                    <th class="w-[24%] px-5 py-4"><i class="fa-solid fa-user mr-2 text-moss"></i>Tujuan</th>
                     <th class="w-[14%] px-5 py-4"><i class="fa-solid fa-repeat mr-2 text-moss"></i>Siklus</th>
-                    <th class="w-[18%] px-5 py-4"><i class="fa-solid fa-clock mr-2 text-clay"></i>Waktu pengiriman</th>
-                    <th class="w-[14%] px-5 py-4"><i class="fa-solid fa-file-lines mr-2 text-moss"></i>Template</th>
+                    <th class="w-[20%] px-5 py-4"><i class="fa-solid fa-clock mr-2 text-clay"></i>Waktu pengiriman</th>
+                    <th class="w-[16%] px-5 py-4"><i class="fa-solid fa-file-lines mr-2 text-moss"></i>Template</th>
                     <th class="px-5 py-4"><i class="fa-solid fa-message mr-2 text-ink/45"></i>Pesan</th>
-                    <th class="w-[14%] px-5 py-4"><i class="fa-solid fa-bolt mr-2 text-ink/45"></i>Aksi</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white">
                   <template x-if="!filteredReminders.length">
-                    <tr><td colspan="6" class="px-5 py-10 text-center text-ink/45" x-text="reminders.length ? 'Tidak ada reminder yang cocok.' : 'Belum ada reminder aktif.'"></td></tr>
+                    <tr><td colspan="5" class="px-5 py-10 text-center text-ink/45" x-text="reminders.length ? 'Tidak ada reminder yang cocok.' : 'Belum ada reminder aktif. Jadwal akan muncul setelah pelanggan memiliki siklus pembayaran atau masa aktif.'"></td></tr>
                   </template>
                   <template x-for="reminder in paginatedReminders" :key="reminder.id">
                     <tr>
@@ -1344,12 +1341,6 @@
                           class="read-more-button mt-2 text-xs font-bold text-moss transition hover:text-ink"
                           x-text="isMessageExpanded(messageKey('reminder', reminder.id)) ? 'Tutup' : 'Read more'"
                         ></button>
-                      </td>
-                      <td class="px-5 py-4 align-top" data-label="Aksi">
-                        <div class="flex flex-col items-start gap-2">
-                          <button @click="openReminderEditModal(reminder)" class="w-full rounded-full border border-moss/20 bg-moss/5 px-3 py-2 text-xs font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit</button>
-                          <button @click="removeReminder(reminder)" class="w-full rounded-full border border-clay/20 bg-clay/5 px-3 py-2 text-xs font-semibold text-clay transition hover:bg-clay hover:text-white"><i class="fa-solid fa-trash mr-1.5"></i>Delete</button>
-                        </div>
                       </td>
                     </tr>
                   </template>
@@ -2177,77 +2168,6 @@
 
     <div
       x-cloak
-      x-show="reminderCreateModal.open"
-      x-transition.opacity
-      @keydown.escape.window="closeReminderCreateModal()"
-      @click.self="closeReminderCreateModal()"
-      class="dashboard-modal-overlay fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
-    >
-      <div
-        x-show="reminderCreateModal.open"
-        x-transition.scale.origin.center
-        class="w-full max-w-2xl rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
-      >
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="text-lg font-semibold text-ink">Buat Reminder</h3>
-          <button type="button" @click="closeReminderCreateModal()" class="rounded-full border border-ink/10 px-3 py-1 text-sm font-semibold text-ink hover:bg-haze">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-        <form class="space-y-4" @submit.prevent="submitCreateReminder()">
-          <div class="grid gap-4 md:grid-cols-2">
-            <label class="block text-sm text-ink/60">
-              Contact tujuan
-              <select x-model="forms.reminder.contactId" @change="onReminderContactChange()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
-                <option value="">Pilih contact</option>
-                <template x-for="contact in contacts" :key="'create-reminder-contact-' + contact.id">
-                  <option :value="contact.id" x-text="contact.name + ' (' + contact.phoneNumber + ')'"></option>
-                </template>
-              </select>
-            </label>
-            <label class="block text-sm text-ink/60">
-              Waktu kirim
-              <div class="mt-2 grid grid-cols-2 gap-2">
-                <input type="date" x-model="forms.reminder.reminderDate" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
-                <input type="time" x-model="forms.reminder.reminderTime" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
-              </div>
-            </label>
-          </div>
-          <label class="block text-sm text-ink/60">
-            Template (opsional)
-            <select x-model="forms.reminder.templateName" @change="applySelectedTemplate()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
-              <option value="">-- Tidak memakai template --</option>
-              <template x-for="t in templates" :key="'create-reminder-template-' + t.name">
-                <option :value="t.name" x-text="t.name"></option>
-              </template>
-            </select>
-          </label>
-          <label class="block text-sm text-ink/60">
-            Pesan reminder
-            <textarea x-model="forms.reminder.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required></textarea>
-            <span class="notification-template-variables mt-3">
-              <strong>Variabel yang bisa digunakan</strong>
-              <span class="template-variable-list">
-                <code>{{name}}</code><code>{{phoneNumber}}</code><code>{{date}}</code><code>{{dateTime}}</code><code>{{graceDays}}</code><code>{{isolationDate}}</code><code>{{renewalStatusInfo}}</code><code>{{billingPeriod}}</code><code>{{billingDetails}}</code><code>{{monthlyAmount}}</code><code>{{currentAmount}}</code><code>{{debtAmount}}</code><code>{{totalAmount}}</code><code>{{debtCount}}</code><code>{{debtPeriods}}</code><code>{{totalPeriods}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code>
-              </span>
-            </span>
-          </label>
-          <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <button type="button" @click="closeReminderCreateModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="reminderCreateModal.loading">Batal</button>
-            <button type="submit" class="rounded-2xl bg-moss px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20 transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60" :disabled="reminderCreateModal.loading">
-              <span x-show="!reminderCreateModal.loading">Simpan Reminder</span>
-              <span x-show="reminderCreateModal.loading" class="inline-flex items-center gap-2">
-                <i class="fa-solid fa-circle-notch fa-spin"></i>Menyimpan...
-              </span>
-            </button>
-          </div>
-          <p x-cloak x-show="formErrors.reminder" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.reminder"></p>
-        </form>
-      </div>
-    </div>
-
-    <div
-      x-cloak
       x-show="contactEditModal.open"
       x-transition.opacity
       @keydown.escape.window="closeContactEditModal()"
@@ -2305,77 +2225,6 @@
             </button>
           </div>
           <p x-cloak x-show="formErrors.contactEdit" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.contactEdit"></p>
-        </form>
-      </div>
-    </div>
-
-    <div
-      x-cloak
-      x-show="reminderEditModal.open"
-      x-transition.opacity
-      @keydown.escape.window="closeReminderEditModal()"
-      @click.self="closeReminderEditModal()"
-      class="dashboard-modal-overlay fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
-    >
-      <div
-        x-show="reminderEditModal.open"
-        x-transition.scale.origin.center
-        class="w-full max-w-2xl rounded-[1.5rem] border border-white/10 bg-white p-5 shadow-soft"
-      >
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="text-lg font-semibold text-ink">Edit Reminder</h3>
-          <button type="button" @click="closeReminderEditModal()" class="rounded-full border border-ink/10 px-3 py-1 text-sm font-semibold text-ink hover:bg-haze">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-        <form class="space-y-4" @submit.prevent="saveReminderEdit()">
-          <div class="grid gap-4 md:grid-cols-2">
-            <label class="block text-sm text-ink/60">
-              Contact tujuan
-              <select x-model="forms.reminderEdit.contactId" @change="onReminderEditContactChange()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
-                <option value="">Pilih contact</option>
-                <template x-for="contact in contacts" :key="'modal-reminder-contact-' + contact.id">
-                  <option :value="contact.id" x-text="contact.name + ' (' + contact.phoneNumber + ')'"></option>
-                </template>
-              </select>
-            </label>
-            <label class="block text-sm text-ink/60">
-              Waktu kirim
-              <div class="mt-2 grid grid-cols-2 gap-2">
-                <input type="date" x-model="forms.reminderEdit.reminderDate" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
-                <input type="time" x-model="forms.reminderEdit.reminderTime" class="w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
-              </div>
-            </label>
-          </div>
-          <label class="block text-sm text-ink/60">
-            Template (opsional)
-            <select x-model="forms.reminderEdit.templateName" @change="applyReminderEditTemplate()" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
-              <option value="">-- Tidak memakai template --</option>
-              <template x-for="t in templates" :key="'modal-reminder-template-' + t.name">
-                <option :value="t.name" x-text="t.name"></option>
-              </template>
-            </select>
-          </label>
-          <label class="block text-sm text-ink/60">
-            Pesan reminder
-            <textarea x-model="forms.reminderEdit.message" class="mt-2 min-h-32 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required></textarea>
-            <span class="notification-template-variables mt-3">
-              <strong>Variabel yang bisa digunakan</strong>
-              <span class="template-variable-list">
-                <code>{{name}}</code><code>{{phoneNumber}}</code><code>{{date}}</code><code>{{dateTime}}</code><code>{{graceDays}}</code><code>{{isolationDate}}</code><code>{{renewalStatusInfo}}</code><code>{{billingPeriod}}</code><code>{{billingDetails}}</code><code>{{monthlyAmount}}</code><code>{{currentAmount}}</code><code>{{debtAmount}}</code><code>{{totalAmount}}</code><code>{{debtCount}}</code><code>{{debtPeriods}}</code><code>{{totalPeriods}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code>
-              </span>
-            </span>
-          </label>
-          <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <button type="button" @click="closeReminderEditModal()" class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-haze" :disabled="reminderEditModal.loading">Batal</button>
-            <button type="submit" class="rounded-2xl bg-moss px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-moss/20 transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:opacity-60" :disabled="reminderEditModal.loading">
-              <span x-show="!reminderEditModal.loading">Simpan Perubahan</span>
-              <span x-show="reminderEditModal.loading" class="inline-flex items-center gap-2">
-                <i class="fa-solid fa-circle-notch fa-spin"></i>Menyimpan...
-              </span>
-            </button>
-          </div>
-          <p x-cloak x-show="formErrors.reminderEdit" x-transition class="rounded-2xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.reminderEdit"></p>
         </form>
       </div>
     </div>

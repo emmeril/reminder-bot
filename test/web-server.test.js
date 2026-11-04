@@ -128,6 +128,29 @@ test("JavaScript dashboard tidak disimpan di cache browser", async () => {
   assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
 });
 
+test("API reminder hanya menyediakan akses baca untuk jadwal otomatis", async () => {
+  const baseUrl = await startServer({ getSortedReminders: () => [] });
+  const cookie = await login(baseUrl);
+  const readResponse = await fetch(`${baseUrl}/api/reminders`, {
+    headers: { cookie },
+  });
+
+  assert.equal(readResponse.status, 200);
+
+  for (const [method, pathname] of [
+    ["POST", "/api/reminders"],
+    ["PUT", "/api/reminders/reminder-1"],
+    ["DELETE", "/api/reminders/reminder-1"],
+  ]) {
+    const response = await fetch(`${baseUrl}${pathname}`, {
+      method,
+      headers: { cookie, "content-type": "application/json" },
+      body: method === "DELETE" ? undefined : JSON.stringify({}),
+    });
+    assert.equal(response.status, 404);
+  }
+});
+
 test("permintaan favicon tidak menghasilkan error 404 di browser", async () => {
   const baseUrl = await startServer();
   const response = await fetch(`${baseUrl}/favicon.ico`);
