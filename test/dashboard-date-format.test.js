@@ -275,6 +275,26 @@ test("tombol tagihan bulan ini tetap tampil dengan status tindakan yang sesuai",
   assert.equal(app.getCurrentBillingActionLabel({ subscriptionActive: false, currentPaymentStatus: "PAID" }), "Tidak ada tagihan November 2026");
 });
 
+test("mode pascabayar memakai periode tagihan dari server dan tersedia di form pelanggan", () => {
+  const app = createDashboardApp();
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const contact = {
+    subscriptionType: "RECURRING",
+    billingCycle: "POSTPAID",
+    billingPeriodLabel: "Oktober 2026",
+    subscriptionActive: true,
+    currentPaymentStatus: "UNPAID",
+    monthlyPaymentAmount: 100_000,
+  };
+
+  assert.equal(app.getSubscriptionTypeLabel(contact), "Bulanan pascabayar");
+  assert.equal(app.getCurrentBillingActionLabel(contact), "Bayar Oktober 2026 · Rp\u00a0100.000");
+  assert.equal(app.blankContactForm().billingCycle, "PREPAID");
+  assert.match(html, /x-model="forms\.contact\.billingCycle"/);
+  assert.match(html, /x-model="forms\.contactEdit\.billingCycle"/);
+  assert.match(html, /Pascabayar, bayar bulan sebelumnya/);
+});
+
 test("aksi tagihan menyebut periode dan nominal agar pilihan pembayaran tidak tertukar", () => {
   const app = createDashboardApp();
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
@@ -772,7 +792,7 @@ test("status bulan ini tidak memakai jenis pembayaran periode sebelumnya", () =>
     currentPaymentStatus: "PAID",
     currentPaymentType: "CURRENT-ONLY",
     paymentType: "ARREARS-ONLY",
-  }), "Bulan Ini Saja");
+  }), "Periode Tagihan");
   assert.equal(app.getCurrentPaymentLabel({
     currentPaymentStatus: "PAID",
     currentPaymentType: null,

@@ -172,6 +172,26 @@ test("notifikasi pembayaran sebagian menyebut nominal dan sisa tunggakan", async
   assert.doesNotMatch(sent[0].message, /{{|}}/);
 });
 
+test("notifikasi pascabayar menyebut periode yang benar pada template lama", async () => {
+  const { bot, sent } = createBot({
+    paymentMessageTemplateCurrentOnly: "Pembayaran tagihan bulan ini diterima. Status: {{statusText}}.",
+  });
+
+  await bot.sendPaymentNotification(
+    createContact({
+      billingCycle: "POSTPAID",
+      billingPeriodLabel: "Oktober 2026",
+    }),
+    "TRX-POSTPAID-1",
+    "CURRENT-ONLY",
+    { paymentDate: "2026-11-06T09:41:00.000Z" }
+  );
+
+  assert.match(sent[0].message, /tagihan Oktober 2026 diterima/);
+  assert.match(sent[0].message, /Status: Lunas Oktober 2026/);
+  assert.doesNotMatch(sent[0].message, /bulan ini/i);
+});
+
 test("notifikasi pembelian masa aktif menyebut nominal dan batas aktif", async () => {
   const { bot, sent } = createBot({
     paymentMessageTemplateActivePeriod: "{{name}}\n{{paymentAmount}}\n{{activeUntil}}\n{{remainingDebtAmount}}\n{{statusText}}\n{{noteText}}",

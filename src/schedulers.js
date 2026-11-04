@@ -127,7 +127,8 @@ class ReminderScheduler {
       contactState?.currentPaymentStatus || contactState?.paymentStatus || "UNPAID"
     ).toUpperCase() === "PAID";
     const monthlyAmount = Math.max(0, Number(contactState?.monthlyPaymentAmount) || 0);
-    const currentKey = makeBillingPeriodKey(period.year, period.month);
+    const currentKey = contactState?.billingPeriodKey
+      || makeBillingPeriodKey(period.year, period.month);
     const currentPayment = contactState?.paymentMonths?.[currentKey] || null;
     const currentPaidAmount = currentPaid
       ? monthlyAmount
@@ -146,6 +147,13 @@ class ReminderScheduler {
       debtAmount,
       totalAmount: currentAmount + debtAmount,
       totalPeriods: (currentPaid ? 0 : 1) + debtCount,
+      billingPeriodKey: currentKey,
+      billingPeriodLabel: contactState?.billingPeriodLabel
+        || new Date(scheduledAt).toLocaleString("id-ID", {
+          month: "long",
+          year: "numeric",
+          timeZone,
+        }),
     };
   }
 
@@ -179,11 +187,7 @@ class ReminderScheduler {
       .map((period) => sanitizeInput(period.label || period.key || ""))
       .filter(Boolean)
       .join(", ") || billing.contact?.debtPeriodLabel || "-";
-    const currentPeriodLabel = new Date(scheduledAt).toLocaleString("id-ID", {
-      month: "long",
-      year: "numeric",
-      timeZone,
-    });
+    const currentPeriodLabel = billing.billingPeriodLabel;
     const billingDetails = buildBillingDetails({
       debtPeriods: billing.contact?.debtPeriods,
       debtAmount: billing.debtAmount,

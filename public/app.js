@@ -204,6 +204,7 @@
             phoneNumber: "",
             linkedApHost: "",
             subscriptionType: "RECURRING",
+            billingCycle: "PREPAID",
             mikrotikUsername: "",
             mikrotikProfile: "",
             mikrotikPassword: "",
@@ -220,6 +221,7 @@
             phoneNumber: "",
             linkedApHost: "",
             subscriptionType: "RECURRING",
+            billingCycle: "PREPAID",
             mikrotikUsername: "",
             mikrotikProfile: "",
             mikrotikPassword: "",
@@ -772,6 +774,8 @@
             name: "",
             phoneNumber: "",
             linkedApHost: "",
+            subscriptionType: "RECURRING",
+            billingCycle: "PREPAID",
           };
         },
 
@@ -996,7 +1000,7 @@
           const labels = {
             "DEFAULT": "Default (Belum dibayar)",
             "ARREARS-ONLY": "Hanya Tunggakan",
-            "CURRENT-ONLY": "Bulan Ini Saja",
+            "CURRENT-ONLY": "Periode Tagihan",
             "FULL-PAID": "Lunas Semua",
             "ACTIVE-PERIOD": "Masa Aktif 1 Bulan"
           };
@@ -1078,7 +1082,8 @@
           return contact?.subscriptionActive !== false && status !== "PAID";
         },
 
-        getCurrentBillingPeriodLabel() {
+        getCurrentBillingPeriodLabel(contact = null) {
+          if (contact?.billingPeriodLabel) return contact.billingPeriodLabel;
           const [periodYear, periodMonth] = String(this.billingPeriod || "").split("-").map(Number);
           const nowParts = this.getZonedParts(new Date());
           const year = periodYear || Number(nowParts?.year);
@@ -1087,7 +1092,7 @@
         },
 
         getCurrentBillingActionLabel(contact) {
-          const period = this.getCurrentBillingPeriodLabel();
+          const period = this.getCurrentBillingPeriodLabel(contact);
           if (contact?.subscriptionActive === false) return `Tidak ada tagihan ${period}`;
           if (!this.canPayCurrentBilling(contact)) return `${period} sudah lunas`;
           const amount = Math.max(0, Number(contact?.monthlyPaymentAmount) || 0);
@@ -1099,7 +1104,9 @@
         getSubscriptionTypeLabel(contact) {
           return String(contact?.subscriptionType || "RECURRING").toUpperCase() === "ONE_TIME"
             ? "Sekali berlangganan"
-            : "Bulanan aktif";
+            : (String(contact?.billingCycle || "PREPAID").toUpperCase() === "POSTPAID"
+              ? "Bulanan pascabayar"
+              : "Bulanan prabayar");
         },
 
         getCurrentPaymentLabel(contact) {
@@ -2551,6 +2558,7 @@
             phoneNumber: this.forms.contact.phoneNumber,
             linkedApHost: this.forms.contact.linkedApHost,
             subscriptionType: this.forms.contact.subscriptionType,
+            billingCycle: this.forms.contact.billingCycle,
           };
         },
 
@@ -2605,6 +2613,7 @@
             phoneNumber: contact.phoneNumber || "",
             linkedApHost: contact.linkedApHost || "",
             subscriptionType: contact.subscriptionType || "RECURRING",
+            billingCycle: contact.billingCycle || "PREPAID",
           };
           this.clearFormError("contactEdit");
           this.contactEditModal.open = true;
@@ -2632,6 +2641,7 @@
                   phoneNumber: this.forms.contactEdit.phoneNumber,
                   linkedApHost: this.forms.contactEdit.linkedApHost,
                   subscriptionType: this.forms.contactEdit.subscriptionType,
+                  billingCycle: this.forms.contactEdit.billingCycle,
                 }),
               });
               this.notify(result.hotspotSynced

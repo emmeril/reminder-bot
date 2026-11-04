@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261028-1">
   <link rel="stylesheet" href="/public/interface.css?v=20261104-8">
-  <script defer src="/public/app.js?v=20261104-6"></script>
+  <script defer src="/public/app.js?v=20261104-7"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -131,7 +131,7 @@
             </template>
           </div>
           <div class="payment-progress-card">
-            <div class="progress-copy"><span><i class="fa-solid fa-chart-pie"></i></span><div><strong>Progres pembayaran bulan ini</strong><small><span x-text="summaryValue('Sudah bayar')"></span> dari <span x-text="summaryValue('Pelanggan')"></span> pelanggan sudah tercatat</small></div></div>
+            <div class="progress-copy"><span><i class="fa-solid fa-chart-pie"></i></span><div><strong>Progres pembayaran periode tagihan</strong><small><span x-text="summaryValue('Sudah bayar')"></span> dari <span x-text="summaryValue('Pelanggan')"></span> pelanggan sudah tercatat</small></div></div>
             <div class="progress-visual"><strong x-text="paymentProgress + '%'" ></strong><div><span :style="'width:' + paymentProgress + '%'" ></span></div></div>
           </div>
         </section>
@@ -351,8 +351,8 @@
                 <option value="ALL">Semua pembayaran</option>
                 <option value="HAS-DEBT">Ada tunggakan</option>
                 <option value="ARREARS-ONLY">Pembayaran tunggakan saja</option>
-                <option value="UNPAID">Bulan ini belum dibayar</option>
-                <option value="CURRENT-ONLY">Hanya bulan ini lunas</option>
+                <option value="UNPAID">Periode tagihan belum dibayar</option>
+                <option value="CURRENT-ONLY">Hanya periode tagihan lunas</option>
                 <option value="FULL-PAID">Semua tagihan lunas</option>
               </select>
               <select x-model="filters.contactBilling.dueStatus" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Filter jadwal jatuh tempo">
@@ -1560,11 +1560,11 @@
                 <label class="notification-template-card tone-violet">
                   <span class="notification-template-header">
                     <span class="notification-template-icon"><i class="fa-solid fa-calendar-check"></i></span>
-                    <span class="notification-template-copy"><strong>Pembayaran bulan ini</strong><small>Konfirmasi pembayaran tagihan periode berjalan.</small></span>
-                    <span class="notification-template-badge">Bulan berjalan</span>
+                    <span class="notification-template-copy"><strong>Pembayaran periode tagihan</strong><small>Konfirmasi pembayaran periode yang sedang ditagih.</small></span>
+                    <span class="notification-template-badge">Periode tagihan</span>
                   </span>
-                  <textarea x-model="forms.settings.paymentMessageTemplateCurrentOnly" placeholder="Tulis konfirmasi pembayaran bulan ini..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
+                  <textarea x-model="forms.settings.paymentMessageTemplateCurrentOnly" placeholder="Tulis konfirmasi pembayaran periode tagihan..."></textarea>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{billingPeriod}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-violet">
                   <span class="notification-template-header">
@@ -1861,7 +1861,7 @@
         </div>
 
         <div class="billing-action-summary" aria-label="Ringkasan tagihan pelanggan">
-          <div><span>Status bulan ini</span><strong x-text="getCurrentPaymentLabel(billingActionModal.contact)"></strong></div>
+          <div><span>Status periode tagihan</span><strong x-text="getCurrentPaymentLabel(billingActionModal.contact)"></strong></div>
           <div><span>Sisa tunggakan</span><strong x-text="formatRupiah(getDebtAmount(billingActionModal.contact))"></strong></div>
           <div><span>Jatuh tempo</span><strong x-text="getDueDateLabel(billingActionModal.contact)"></strong></div>
         </div>
@@ -1972,6 +1972,14 @@
               <option value="ONE_TIME">Sekali berlangganan</option>
             </select>
             <span class="mt-1 block text-xs text-ink/45">Berlangganan bulanan membuat tagihan dan tunggakan setiap periode. Sekali berlangganan hanya mencatat periode mulai.</span>
+          </label>
+          <label x-show="forms.contact.subscriptionType === 'RECURRING'" class="block text-sm text-ink/60">
+            Siklus pembayaran
+            <select x-model="forms.contact.billingCycle" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+              <option value="PREPAID">Prabayar, bayar bulan berjalan</option>
+              <option value="POSTPAID">Pascabayar, bayar bulan sebelumnya</option>
+            </select>
+            <span class="mt-1 block text-xs text-ink/45">Pascabayar menagih periode sebelumnya saat jatuh tempo. Pembayaran memperpanjang masa aktif satu bulan.</span>
           </label>
           <label class="block text-sm text-ink/60">
             AP tujuan (opsional)
@@ -2261,6 +2269,14 @@
               <option value="ONE_TIME">Sekali berlangganan</option>
             </select>
             <span class="mt-1 block text-xs text-ink/45">Mengubah menjadi sekali berlangganan akan menghentikan tagihan periode berikutnya dan menonaktifkan reaktivasi otomatis.</span>
+          </label>
+          <label x-show="forms.contactEdit.subscriptionType === 'RECURRING'" class="block text-sm text-ink/60">
+            Siklus pembayaran
+            <select x-model="forms.contactEdit.billingCycle" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
+              <option value="PREPAID">Prabayar, bayar bulan berjalan</option>
+              <option value="POSTPAID">Pascabayar, bayar bulan sebelumnya</option>
+            </select>
+            <span class="mt-1 block text-xs text-ink/45">Gunakan pascabayar jika tagihan November memang dibayar pada Desember.</span>
           </label>
           <label class="block text-sm text-ink/60">
             AP tujuan (opsional)

@@ -64,6 +64,51 @@ test("template reminder dirender dari variabel saat pesan akan dikirim", () => {
   assert.doesNotMatch(message, /{{|}}/);
 });
 
+test("reminder pascabayar menampilkan periode sebelumnya tanpa menagih bulan berjalan", () => {
+  const reminder = {
+    contactId: "postpaid-contact",
+    reminderDateTime: "2026-12-06T09:41:00.000Z",
+    reminderKind: REMINDER_KINDS.BILLING,
+    message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+    messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
+  };
+  const contact = {
+    id: "postpaid-contact",
+    name: "Aldi",
+    phoneNumber: "6281234567890",
+    subscriptionType: "RECURRING",
+    billingCycle: "POSTPAID",
+    monthlyPaymentAmount: 100_000,
+    paymentMonths: {
+      "2026-11": { status: "UNPAID", paidAmount: 0 },
+      "2026-12": { status: "UNPAID", paidAmount: 0 },
+    },
+  };
+  const dataManager = {
+    getSettings: () => ({ hotspotIsolationGraceDays: 3, supportSignature: "CS Emmeril Hotspot" }),
+    getTimezone: () => "Asia/Jakarta",
+    getResolvedReminderContact: () => contact,
+    buildDebtInfo: () => ({
+      billingCycle: "POSTPAID",
+      billingPeriodKey: "2026-11",
+      billingPeriodLabel: "November 2026",
+      currentPaymentStatus: "UNPAID",
+      debtCount: 0,
+      debtPeriods: [],
+      debtAmount: 0,
+    }),
+  };
+
+  const message = new ReminderScheduler({}, dataManager, { push() {} }).buildReminderMessage(
+    reminder,
+    new Date("2026-12-06T09:41:00.000Z")
+  );
+
+  assert.match(message, /November 2026: Rp\s?100\.000/);
+  assert.match(message, /\*Total: Rp\s?100\.000\*/);
+  assert.doesNotMatch(message, /Desember 2026: Rp\s?100\.000/);
+});
+
 test("pengingat masa tenggang memakai template yang disimpan di pengaturan", () => {
   const scheduler = new ReminderScheduler({}, {
     getSettings: () => ({

@@ -12,6 +12,7 @@ const QRCode = require("qrcode");
 const { RouterOSClient } = require("routeros-client");
 const { Sequelize, DataTypes } = require("sequelize");
 const {
+  BILLING_CYCLES,
   BILLING_REMINDER_STOP_DEBT_COUNT,
   CONFIG,
   DEFAULT_REMINDER_MESSAGE_TEMPLATE,
@@ -185,6 +186,22 @@ function normalizeSubscriptionType(value, fallback = SUBSCRIPTION_TYPES.RECURRIN
   return Object.values(SUBSCRIPTION_TYPES).includes(normalized) ? normalized : fallback;
 }
 
+function normalizeBillingCycle(value, fallback = BILLING_CYCLES.PREPAID) {
+  const normalized = String(value || "").trim().toUpperCase().replace(/-/g, "_");
+  return Object.values(BILLING_CYCLES).includes(normalized) ? normalized : fallback;
+}
+
+function isPostpaidBilling(contact) {
+  return isRecurringSubscription(contact)
+    && normalizeBillingCycle(contact?.billingCycle) === BILLING_CYCLES.POSTPAID;
+}
+
+function getContactBillingPeriod(contact, referencePeriod) {
+  return isPostpaidBilling(contact)
+    ? getPreviousBillingPeriod(referencePeriod.year, referencePeriod.month)
+    : referencePeriod;
+}
+
 function isRecurringSubscription(contact) {
   return normalizeSubscriptionType(contact?.subscriptionType) === SUBSCRIPTION_TYPES.RECURRING;
 }
@@ -214,7 +231,7 @@ function parsePaymentAmountFromMessage(message) {
 
 const PAYMENT_TYPE_LABELS = {
   [PAYMENT_TYPES.ARREARS_ONLY]: "Hanya Tunggakan",
-  [PAYMENT_TYPES.CURRENT_ONLY]: "Bulan Ini Saja",
+  [PAYMENT_TYPES.CURRENT_ONLY]: "Periode Tagihan",
   [PAYMENT_TYPES.FULL_PAID]: "Lunas Semua",
   [PAYMENT_TYPES.ACTIVE_PERIOD]: "Masa Aktif 1 Bulan",
 };
@@ -2746,6 +2763,7 @@ class DataManager {
         false
       );
       contact.subscriptionType = normalizeSubscriptionType(contact.subscriptionType);
+      contact.billingCycle = normalizeBillingCycle(contact.billingCycle);
       delete contact.recurringBillingStartedAt;
       contact.subscriptionChangedByArrears = parseBoolean(
         contact.subscriptionChangedByArrears,
@@ -3065,14 +3083,15 @@ class DataManager {
 
     const timeZone = this.getTimezone();
     const { year, month } = getBillingPeriodParts(new Date(), timeZone);
-    const currentKey = makeBillingPeriodKey(year, month);
+    const currentKey = hydrated.billingPeriodKey || makeBillingPeriodKey(year, month);
     const monthlyAmount = Math.max(0, Number(hydrated.monthlyPaymentAmount) || 0);
     const currentPaymentStatus = hydrated.currentPaymentStatus || hydrated.paymentStatus || PAYMENT_STATUS.UNPAID;
     const currentAmount = currentPaymentStatus === PAYMENT_STATUS.PAID ? 0 : monthlyAmount;
     const debtAmount = Math.max(0, Number(hydrated.debtAmount) || 0);
+    const includeHistoryPeriod = (period) => !isPostpaidBilling(contact) || period <= currentKey;
     const historyByPeriod = new Map(
       Object.entries(hydrated.paymentMonths || {})
-        .filter(([period]) => /^\d{4}-\d{2}$/.test(period))
+        .filter(([period]) => /^\d{4}-\d{2}$/.test(period) && includeHistoryPeriod(period))
         .map(([period, payment]) => {
           const paidAmount = this.getPaymentPaidAmount(payment, monthlyAmount);
           return [period, {
@@ -3102,13 +3121,18 @@ class DataManager {
       }
     }
     const billingStartPeriod = getContactBillingStartPeriod(contact, timeZone);
-    const includeCurrentPeriod = isRecurringSubscription(contact)
+    const [currentBillingYear, currentBillingMonth] = currentKey.split("-").map(Number);
+    const currentBillingStarted = compareBillingPeriods(
+      billingStartPeriod,
+      { year: currentBillingYear, month: currentBillingMonth }
+    ) <= 0;
+    const includeCurrentPeriod = (isRecurringSubscription(contact) && currentBillingStarted)
       || (billingStartPeriod.year === year && billingStartPeriod.month === month)
       || historyByPeriod.has(currentKey);
     if (includeCurrentPeriod && !historyByPeriod.has(currentKey)) {
       historyByPeriod.set(currentKey, {
         period: currentKey,
-        label: formatBillingPeriodLabel(year, month),
+        label: formatBillingPeriodLabel(currentBillingYear, currentBillingMonth),
         status: currentPaymentStatus,
         paidDate: hydrated.paymentDate || null,
         lastPaymentDate: hydrated.paymentDate || null,
@@ -3143,8 +3167,9 @@ class DataManager {
       },
       billing: {
         period: currentKey,
-        periodLabel: formatBillingPeriodLabel(year, month),
+        periodLabel: hydrated.billingPeriodLabel || formatBillingPeriodLabel(year, month),
         subscriptionType: hydrated.subscriptionType,
+        billingCycle: hydrated.billingCycle,
         subscriptionActive: hydrated.subscriptionActive,
         billingPausedForArrears: hydrated.billingPausedForArrears,
         billingPausedAfterPeriod: hydrated.billingPausedAfterPeriod,
@@ -3405,8 +3430,9 @@ class DataManager {
         };
       }
 
-      const { year, month } = getBillingPeriodParts(new Date(), this.getTimezone());
-      const currentKey = makeBillingPeriodKey(year, month);
+      const referencePeriod = getBillingPeriodParts(new Date(), this.getTimezone());
+      const currentPeriod = getContactBillingPeriod(contact, referencePeriod);
+      const currentKey = makeBillingPeriodKey(currentPeriod.year, currentPeriod.month);
       if (contact.paymentMonths[currentKey]?.status === PAYMENT_STATUS.PAID) {
         contact.paymentStatus = PAYMENT_STATUS.PAID;
         contact.paymentDate = now;
@@ -3430,6 +3456,7 @@ class DataManager {
         ? this.advanceServiceScheduleAfterPayment(contact, {
             at: now,
             previousSchedule: serviceScheduleBeforePayment,
+            paymentPeriodKey: currentKey,
           })
         : { changed: false, activeFrom: null, activeUntil: null };
       if (serviceSchedule.activeUntil) {
@@ -3500,7 +3527,9 @@ class DataManager {
         reversedPeriods.push(period);
       }
 
-      const currentKey = getBillingPeriodKey(new Date(), this.getTimezone());
+      const referencePeriod = getBillingPeriodParts(new Date(), this.getTimezone());
+      const currentPeriod = getContactBillingPeriod(contact, referencePeriod);
+      const currentKey = makeBillingPeriodKey(currentPeriod.year, currentPeriod.month);
       const currentPayment = contact.paymentMonths[currentKey];
       contact.paymentStatus = currentPayment?.status === PAYMENT_STATUS.PAID
         ? PAYMENT_STATUS.PAID
@@ -3848,6 +3877,11 @@ class DataManager {
     const timeZone = this.getTimezone();
     const { year, month } = getBillingPeriodParts(new Date(), timeZone);
     const activePeriodKey = makeBillingPeriodKey(year, month);
+    const activeBillingPeriod = getContactBillingPeriod(contact, { year, month });
+    const activeBillingPeriodKey = makeBillingPeriodKey(
+      activeBillingPeriod.year,
+      activeBillingPeriod.month
+    );
     const isContactReminder = (reminder) => {
       if (String(reminder.contactId || "") === String(contact.id)) return true;
       return reminder.phoneNumber && reminder.phoneNumber === contact.phoneNumber;
@@ -3873,6 +3907,17 @@ class DataManager {
         ...reminder,
         timestamp: reminder.reminderDate.getTime(),
         periodKey: getBillingPeriodKey(reminder.reminderDate, timeZone),
+        billingPeriod: getContactBillingPeriod(
+          contact,
+          getBillingPeriodParts(reminder.reminderDate, timeZone)
+        ),
+      }))
+      .map((reminder) => ({
+        ...reminder,
+        billingPeriodKey: makeBillingPeriodKey(
+          reminder.billingPeriod.year,
+          reminder.billingPeriod.month
+        ),
       }))
       .sort((a, b) => a.timestamp - b.timestamp);
 
@@ -3891,8 +3936,10 @@ class DataManager {
     let dueStatus = "NOT_SCHEDULED";
     if (dueDate) {
       const periodPaymentStatus = String(
-        contact.paymentMonths?.[dueReminder.periodKey]?.status
-          || (dueReminder.periodKey === activePeriodKey ? contact.paymentStatus : PAYMENT_STATUS.UNPAID)
+        contact.paymentMonths?.[dueReminder.billingPeriodKey]?.status
+          || (dueReminder.billingPeriodKey === activeBillingPeriodKey
+            ? contact.paymentStatus
+            : PAYMENT_STATUS.UNPAID)
       ).toUpperCase();
       if (periodPaymentStatus === PAYMENT_STATUS.PAID) {
         dueStatus = "PAID";
@@ -3929,9 +3976,12 @@ class DataManager {
   buildDebtInfo(contact, options = {}) {
     const timeZone = this.getTimezone();
     const activePeriod = getBillingPeriodParts(new Date(), timeZone);
-    const { year, month } = options.year && options.month
+    const referencePeriod = options.year && options.month
       ? { year: options.year, month: options.month }
       : activePeriod;
+    const { year, month } = options.billingPeriod === true
+      ? referencePeriod
+      : getContactBillingPeriod(contact, referencePeriod);
     const currentKey = makeBillingPeriodKey(year, month);
     const paymentMonths = contact.paymentMonths || {};
     const monthlyAmount = Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0));
@@ -3987,8 +4037,12 @@ class DataManager {
     const firstDebt = debtPeriods[0] || null;
     const debtAmount = debtPeriods.reduce((total, period) => total + period.remainingAmount, 0);
     const subscriptionEnded = isOneTimeSubscriptionEnded(contact, { year, month }, timeZone);
-    const isActivePeriod = year === activePeriod.year && month === activePeriod.month;
-    const effectivePaymentStatus = subscriptionEnded || billingPausedForArrears
+    const activeBillingPeriod = getContactBillingPeriod(contact, activePeriod);
+    const isActivePeriod = year === activeBillingPeriod.year && month === activeBillingPeriod.month;
+    const billingStarted = compareBillingPeriods(startPeriod, { year, month }) <= 0;
+    const effectivePaymentStatus = subscriptionEnded
+      || billingPausedForArrears
+      || (isPostpaidBilling(contact) && !billingStarted)
       ? PAYMENT_STATUS.PAID
       : (currentPayment?.status || (isActivePeriod
         ? String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase()
@@ -4009,6 +4063,9 @@ class DataManager {
       currentPaymentStatus: effectivePaymentStatus,
       currentPaymentType: currentPayment?.paymentType || null,
       subscriptionType: normalizeSubscriptionType(contact.subscriptionType),
+      billingCycle: normalizeBillingCycle(contact.billingCycle),
+      billingPeriodKey: currentKey,
+      billingPeriodLabel: formatBillingPeriodLabel(year, month),
       subscriptionActive: !subscriptionEnded && !billingPausedForArrears,
       billingPausedForArrears,
       billingPausedAfterPeriod: billingPausedForArrears
@@ -4023,7 +4080,8 @@ class DataManager {
       && /^\d{4}-\d{2}$/.test(String(contact.billingPausedAfterPeriod || ""));
     const requestedAt = options.at ? new Date(options.at) : new Date();
     const now = Number.isNaN(requestedAt.getTime()) ? new Date() : requestedAt;
-    const { year, month } = getBillingPeriodParts(now, this.getTimezone());
+    const referencePeriod = getBillingPeriodParts(now, this.getTimezone());
+    const { year, month } = getContactBillingPeriod(contact, referencePeriod);
     const currentKey = makeBillingPeriodKey(year, month);
     if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") {
       contact.paymentMonths = {};
@@ -4137,7 +4195,10 @@ class DataManager {
         month: Number(pausedAfterKey.slice(5, 7)),
       };
       const firstPausedPeriod = addBillingMonths(pausedAfter, 1);
-      const currentPeriod = getBillingPeriodParts(now, this.getTimezone());
+      const currentPeriod = getContactBillingPeriod(
+        contact,
+        getBillingPeriodParts(now, this.getTimezone())
+      );
       const monthlyAmount = Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0));
       if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") {
         contact.paymentMonths = {};
@@ -4191,7 +4252,9 @@ class DataManager {
         : nextSchedule.toISOString();
     }
 
-    const currentKey = getBillingPeriodKey(new Date(), this.getTimezone());
+    const referencePeriod = getBillingPeriodParts(new Date(), this.getTimezone());
+    const currentPeriod = getContactBillingPeriod(contact, referencePeriod);
+    const currentKey = makeBillingPeriodKey(currentPeriod.year, currentPeriod.month);
     const currentPayment = contact.paymentMonths?.[currentKey];
     contact.paymentStatus = currentPayment?.status === PAYMENT_STATUS.PAID
       ? PAYMENT_STATUS.PAID
@@ -4678,15 +4741,34 @@ class DataManager {
 
     const requestedAt = options.at ? new Date(options.at) : new Date();
     const paidAt = Number.isNaN(requestedAt.getTime()) ? new Date() : requestedAt;
+    const billingPeriod = getContactBillingPeriod(
+      contact,
+      getBillingPeriodParts(paidAt, this.getTimezone())
+    );
     const currentPeriod = options.paymentPeriodKey
-      || getBillingPeriodKey(paidAt, this.getTimezone());
+      || makeBillingPeriodKey(billingPeriod.year, billingPeriod.month);
     const currentPayment = contact.paymentMonths?.[currentPeriod];
     if (currentPayment?.status !== PAYMENT_STATUS.PAID || this.buildDebtInfo(contact).hasDebt) {
       return { changed: false, activeFrom: null, activeUntil: null };
     }
 
     const activeFrom = paidAt;
-    const activeUntil = addMonthsSafely(activeFrom, 1, this.getTimezone());
+    const savedSchedule = new Date(options.previousSchedule || 0);
+    const graceDays = sanitizePositiveInteger(
+      this.getSettings().hotspotIsolationGraceDays,
+      DEFAULT_SETTINGS.hotspotIsolationGraceDays,
+      0,
+      30
+    );
+    const savedScheduleGraceEnd = Number.isFinite(savedSchedule.getTime())
+      ? addDaysSafely(savedSchedule, graceDays, this.getTimezone())
+      : null;
+    const scheduleAnchor = isPostpaidBilling(contact)
+      && Number.isFinite(savedSchedule.getTime())
+      && savedScheduleGraceEnd.getTime() >= paidAt.getTime()
+      ? savedSchedule
+      : activeFrom;
+    const activeUntil = addMonthsSafely(scheduleAnchor, 1, this.getTimezone());
     const nextSchedule = activeUntil.toISOString();
     const changed = contact.hotspotReactivationAt !== nextSchedule
       || !parseBoolean(contact.hotspotReactivationEnabled, false);
@@ -4948,6 +5030,9 @@ class DataManager {
       const phoneNumber = normalizePhoneNumber(payload.phoneNumber);
       const linkedApHost = sanitizeInput(String(payload.linkedApHost || ""));
       const subscriptionType = normalizeSubscriptionType(payload.subscriptionType);
+      const billingCycle = subscriptionType === SUBSCRIPTION_TYPES.RECURRING
+        ? normalizeBillingCycle(payload.billingCycle)
+        : BILLING_CYCLES.PREPAID;
       const hotspotFields = this.normalizeContactHotspotFields({ ...payload, subscriptionType });
 
       if (!name) throw new Error("Nama kontak wajib diisi.");
@@ -4965,6 +5050,7 @@ class DataManager {
         monthlyPaymentAmount: sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000),
         monthlyPaymentAmountCustomized: payload.monthlyPaymentAmount !== undefined,
         subscriptionType,
+        billingCycle,
         subscriptionChangedByArrears: false,
         arrearsSubscriptionDebtPeriods: [],
         billingPausedForArrears: false,
@@ -4972,12 +5058,14 @@ class DataManager {
         hotspotSuspendedForArrears: false,
         hotspotManualActivationWithArrears: false,
         activePeriodPurchases: [],
-        // Akun baru diasumsikan sudah melunasi biaya awal pada periode pendaftaran.
+        // Prabayar melunasi periode awal; pascabayar menagihnya pada jatuh tempo berikutnya.
         paymentStatus: PAYMENT_STATUS.PAID,
-        paymentDate: now,
-        paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+        paymentDate: billingCycle === BILLING_CYCLES.POSTPAID ? null : now,
+        paymentType: billingCycle === BILLING_CYCLES.POSTPAID ? null : PAYMENT_TYPES.CURRENT_ONLY,
         paymentMonths: {
-          [initialPeriod]: { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: PAYMENT_TYPES.CURRENT_ONLY },
+          [initialPeriod]: billingCycle === BILLING_CYCLES.POSTPAID
+            ? { status: PAYMENT_STATUS.UNPAID, paidDate: null, paymentType: null, paidAmount: 0 }
+            : { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: PAYMENT_TYPES.CURRENT_ONLY },
         },
         linkedApHost,
         ...hotspotFields,
@@ -5064,13 +5152,18 @@ class DataManager {
       }, contact || {});
 
       if (!contact) {
+        const subscriptionType = normalizeSubscriptionType(payload.subscriptionType);
+        const billingCycle = subscriptionType === SUBSCRIPTION_TYPES.RECURRING
+          ? normalizeBillingCycle(payload.billingCycle)
+          : BILLING_CYCLES.PREPAID;
         contact = {
           id: String(generateId()),
           name,
           phoneNumber,
           monthlyPaymentAmount: sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000),
           monthlyPaymentAmountCustomized: payload.monthlyPaymentAmount !== undefined,
-          subscriptionType: normalizeSubscriptionType(payload.subscriptionType),
+          subscriptionType,
+          billingCycle,
           subscriptionChangedByArrears: false,
           arrearsSubscriptionDebtPeriods: [],
           billingPausedForArrears: false,
@@ -5079,10 +5172,12 @@ class DataManager {
           hotspotManualActivationWithArrears: false,
           activePeriodPurchases: [],
           paymentStatus: PAYMENT_STATUS.PAID,
-          paymentDate: now,
-          paymentType: PAYMENT_TYPES.CURRENT_ONLY,
+          paymentDate: billingCycle === BILLING_CYCLES.POSTPAID ? null : now,
+          paymentType: billingCycle === BILLING_CYCLES.POSTPAID ? null : PAYMENT_TYPES.CURRENT_ONLY,
           paymentMonths: {
-            [initialPeriod]: { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: PAYMENT_TYPES.CURRENT_ONLY },
+            [initialPeriod]: billingCycle === BILLING_CYCLES.POSTPAID
+              ? { status: PAYMENT_STATUS.UNPAID, paidDate: null, paymentType: null, paidAmount: 0 }
+              : { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: PAYMENT_TYPES.CURRENT_ONLY },
           },
           linkedApHost,
           ...hotspotFields,
@@ -5106,6 +5201,9 @@ class DataManager {
         contact.name = name;
         const previousSubscriptionType = contact.subscriptionType;
         contact.subscriptionType = normalizeSubscriptionType(payload.subscriptionType, previousSubscriptionType);
+        contact.billingCycle = contact.subscriptionType === SUBSCRIPTION_TYPES.RECURRING
+          ? normalizeBillingCycle(payload.billingCycle, contact.billingCycle)
+          : BILLING_CYCLES.PREPAID;
         if (!isRecurringSubscription(contact)) {
           remindersRemoved = this.removeRemindersForContact(contact.id);
         }
@@ -5296,6 +5394,9 @@ class DataManager {
         ? sanitizeInput(String(payload.linkedApHost || ""))
         : sanitizeInput(String(contact.linkedApHost || ""));
       const nextSubscriptionType = normalizeSubscriptionType(payload.subscriptionType, contact.subscriptionType);
+      const nextBillingCycle = nextSubscriptionType === SUBSCRIPTION_TYPES.RECURRING
+        ? normalizeBillingCycle(payload.billingCycle, contact.billingCycle)
+        : BILLING_CYCLES.PREPAID;
       const nextUsername = payload.mikrotikUsername !== undefined
         ? sanitizeInput(String(payload.mikrotikUsername || ""))
         : previousHotspot.username;
@@ -5331,7 +5432,9 @@ class DataManager {
         || (phoneChanged && Boolean(previousHotspot.username || nextUsername));
       const unlinked = !nextUsername && !nextProfile;
       const previousSubscriptionType = contact.subscriptionType;
+      const previousBillingCycle = normalizeBillingCycle(contact.billingCycle);
       const subscriptionTypeChanged = nextSubscriptionType !== previousSubscriptionType;
+      const billingCycleChanged = nextBillingCycle !== previousBillingCycle;
       let hotspotSyncRequired = false;
       const transitionAt = new Date();
       const now = transitionAt.toISOString();
@@ -5340,6 +5443,7 @@ class DataManager {
       contact.phoneNumber = nextPhone;
       contact.linkedApHost = nextLinkedApHost;
       contact.subscriptionType = nextSubscriptionType;
+      contact.billingCycle = nextBillingCycle;
       if (!isRecurringSubscription(contact)) this.removeRemindersForContact(contact.id);
       if (payload.monthlyPaymentAmount !== undefined) {
         contact.monthlyPaymentAmount = sanitizePositiveInteger(
@@ -5358,6 +5462,21 @@ class DataManager {
           nextSubscriptionType,
           transitionAt
         );
+      }
+      if (billingCycleChanged) {
+        const referencePeriod = getBillingPeriodParts(transitionAt, this.getTimezone());
+        const billingPeriod = getContactBillingPeriod(contact, referencePeriod);
+        const billingKey = makeBillingPeriodKey(billingPeriod.year, billingPeriod.month);
+        const billingStarted = compareBillingPeriods(
+          getContactBillingStartPeriod(contact, this.getTimezone()),
+          billingPeriod
+        ) <= 0;
+        const payment = contact.paymentMonths?.[billingKey] || null;
+        const paid = (isPostpaidBilling(contact) && !billingStarted)
+          || payment?.status === PAYMENT_STATUS.PAID;
+        contact.paymentStatus = paid ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.UNPAID;
+        contact.paymentDate = paid && billingStarted ? payment?.paidDate || null : null;
+        contact.paymentType = paid && billingStarted ? payment?.paymentType || null : null;
       }
       if (this.applyProfileMonthlyAmount(contact)) this.updateContactReminderMessages(contact);
 
@@ -6624,7 +6743,8 @@ class DataManager {
       const now = new Date();
       const serviceScheduleBeforePayment = contact.hotspotReactivationAt || null;
       const timeZone = this.getTimezone();
-      const { year, month } = getBillingPeriodParts(now, timeZone);
+      const referencePeriod = getBillingPeriodParts(now, timeZone);
+      const { year, month } = getContactBillingPeriod(contact, referencePeriod);
       const currentKey = makeBillingPeriodKey(year, month);
       const previous = getPreviousBillingPeriod(year, month);
       const subscriptionEnded = !this.usesRecurringBilling(contact)
@@ -6649,12 +6769,12 @@ class DataManager {
         || String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase();
       const currentPeriodNewlyPaid = status === PAYMENT_STATUS.PAID
         && currentStatusBeforeUpdate !== PAYMENT_STATUS.PAID;
-      const hadDebtBeforeUpdate = this.buildDebtInfo(contact, { year, month }).hasDebt;
+      const hadDebtBeforeUpdate = this.buildDebtInfo(contact, referencePeriod).hasDebt;
       const paymentRecorded = paymentType === PAYMENT_TYPES.ARREARS_ONLY
         || currentPeriodNewlyPaid
         || (paymentType === PAYMENT_TYPES.FULL_PAID && hadDebtBeforeUpdate);
       const arrearsDebtInfo = paymentType === PAYMENT_TYPES.ARREARS_ONLY
-        ? this.buildDebtInfo(contact, { year, month })
+        ? this.buildDebtInfo(contact, referencePeriod)
         : null;
       const arrearsDebtPeriod = arrearsDebtInfo?.debtPeriods?.[0] || null;
       if (paymentType === PAYMENT_TYPES.ARREARS_ONLY) {
@@ -6776,6 +6896,7 @@ class DataManager {
         ? this.advanceServiceScheduleAfterPayment(contact, {
             at: now,
             previousSchedule: serviceScheduleBeforePayment,
+            paymentPeriodKey: currentKey,
           })
         : { changed: false, activeFrom: null, activeUntil: null };
       const reminderScheduleChanged = automaticRenewalResumed || serviceSchedule.changed
@@ -6818,7 +6939,7 @@ class DataManager {
       const previous = getPreviousBillingPeriod(year, month);
       const existingPeriodBeforeUpdate = contact.paymentMonths[key] || null;
       const periodWasPaid = existingPeriodBeforeUpdate?.status === PAYMENT_STATUS.PAID;
-      const hadDebtBeforeUpdate = this.buildDebtInfo(contact, { year, month }).hasDebt;
+      const hadDebtBeforeUpdate = this.buildDebtInfo(contact, { year, month, billingPeriod: true }).hasDebt;
       const paymentRecorded = status === PAYMENT_STATUS.PAID && (
         !periodWasPaid
         || paymentType === PAYMENT_TYPES.ARREARS_ONLY
@@ -6834,7 +6955,7 @@ class DataManager {
         }
       }
       const arrearsDebtPeriod = paymentType === PAYMENT_TYPES.ARREARS_ONLY
-        ? this.buildDebtInfo(contact, { year, month }).debtPeriods?.[0]
+        ? this.buildDebtInfo(contact, { year, month, billingPeriod: true }).debtPeriods?.[0]
         : null;
       if (paymentType === PAYMENT_TYPES.ARREARS_ONLY && !arrearsDebtPeriod) {
         throw new Error("Kontak tidak memiliki tunggakan yang belum dibayar.");
@@ -6873,7 +6994,11 @@ class DataManager {
           : 0,
       };
 
-      const { year: currentYear, month: currentMonth } = getBillingPeriodParts(now, timeZone);
+      const currentBillingPeriod = getContactBillingPeriod(
+        contact,
+        getBillingPeriodParts(now, timeZone)
+      );
+      const { year: currentYear, month: currentMonth } = currentBillingPeriod;
       if (year === currentYear && month === currentMonth) {
         contact.paymentStatus = status;
         contact.paymentDate = status === PAYMENT_STATUS.PAID
@@ -6895,6 +7020,7 @@ class DataManager {
         ? this.advanceServiceScheduleAfterPayment(contact, {
             at: now,
             previousSchedule: serviceScheduleBeforePayment,
+            paymentPeriodKey: key,
           })
         : { changed: false, activeFrom: null, activeUntil: null };
       const reminderScheduleChanged = automaticRenewalResumed || serviceSchedule.changed
@@ -6916,9 +7042,12 @@ class DataManager {
 
   inferPaymentType(contact, options = {}) {
     const paymentMonths = contact.paymentMonths || {};
-    const currentPeriod = getBillingPeriodParts(new Date(), this.getTimezone());
-    const year = options.year ?? currentPeriod.year;
-    const month = options.month ?? currentPeriod.month;
+    const referencePeriod = getBillingPeriodParts(new Date(), this.getTimezone());
+    const selectedReference = {
+      year: options.year ?? referencePeriod.year,
+      month: options.month ?? referencePeriod.month,
+    };
+    const { year, month } = getContactBillingPeriod(contact, selectedReference);
     const currentKey = `${year}-${String(month).padStart(2, "0")}`;
     const prevMonth = month === 1 ? 12 : month - 1;
     const prevYear = month === 1 ? year - 1 : year;
@@ -6954,9 +7083,11 @@ class DataManager {
   async resetAllPaymentStatusUnlocked(options = {}) {
     let resetCount = 0;
     let remindersChanged = 0;
-    const currentKey = getBillingPeriodKey(new Date(), this.getTimezone());
+    const referencePeriod = getBillingPeriodParts(new Date(), this.getTimezone());
 
     for (const contact of this.contacts.values()) {
+      const billingPeriod = getContactBillingPeriod(contact, referencePeriod);
+      const currentKey = makeBillingPeriodKey(billingPeriod.year, billingPeriod.month);
       const arrearsPolicy = this.applyArrearsSubscriptionPolicy(contact);
       remindersChanged += arrearsPolicy.remindersAdded + arrearsPolicy.remindersRemoved;
       if (parseBoolean(contact.billingPausedForArrears, false)) {
@@ -7006,13 +7137,21 @@ class DataManager {
   }
 
   synchronizeCurrentPaymentStatus() {
-    const currentKey = getBillingPeriodKey(new Date(), this.getTimezone());
+    const referencePeriod = getBillingPeriodParts(new Date(), this.getTimezone());
     let changed = 0;
 
     for (const contact of this.contacts.values()) {
+      const billingPeriod = getContactBillingPeriod(contact, referencePeriod);
+      const currentKey = makeBillingPeriodKey(billingPeriod.year, billingPeriod.month);
       const currentPayment = contact.paymentMonths?.[currentKey];
       const billingPaused = parseBoolean(contact.billingPausedForArrears, false);
-      const isPaid = billingPaused || currentPayment?.status === PAYMENT_STATUS.PAID;
+      const billingStarted = compareBillingPeriods(
+        getContactBillingStartPeriod(contact, this.getTimezone()),
+        billingPeriod
+      ) <= 0;
+      const isPaid = billingPaused
+        || (isPostpaidBilling(contact) && !billingStarted)
+        || currentPayment?.status === PAYMENT_STATUS.PAID;
       const nextStatus = isPaid ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.UNPAID;
       const nextPaymentDate = isPaid && !billingPaused ? currentPayment?.paidDate || null : null;
       const nextPaymentType = isPaid && !billingPaused ? currentPayment?.paymentType || null : null;
@@ -7318,6 +7457,8 @@ class NotificationBot {
           timeZone: this.dataManager.getTimezone(),
         })
       : "-";
+    const billingPeriodLabel = sanitizeInput(String(contact.billingPeriodLabel || ""))
+      || "periode tagihan";
 
     if (paymentType === "ARREARS-ONLY") {
       statusText = remainingDebtAmount > 0 ? "Tunggakan dibayar sebagian" : "Tunggakan lunas";
@@ -7325,8 +7466,8 @@ class NotificationBot {
         ? `Pembayaran ${this.dataManager.formatPaymentAmount(paymentAmount)} digunakan untuk tunggakan paling lama. Sisa tunggakan: ${this.dataManager.formatPaymentAmount(remainingDebtAmount)}.`
         : "Pembayaran tunggakan sudah dicatat.";
     } else if (paymentType === "CURRENT-ONLY") {
-      statusText = "Lunas bulan ini";
-      noteText = "Tagihan bulan ini sudah lunas.";
+      statusText = `Lunas ${billingPeriodLabel}`;
+      noteText = `Tagihan ${billingPeriodLabel} sudah lunas.`;
     } else if (paymentType === "FULL-PAID") {
       statusText = "Lunas";
       noteText = "Semua tagihan sudah lunas.";
@@ -7334,7 +7475,6 @@ class NotificationBot {
       statusText = "Masa aktif ditambahkan";
       noteText = `WiFi aktif sampai ${formattedActiveUntil}. Tunggakan tetap tercatat dan perpanjangan otomatis masih dijeda.`;
     }
-
     const settings = this.dataManager.getSettings();
     let messageTemplate = sanitizeMultilineText(settings.paymentMessageTemplateCurrentOnly)
       || DEFAULT_SETTINGS.paymentMessageTemplateCurrentOnly;
@@ -7348,6 +7488,10 @@ class NotificationBot {
       messageTemplate = sanitizeMultilineText(settings.paymentMessageTemplateActivePeriod)
         || DEFAULT_SETTINGS.paymentMessageTemplateActivePeriod;
     }
+    if (paymentType === PAYMENT_TYPES.CURRENT_ONLY
+      && normalizeBillingCycle(contact.billingCycle) === BILLING_CYCLES.POSTPAID) {
+      messageTemplate = messageTemplate.replace(/bulan ini/gi, billingPeriodLabel);
+    }
     const companyName = sanitizeInput(settings.companyName) || "Emmeril Hotspot";
     const supportSignature = sanitizeInput(settings.supportSignature) || "CS Emmeril Hotspot";
     const hotspotAccountDetails = this.buildPaymentHotspotAccountDetails(contact, options, settings);
@@ -7357,6 +7501,7 @@ class NotificationBot {
       .replace(/{{\s*name\s*}}/gi, () => contact.name || "-")
       .replace(/{{\s*transactionId\s*}}/gi, () => transactionId || "-")
       .replace(/{{\s*paymentDate\s*}}/gi, () => formattedDate)
+      .replace(/{{\s*billingPeriod\s*}}/gi, () => billingPeriodLabel)
       .replace(/{{\s*paymentAmount\s*}}/gi, () => this.dataManager.formatPaymentAmount(paymentAmount))
       .replace(/{{\s*remainingDebtAmount\s*}}/gi, () => this.dataManager.formatPaymentAmount(remainingDebtAmount))
       .replace(/{{\s*activeUntil\s*}}/gi, () => formattedActiveUntil)
@@ -7403,7 +7548,7 @@ class NotificationBot {
     const monthlyAmount = Math.max(0, Number(contactState.monthlyPaymentAmount) || 0);
     const timeZone = this.dataManager.getTimezone();
     const { year, month } = getBillingPeriodParts(new Date(), timeZone);
-    const currentKey = makeBillingPeriodKey(year, month);
+    const currentKey = contactState.billingPeriodKey || makeBillingPeriodKey(year, month);
     const currentPayment = contactState.paymentMonths?.[currentKey] || null;
     const currentPaidAmount = currentStatus === PAYMENT_STATUS.PAID
       ? monthlyAmount
@@ -7436,7 +7581,7 @@ class NotificationBot {
         })
       : "Belum dijadwalkan";
     const formatAmount = (value) => this.dataManager.formatPaymentAmount(value);
-    const billingPeriod = formatBillingPeriodLabel(year, month);
+    const billingPeriod = contactState.billingPeriodLabel || formatBillingPeriodLabel(year, month);
     const billingDetails = buildBillingDetails({
       debtPeriods: contactState.debtPeriods,
       debtAmount,

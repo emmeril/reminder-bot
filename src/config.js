@@ -209,6 +209,11 @@ const SUBSCRIPTION_TYPES = {
   ONE_TIME: "ONE_TIME",
 };
 
+const BILLING_CYCLES = {
+  PREPAID: "PREPAID",
+  POSTPAID: "POSTPAID",
+};
+
 const DEFAULT_REMINDER_MESSAGE_TEMPLATE = "*Pengingat Tagihan*\n\nYth. Bapak/Ibu {{name}},\nTagihan WiFi Anda belum lunas.\n\n{{billingDetails}}\n\nJatuh tempo: {{date}}\nMasa tenggang: {{graceDays}} hari\nLayanan aktif sampai: {{isolationDate}}{{renewalStatusInfo}}\n\nMohon lakukan pembayaran sebelum layanan dinonaktifkan. Abaikan pesan ini jika Anda sudah membayar.\n\nPembayaran:\nBCA 134-266-9497 a.n. Hafriyanto\nDANA 087728972090\n\nTerima kasih,\n{{supportSignature}}";
 
 const DEFAULT_SETTINGS = {
@@ -219,7 +224,7 @@ const DEFAULT_SETTINGS = {
   customerAccountMessageTemplate: "*Informasi Akun*\n\nYth. Bapak/Ibu {{name}},\nBerikut akun layanan Anda.\n\n{{portalAccountDetails}}\n\n{{hotspotAccountDetails}}\n\n{{portalAccessGuide}}\n\nSimpan informasi ini dan jangan bagikan kata sandi kepada orang lain.\n\nTerima kasih,\n{{supportSignature}}",
   apDownMinimumDownMinutes: 5,
   paymentMessageTemplateArrearsOnly: "*Pembayaran Tunggakan*\n\nYth. Bapak/Ibu {{name}},\nPembayaran Anda sudah kami terima.\n\nID transaksi: {{transactionId}}\nTanggal: {{paymentDate}}\nNominal: {{paymentAmount}}\nSisa tunggakan: {{remainingDebtAmount}}\nStatus: {{statusText}}\n\n{{hotspotAccountDetails}}\n\nTerima kasih,\n{{supportSignature}}",
-  paymentMessageTemplateCurrentOnly: "*Pembayaran Tagihan*\n\nYth. Bapak/Ibu {{name}},\nPembayaran tagihan bulan ini sudah kami terima.\n\nID transaksi: {{transactionId}}\nTanggal: {{paymentDate}}\nStatus: {{statusText}}\n\n{{hotspotAccountDetails}}\n\nTerima kasih,\n{{supportSignature}}",
+  paymentMessageTemplateCurrentOnly: "*Pembayaran Tagihan*\n\nYth. Bapak/Ibu {{name}},\nPembayaran tagihan {{billingPeriod}} sudah kami terima.\n\nID transaksi: {{transactionId}}\nTanggal: {{paymentDate}}\nStatus: {{statusText}}\n\n{{hotspotAccountDetails}}\n\nTerima kasih,\n{{supportSignature}}",
   paymentMessageTemplateFullPaid: "*Pembayaran Lunas*\n\nYth. Bapak/Ibu {{name}},\nSemua tagihan Anda sudah lunas.\n\nID transaksi: {{transactionId}}\nTanggal: {{paymentDate}}\nStatus: {{statusText}}\n\n{{hotspotAccountDetails}}\n\nTerima kasih,\n{{supportSignature}}",
   paymentMessageTemplateActivePeriod: "*Pembelian Masa Aktif*\n\nYth. Bapak/Ibu {{name}},\nMasa aktif WiFi selama satu bulan sudah ditambahkan.\n\nID transaksi: {{transactionId}}\nTanggal: {{paymentDate}}\nNominal: {{paymentAmount}}\nAktif sampai: {{activeUntil}}\nSisa tunggakan: {{remainingDebtAmount}}\nStatus: {{statusText}}\n\nTunggakan tetap tercatat. Perpanjangan otomatis aktif kembali setelah semua tunggakan lunas.\n\n{{hotspotAccountDetails}}\n\nTerima kasih,\n{{supportSignature}}",
   paymentHotspotAccountMessageTemplate: "*Akun WiFi*\nUsername: {{hotspotUsername}}\nPassword: {{hotspotPassword}}\nAktif sampai: {{activeUntil}}\n\nSimpan username dan password ini. Jangan bagikan kepada orang lain.",
@@ -255,6 +260,7 @@ module.exports = {
   MONTH_NAMES,
   PAYMENT_STATUS,
   PAYMENT_TYPES,
+  BILLING_CYCLES,
   BILLING_REMINDER_STOP_DEBT_COUNT,
   REMINDER_KINDS,
   SUBSCRIPTION_TYPES,
