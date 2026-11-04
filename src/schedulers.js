@@ -28,6 +28,10 @@ const {
   sanitizeTimeHHMM,
 } = require("./utils");
 
+function isPrepaidContact(contact) {
+  return String(contact?.billingCycle || "").trim().toUpperCase() === BILLING_CYCLES.PREPAID;
+}
+
 class ReminderScheduler {
   constructor(notificationBot, dataManager, activityLog) {
     this.notificationBot = notificationBot;
@@ -67,6 +71,14 @@ class ReminderScheduler {
       this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} tidak dijadwalkan ulang karena pelanggan sekali berlangganan`, {
         reminderId: reminder.id,
         contactId: contact.id || null,
+        sourceStatus,
+      });
+      return null;
+    }
+    if (isPrepaidContact(contact)) {
+      this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} tidak dijadwalkan ulang karena pelanggan prabayar menunggu pembelian paket berikutnya`, {
+        reminderId: reminder.id,
+        contactId: contact.id || reminder.contactId || null,
         sourceStatus,
       });
       return null;
@@ -285,6 +297,9 @@ class ReminderScheduler {
     if (isGracePeriodReminder(reminder)
       || reminder.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY
       || typeof this.dataManager.moveToGracePeriod !== "function") return false;
+
+    const contact = this.dataManager.getResolvedReminderContact?.(reminder);
+    if (isPrepaidContact(contact)) return false;
 
     const settings = typeof this.dataManager.getSettings === "function"
       ? this.dataManager.getSettings()

@@ -4655,6 +4655,13 @@ class DataManager {
         continue;
       }
 
+      if (isPrepaidPackage(contact)) {
+        if (!existing.processingAt) {
+          updated += this.syncRecurringReminderSchedule(contact);
+        }
+        continue;
+      }
+
       const serviceSchedule = this.normalizeOptionalDate(contact.hotspotReactivationAt);
       const reminderSchedule = this.normalizeOptionalDate(existing.reminderDateTime);
       const isTemporaryActivePeriod = existing.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY;
@@ -5249,6 +5256,7 @@ class DataManager {
         && !reminder.processingAt;
     });
     const created = !existing;
+    const previousState = existing ? JSON.stringify(existing) : null;
     const reminder = existing || {
       id: generateId(),
       contactId: String(contact.id),
@@ -5279,16 +5287,20 @@ class DataManager {
     delete reminder.lastDeliveryAttemptAt;
     delete reminder.lastDeliveryError;
     delete reminder.deliveryAttempts;
+    delete reminder.gracePeriodCreatedAt;
     this.rewriteReminderPaymentMessage(reminder, contact);
     this.reminders.set(String(reminder.id), reminder);
-    this.activityLog.push("info", "billing", `Reminder masa aktif diselaraskan untuk ${contact.name || contact.id}`, {
-      contactId: contact.id,
-      reminderId: reminder.id,
-      reminderDateTime: reminder.reminderDateTime,
-      activeUntil: reminder.activePeriodUntil,
-      created,
-    });
-    return { changed: 1, created, reminder };
+    const changed = created || previousState !== JSON.stringify(reminder);
+    if (changed) {
+      this.activityLog.push("info", "billing", `Reminder masa aktif diselaraskan untuk ${contact.name || contact.id}`, {
+        contactId: contact.id,
+        reminderId: reminder.id,
+        reminderDateTime: reminder.reminderDateTime,
+        activeUntil: reminder.activePeriodUntil,
+        created,
+      });
+    }
+    return { changed: changed ? 1 : 0, created, reminder };
   }
 
   restoreBillingReminderAfterActivePeriod(contact) {

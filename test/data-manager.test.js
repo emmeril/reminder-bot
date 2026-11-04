@@ -532,6 +532,58 @@ test("reminder lama diselaraskan dengan jadwal layanan saat startup", async () =
   assert.equal(saves, 1);
 });
 
+test("reminder tagihan lama pelanggan prabayar dimigrasikan menjadi pengingat paket", async () => {
+  const activeUntil = "2026-11-28T16:59:59.999Z";
+  const contact = {
+    id: "contact-prepaid-reminder-migration",
+    name: "Pelanggan Prabayar",
+    phoneNumber: "6281234567805",
+    createdAt: "2026-10-28T17:00:00.000Z",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID,
+    monthlyPaymentAmount: 75_000,
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentMonths: {},
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: activeUntil,
+    activePeriodPurchases: [{
+      purchasedAt: "2026-10-28T17:00:00.000Z",
+      activeUntil,
+      status: PAYMENT_STATUS.PAID,
+    }],
+  };
+  const manager = createManager(contact);
+  manager.settings.hotspotIsolationGraceDays = 3;
+  let saves = 0;
+  manager.saveReminders = async () => { saves += 1; };
+  manager.reminders.set("legacy-prepaid-billing", {
+    id: "legacy-prepaid-billing",
+    contactId: contact.id,
+    contactName: contact.name,
+    phoneNumber: contact.phoneNumber,
+    reminderDateTime: activeUntil,
+    reminderKind: REMINDER_KINDS.GRACE_PERIOD,
+    message: DEFAULT_SETTINGS.gracePeriodReminderMessageTemplate,
+    messageSource: DEFAULT_SETTINGS.gracePeriodReminderMessageTemplate,
+    templateName: "Penagihan.txt",
+    gracePeriodCreatedAt: "2026-11-28T17:00:00.000Z",
+  });
+
+  assert.equal(await manager.repairMissingRecurringReminders(), 0);
+
+  const reminder = manager.getReminder("legacy-prepaid-billing");
+  assert.equal(reminder.reminderKind, REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY);
+  assert.equal(reminder.reminderDateTime, "2026-11-25T16:59:59.999Z");
+  assert.equal(reminder.activePeriodUntil, activeUntil);
+  assert.equal(reminder.templateName, "PaketPrabayar");
+  assert.equal(reminder.messageSource, DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate);
+  assert.equal(Object.hasOwn(reminder, "gracePeriodCreatedAt"), false);
+  assert.equal(saves, 1);
+
+  assert.equal(await manager.repairMissingRecurringReminders(), 0);
+  assert.equal(saves, 1);
+});
+
 test("reminder masa aktif sementara tidak ditimpa saat audit startup", async () => {
   const contact = {
     id: "contact-active-period-reminder",

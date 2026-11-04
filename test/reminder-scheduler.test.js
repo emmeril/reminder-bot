@@ -605,6 +605,34 @@ test("reminder pelanggan sekali berlangganan tidak dijadwalkan ulang", async () 
   assert.equal(created, 0);
 });
 
+test("reminder pelanggan prabayar tidak masuk masa tenggang atau dijadwalkan ulang bulanan", async () => {
+  let created = 0;
+  const reminder = {
+    id: "reminder-prepaid-legacy",
+    contactId: "prepaid",
+    reminderDateTime: "2026-11-28T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.BILLING,
+    templateName: "Penagihan.txt",
+  };
+  const scheduler = new ReminderScheduler({}, {
+    getSettings: () => ({ autoRescheduleMonthly: true, hotspotIsolationGraceDays: 3 }),
+    getTimezone: () => "Asia/Jakarta",
+    getResolvedReminderContact: () => ({
+      id: "prepaid",
+      subscriptionType: "RECURRING",
+      billingCycle: "PREPAID",
+    }),
+    moveToGracePeriod: async () => {
+      throw new Error("Reminder prabayar tidak boleh masuk masa tenggang.");
+    },
+    addReminder: async () => { created += 1; },
+  }, { push() {} });
+
+  assert.equal(scheduler.shouldQueueGracePeriodReminder(reminder), false);
+  assert.equal(await scheduler.rescheduleMonthlyReminder(reminder), null);
+  assert.equal(created, 0);
+});
+
 test("reschedule reminder memakai jadwal masa aktif terbaru setelah pembayaran bersamaan", async () => {
   const nextServiceDate = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000);
   let createdPayload = null;
