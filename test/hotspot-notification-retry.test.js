@@ -143,13 +143,15 @@ test("jadwal bulanan menonaktifkan akun dan menjeda billing ketika tagihan belum
   manager.withDatabaseWrite = async (operation) => operation();
   manager.sequelize = { transaction: async (operation) => operation({}) };
   const now = new Date();
-  const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const billedPeriod = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const currentKey = `${billedPeriod.getFullYear()}-${String(billedPeriod.getMonth() + 1).padStart(2, "0")}`;
   const contact = {
     id: "contact-arrears-disable",
     name: "Pelanggan Menunggak",
     phoneNumber: "6281234567813",
     subscriptionType: "RECURRING",
-    createdAt: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
+    billingCycle: "POSTPAID",
+    createdAt: billedPeriod.toISOString(),
     monthlyPaymentAmount: 100000,
     paymentStatus: "UNPAID",
     paymentMonths: {
@@ -185,4 +187,52 @@ test("jadwal bulanan menonaktifkan akun dan menjeda billing ketika tagihan belum
   assert.equal(contact.billingPausedForArrears, true);
   assert.equal(contact.billingPausedAfterPeriod, currentKey);
   assert.equal(contact.hotspotReactivationAt, null);
+});
+
+test("paket prabayar yang habis dinonaktifkan tanpa membuat tunggakan", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.saveContacts = async () => {};
+  manager.savePelanggan = async () => {};
+  manager.withDatabaseWrite = async (operation) => operation();
+  manager.sequelize = { transaction: async (operation) => operation({}) };
+  const contact = {
+    id: "contact-prepaid-expired",
+    name: "Pelanggan Paket Habis",
+    phoneNumber: "6281234567814",
+    subscriptionType: "RECURRING",
+    billingCycle: "PREPAID",
+    monthlyPaymentAmount: 100000,
+    paymentStatus: "PAID",
+    paymentMonths: {
+      "2026-10": { status: "UNPAID", paidAmount: 0 },
+    },
+    mikrotikUsername: "pelanggan_paket_habis",
+    mikrotikPassword: "67814",
+    mikrotikProfile: "100M",
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: new Date(Date.now() - 60_000).toISOString(),
+    hotspotProvisioningStatus: "ACTIVE",
+  };
+  manager.contacts.set(contact.id, contact);
+  const calls = [];
+  const scheduler = new HotspotReactivationScheduler(
+    {
+      async setHotspotUserDisabled(username, phoneNumber, disabled) {
+        calls.push([username, phoneNumber, disabled]);
+        return { username, disabled };
+      },
+    },
+    manager,
+    { push() {} }
+  );
+
+  const results = await scheduler.processDueReactivations();
+
+  assert.equal(results[0].action, "disable");
+  assert.deepEqual(calls, [[contact.mikrotikUsername, contact.phoneNumber, true]]);
+  assert.equal(contact.hotspotProvisioningStatus, "DISABLED");
+  assert.equal(contact.hotspotSuspendedForArrears, false);
+  assert.equal(contact.billingPausedForArrears, undefined);
+  assert.equal(contact.hotspotReactivationAt, null);
+  assert.equal(manager.buildDebtInfo(contact).debtCount, 0);
 });

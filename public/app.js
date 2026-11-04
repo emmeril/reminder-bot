@@ -284,8 +284,10 @@
             paymentMessageTemplateCurrentOnly: "",
             paymentMessageTemplateFullPaid: "",
             paymentMessageTemplateActivePeriod: "",
+            prepaidPackagePaymentMessageTemplate: "",
             paymentHotspotAccountMessageTemplate: "",
             activePeriodReminderMessageTemplate: "",
+            prepaidPackageReminderMessageTemplate: "",
             gracePeriodReminderMessageTemplate: "",
             billingReminderMessageTemplate: "",
             timezone: "",
@@ -903,6 +905,7 @@
         },
 
         canReactivateHotspot(contact) {
+          if (this.isPrepaidPackage(contact)) return false;
           return this.getHotspotProvisioningStatus(contact) === "DEACTIVATED";
         },
 
@@ -913,6 +916,9 @@
         canEnableHotspot(contact) {
           if (contact?.hasDebt) return false;
           const status = this.getHotspotProvisioningStatus(contact);
+          if (this.isPrepaidPackage(contact)) {
+            return Boolean(contact?.packageActive) && status === "DISABLED";
+          }
           return status === "DISABLED"
             || (status === "CHANGED" && /akun dinonaktifkan/i.test(String(contact?.hotspotProvisioningError || "")));
         },
@@ -924,6 +930,9 @@
         },
 
         getReactivationLabel(contact) {
+          if (this.isPrepaidPackage(contact)) {
+            return contact?.packageActive ? "Paket aktif" : "Paket tidak aktif";
+          }
           if (contact.hotspotManualActivationWithArrears) return "Aktif manual satu bulan";
           if (contact.billingPausedForArrears && !contact.hotspotReactivationAt) return "Perpanjangan dijeda";
           if (!contact.hotspotReactivationAt) return contact.hotspotReactivationEnabled ? "Belum dijadwalkan" : "Tanpa jadwal";
@@ -932,6 +941,11 @@
         },
 
         getReactivationDetail(contact) {
+          if (this.isPrepaidPackage(contact)) {
+            return contact?.hotspotReactivationAt
+              ? `Berakhir ${this.formatDateTime(contact.hotspotReactivationAt)}`
+              : "Beli paket untuk mengaktifkan layanan";
+          }
           if (!contact.hotspotReactivationAt) {
             return contact.hotspotReactivationEnabled ? "Tanggal belum dipilih" : "Tidak ada perubahan otomatis";
           }
@@ -939,6 +953,9 @@
         },
 
         getReactivationClass(contact) {
+          if (this.isPrepaidPackage(contact)) {
+            return contact?.packageActive ? "bg-moss/10 text-moss" : "bg-slate-200/70 text-slate-700";
+          }
           if (contact.hotspotReactivationEnabled) return "bg-moss/10 text-moss";
           if (contact.hotspotReactivationAt) return "bg-amber-100 text-amber-800";
           return "bg-slate-200/70 text-slate-700";
@@ -1039,6 +1056,7 @@
 
         getDebtPeriods(contact) {
           if (!contact) return [];
+          if (this.isPrepaidPackage(contact)) return [];
           if (Array.isArray(contact.debtPeriods)) return contact.debtPeriods;
 
           const paymentMonths = contact.paymentMonths || {};
@@ -1070,6 +1088,7 @@
         },
 
         canSendBillingReminder(contact) {
+          if (this.isPrepaidPackage(contact)) return false;
           const status = String(contact?.currentPaymentStatus || contact?.paymentStatus || "UNPAID").toUpperCase();
           const dueStatus = String(contact?.dueStatus || "NOT_SCHEDULED").toUpperCase();
           const debtCount = Math.max(0, Number(contact?.debtCount ?? this.getDebtPeriods(contact).length) || 0);
@@ -1078,6 +1097,7 @@
         },
 
         canPayCurrentBilling(contact) {
+          if (this.isPrepaidPackage(contact)) return false;
           const status = String(contact?.currentPaymentStatus || contact?.paymentStatus || "UNPAID").toUpperCase();
           return contact?.subscriptionActive !== false && status !== "PAID";
         },
@@ -1092,6 +1112,12 @@
         },
 
         getCurrentBillingActionLabel(contact) {
+          if (this.isPrepaidPackage(contact)) {
+            const amount = Math.max(0, Number(contact?.monthlyPaymentAmount) || 0);
+            return amount > 0
+              ? `Beli paket 1 bulan · ${this.formatRupiah(amount)}`
+              : "Beli paket 1 bulan";
+          }
           const period = this.getCurrentBillingPeriodLabel(contact);
           if (contact?.subscriptionActive === false) return `Tidak ada tagihan ${period}`;
           if (!this.canPayCurrentBilling(contact)) return `${period} sudah lunas`;
@@ -1109,7 +1135,15 @@
               : "Bulanan prabayar");
         },
 
+        isPrepaidPackage(contact) {
+          return String(contact?.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "RECURRING"
+            && String(contact?.billingCycle || "").toUpperCase() === "PREPAID";
+        },
+
         getCurrentPaymentLabel(contact) {
+          if (this.isPrepaidPackage(contact)) {
+            return contact?.packageActive ? "Paket aktif" : "Paket tidak aktif";
+          }
           if (contact?.subscriptionActive === false) return "Tidak ada tagihan baru";
           if (contact?.currentPaymentStatus !== "PAID") return "Belum Bayar";
           if (contact?.currentPaymentType) return this.getPaymentTypeLabel(contact.currentPaymentType);
@@ -1797,8 +1831,10 @@
                 paymentMessageTemplateCurrentOnly: data.settings.paymentMessageTemplateCurrentOnly || "",
                 paymentMessageTemplateFullPaid: data.settings.paymentMessageTemplateFullPaid || "",
                 paymentMessageTemplateActivePeriod: data.settings.paymentMessageTemplateActivePeriod || "",
+                prepaidPackagePaymentMessageTemplate: data.settings.prepaidPackagePaymentMessageTemplate || "",
                 paymentHotspotAccountMessageTemplate: data.settings.paymentHotspotAccountMessageTemplate || "",
                 activePeriodReminderMessageTemplate: data.settings.activePeriodReminderMessageTemplate || "",
+                prepaidPackageReminderMessageTemplate: data.settings.prepaidPackageReminderMessageTemplate || "",
                 gracePeriodReminderMessageTemplate: data.settings.gracePeriodReminderMessageTemplate || "",
                 billingReminderMessageTemplate: data.settings.billingReminderMessageTemplate || "",
                 timezone: data.settings.timezone || "",
@@ -2804,6 +2840,7 @@
         },
 
         hasBillingActions(contact) {
+          if (this.isPrepaidPackage(contact)) return this.canPurchaseActivePeriod(contact);
           return Boolean(
             (contact?.subscriptionActive !== false && contact?.currentPaymentStatus !== "PAID")
             || this.hasDebt(contact)
@@ -2881,21 +2918,32 @@
         },
 
         canPurchaseActivePeriod(contact) {
-          if (!contact?.id || !contact.hasDebt) return false;
+          if (!contact?.id) return false;
           if (String(contact.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") !== "RECURRING") return false;
           if (!contact.mikrotikUsername || !contact.mikrotikProfile || Number(contact.monthlyPaymentAmount) <= 0) return false;
           const status = this.getHotspotProvisioningStatus(contact);
+          if (this.isPrepaidPackage(contact)) return status === "ACTIVE" || status === "DISABLED";
+          if (!contact.hasDebt) return false;
           return status === "DISABLED"
             || (status === "ACTIVE" && Boolean(contact.hotspotManualActivationWithArrears));
         },
 
         getActivePeriodPurchaseLabel(contact) {
+          if (this.isPrepaidPackage(contact)) {
+            return contact?.packageActive ? "Tambah paket 1 bulan" : "Beli paket 1 bulan";
+          }
           return contact?.hotspotManualActivationWithArrears
             ? "Tambah masa aktif 1 bulan"
             : "Beli masa aktif 1 bulan";
         },
 
         getActivePeriodPurchaseHelp(contact) {
+          if (this.isPrepaidPackage(contact)) {
+            if (contact?.packageActive && contact?.hotspotReactivationAt) {
+              return `Masa aktif baru ditambahkan setelah ${this.formatDateTime(contact.hotspotReactivationAt)}.`;
+            }
+            return "Paket berlaku satu bulan sejak pembayaran dan tidak membuat tunggakan.";
+          }
           if (contact?.hotspotManualActivationWithArrears && contact?.hotspotReactivationAt) {
             return `Periode baru dimulai setelah ${this.formatDateTime(contact.hotspotReactivationAt)}. Tunggakan tidak berkurang.`;
           }
@@ -2905,13 +2953,20 @@
         purchaseActivePeriod(contact) {
           if (!this.canPurchaseActivePeriod(contact)) return;
           const amount = this.formatRupiah(contact.monthlyPaymentAmount);
-          const extending = Boolean(contact.hotspotManualActivationWithArrears && contact.hotspotReactivationAt);
+          const prepaidPackage = this.isPrepaidPackage(contact);
+          const extending = prepaidPackage
+            ? Boolean(contact.packageActive && contact.hotspotReactivationAt)
+            : Boolean(contact.hotspotManualActivationWithArrears && contact.hotspotReactivationAt);
           this.closeBillingActionModal();
           this.openDeleteConfirm({
             title: extending ? "Tambah masa aktif satu bulan?" : "Beli masa aktif satu bulan?",
             description: extending
-              ? `Pembayaran ${amount} akan menambah masa aktif satu bulan setelah jadwal yang sekarang. Tunggakan tetap tersimpan.`
-              : `Pembayaran ${amount} akan mengaktifkan akun hotspot selama satu bulan. Tunggakan tetap tersimpan.`,
+              ? (prepaidPackage
+                ? `Pembayaran ${amount} akan menambah masa aktif satu bulan setelah paket yang sekarang.`
+                : `Pembayaran ${amount} akan menambah masa aktif satu bulan setelah jadwal yang sekarang. Tunggakan tetap tersimpan.`)
+              : (prepaidPackage
+                ? `Pembayaran ${amount} akan mengaktifkan paket hotspot selama satu bulan tanpa membuat tunggakan.`
+                : `Pembayaran ${amount} akan mengaktifkan akun hotspot selama satu bulan. Tunggakan tetap tersimpan.`),
             confirmLabel: extending ? "Tambah masa aktif" : "Beli dan aktifkan",
             processingMessage: extending ? "Menambah masa aktif..." : "Mencatat pembelian masa aktif...",
             action: async () => {

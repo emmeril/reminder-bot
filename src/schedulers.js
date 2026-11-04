@@ -1,4 +1,5 @@
 const {
+  BILLING_CYCLES,
   BILLING_REMINDER_STOP_DEBT_COUNT,
   CONFIG,
   DEFAULT_REMINDER_MESSAGE_TEMPLATE,
@@ -60,6 +61,7 @@ class ReminderScheduler {
 
   async rescheduleMonthlyReminder(reminder, sourceStatus = "SENT") {
     if (!this.dataManager.getSettings().autoRescheduleMonthly) return null;
+    if (reminder.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY) return null;
     const contact = this.dataManager.getResolvedReminderContact?.(reminder);
     if (contact && String(contact.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "ONE_TIME") {
       this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} tidak dijadwalkan ulang karena pelanggan sekali berlangganan`, {
@@ -872,12 +874,18 @@ class HotspotReactivationScheduler {
       this.activityLog.push("info", "hotspot-reactivation", `Memproses ${dueContacts.length} jadwal hotspot`);
       for (const contact of dueContacts) {
         const recurring = String(contact.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "RECURRING";
+        const prepaidPackage = recurring
+          && String(contact.billingCycle || "").toUpperCase() === BILLING_CYCLES.PREPAID;
         const blockedByArrears = recurring
+          && !prepaidPackage
           && Boolean(contact.hotspotReactivationEnabled)
           && (Boolean(contact.hasDebt)
             || String(contact.currentPaymentStatus || contact.paymentStatus || "UNPAID").toUpperCase() !== "PAID");
-        const autoReactivation = Boolean(contact.hotspotReactivationEnabled) && !blockedByArrears;
-        const arrearsDisable = blockedByArrears || Boolean(contact.hotspotManualActivationWithArrears);
+        const autoReactivation = !prepaidPackage
+          && Boolean(contact.hotspotReactivationEnabled)
+          && !blockedByArrears;
+        const arrearsDisable = !prepaidPackage
+          && (blockedByArrears || Boolean(contact.hotspotManualActivationWithArrears));
         try {
           const result = autoReactivation
             ? await this.reactivateContact(contact)

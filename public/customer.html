@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/customer.css?v=20261014-2">
   <link rel="stylesheet" href="/public/interface.css?v=20261030-1">
-  <script defer src="/public/customer.js?v=20261028-1"></script>
+  <script defer src="/public/customer.js?v=20261104-2"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -49,19 +49,19 @@
       <section class="portal-summary-grid">
         <article class="portal-summary-card portal-summary-total">
           <span class="portal-card-icon"><i class="fa-solid fa-wallet"></i></span>
-          <div><small>Perlu dibayar</small><strong x-text="currency(data?.billing?.totalAmount)"></strong><p x-text="billingSummary()"></p></div>
+          <div><small x-text="isPrepaidPackage() ? 'Harga paket' : 'Perlu dibayar'"></small><strong x-text="currency(data?.billing?.totalAmount)"></strong><p x-text="billingSummary()"></p></div>
         </article>
         <article class="portal-summary-card">
           <span class="portal-card-icon"><i class="fa-solid fa-file-invoice-dollar"></i></span>
-          <div><small>Tagihan periode ini</small><strong x-text="currency(data?.billing?.currentAmount)"></strong><p x-text="data?.billing?.periodLabel"></p></div>
+          <div><small x-text="isPrepaidPackage() ? 'Paket satu bulan' : 'Tagihan periode ini'"></small><strong x-text="currency(data?.billing?.currentAmount)"></strong><p x-text="data?.billing?.periodLabel"></p></div>
         </article>
-        <article class="portal-summary-card">
+        <article class="portal-summary-card" x-show="!isPrepaidPackage()">
           <span class="portal-card-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
           <div><small>Tunggakan</small><strong x-text="currency(data?.billing?.debtAmount)"></strong><p x-text="debtLabel()"></p></div>
         </article>
         <article class="portal-summary-card">
           <span class="portal-card-icon"><i class="fa-solid fa-circle-check"></i></span>
-          <div><small>Status pembayaran</small><strong class="portal-status-text" :class="isPaid() ? 'is-paid' : 'is-unpaid'" x-text="currentStatusLabel()"></strong><p x-text="dueLabel()"></p></div>
+          <div><small x-text="isPrepaidPackage() ? 'Status paket' : 'Status pembayaran'"></small><strong class="portal-status-text" :class="isPaid() ? 'is-paid' : 'is-unpaid'" x-text="currentStatusLabel()"></strong><p x-text="dueLabel()"></p></div>
         </article>
       </section>
 
@@ -84,13 +84,13 @@
 
         <article class="portal-panel">
           <div class="portal-panel-heading">
-            <div><span><i class="fa-solid fa-receipt"></i></span><div><h2>Rincian tagihan</h2><p>Nominal yang tercatat saat ini</p></div></div>
+            <div><span><i class="fa-solid fa-receipt"></i></span><div><h2 x-text="isPrepaidPackage() ? 'Rincian paket' : 'Rincian tagihan'"></h2><p x-text="isPrepaidPackage() ? 'Paket berlaku selama satu bulan' : 'Nominal yang tercatat saat ini'"></p></div></div>
           </div>
           <dl class="portal-bill-details">
-            <div><dt>Biaya bulanan</dt><dd x-text="currency(data?.billing?.monthlyAmount)"></dd></div>
-            <div><dt>Tagihan berjalan</dt><dd x-text="currency(data?.billing?.currentAmount)"></dd></div>
-            <div><dt>Tunggakan</dt><dd x-text="currency(data?.billing?.debtAmount)"></dd></div>
-            <div class="portal-bill-total"><dt>Total perlu dibayar</dt><dd x-text="currency(data?.billing?.totalAmount)"></dd></div>
+            <div><dt x-text="isPrepaidPackage() ? 'Harga paket 1 bulan' : 'Biaya bulanan'"></dt><dd x-text="currency(data?.billing?.monthlyAmount)"></dd></div>
+            <div x-show="!isPrepaidPackage()"><dt>Tagihan berjalan</dt><dd x-text="currency(data?.billing?.currentAmount)"></dd></div>
+            <div x-show="!isPrepaidPackage()"><dt>Tunggakan</dt><dd x-text="currency(data?.billing?.debtAmount)"></dd></div>
+            <div class="portal-bill-total"><dt x-text="isPrepaidPackage() ? 'Pembelian berikutnya' : 'Total perlu dibayar'"></dt><dd x-text="currency(data?.billing?.totalAmount)"></dd></div>
           </dl>
           <div class="portal-payment-gateway" x-show="data?.paymentGateway?.enabled">
             <div class="portal-payment-heading">
@@ -98,7 +98,7 @@
               <div><strong>Pembayaran online</strong><small>Diproses aman melalui Midtrans <em x-show="data?.paymentGateway?.environment === 'sandbox'">Sandbox</em></small></div>
             </div>
             <button type="button" @click="payWithMidtrans()" :disabled="paying || Number(data?.billing?.totalAmount) <= 0">
-              <span x-show="!paying"><i class="fa-solid fa-credit-card"></i> Bayar tagihan</span>
+              <span x-show="!paying"><i class="fa-solid fa-credit-card"></i> <span x-text="isPrepaidPackage() ? 'Beli paket 1 bulan' : 'Bayar tagihan'"></span></span>
               <span x-cloak x-show="paying"><i class="fa-solid fa-circle-notch fa-spin"></i> Menyiapkan pembayaran...</span>
             </button>
           </div>

@@ -196,6 +196,11 @@ function isPostpaidBilling(contact) {
     && normalizeBillingCycle(contact?.billingCycle) === BILLING_CYCLES.POSTPAID;
 }
 
+function isPrepaidPackage(contact) {
+  return isRecurringSubscription(contact)
+    && String(contact?.billingCycle || "").trim().toUpperCase() === BILLING_CYCLES.PREPAID;
+}
+
 function getContactBillingPeriod(contact, referencePeriod) {
   return isPostpaidBilling(contact)
     ? getPreviousBillingPeriod(referencePeriod.year, referencePeriod.month)
@@ -2785,6 +2790,12 @@ class DataManager {
         contact.hotspotManualActivationWithArrears,
         false
       );
+      if (isPrepaidPackage(contact)) {
+        contact.billingPausedForArrears = false;
+        contact.billingPausedAfterPeriod = null;
+        contact.hotspotSuspendedForArrears = false;
+        contact.hotspotManualActivationWithArrears = false;
+      }
       contact.activePeriodPurchases = (Array.isArray(contact.activePeriodPurchases)
         ? contact.activePeriodPurchases
         : [])
@@ -3086,12 +3097,17 @@ class DataManager {
     const currentKey = hydrated.billingPeriodKey || makeBillingPeriodKey(year, month);
     const monthlyAmount = Math.max(0, Number(hydrated.monthlyPaymentAmount) || 0);
     const currentPaymentStatus = hydrated.currentPaymentStatus || hydrated.paymentStatus || PAYMENT_STATUS.UNPAID;
-    const currentAmount = currentPaymentStatus === PAYMENT_STATUS.PAID ? 0 : monthlyAmount;
+    const prepaidPackage = isPrepaidPackage(contact);
+    const currentAmount = prepaidPackage
+      ? monthlyAmount
+      : (currentPaymentStatus === PAYMENT_STATUS.PAID ? 0 : monthlyAmount);
     const debtAmount = Math.max(0, Number(hydrated.debtAmount) || 0);
     const includeHistoryPeriod = (period) => !isPostpaidBilling(contact) || period <= currentKey;
     const historyByPeriod = new Map(
       Object.entries(hydrated.paymentMonths || {})
-        .filter(([period]) => /^\d{4}-\d{2}$/.test(period) && includeHistoryPeriod(period))
+        .filter(([period]) => !prepaidPackage
+          && /^\d{4}-\d{2}$/.test(period)
+          && includeHistoryPeriod(period))
         .map(([period, payment]) => {
           const paidAmount = this.getPaymentPaidAmount(payment, monthlyAmount);
           return [period, {
@@ -3129,7 +3145,7 @@ class DataManager {
     const includeCurrentPeriod = (isRecurringSubscription(contact) && currentBillingStarted)
       || (billingStartPeriod.year === year && billingStartPeriod.month === month)
       || historyByPeriod.has(currentKey);
-    if (includeCurrentPeriod && !historyByPeriod.has(currentKey)) {
+    if (!prepaidPackage && includeCurrentPeriod && !historyByPeriod.has(currentKey)) {
       historyByPeriod.set(currentKey, {
         period: currentKey,
         label: formatBillingPeriodLabel(currentBillingYear, currentBillingMonth),
@@ -3167,7 +3183,9 @@ class DataManager {
       },
       billing: {
         period: currentKey,
-        periodLabel: hydrated.billingPeriodLabel || formatBillingPeriodLabel(year, month),
+        periodLabel: prepaidPackage
+          ? "Paket prabayar 1 bulan"
+          : (hydrated.billingPeriodLabel || formatBillingPeriodLabel(year, month)),
         subscriptionType: hydrated.subscriptionType,
         billingCycle: hydrated.billingCycle,
         subscriptionActive: hydrated.subscriptionActive,
@@ -3178,6 +3196,8 @@ class DataManager {
         debtAmount,
         totalAmount: currentAmount + debtAmount,
         currentPaymentStatus,
+        packageActive: Boolean(hydrated.packageActive),
+        activeUntil: contact.hotspotReactivationAt || null,
         debtCount: hydrated.debtCount,
         debtPeriods: hydrated.debtPeriods,
         dueDate: hydrated.dueDate || null,
@@ -3324,7 +3344,7 @@ class DataManager {
     ));
   }
 
-  findReusablePaymentGatewayTransaction({ contactId, amount, periods }) {
+  findReusablePaymentGatewayTransaction({ contactId, amount, periods, paymentType = PAYMENT_TYPES.FULL_PAID }) {
     const normalizedContactId = String(contactId || "");
     const normalizedAmount = Math.floor(Number(amount) || 0);
     const normalizedPeriods = Array.from(new Set((periods || []).map(String))).sort();
@@ -3342,6 +3362,7 @@ class DataManager {
           && transaction.status === PAYMENT_GATEWAY_STATUS.PENDING
           && String(transaction.contactId) === normalizedContactId
           && Number(transaction.amount) === normalizedAmount
+          && String(transaction.paymentType || PAYMENT_TYPES.FULL_PAID) === String(paymentType)
           && Boolean(transaction.redirectUrl)
           && Number.isFinite(createdAt)
           && createdAt >= cutoff
@@ -3355,12 +3376,17 @@ class DataManager {
       const orderId = sanitizeInput(String(payload.orderId || ""));
       const contactId = String(payload.contactId || "");
       const amount = Math.floor(Number(payload.amount) || 0);
+      const paymentType = payload.paymentType === PAYMENT_TYPES.ACTIVE_PERIOD
+        ? PAYMENT_TYPES.ACTIVE_PERIOD
+        : PAYMENT_TYPES.FULL_PAID;
       const periods = Array.from(new Set((payload.periods || []).map((period) => String(period))))
         .filter((period) => /^\d{4}-\d{2}$/.test(period));
       if (!orderId || orderId.length > 50) throw new Error("ID transaksi pembayaran tidak valid.");
       if (this.paymentGatewayTransactions.has(orderId)) throw new Error("ID transaksi pembayaran sudah digunakan.");
       if (!this.getContact(contactId)) throw new Error("Kontak tidak ditemukan.");
-      if (amount <= 0 || periods.length === 0) throw new Error("Tagihan pelanggan sudah lunas atau belum memiliki nominal.");
+      if (amount <= 0 || (paymentType !== PAYMENT_TYPES.ACTIVE_PERIOD && periods.length === 0)) {
+        throw new Error("Tagihan pelanggan sudah lunas atau belum memiliki nominal.");
+      }
 
       const now = new Date().toISOString();
       const transaction = {
@@ -3369,7 +3395,7 @@ class DataManager {
         provider: "midtrans",
         amount,
         periods,
-        paymentType: PAYMENT_TYPES.FULL_PAID,
+        paymentType,
         status: PAYMENT_GATEWAY_STATUS.PENDING,
         gatewayStatus: "created",
         token: null,
@@ -3415,6 +3441,50 @@ class DataManager {
       const now = new Date().toISOString();
       const serviceScheduleBeforePayment = contact.hotspotReactivationAt || null;
       const serviceScheduleEnabledBeforePayment = parseBoolean(contact.hotspotReactivationEnabled, false);
+      const paymentDateBeforePayment = contact.paymentDate || null;
+      const paymentTypeBeforePayment = contact.paymentType || null;
+      if (transaction.paymentType === PAYMENT_TYPES.ACTIVE_PERIOD) {
+        if (!isPrepaidPackage(contact)) {
+          throw new Error("Transaksi paket prabayar hanya berlaku untuk pelanggan prabayar.");
+        }
+        const paidAt = new Date(now);
+        const currentSchedule = new Date(contact.hotspotReactivationAt || 0);
+        const activeFrom = Number.isFinite(currentSchedule.getTime())
+          && currentSchedule.getTime() > paidAt.getTime()
+          ? currentSchedule
+          : paidAt;
+        const activeUntil = addMonthsSafely(activeFrom, 1, this.getTimezone());
+        const purchase = {
+          id: transaction.orderId,
+          purchasedAt: now,
+          activeFrom: activeFrom.toISOString(),
+          activeUntil: activeUntil.toISOString(),
+          paymentProvider: "midtrans",
+        };
+        const recorded = this.applyActivePeriodPurchase(contact, purchase);
+        transaction.status = PAYMENT_GATEWAY_STATUS.PAID;
+        transaction.gatewayStatus = String(gatewayData.transaction_status || "settlement");
+        transaction.transactionId = sanitizeInput(String(gatewayData.transaction_id || "")) || null;
+        transaction.paymentMethod = sanitizeInput(String(gatewayData.payment_type || "")) || null;
+        transaction.paidAt = gatewayData.settlement_time || gatewayData.transaction_time || now;
+        transaction.error = null;
+        transaction.serviceScheduleBeforePayment = serviceScheduleBeforePayment;
+        transaction.serviceScheduleEnabledBeforePayment = serviceScheduleEnabledBeforePayment;
+        transaction.serviceScheduleAfterPayment = activeUntil.toISOString();
+        transaction.paymentDateBeforePayment = paymentDateBeforePayment;
+        transaction.paymentTypeBeforePayment = paymentTypeBeforePayment;
+        transaction.updatedAt = now;
+        const remindersChanged = recorded.added
+          ? this.syncActivePeriodExpiryReminder(contact, recorded.purchase).changed
+          : 0;
+        await this.withDatabaseWrite(() => this.sequelize.transaction(async (databaseTransaction) => {
+          const options = { transaction: databaseTransaction };
+          await this.saveContacts(options);
+          await this.savePaymentGatewayTransactions(options);
+          if (remindersChanged) await this.saveReminders(options);
+        }));
+        return { transaction, contact: this.hydrateContact(contact), alreadyProcessed: false };
+      }
       if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") contact.paymentMonths = {};
       for (const period of transaction.periods) {
         const previousPayment = contact.paymentMonths[period] || {};
@@ -3508,6 +3578,60 @@ class DataManager {
 
       const now = new Date().toISOString();
       const reversedPeriods = [];
+      if (transaction.paymentType === PAYMENT_TYPES.ACTIVE_PERIOD) {
+        if (!partial) {
+          const previousLength = Array.isArray(contact.activePeriodPurchases)
+            ? contact.activePeriodPurchases.length
+            : 0;
+          contact.activePeriodPurchases = (contact.activePeriodPurchases || [])
+            .filter((purchase) => String(purchase.id) !== String(orderId));
+          if (contact.activePeriodPurchases.length < previousLength) reversedPeriods.push("Paket prabayar");
+          if (contact.hotspotReactivationAt === transaction.serviceScheduleAfterPayment) {
+            contact.hotspotReactivationAt = transaction.serviceScheduleBeforePayment || null;
+            contact.hotspotReactivationEnabled = parseBoolean(
+              transaction.serviceScheduleEnabledBeforePayment,
+              false
+            );
+          }
+          const packageState = this.buildDebtInfo(contact);
+          contact.paymentStatus = packageState.currentPaymentStatus;
+          contact.paymentDate = packageState.packageActive
+            ? transaction.paymentDateBeforePayment || null
+            : null;
+          contact.paymentType = packageState.packageActive
+            ? transaction.paymentTypeBeforePayment || PAYMENT_TYPES.ACTIVE_PERIOD
+            : null;
+        }
+        contact.updatedAt = now;
+        transaction.status = refundStatus;
+        transaction.gatewayStatus = sanitizeInput(String(
+          gatewayData.transaction_status || (partial ? "partial_refund" : "refund")
+        ));
+        transaction.transactionId = sanitizeInput(String(gatewayData.transaction_id || transaction.transactionId || "")) || null;
+        transaction.paymentMethod = sanitizeInput(String(gatewayData.payment_type || transaction.paymentMethod || "")) || null;
+        transaction.refundedAt = gatewayData.refund_time || now;
+        transaction.refundAmount = refundAmount;
+        transaction.manualReviewRequired = partial;
+        transaction.error = null;
+        transaction.updatedAt = now;
+        const remindersChanged = partial
+          ? 0
+          : (contact.hotspotReactivationAt
+            ? this.syncRecurringReminderSchedule(contact)
+            : this.removeRemindersForContact(contact.id));
+        await this.withDatabaseWrite(() => this.sequelize.transaction(async (databaseTransaction) => {
+          const options = { transaction: databaseTransaction };
+          await this.saveContacts(options);
+          await this.savePaymentGatewayTransactions(options);
+          if (remindersChanged) await this.saveReminders(options);
+        }));
+        return {
+          transaction,
+          contact: this.hydrateContact(contact),
+          alreadyProcessed: false,
+          reversedPeriods,
+        };
+      }
       if (!contact.paymentMonths || typeof contact.paymentMonths !== "object") contact.paymentMonths = {};
       for (const period of partial ? [] : transaction.periods || []) {
         const payment = contact.paymentMonths[period];
@@ -3874,6 +3998,19 @@ class DataManager {
       };
     }
 
+    if (isPrepaidPackage(contact)) {
+      const activeUntil = contact.hotspotReactivationAt
+        ? new Date(contact.hotspotReactivationAt)
+        : null;
+      if (!activeUntil || !Number.isFinite(activeUntil.getTime())) {
+        return { dueDate: null, dueStatus: "NOT_SCHEDULED" };
+      }
+      return {
+        dueDate: activeUntil.toISOString(),
+        dueStatus: activeUntil.getTime() > Date.now() ? "UPCOMING" : "OVERDUE",
+      };
+    }
+
     const timeZone = this.getTimezone();
     const { year, month } = getBillingPeriodParts(new Date(), timeZone);
     const activePeriodKey = makeBillingPeriodKey(year, month);
@@ -3988,6 +4125,41 @@ class DataManager {
     const currentPayment = paymentMonths[currentKey] || null;
     const previous = getPreviousBillingPeriod(year, month);
     const startPeriod = getContactBillingStartPeriod(contact, timeZone);
+    if (isPrepaidPackage(contact)) {
+      const requestedAt = options.at ? new Date(options.at) : new Date();
+      const now = Number.isNaN(requestedAt.getTime()) ? new Date() : requestedAt;
+      const activeUntil = contact.hotspotReactivationAt
+        ? new Date(contact.hotspotReactivationAt)
+        : null;
+      const packageActive = Boolean(
+        activeUntil
+        && Number.isFinite(activeUntil.getTime())
+        && activeUntil.getTime() > now.getTime()
+      );
+      const paymentStatus = packageActive ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.UNPAID;
+      return {
+        hasDebt: false,
+        debtPeriod: null,
+        debtPeriodLabel: "",
+        debtPeriods: [],
+        debtCount: 0,
+        debtAmount: 0,
+        debtNote: "",
+        previousPaymentStatus: PAYMENT_STATUS.PAID,
+        paymentStatus,
+        currentPaymentStatus: paymentStatus,
+        currentPaymentType: packageActive ? PAYMENT_TYPES.ACTIVE_PERIOD : null,
+        subscriptionType: normalizeSubscriptionType(contact.subscriptionType),
+        billingCycle: BILLING_CYCLES.PREPAID,
+        billingPeriodKey: currentKey,
+        billingPeriodLabel: "Paket prabayar",
+        subscriptionActive: true,
+        packageActive,
+        packageActiveUntil: packageActive ? activeUntil.toISOString() : null,
+        billingPausedForArrears: false,
+        billingPausedAfterPeriod: null,
+      };
+    }
     const billingPausedForArrears = isRecurringSubscription(contact)
       && parseBoolean(contact.billingPausedForArrears, false);
     const pausedAfterPeriod = /^\d{4}-\d{2}$/.test(String(contact.billingPausedAfterPeriod || ""))
@@ -4075,7 +4247,7 @@ class DataManager {
   }
 
   pauseBillingForArrears(contact, options = {}) {
-    if (!contact || !isRecurringSubscription(contact)) return false;
+    if (!contact || !isRecurringSubscription(contact) || isPrepaidPackage(contact)) return false;
     const alreadyPaused = parseBoolean(contact.billingPausedForArrears, false)
       && /^\d{4}-\d{2}$/.test(String(contact.billingPausedAfterPeriod || ""));
     const requestedAt = options.at ? new Date(options.at) : new Date();
@@ -4110,7 +4282,7 @@ class DataManager {
     if (!contact || !isRecurringSubscription(contact)) {
       throw new Error("Pembelian masa aktif hanya tersedia untuk pelanggan bulanan.");
     }
-    if (!this.buildDebtInfo(contact).hasDebt) {
+    if (!isPrepaidPackage(contact) && !this.buildDebtInfo(contact).hasDebt) {
       throw new Error("Pembelian masa aktif hanya tersedia untuk pelanggan yang memiliki tunggakan.");
     }
 
@@ -4151,14 +4323,16 @@ class DataManager {
     if (existing) return { purchase: existing, added: false };
 
     contact.activePeriodPurchases.push(purchase);
-    contact.billingPausedForArrears = true;
+    const prepaidPackage = isPrepaidPackage(contact);
+    contact.billingPausedForArrears = prepaidPackage ? false : true;
+    contact.billingPausedAfterPeriod = prepaidPackage ? null : contact.billingPausedAfterPeriod;
     contact.hotspotSuspendedForArrears = false;
-    contact.hotspotManualActivationWithArrears = true;
-    contact.hotspotReactivationEnabled = false;
+    contact.hotspotManualActivationWithArrears = prepaidPackage ? false : true;
+    contact.hotspotReactivationEnabled = prepaidPackage;
     contact.hotspotReactivationAt = purchase.activeUntil;
     contact.paymentStatus = PAYMENT_STATUS.PAID;
-    contact.paymentDate = null;
-    contact.paymentType = null;
+    contact.paymentDate = prepaidPackage ? purchase.purchasedAt : null;
+    contact.paymentType = prepaidPackage ? PAYMENT_TYPES.ACTIVE_PERIOD : null;
     contact.updatedAt = purchase.purchasedAt;
     return { purchase, added: true };
   }
@@ -4180,7 +4354,8 @@ class DataManager {
   }
 
   resumeAutomaticRenewalIfArrearsSettled(contact, options = {}) {
-    if (!contact || !parseBoolean(contact.billingPausedForArrears, false)) return false;
+    if (!contact || isPrepaidPackage(contact)
+      || !parseBoolean(contact.billingPausedForArrears, false)) return false;
     if (this.buildDebtInfo(contact).hasDebt) return false;
 
     const requestedAt = options.at ? new Date(options.at) : new Date();
@@ -4515,8 +4690,10 @@ class DataManager {
         "paymentMessageTemplateCurrentOnly",
         "paymentMessageTemplateFullPaid",
         "paymentMessageTemplateActivePeriod",
+        "prepaidPackagePaymentMessageTemplate",
         "paymentHotspotAccountMessageTemplate",
         "activePeriodReminderMessageTemplate",
+        "prepaidPackageReminderMessageTemplate",
       ];
       this.settings = { ...settings };
       for (const key of templateKeys) {
@@ -4531,7 +4708,10 @@ class DataManager {
         if (templateName === "penagihan.txt") {
           messageTemplate = DEFAULT_REMINDER_MESSAGE_TEMPLATE;
         } else if (reminder.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY) {
-          messageTemplate = DEFAULT_SETTINGS.activePeriodReminderMessageTemplate;
+          const contact = this.getResolvedReminderContact(reminder);
+          messageTemplate = isPrepaidPackage(contact)
+            ? DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate
+            : DEFAULT_SETTINGS.activePeriodReminderMessageTemplate;
         }
         if (!messageTemplate) continue;
 
@@ -4789,7 +4969,18 @@ class DataManager {
       return this.removeRemindersForContact(contact.id);
     }
     const reminderDateTime = this.normalizeOptionalDate(contact.hotspotReactivationAt);
-    if (!reminderDateTime) return 0;
+    if (!reminderDateTime) {
+      return isPrepaidPackage(contact) ? this.removeRemindersForContact(contact.id) : 0;
+    }
+    if (isPrepaidPackage(contact)) {
+      const latestPurchase = Array.isArray(contact.activePeriodPurchases)
+        ? contact.activePeriodPurchases.at(-1)
+        : null;
+      return this.syncActivePeriodExpiryReminder(contact, {
+        purchasedAt: latestPurchase?.purchasedAt || contact.createdAt || new Date().toISOString(),
+        activeUntil: reminderDateTime,
+      }).changed;
+    }
 
     const ensured = this.ensureRecurringReminder(contact);
     const reminder = ensured.reminder;
@@ -4877,6 +5068,18 @@ class DataManager {
     if (this.isReminderSuppressedForArrears(contact)) {
       return { created: false, reminder: null, suppressed: true };
     }
+    if (isPrepaidPackage(contact)) {
+      const activeUntil = this.normalizeOptionalDate(contact.hotspotReactivationAt);
+      if (!activeUntil) return { created: false, reminder: null };
+      const latestPurchase = Array.isArray(contact.activePeriodPurchases)
+        ? contact.activePeriodPurchases.at(-1)
+        : null;
+      const synced = this.syncActivePeriodExpiryReminder(contact, {
+        purchasedAt: latestPurchase?.purchasedAt || contact.createdAt || new Date().toISOString(),
+        activeUntil,
+      });
+      return { created: synced.created, reminder: synced.reminder };
+    }
 
     const existing = Array.from(this.reminders.values()).find((reminder) => {
       const resolvedContact = this.getResolvedReminderContact(reminder);
@@ -4946,8 +5149,11 @@ class DataManager {
       phoneNumber: contact.phoneNumber,
       createdAt: new Date().toISOString(),
     };
-    const messageTemplate = sanitizeMultilineText(this.getSettings().activePeriodReminderMessageTemplate)
-      || DEFAULT_SETTINGS.activePeriodReminderMessageTemplate;
+    const messageTemplate = isPrepaidPackage(contact)
+      ? (sanitizeMultilineText(this.getSettings().prepaidPackageReminderMessageTemplate)
+        || DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate)
+      : (sanitizeMultilineText(this.getSettings().activePeriodReminderMessageTemplate)
+        || DEFAULT_SETTINGS.activePeriodReminderMessageTemplate);
 
     Object.assign(reminder, {
       contactId: String(contact.id),
@@ -4959,7 +5165,7 @@ class DataManager {
       activePeriodUntil: activeUntil.toISOString(),
       message: messageTemplate,
       messageSource: messageTemplate,
-      templateName: "MasaAktifSementara",
+      templateName: isPrepaidPackage(contact) ? "PaketPrabayar" : "MasaAktifSementara",
     });
     delete reminder.nextDeliveryAttemptAt;
     delete reminder.deliveryAttemptedAt;
@@ -5043,11 +5249,14 @@ class DataManager {
       const initialServiceSchedule = addMonthsSafely(now, 1, this.getTimezone()).toISOString();
       const { year: initialYear, month: initialMonth } = getBillingPeriodParts(new Date(now), this.getTimezone());
       const initialPeriod = makeBillingPeriodKey(initialYear, initialMonth);
+      const prepaidPackage = subscriptionType === SUBSCRIPTION_TYPES.RECURRING
+        && billingCycle === BILLING_CYCLES.PREPAID;
+      const monthlyPaymentAmount = sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000);
       const contact = {
         id: generateId(),
         name,
         phoneNumber,
-        monthlyPaymentAmount: sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000),
+        monthlyPaymentAmount,
         monthlyPaymentAmountCustomized: payload.monthlyPaymentAmount !== undefined,
         subscriptionType,
         billingCycle,
@@ -5057,15 +5266,26 @@ class DataManager {
         billingPausedAfterPeriod: null,
         hotspotSuspendedForArrears: false,
         hotspotManualActivationWithArrears: false,
-        activePeriodPurchases: [],
+        activePeriodPurchases: prepaidPackage && monthlyPaymentAmount > 0 ? [{
+          id: `REG-${Date.now()}`,
+          paymentType: PAYMENT_TYPES.ACTIVE_PERIOD,
+          status: PAYMENT_STATUS.PAID,
+          amount: monthlyPaymentAmount,
+          purchasedAt: now,
+          activeFrom: now,
+          activeUntil: initialServiceSchedule,
+          paymentProvider: "manual",
+        }] : [],
         // Prabayar melunasi periode awal; pascabayar menagihnya pada jatuh tempo berikutnya.
         paymentStatus: PAYMENT_STATUS.PAID,
         paymentDate: billingCycle === BILLING_CYCLES.POSTPAID ? null : now,
-        paymentType: billingCycle === BILLING_CYCLES.POSTPAID ? null : PAYMENT_TYPES.CURRENT_ONLY,
+        paymentType: billingCycle === BILLING_CYCLES.POSTPAID
+          ? null
+          : (prepaidPackage ? PAYMENT_TYPES.ACTIVE_PERIOD : PAYMENT_TYPES.CURRENT_ONLY),
         paymentMonths: {
           [initialPeriod]: billingCycle === BILLING_CYCLES.POSTPAID
             ? { status: PAYMENT_STATUS.UNPAID, paidDate: null, paymentType: null, paidAmount: 0 }
-            : { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: PAYMENT_TYPES.CURRENT_ONLY },
+            : { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: prepaidPackage ? PAYMENT_TYPES.ACTIVE_PERIOD : PAYMENT_TYPES.CURRENT_ONLY },
         },
         linkedApHost,
         ...hotspotFields,
@@ -5156,6 +5376,8 @@ class DataManager {
         const billingCycle = subscriptionType === SUBSCRIPTION_TYPES.RECURRING
           ? normalizeBillingCycle(payload.billingCycle)
           : BILLING_CYCLES.PREPAID;
+        const prepaidPackage = subscriptionType === SUBSCRIPTION_TYPES.RECURRING
+          && billingCycle === BILLING_CYCLES.PREPAID;
         contact = {
           id: String(generateId()),
           name,
@@ -5173,11 +5395,13 @@ class DataManager {
           activePeriodPurchases: [],
           paymentStatus: PAYMENT_STATUS.PAID,
           paymentDate: billingCycle === BILLING_CYCLES.POSTPAID ? null : now,
-          paymentType: billingCycle === BILLING_CYCLES.POSTPAID ? null : PAYMENT_TYPES.CURRENT_ONLY,
+          paymentType: billingCycle === BILLING_CYCLES.POSTPAID
+            ? null
+            : (prepaidPackage ? PAYMENT_TYPES.ACTIVE_PERIOD : PAYMENT_TYPES.CURRENT_ONLY),
           paymentMonths: {
             [initialPeriod]: billingCycle === BILLING_CYCLES.POSTPAID
               ? { status: PAYMENT_STATUS.UNPAID, paidDate: null, paymentType: null, paidAmount: 0 }
-              : { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: PAYMENT_TYPES.CURRENT_ONLY },
+              : { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: prepaidPackage ? PAYMENT_TYPES.ACTIVE_PERIOD : PAYMENT_TYPES.CURRENT_ONLY },
           },
           linkedApHost,
           ...hotspotFields,
@@ -5196,6 +5420,18 @@ class DataManager {
           updatedAt: now,
         };
         this.applyProfileMonthlyAmount(contact);
+        if (prepaidPackage && Number(contact.monthlyPaymentAmount) > 0) {
+          contact.activePeriodPurchases.push({
+            id: `REG-${Date.now()}`,
+            paymentType: PAYMENT_TYPES.ACTIVE_PERIOD,
+            status: PAYMENT_STATUS.PAID,
+            amount: Math.floor(Number(contact.monthlyPaymentAmount)),
+            purchasedAt: now,
+            activeFrom: now,
+            activeUntil: initialServiceSchedule,
+            paymentProvider: "manual",
+          });
+        }
         this.contacts.set(contact.id, contact);
       } else {
         contact.name = name;
@@ -5464,19 +5700,30 @@ class DataManager {
         );
       }
       if (billingCycleChanged) {
-        const referencePeriod = getBillingPeriodParts(transitionAt, this.getTimezone());
-        const billingPeriod = getContactBillingPeriod(contact, referencePeriod);
-        const billingKey = makeBillingPeriodKey(billingPeriod.year, billingPeriod.month);
-        const billingStarted = compareBillingPeriods(
-          getContactBillingStartPeriod(contact, this.getTimezone()),
-          billingPeriod
-        ) <= 0;
-        const payment = contact.paymentMonths?.[billingKey] || null;
-        const paid = (isPostpaidBilling(contact) && !billingStarted)
-          || payment?.status === PAYMENT_STATUS.PAID;
-        contact.paymentStatus = paid ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.UNPAID;
-        contact.paymentDate = paid && billingStarted ? payment?.paidDate || null : null;
-        contact.paymentType = paid && billingStarted ? payment?.paymentType || null : null;
+        if (isPrepaidPackage(contact)) {
+          contact.billingPausedForArrears = false;
+          contact.billingPausedAfterPeriod = null;
+          contact.hotspotSuspendedForArrears = false;
+          contact.hotspotManualActivationWithArrears = false;
+          const packageState = this.buildDebtInfo(contact, { at: transitionAt });
+          contact.paymentStatus = packageState.currentPaymentStatus;
+          contact.paymentDate = packageState.packageActive ? contact.paymentDate || now : null;
+          contact.paymentType = packageState.packageActive ? PAYMENT_TYPES.ACTIVE_PERIOD : null;
+        } else {
+          const referencePeriod = getBillingPeriodParts(transitionAt, this.getTimezone());
+          const billingPeriod = getContactBillingPeriod(contact, referencePeriod);
+          const billingKey = makeBillingPeriodKey(billingPeriod.year, billingPeriod.month);
+          const billingStarted = compareBillingPeriods(
+            getContactBillingStartPeriod(contact, this.getTimezone()),
+            billingPeriod
+          ) <= 0;
+          const payment = contact.paymentMonths?.[billingKey] || null;
+          const paid = (isPostpaidBilling(contact) && !billingStarted)
+            || payment?.status === PAYMENT_STATUS.PAID;
+          contact.paymentStatus = paid ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.UNPAID;
+          contact.paymentDate = paid && billingStarted ? payment?.paidDate || null : null;
+          contact.paymentType = paid && billingStarted ? payment?.paymentType || null : null;
+        }
       }
       if (this.applyProfileMonthlyAmount(contact)) this.updateContactReminderMessages(contact);
 
@@ -5619,6 +5866,7 @@ class DataManager {
       if (contact.hotspotReactivationEnabled && !contact.mikrotikProfile) return false;
       const recurring = isRecurringSubscription(contact);
       const blockedByArrears = recurring
+        && !isPrepaidPackage(contact)
         && Boolean(contact.hotspotReactivationEnabled)
         && (Boolean(contact.hasDebt)
           || String(contact.currentPaymentStatus || contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase() !== PAYMENT_STATUS.PAID);
@@ -6442,12 +6690,18 @@ class DataManager {
         paymentMessageTemplateActivePeriod: payload.paymentMessageTemplateActivePeriod !== undefined
           ? sanitizeMultilineText(payload.paymentMessageTemplateActivePeriod) || current.paymentMessageTemplateActivePeriod
           : current.paymentMessageTemplateActivePeriod,
+        prepaidPackagePaymentMessageTemplate: payload.prepaidPackagePaymentMessageTemplate !== undefined
+          ? sanitizeMultilineText(payload.prepaidPackagePaymentMessageTemplate) || current.prepaidPackagePaymentMessageTemplate
+          : current.prepaidPackagePaymentMessageTemplate,
         paymentHotspotAccountMessageTemplate: payload.paymentHotspotAccountMessageTemplate !== undefined
           ? sanitizeMultilineText(payload.paymentHotspotAccountMessageTemplate) || current.paymentHotspotAccountMessageTemplate
           : current.paymentHotspotAccountMessageTemplate,
         activePeriodReminderMessageTemplate: payload.activePeriodReminderMessageTemplate !== undefined
           ? sanitizeMultilineText(payload.activePeriodReminderMessageTemplate) || current.activePeriodReminderMessageTemplate
           : current.activePeriodReminderMessageTemplate,
+        prepaidPackageReminderMessageTemplate: payload.prepaidPackageReminderMessageTemplate !== undefined
+          ? sanitizeMultilineText(payload.prepaidPackageReminderMessageTemplate) || current.prepaidPackageReminderMessageTemplate
+          : current.prepaidPackageReminderMessageTemplate,
         gracePeriodReminderMessageTemplate: payload.gracePeriodReminderMessageTemplate !== undefined
           ? sanitizeMultilineText(payload.gracePeriodReminderMessageTemplate) || current.gracePeriodReminderMessageTemplate
           : current.gracePeriodReminderMessageTemplate,
@@ -6546,13 +6800,18 @@ class DataManager {
   getPaymentsByMonth(year, month) {
     const key = `${year}-${String(month).padStart(2, "0")}`;
     return this.getSortedContacts().filter((contact) => {
-      return contact.paymentMonths?.[key]?.status === PAYMENT_STATUS.PAID;
+      if (contact.paymentMonths?.[key]?.status === PAYMENT_STATUS.PAID) return true;
+      return (contact.activePeriodPurchases || []).some((purchase) => (
+        purchase?.status === PAYMENT_STATUS.PAID
+        && getBillingPeriodKey(purchase.purchasedAt, this.getTimezone()) === key
+      ));
     });
   }
 
   getAllPaymentsHistory() {
     const history = {};
     for (const contact of this.contacts.values()) {
+      const recordedPeriods = new Set();
       for (const [key, payment] of Object.entries(contact.paymentMonths || {})) {
         if (!payment || payment.status !== PAYMENT_STATUS.PAID) continue;
         if (!history[key]) {
@@ -6560,6 +6819,16 @@ class DataManager {
         }
         history[key].contacts.push(contact);
         history[key].total += 1;
+        recordedPeriods.add(key);
+      }
+      for (const purchase of contact.activePeriodPurchases || []) {
+        if (purchase?.status !== PAYMENT_STATUS.PAID || !purchase.purchasedAt) continue;
+        const key = getBillingPeriodKey(purchase.purchasedAt, this.getTimezone());
+        if (recordedPeriods.has(key)) continue;
+        if (!history[key]) history[key] = { contacts: [], total: 0 };
+        history[key].contacts.push(contact);
+        history[key].total += 1;
+        recordedPeriods.add(key);
       }
     }
     return history;
@@ -6737,6 +7006,9 @@ class DataManager {
     return this.withDataMutation(async () => {
       const contact = this.getContact(contactId);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
+      if (isPrepaidPackage(contact)) {
+        throw new Error("Pelanggan prabayar dibayar melalui tindakan pembelian paket satu bulan.");
+      }
       ({ status, paymentType } = this.normalizePaymentSelection(status, paymentType));
       let appliedPaymentAmount = 0;
 
@@ -6923,6 +7195,9 @@ class DataManager {
     return this.withDataMutation(async () => {
       const contact = this.getContact(contactId);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
+      if (isPrepaidPackage(contact)) {
+        throw new Error("Pelanggan prabayar tidak menggunakan pembayaran per bulan. Gunakan pembelian paket satu bulan.");
+      }
       if (!Number.isInteger(year) || year < 2000 || year > 2100 || !Number.isInteger(month) || month < 1 || month > 12) {
         throw new Error("Periode pembayaran tidak valid.");
       }
@@ -7090,6 +7365,18 @@ class DataManager {
       const currentKey = makeBillingPeriodKey(billingPeriod.year, billingPeriod.month);
       const arrearsPolicy = this.applyArrearsSubscriptionPolicy(contact);
       remindersChanged += arrearsPolicy.remindersAdded + arrearsPolicy.remindersRemoved;
+      if (isPrepaidPackage(contact)) {
+        const packageState = this.buildDebtInfo(contact);
+        contact.paymentStatus = packageState.currentPaymentStatus;
+        contact.paymentDate = packageState.packageActive ? contact.paymentDate : null;
+        contact.paymentType = packageState.packageActive ? PAYMENT_TYPES.ACTIVE_PERIOD : null;
+        contact.billingPausedForArrears = false;
+        contact.billingPausedAfterPeriod = null;
+        contact.updatedAt = new Date().toISOString();
+        remindersChanged += this.updateContactReminderMessages(contact);
+        resetCount += 1;
+        continue;
+      }
       if (parseBoolean(contact.billingPausedForArrears, false)) {
         contact.paymentStatus = PAYMENT_STATUS.PAID;
         contact.paymentDate = null;
@@ -7144,6 +7431,26 @@ class DataManager {
       const billingPeriod = getContactBillingPeriod(contact, referencePeriod);
       const currentKey = makeBillingPeriodKey(billingPeriod.year, billingPeriod.month);
       const currentPayment = contact.paymentMonths?.[currentKey];
+      if (isPrepaidPackage(contact)) {
+        const packageState = this.buildDebtInfo(contact);
+        const nextStatus = packageState.currentPaymentStatus;
+        const nextPaymentDate = packageState.packageActive ? contact.paymentDate || null : null;
+        const nextPaymentType = packageState.packageActive ? PAYMENT_TYPES.ACTIVE_PERIOD : null;
+        if (contact.paymentStatus !== nextStatus
+          || contact.paymentDate !== nextPaymentDate
+          || contact.paymentType !== nextPaymentType
+          || parseBoolean(contact.billingPausedForArrears, false)) {
+          contact.paymentStatus = nextStatus;
+          contact.paymentDate = nextPaymentDate;
+          contact.paymentType = nextPaymentType;
+          contact.billingPausedForArrears = false;
+          contact.billingPausedAfterPeriod = null;
+          contact.updatedAt = new Date().toISOString();
+          this.updateContactReminderMessages(contact);
+          changed += 1;
+        }
+        continue;
+      }
       const billingPaused = parseBoolean(contact.billingPausedForArrears, false);
       const billingStarted = compareBillingPeriods(
         getContactBillingStartPeriod(contact, this.getTimezone()),
@@ -7472,8 +7779,13 @@ class NotificationBot {
       statusText = "Lunas";
       noteText = "Semua tagihan sudah lunas.";
     } else if (paymentType === PAYMENT_TYPES.ACTIVE_PERIOD) {
-      statusText = "Masa aktif ditambahkan";
-      noteText = `WiFi aktif sampai ${formattedActiveUntil}. Tunggakan tetap tercatat dan perpanjangan otomatis masih dijeda.`;
+      if (isPrepaidPackage(contact)) {
+        statusText = "Paket aktif";
+        noteText = `Paket WiFi aktif sampai ${formattedActiveUntil}.`;
+      } else {
+        statusText = "Masa aktif ditambahkan";
+        noteText = `WiFi aktif sampai ${formattedActiveUntil}. Tunggakan tetap tercatat dan perpanjangan otomatis masih dijeda.`;
+      }
     }
     const settings = this.dataManager.getSettings();
     let messageTemplate = sanitizeMultilineText(settings.paymentMessageTemplateCurrentOnly)
@@ -7485,8 +7797,11 @@ class NotificationBot {
       messageTemplate = sanitizeMultilineText(settings.paymentMessageTemplateFullPaid)
         || DEFAULT_SETTINGS.paymentMessageTemplateFullPaid;
     } else if (paymentType === PAYMENT_TYPES.ACTIVE_PERIOD) {
-      messageTemplate = sanitizeMultilineText(settings.paymentMessageTemplateActivePeriod)
-        || DEFAULT_SETTINGS.paymentMessageTemplateActivePeriod;
+      messageTemplate = isPrepaidPackage(contact)
+        ? (sanitizeMultilineText(settings.prepaidPackagePaymentMessageTemplate)
+          || DEFAULT_SETTINGS.prepaidPackagePaymentMessageTemplate)
+        : (sanitizeMultilineText(settings.paymentMessageTemplateActivePeriod)
+          || DEFAULT_SETTINGS.paymentMessageTemplateActivePeriod);
     }
     if (paymentType === PAYMENT_TYPES.CURRENT_ONLY
       && normalizeBillingCycle(contact.billingCycle) === BILLING_CYCLES.POSTPAID) {
@@ -8076,6 +8391,11 @@ class WebServer {
         const currentState = typeof this.dataManager.hydrateContact === "function"
           ? this.dataManager.hydrateContact(current)
           : current;
+        if (isPrepaidPackage(current) && !currentState.packageActive) {
+          const error = new Error("Beli paket satu bulan sebelum mengaktifkan akun prabayar.");
+          error.statusCode = 409;
+          throw error;
+        }
         if (currentState.hasDebt) {
           const error = new Error("Gunakan Beli masa aktif 1 bulan untuk mengaktifkan akun yang masih memiliki tunggakan.");
           error.statusCode = 409;
@@ -8164,7 +8484,8 @@ class WebServer {
       if (!isRecurringSubscription(contact)) {
         throw new Error("Pembelian masa aktif hanya tersedia untuk pelanggan bulanan.");
       }
-      if (!hydrated.hasDebt) {
+      const prepaidPackage = isPrepaidPackage(contact);
+      if (!prepaidPackage && !hydrated.hasDebt) {
         throw new Error("Pembelian masa aktif hanya tersedia untuk pelanggan yang memiliki tunggakan.");
       }
       if (!contact.mikrotikUsername || !contact.mikrotikProfile) {
@@ -8178,10 +8499,12 @@ class WebServer {
       );
       const currentEnd = new Date(contact.hotspotReactivationAt || 0);
       const canExtend = currentStatus === HOTSPOT_PROVISIONING_STATUS.ACTIVE
-        && parseBoolean(contact.hotspotManualActivationWithArrears, false);
+        && (prepaidPackage || parseBoolean(contact.hotspotManualActivationWithArrears, false));
       const canActivate = currentStatus === HOTSPOT_PROVISIONING_STATUS.DISABLED;
       if (!canExtend && !canActivate) {
-        const error = new Error("Akun hotspot harus nonaktif karena tunggakan atau sedang memakai masa aktif sementara.");
+        const error = new Error(prepaidPackage
+          ? "Akun hotspot harus sudah tersedia atau dalam keadaan nonaktif."
+          : "Akun hotspot harus nonaktif karena tunggakan atau sedang memakai masa aktif sementara.");
         error.statusCode = 409;
         throw error;
       }
@@ -8326,8 +8649,14 @@ class WebServer {
       || String(hydratedState?.currentPaymentStatus || hydratedState?.paymentStatus || "UNPAID").toUpperCase() !== PAYMENT_STATUS.PAID) {
       return { attempted: false, reason: "outstanding_balance" };
     }
-    if (!parseBoolean(currentState?.hotspotSuspendedForArrears, false)) {
+    const prepaidPackage = isPrepaidPackage(currentState);
+    if (!prepaidPackage && !parseBoolean(currentState?.hotspotSuspendedForArrears, false)) {
       return { attempted: false, reason: "not_arrears_suspension" };
+    }
+    if (prepaidPackage
+      && normalizeHotspotProvisioningStatus(currentState?.hotspotProvisioningStatus) === HOTSPOT_PROVISIONING_STATUS.DISABLED
+      && /oleh administrator/i.test(String(currentState?.hotspotProvisioningError || ""))) {
+      return { attempted: false, reason: "manual_suspension" };
     }
     const password = sanitizeInput(contact?.mikrotikPassword || "")
       || String(contact?.phoneNumber || "").slice(-5);
@@ -8570,7 +8899,7 @@ class WebServer {
         await this.notificationBot.sendPaymentNotification(
           notificationContact,
           orderId,
-          PAYMENT_TYPES.FULL_PAID,
+          result.transaction?.paymentType || localTransaction.paymentType || PAYMENT_TYPES.FULL_PAID,
           {
             paymentAmount: Math.max(0, Number(result.transaction?.amount || localTransaction.amount) || 0),
             paymentDate: result.transaction?.paidAt || new Date().toISOString(),
@@ -8961,12 +9290,21 @@ class WebServer {
         throw error;
       }
 
-      const amount = Math.floor(Number(req.customerPortalData.billing?.totalAmount) || 0);
-      const periods = (req.customerPortalData.billing?.history || [])
-        .filter((payment) => payment.status !== PAYMENT_STATUS.PAID)
-        .map((payment) => payment.period);
-      if (amount <= 0 || periods.length === 0) {
-        throw new Error("Tidak ada tagihan yang perlu dibayar.");
+      const prepaidPackage = req.customerPortalData.billing?.billingCycle === BILLING_CYCLES.PREPAID
+        && req.customerPortalData.billing?.subscriptionType === SUBSCRIPTION_TYPES.RECURRING;
+      const amount = Math.floor(Number(prepaidPackage
+        ? req.customerPortalData.billing?.monthlyAmount
+        : req.customerPortalData.billing?.totalAmount) || 0);
+      const periods = prepaidPackage
+        ? []
+        : (req.customerPortalData.billing?.history || [])
+          .filter((payment) => payment.status !== PAYMENT_STATUS.PAID)
+          .map((payment) => payment.period);
+      const paymentType = prepaidPackage ? PAYMENT_TYPES.ACTIVE_PERIOD : PAYMENT_TYPES.FULL_PAID;
+      if (amount <= 0 || (!prepaidPackage && periods.length === 0)) {
+        throw new Error(prepaidPackage
+          ? "Harga paket prabayar belum diatur."
+          : "Tidak ada tagihan yang perlu dibayar.");
       }
 
       return this.paymentGatewayLock.runExclusive(
@@ -8976,6 +9314,7 @@ class WebServer {
             contactId: req.customerSession.contactId,
             amount,
             periods,
+            paymentType,
           });
           if (reusable) {
             return {
@@ -8992,6 +9331,7 @@ class WebServer {
             contactId: req.customerSession.contactId,
             amount,
             periods,
+            paymentType,
           });
           const fallbackFinishUrl = `${req.protocol}://${req.get("host")}/pelanggan?payment=finish`;
           const finishUrl = CONFIG.MIDTRANS_FINISH_URL || fallbackFinishUrl;
@@ -9001,7 +9341,9 @@ class WebServer {
               orderId,
               amount,
               customer: req.customerPortalData.customer,
-              itemName: `Tagihan internet ${req.customerPortalData.billing.periodLabel}`,
+              itemName: prepaidPackage
+                ? "Paket internet prabayar 1 bulan"
+                : `Tagihan internet ${req.customerPortalData.billing.periodLabel}`,
               finishUrl,
             });
             await this.dataManager.updatePaymentGatewayTransaction(orderId, {
@@ -9688,6 +10030,9 @@ class WebServer {
     this.app.post("/api/contacts/:id/hotspot/reactivate", requireApiAuth, handleApi(async (req) => {
       const contact = this.dataManager.getContact(req.params.id);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
+      if (isPrepaidPackage(contact) && !this.dataManager.hydrateContact(contact).packageActive) {
+        throw new Error("Beli paket satu bulan sebelum mengaktifkan akun prabayar.");
+      }
       const result = await this.hotspotReactivationScheduler.reactivateContact(
         this.dataManager.hydrateContact(contact),
         { manual: true }
@@ -9822,6 +10167,15 @@ class WebServer {
     }));
 
     this.app.post("/api/contacts/:id/payment", requireApiAuth, handleApi(async (req) => {
+      const paymentContact = typeof this.dataManager.getContact === "function"
+        ? this.dataManager.getContact(req.params.id)
+        : null;
+      if (typeof this.dataManager.getContact === "function" && !paymentContact) {
+        throw new Error("Kontak tidak ditemukan.");
+      }
+      if (isPrepaidPackage(paymentContact)) {
+        throw new Error("Pelanggan prabayar dibayar melalui tindakan pembelian paket satu bulan.");
+      }
       const status = sanitizeInput(req.body.status).toUpperCase();
       const requestedPaymentType = sanitizeInput(req.body.paymentType).toUpperCase();
       const paymentType = requestedPaymentType || null;

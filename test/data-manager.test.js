@@ -376,6 +376,70 @@ test("portal pascabayar tidak memasukkan periode yang belum jatuh tempo", () => 
   );
 });
 
+test("paket prabayar tidak membuat tunggakan dan pembelian awal memperpanjang masa aktif", async () => {
+  const now = new Date();
+  const currentPeriod = getBillingPeriodParts(now, "Asia/Jakarta");
+  const oldUnpaid = getPreviousBillingPeriod(currentPeriod.year, currentPeriod.month);
+  const oldUnpaidPeriod = makeBillingPeriodKey(oldUnpaid.year, oldUnpaid.month);
+  const currentEnd = addDaysSafely(now, 5, "Asia/Jakarta");
+  const expectedEnd = addMonthsSafely(currentEnd, 1, "Asia/Jakarta");
+  const contact = {
+    id: "contact-prepaid-package",
+    name: "Pelanggan Paket",
+    phoneNumber: "6281234567885",
+    createdAt: now.toISOString(),
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID,
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.PAID,
+    paymentMonths: {
+      [oldUnpaidPeriod]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
+    },
+    activePeriodPurchases: [],
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: currentEnd.toISOString(),
+    hotspotProvisioningStatus: "ACTIVE",
+  };
+  const manager = createManager(contact);
+  manager.savePaymentGatewayTransactions = async () => {};
+
+  const before = manager.buildDebtInfo(contact);
+  assert.equal(before.packageActive, true);
+  assert.equal(before.hasDebt, false);
+  assert.equal(before.debtCount, 0);
+
+  await manager.createPaymentGatewayTransaction({
+    orderId: "RB-PREPAID-PACKAGE-1",
+    contactId: contact.id,
+    amount: 100_000,
+    periods: [],
+    paymentType: PAYMENT_TYPES.ACTIVE_PERIOD,
+  });
+  const completed = await manager.completeMidtransPayment("RB-PREPAID-PACKAGE-1", {
+    gross_amount: "100000",
+    transaction_status: "settlement",
+    transaction_id: "midtrans-package-1",
+  });
+
+  assert.equal(completed.transaction.paymentType, PAYMENT_TYPES.ACTIVE_PERIOD);
+  assert.equal(contact.activePeriodPurchases.length, 1);
+  assert.equal(contact.activePeriodPurchases[0].activeFrom, currentEnd.toISOString());
+  assert.equal(contact.activePeriodPurchases[0].activeUntil, expectedEnd.toISOString());
+  assert.equal(contact.hotspotReactivationAt, expectedEnd.toISOString());
+  assert.equal(manager.buildDebtInfo(contact).debtCount, 0);
+  assert.equal(Array.from(manager.reminders.values())[0].reminderKind, REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY);
+
+  const refunded = await manager.refundMidtransPayment("RB-PREPAID-PACKAGE-1", {
+    gross_amount: "100000",
+    transaction_status: "refund",
+    refund_amount: "100000",
+  });
+  assert.deepEqual(refunded.reversedPeriods, ["Paket prabayar"]);
+  assert.equal(contact.activePeriodPurchases.length, 0);
+  assert.equal(contact.hotspotReactivationAt, currentEnd.toISOString());
+  assert.equal(manager.buildDebtInfo(contact).packageActive, true);
+});
+
 test("pembayaran setelah masa aktif habis menghitung satu bulan dari waktu pembayaran", () => {
   const paidAt = new Date();
   const current = getBillingPeriodParts(paidAt, "Asia/Jakarta");
@@ -1257,7 +1321,7 @@ test("perubahan pelanggan menjadi sekali berlangganan menghapus reminder aktif",
   assert.equal(reminderSaves, 1);
 });
 
-test("konversi pelanggan sekali ke bulanan mempertahankan tunggakan lama", async () => {
+test("konversi pelanggan sekali ke pascabayar mempertahankan periode yang belum dibayar", async () => {
   const now = new Date();
   const current = getBillingPeriodParts(now, "Asia/Jakarta");
   const previous = getPreviousBillingPeriod(current.year, current.month);
@@ -1286,6 +1350,7 @@ test("konversi pelanggan sekali ke bulanan mempertahankan tunggakan lama", async
 
   const converted = await manager.updateContact(contact.id, {
     subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.POSTPAID,
   });
 
   assert.equal(converted.subscriptionType, SUBSCRIPTION_TYPES.RECURRING);
@@ -1295,20 +1360,21 @@ test("konversi pelanggan sekali ke bulanan mempertahankan tunggakan lama", async
   assert.equal(converted.hotspotReactivationAt, null);
   assert.equal(converted.hotspotReactivationEnabled, false);
   assert.equal(converted.paymentMonths[previousKey].status, PAYMENT_STATUS.UNPAID);
-  assert.equal(manager.buildDebtInfo(contact).debtCount, 1);
+  assert.equal(manager.buildDebtInfo(contact).billingPeriodKey, previousKey);
+  assert.equal(manager.buildDebtInfo(contact).debtCount, 0);
 
   const paid = await manager.updatePaymentStatus(
     contact.id,
     PAYMENT_STATUS.PAID,
     PAYMENT_TYPES.CURRENT_ONLY
   );
-  assert.equal(paid.paymentMonths[currentKey].status, PAYMENT_STATUS.PAID);
-  assert.equal(paid.paymentMonths[currentKey].paidAmount, 75_000);
-  assert.equal(paid.paymentMonths[previousKey].status, PAYMENT_STATUS.UNPAID);
-  assert.equal(paid.hotspotReactivationAt, null);
-  assert.equal(paid.hotspotReactivationEnabled, false);
-  assert.equal(paid.serviceActiveUntil, undefined);
-  assert.equal(manager.buildDebtInfo(contact).debtCount, 1);
+  assert.equal(paid.paymentMonths[previousKey].status, PAYMENT_STATUS.PAID);
+  assert.equal(paid.paymentMonths[previousKey].paidAmount, 75_000);
+  assert.equal(paid.paymentMonths[currentKey].status, PAYMENT_STATUS.UNPAID);
+  assert.ok(new Date(paid.hotspotReactivationAt).getTime() > Date.now());
+  assert.equal(paid.hotspotReactivationEnabled, true);
+  assert.equal(paid.serviceActiveUntil, paid.hotspotReactivationAt);
+  assert.equal(manager.buildDebtInfo(contact).debtCount, 0);
 });
 
 test("reset pembayaran bulanan juga menyegarkan pesan reminder aktif", async () => {
@@ -1892,6 +1958,7 @@ test("menunda isolir pelanggan belum lunas sesuai masa tenggang", async () => {
     name: "Pelanggan Masa Tenggang",
     phoneNumber: "6281234567801",
     subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.POSTPAID,
     paymentStatus: PAYMENT_STATUS.UNPAID,
     paymentMonths: {},
     mikrotikUsername: "pelanggan_grace",
@@ -2357,7 +2424,8 @@ test("registrasi pelanggan MikroTik membuat jadwal sebulan dari waktu registrasi
   assert.equal(reminders.length, 1);
   assert.equal(reminders[0].contactId, result.contact.id);
   assert.equal(reminders[0].reminderDateTime, result.contact.hotspotReactivationAt);
-  assert.equal(reminders[0].templateName, "Penagihan.txt");
+  assert.equal(reminders[0].templateName, "PaketPrabayar");
+  assert.equal(reminders[0].reminderKind, REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY);
   assert.equal(manager.ensureRecurringReminder(result.contact).created, false);
   assert.equal(manager.reminders.size, 1);
 });

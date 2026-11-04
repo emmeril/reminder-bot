@@ -32,7 +32,9 @@ function customerPortalApp() {
       try {
         this.data = await this.request("/api/pelanggan/account");
         if (new URLSearchParams(window.location.search).get("payment") === "finish") {
-          this.paymentMessage = "Pembayaran diterima Midtrans dan sedang diverifikasi. Status tagihan akan diperbarui otomatis.";
+          this.paymentMessage = this.isPrepaidPackage()
+            ? "Pembayaran diterima Midtrans dan sedang diverifikasi. Masa aktif paket akan diperbarui otomatis."
+            : "Pembayaran diterima Midtrans dan sedang diverifikasi. Status tagihan akan diperbarui otomatis.";
           window.history.replaceState({}, "", window.location.pathname);
         }
       } catch (error) {
@@ -156,7 +158,12 @@ function customerPortalApp() {
     },
 
     isPaid() { return this.data?.billing?.currentPaymentStatus === "PAID"; },
+    isPrepaidPackage() {
+      return this.data?.billing?.subscriptionType === "RECURRING"
+        && this.data?.billing?.billingCycle === "PREPAID";
+    },
     currentStatusLabel() {
+      if (this.isPrepaidPackage()) return this.data?.billing?.packageActive ? "Paket aktif" : "Paket tidak aktif";
       if (this.data?.billing?.subscriptionActive === false) return "Tidak Ada Tagihan Baru";
       return this.isPaid() ? "Lunas" : "Belum Lunas";
     },
@@ -171,9 +178,15 @@ function customerPortalApp() {
       return count ? `${count} bulan belum lunas` : "Tidak ada tunggakan";
     },
     billingSummary() {
+      if (this.isPrepaidPackage()) return "Harga paket untuk satu bulan";
       return Number(this.data?.billing?.totalAmount) > 0 ? "Jumlah yang perlu dibayar" : "Tidak ada tagihan tertunda";
     },
     dueLabel() {
+      if (this.isPrepaidPackage()) {
+        return this.data?.billing?.activeUntil
+          ? `Aktif sampai ${this.date(this.data.billing.activeUntil)}`
+          : "Belum memiliki paket aktif";
+      }
       if (this.data?.billing?.billingPausedForArrears) return "Tagihan baru dijeda selama layanan nonaktif";
       if (this.data?.billing?.subscriptionType === "ONE_TIME") return "Tidak ada perpanjangan otomatis";
       if (this.data?.billing?.subscriptionActive === false) return "Sekali berlangganan telah selesai";

@@ -206,6 +206,34 @@ test("aksi beli masa aktif tersedia untuk akun menunggak dan memanggil endpoint 
   assert.equal(refreshCount, 3);
 });
 
+test("pelanggan prabayar membeli paket tanpa tunggakan kalender", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const app = createDashboardApp();
+  const contact = {
+    id: "contact-prepaid-package-ui",
+    subscriptionType: "RECURRING",
+    billingCycle: "PREPAID",
+    monthlyPaymentAmount: 100000,
+    hasDebt: false,
+    packageActive: true,
+    hotspotReactivationAt: "2026-12-05T03:00:00.000Z",
+    hotspotProvisioningStatus: "ACTIVE",
+    mikrotikUsername: "pelanggan_paket",
+    mikrotikProfile: "50M",
+  };
+
+  assert.equal(app.canPurchaseActivePeriod(contact), true);
+  assert.equal(app.canPayCurrentBilling(contact), false);
+  assert.equal(app.canEnableHotspot({ ...contact, packageActive: false, hotspotProvisioningStatus: "DISABLED" }), false);
+  assert.equal(app.canEnableHotspot({ ...contact, packageActive: true, hotspotProvisioningStatus: "DISABLED" }), true);
+  assert.deepEqual(Array.from(app.getDebtPeriods(contact)), []);
+  assert.equal(app.getActivePeriodPurchaseLabel(contact), "Tambah paket 1 bulan");
+  assert.match(app.getActivePeriodPurchaseHelp(contact), /Masa aktif baru ditambahkan/);
+  assert.match(html, /Kelola paket prabayar/);
+  assert.match(html, /x-model="forms\.settings\.prepaidPackagePaymentMessageTemplate"/);
+  assert.match(html, /x-model="forms\.settings\.prepaidPackageReminderMessageTemplate"/);
+});
+
 test("pengaturan menyediakan template reminder berakhirnya masa aktif", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const app = createDashboardApp();

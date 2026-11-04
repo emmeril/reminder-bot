@@ -159,7 +159,7 @@ test("notifikasi pembayaran sebagian menyebut nominal dan sisa tunggakan", async
   });
 
   await bot.sendPaymentNotification(
-    createContact(),
+    createContact({ billingCycle: "POSTPAID" }),
     "TRX-PARTIAL-1",
     "ARREARS-ONLY",
     { paymentAmount: 100_000, remainingDebtAmount: 100_000 }
