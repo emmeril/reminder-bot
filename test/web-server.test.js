@@ -173,6 +173,7 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
   CONFIG.WEB_API_KEY = "test-api-key";
   let receivedPayload = null;
   let removedStoredVoucher = null;
+  let receivedHistoryOptions = null;
   const baseUrl = await startServer({
     getVoucherBatch: (batchId) => (batchId === "batch-lama" ? {
       batchId,
@@ -184,7 +185,9 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
     },
   }, {}, {
     getHotspotServers: async () => ["hotspot-utama"],
-    getHotspotVoucherBatches: async () => [{
+    getHotspotVoucherBatches: async (options) => {
+      receivedHistoryOptions = options;
+      return [{
       batchId: "batch-lama",
       quantity: 2,
       profile: "100M",
@@ -193,7 +196,8 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
         { username: "lama-1", password: "password-1" },
         { username: "lama-2", password: "password-2" },
       ],
-    }],
+      }];
+    },
     getVoucherProfileStats: async () => ({
       summary: { total: 2, used: 1, unused: 1 },
       profiles: [{ profile: "100M", total: 2, used: 1, unused: 1 }],
@@ -234,6 +238,13 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
   assert.equal(historyResponse.status, 200);
   assert.equal(historyPayload.data.length, 1);
   assert.equal(historyPayload.data[0].vouchers.length, 2);
+  assert.equal(receivedHistoryOptions.limit, 20);
+
+  const allHistoryResponse = await fetch(`${baseUrl}/api/mikrotik/voucher-batches?limit=all`, { headers });
+  const allHistoryPayload = await allHistoryResponse.json();
+  assert.equal(allHistoryResponse.status, 200);
+  assert.equal(allHistoryPayload.data.length, 1);
+  assert.equal(receivedHistoryOptions.limit, "all");
 
   const statsResponse = await fetch(`${baseUrl}/api/mikrotik/voucher-stats`, { headers });
   const statsPayload = await statsResponse.json();

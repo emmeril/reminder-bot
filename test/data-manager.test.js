@@ -77,6 +77,21 @@ test("riwayat batch voucher disimpan terpisah dari komentar user MikroTik", asyn
   assert.equal(saveCalls, 2);
 });
 
+test("seluruh riwayat batch voucher dapat dimuat tanpa batas 100 batch", () => {
+  const manager = createManager({ id: "contact-placeholder", phoneNumber: "6281234567890" });
+  for (let index = 0; index < 125; index += 1) {
+    manager.voucherBatches.set(`batch-${index}`, {
+      batchId: `batch-${index}`,
+      createdAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString(),
+      vouchers: [{ username: `voucher-${index}`, password: `password-${index}` }],
+    });
+  }
+
+  assert.equal(manager.getVoucherBatches().length, 50);
+  assert.equal(manager.getVoucherBatches(100).length, 100);
+  assert.equal(manager.getVoucherBatches("all").length, 125);
+});
+
 test("menghapus voucher memperbarui jumlah batch dan menghapus batch yang sudah kosong", async () => {
   const manager = createManager({ id: "contact-placeholder", phoneNumber: "6281234567890" });
   let saveCalls = 0;

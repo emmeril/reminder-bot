@@ -191,6 +191,7 @@ test("riwayat batch voucher dibaca kembali dari data MikroTik", async () => {
   const restoredSecond = batches.find((batch) => batch.batchId === secondBatch.batchId);
   assert.equal(restoredFirst.quantity, 1);
   assert.equal(restoredFirst.sellingPrice, 40000);
+  assert.equal(restoredFirst.validity, "1d");
   assert.equal(restoredFirst.comment, "Batch pertama");
   assert.deepEqual(restoredFirst.vouchers[0], {
     username: "voucher-lama",

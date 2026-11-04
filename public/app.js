@@ -167,7 +167,7 @@
         },
         voucherResult: null,
         voucherBatches: [],
-        selectedVoucherBatchId: "",
+        selectedVoucherBatchId: "ALL",
         voucherHistoryError: "",
         voucherBatchFilters: {
           search: "",
@@ -2018,14 +2018,13 @@
           this.loading.voucherHistory = true;
           this.voucherHistoryError = "";
           try {
-            const batches = await this.api("/api/mikrotik/voucher-batches?limit=50", {
+            const batches = await this.api("/api/mikrotik/voucher-batches?limit=all", {
               silent: Boolean(options.silent),
             });
             this.voucherBatches = Array.isArray(batches) ? batches : [];
             const preferredBatchId = options.batchId
               || this.selectedVoucherBatchId
-              || this.voucherBatches[0]?.batchId
-              || "";
+              || "ALL";
             this.selectVoucherBatch(preferredBatchId);
             if (!options.silent) {
               this.notify(`${this.voucherBatches.length} batch voucher dimuat dari riwayat aplikasi.`);
@@ -2062,15 +2061,21 @@
         },
 
         selectVoucherBatch(batchId) {
+          if (batchId === "ALL") {
+            this.selectedVoucherBatchId = "ALL";
+            this.voucherResult = null;
+            return;
+          }
           const selected = this.voucherBatches.find((batch) => batch.batchId === batchId) || null;
-          this.selectedVoucherBatchId = selected?.batchId || "";
+          this.selectedVoucherBatchId = selected?.batchId || "ALL";
           this.voucherResult = selected;
         },
 
         removeVoucher(voucher) {
-          const batchId = this.voucherResult?.batchId;
+          const batchId = voucher?.batchId || this.voucherResult?.batchId;
           const username = voucher?.username;
           if (!batchId || !username) return;
+          const returnToAllBatches = this.selectedVoucherBatchId === "ALL";
           this.openDeleteConfirm({
             title: "Hapus voucher?",
             description: `Voucher "${username}" akan dihapus dari MikroTik dan riwayat batch. Jika voucher sedang digunakan, sesi hotspotnya akan diputus. Tindakan ini tidak bisa dibatalkan.`,
@@ -2083,7 +2088,7 @@
               );
               await this.loadVoucherBatches({
                 silent: true,
-                batchId: result.batchRemoved ? "" : batchId,
+                batchId: returnToAllBatches ? "ALL" : (result.batchRemoved ? "ALL" : batchId),
               });
               await Promise.allSettled([
                 this.loadHotspotUsers({ silent: true }),
@@ -2112,6 +2117,42 @@
           return price > 0 ? this.formatRupiah(price) : "Harga belum diatur";
         },
 
+        getVoucherValidity(batch = this.voucherResult) {
+          const storedValidity = String(batch?.validity || "").trim().toLowerCase();
+          if (storedValidity) return storedValidity;
+          const profile = this.voucherProfiles.find((item) => item.name === batch?.profile);
+          return String(profile?.validity || "").trim().toLowerCase();
+        },
+
+        getVoucherValidityLabel(batch = this.voucherResult) {
+          const validity = this.getVoucherValidity(batch);
+          if (!validity) return "Belum diatur";
+          const units = {
+            w: "minggu",
+            d: "hari",
+            h: "jam",
+            m: "menit",
+            s: "detik",
+          };
+          const parts = Array.from(validity.matchAll(/(\d+)([wdhms])/g));
+          if (!parts.length || parts.map((part) => part[0]).join("") !== validity) return validity;
+          return parts.map(([, amount, unit]) => `${Number(amount)} ${units[unit]}`).join(" ");
+        },
+
+        getVoucherBatchForVoucher(voucher) {
+          const batchId = String(voucher?.batchId || this.voucherResult?.batchId || "");
+          return this.voucherBatches.find((batch) => String(batch.batchId) === batchId)
+            || this.voucherResult
+            || null;
+        },
+
+        getVoucherCardBatchLabel(voucher) {
+          const batch = this.getVoucherBatchForVoucher(voucher);
+          if (!batch) return "Batch tidak diketahui";
+          if (batch.comment) return batch.comment;
+          return batch.createdAt ? this.formatDateTime(batch.createdAt) : batch.batchId;
+        },
+
         getVoucherUsageStatus(voucher) {
           const status = String(voucher?.usageStatus || "").toUpperCase();
           if (status === "USED" || voucher?.used) return "USED";
@@ -2134,7 +2175,16 @@
         },
 
         get voucherBatchVouchers() {
-          return Array.isArray(this.voucherResult?.vouchers) ? this.voucherResult.vouchers : [];
+          const batches = this.selectedVoucherBatchId === "ALL"
+            ? this.voucherBatches
+            : (this.voucherResult ? [this.voucherResult] : []);
+          return batches.flatMap((batch) => (
+            (Array.isArray(batch.vouchers) ? batch.vouchers : []).map((voucher) => ({
+              ...voucher,
+              batchId: batch.batchId,
+              batchProfile: batch.profile,
+            }))
+          ));
         },
 
         get filteredVoucherBatchVouchers() {

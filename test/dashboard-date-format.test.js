@@ -1037,6 +1037,7 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(html, /getVoucherUsageLabel\(voucher\)/);
   assert.match(html, /x-model\.trim="voucherBatchFilters\.search"/);
   assert.match(html, /x-model="voucherBatchFilters\.usage"/);
+  assert.match(html, /<option value="ALL"[\s\S]*?Semua riwayat batch/);
   assert.match(html, /x-for="\(voucher, index\) in filteredVoucherBatchVouchers"/);
   assert.match(html, /voucher-filter-reset[\s\S]*?fa-filter-circle-xmark mr-2[\s\S]*?Reset filter/);
   assert.match(html, />Belum digunakan<\/option>/);
@@ -1045,6 +1046,8 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(html, /@keydown\.tab="trapModalFocus\(\$event, 'delete-confirm-dialog'\)"/);
   assert.match(script, /voucher-print-root/);
   assert.match(html, /getVoucherPriceLabel\(\)/);
+  assert.match(html, /<dt>Masa berlaku<\/dt><dd x-text="getVoucherValidityLabel\(\)"><\/dd>/);
+  assert.match(html, /<dt>Nilai reward<\/dt><dd>GRATIS<\/dd>/);
   assert.match(html, /Gunakan voucher ini untuk terhubung ke jaringan WiFi\./);
   assert.match(html, /Riwayat batch/);
   assert.match(html, /@change="selectVoucherBatch\(selectedVoucherBatchId\)"/);
@@ -1076,22 +1079,34 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
     sellingPrice: 25000,
     vouchers: Array.from({ length: 31 }, (_, index) => ({ username: `voucher-${index + 1}` })),
   };
+  app.voucherProfiles = [{ name: "VCR-1H", validity: "1d" }];
   assert.deepEqual(Array.from(app.getVoucherPrintPages(), (page) => page.length), [15, 15, 1]);
   assert.deepEqual(Array.from(app.getVoucherRewardPrintPages(), (page) => page.length), [20, 11]);
   assert.match(app.getVoucherPriceLabel(), /25\.000/);
+  assert.equal(app.getVoucherValidityLabel(), "1 hari");
+  assert.equal(app.getVoucherValidityLabel({ profile: "VCR-1H", validity: "1w2d4h" }), "1 minggu 2 hari 4 jam");
   assert.equal(app.getVoucherUsageStatus({ usageStatus: "USED" }), "USED");
   assert.equal(app.getVoucherUsageLabel({ used: true }), "Sudah digunakan");
   assert.equal(app.getVoucherUsageLabel({ usageStatus: "UNUSED" }), "Belum digunakan");
   assert.equal(app.getVoucherUsageLabel({ usageStatus: "MISSING" }), "Tidak ditemukan di MikroTik");
 
-  app.voucherResult = {
+  app.voucherBatches = [{
+    batchId: "batch-satu",
     profile: "VCR-1H",
+    comment: "Batch pagi",
     vouchers: [
       { username: "voucher-belum", password: "kode-belum", usageStatus: "UNUSED" },
-      { username: "voucher-sudah", password: "kode-sudah", usageStatus: "USED" },
       { username: "voucher-hilang", password: "kode-hilang", usageStatus: "MISSING" },
     ],
-  };
+  }, {
+    batchId: "batch-dua",
+    profile: "VCR-4H",
+    comment: "Batch malam",
+    vouchers: [
+      { username: "voucher-sudah", password: "kode-sudah", usageStatus: "USED" },
+    ],
+  }];
+  app.selectVoucherBatch("ALL");
   assert.equal(app.filteredVoucherBatchVouchers.length, 3);
   app.voucherBatchFilters.search = "SUDAH";
   assert.deepEqual(Array.from(app.filteredVoucherBatchVouchers, (voucher) => voucher.username), ["voucher-sudah"]);
@@ -1103,6 +1118,9 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   app.resetVoucherBatchFilters();
   assert.equal(app.hasVoucherBatchFilters, false);
   assert.equal(app.filteredVoucherBatchVouchers.length, 3);
+  assert.equal(app.getVoucherCardBatchLabel(app.filteredVoucherBatchVouchers[0]), "Batch pagi");
+  app.selectVoucherBatch("batch-dua");
+  assert.deepEqual(Array.from(app.filteredVoucherBatchVouchers, (voucher) => voucher.username), ["voucher-sudah"]);
 
   app.api = async (url) => {
     assert.equal(url, "/api/mikrotik/voucher-stats");
@@ -1145,8 +1163,9 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.equal(request.payload.quantity, 1);
   assert.equal(request.payload.username, "voucher-ui");
   assert.equal(app.voucherResult.quantity, 1);
-  assert.equal(app.voucherBatches.length, 1);
-  assert.equal(app.selectedVoucherBatchId, app.voucherBatches[0].batchId);
+  assert.equal(app.voucherBatches.length, 3);
+  assert.equal(app.selectedVoucherBatchId, "batch-ui");
+  assert.equal(app.voucherBatches[0].batchId, "batch-ui");
   assert.equal(app.forms.voucher.username, "");
   assert.equal(app.forms.voucher.password, "");
   assert.equal(reloadedUsers, true);
@@ -1282,6 +1301,7 @@ test("ikon X voucher membuka konfirmasi lalu menghapus akun dari MikroTik dan ri
       { username: "voucher-sisa", password: "rahasia" },
     ],
   };
+  app.selectedVoucherBatchId = "batch-ui-delete";
   app.openDeleteConfirm = (options) => { confirmation = options; };
   app.api = async (url, options) => {
     request = { url, method: options.method };

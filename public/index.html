@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261028-1">
   <link rel="stylesheet" href="/public/interface.css?v=20261104-4">
-  <script defer src="/public/app.js?v=20261104-3"></script>
+  <script defer src="/public/app.js?v=20261104-5"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body class="admin-body min-h-screen font-body text-ink">
@@ -715,7 +715,7 @@
                 <label>
                   <span>Riwayat batch</span>
                   <select x-model="selectedVoucherBatchId" @change="selectVoucherBatch(selectedVoucherBatchId)" :disabled="loading.voucherHistory || !voucherBatches.length">
-                    <option value="" x-text="loading.voucherHistory ? 'Memuat riwayat...' : 'Belum ada batch voucher'"></option>
+                    <option value="ALL" :disabled="!voucherBatches.length" x-text="loading.voucherHistory ? 'Memuat riwayat...' : (voucherBatches.length ? 'Semua riwayat batch' : 'Belum ada batch voucher')"></option>
                     <template x-for="batch in voucherBatches" :key="'voucher-batch-' + batch.batchId">
                       <option :value="batch.batchId" x-text="getVoucherBatchLabel(batch)"></option>
                     </template>
@@ -726,7 +726,7 @@
                 </button>
               </div>
               <p x-cloak x-show="voucherHistoryError" class="voucher-history-error" role="alert" x-text="voucherHistoryError"></p>
-              <template x-if="!voucherResult">
+              <template x-if="!voucherBatches.length">
                 <div class="voucher-empty-state">
                   <span><i class="fa-solid fa-ticket-simple"></i></span>
                   <strong>Belum ada batch voucher</strong>
@@ -734,20 +734,21 @@
                 </div>
               </template>
 
-              <div x-cloak x-show="voucherResult" class="voucher-print-sheet">
+              <div x-cloak x-show="voucherBatches.length" class="voucher-print-sheet">
                 <div class="voucher-result-heading">
                   <div>
                     <span class="voucher-print-brand" x-text="forms.settings.companyName || 'Emmeril Hotspot'"></span>
-                    <h3>Voucher hotspot</h3>
-                    <p><strong x-text="voucherResult?.quantity || 0"></strong> voucher · <span x-text="voucherResult?.profile || '-'"></span> · <span x-text="voucherResult?.server === 'all' ? 'Semua server' : voucherResult?.server"></span></p>
+                    <h3 x-text="selectedVoucherBatchId === 'ALL' ? 'Semua voucher hotspot' : 'Voucher hotspot'"></h3>
+                    <p x-show="selectedVoucherBatchId === 'ALL'"><strong x-text="voucherBatchVouchers.length"></strong> voucher dari <strong x-text="voucherBatches.length"></strong> riwayat batch</p>
+                    <p x-show="selectedVoucherBatchId !== 'ALL'"><strong x-text="voucherResult?.quantity || 0"></strong> voucher · <span x-text="voucherResult?.profile || '-'"></span> · <span x-text="voucherResult?.server === 'all' ? 'Semua server' : voucherResult?.server"></span></p>
                   </div>
-                  <div class="voucher-result-actions">
+                  <div x-show="selectedVoucherBatchId !== 'ALL'" class="voucher-result-actions">
                     <button type="button" @click="copyVoucherCredentials()" class="ui-secondary-button" aria-label="Salin semua username dan password"><i class="fa-solid fa-copy"></i><span>Salin</span></button>
                     <button type="button" @click="printVouchers()" class="ui-secondary-button" aria-label="Cetak voucher standar"><i class="fa-solid fa-print"></i><span>Cetak standar</span></button>
                     <button type="button" @click="printRewardVouchers()" class="ui-primary-button voucher-reward-print-button" aria-label="Cetak voucher reward"><i class="fa-solid fa-gift"></i><span>Cetak reward</span></button>
                   </div>
                 </div>
-                <div class="voucher-result-meta">
+                <div x-show="selectedVoucherBatchId !== 'ALL'" class="voucher-result-meta">
                   <span x-show="voucherResult?.limitUptime"><strong>Batas waktu</strong><span x-text="voucherResult?.limitUptime"></span></span>
                   <span x-show="Number(voucherResult?.dataLimit || 0) > 0"><strong>Batas data</strong><span x-text="voucherResult?.dataLimit + ' ' + voucherResult?.dataUnit"></span></span>
                   <span x-show="voucherResult?.comment"><strong>Catatan</strong><span x-text="voucherResult?.comment"></span></span>
@@ -775,7 +776,7 @@
                   <button x-cloak x-show="hasVoucherBatchFilters" type="button" @click="resetVoucherBatchFilters()" class="ui-secondary-button">Tampilkan semua voucher</button>
                 </div>
                 <div x-show="filteredVoucherBatchVouchers.length" class="voucher-card-grid">
-                  <template x-for="(voucher, index) in filteredVoucherBatchVouchers" :key="'generated-voucher-' + voucher.username">
+                  <template x-for="(voucher, index) in filteredVoucherBatchVouchers" :key="'generated-voucher-' + voucher.batchId + '-' + voucher.username">
                     <article class="voucher-card" :class="{ 'voucher-card-used': getVoucherUsageStatus(voucher) === 'USED' }">
                       <div class="voucher-card-heading">
                         <span x-text="forms.settings.companyName || 'Emmeril Hotspot'"></span>
@@ -794,8 +795,9 @@
                       <dl>
                         <div><dt>Username</dt><dd x-text="voucher.username"></dd></div>
                         <div><dt>Password</dt><dd x-text="voucher.password"></dd></div>
-                        <div><dt>Profile</dt><dd x-text="voucherResult?.profile || '-'"></dd></div>
-                        <div><dt>Harga</dt><dd x-text="getVoucherPriceLabel()"></dd></div>
+                        <div x-show="selectedVoucherBatchId === 'ALL'"><dt>Batch</dt><dd x-text="getVoucherCardBatchLabel(voucher)"></dd></div>
+                        <div><dt>Profile</dt><dd x-text="voucher.batchProfile || voucherResult?.profile || '-'"></dd></div>
+                        <div><dt>Harga</dt><dd x-text="getVoucherPriceLabel(getVoucherBatchForVoucher(voucher))"></dd></div>
                       </dl>
                     </article>
                   </template>
@@ -807,7 +809,7 @@
                         <div>
                           <span class="voucher-print-brand" x-text="forms.settings.companyName || 'Emmeril Hotspot'"></span>
                           <h3>Voucher hotspot</h3>
-                          <p><span x-text="voucherResult?.profile || '-'"></span> · <span x-text="voucherResult?.server === 'all' ? 'Semua server' : voucherResult?.server"></span></p>
+                          <p><span x-text="getVoucherValidityLabel()"></span> · <span x-text="voucherResult?.server === 'all' ? 'Semua server' : voucherResult?.server"></span></p>
                         </div>
                         <span>Halaman <strong x-text="pageIndex + 1"></strong> / <strong x-text="getVoucherPrintPages().length"></strong></span>
                       </header>
@@ -818,7 +820,7 @@
                             <dl>
                               <div><dt>Username</dt><dd x-text="voucher.username"></dd></div>
                               <div><dt>Password</dt><dd x-text="voucher.password"></dd></div>
-                              <div><dt>Profile</dt><dd x-text="voucherResult?.profile || '-'"></dd></div>
+                              <div><dt>Masa berlaku</dt><dd x-text="getVoucherValidityLabel()"></dd></div>
                               <div><dt>Harga</dt><dd x-text="getVoucherPriceLabel()"></dd></div>
                             </dl>
                             <p class="voucher-standard-note">Gunakan voucher ini untuk terhubung ke jaringan WiFi.</p>
@@ -853,8 +855,8 @@
                             <dl>
                               <div><dt>Username</dt><dd x-text="voucher.username"></dd></div>
                               <div><dt>Password</dt><dd x-text="voucher.password"></dd></div>
-                              <div><dt>Profile</dt><dd x-text="voucherResult?.profile || '-'"></dd></div>
-                              <div><dt>Nilai reward</dt><dd x-text="getVoucherPriceLabel()"></dd></div>
+                              <div><dt>Masa berlaku</dt><dd x-text="getVoucherValidityLabel()"></dd></div>
+                              <div><dt>Nilai reward</dt><dd>GRATIS</dd></div>
                             </dl>
                             <p>Gunakan voucher ini untuk terhubung ke jaringan WiFi.</p>
                           </article>

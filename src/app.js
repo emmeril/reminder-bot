@@ -921,10 +921,11 @@ class MikrotikService {
   }
 
   async getHotspotVoucherBatches(options = {}) {
+    const includeAll = options.limit === "all";
     const requestedLimit = Number(options.limit ?? 50);
-    const limit = Number.isInteger(requestedLimit) && requestedLimit > 0
-      ? Math.min(requestedLimit, 100)
-      : 50;
+    const limit = includeAll
+      ? Number.POSITIVE_INFINITY
+      : (Number.isInteger(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, 100) : 50);
     return this.withConnection(async (conn) => {
       const knownBatches = Array.isArray(options.knownBatches) ? options.knownBatches : [];
       const timeZone = isValidTimeZone(options.timeZone) ? options.timeZone : DEFAULT_SETTINGS.timezone;
@@ -933,11 +934,14 @@ class MikrotikService {
         conn.menu("/ip/hotspot/user/profile").print(),
         conn.menu("/system/script").print(),
       ]);
-      const profilePrices = new Map((profiles || []).map((profile) => {
+      const profileDetails = new Map((profiles || []).map((profile) => {
         const metadata = parseVoucherProfileMetadata(readRouterValue(profile, "on-login", "onLogin", ""));
         return [
           String(profile.name || ""),
-          Math.max(0, Number(metadata.sellingPrice || metadata.costPrice) || 0),
+          {
+            sellingPrice: Math.max(0, Number(metadata.sellingPrice || metadata.costPrice) || 0),
+            validity: sanitizeInput(String(metadata.validity || "")),
+          },
         ];
       }));
       const usersByName = new Map((users || []).map((user) => [
@@ -978,6 +982,7 @@ class MikrotikService {
         const batchComment = parsedComment.comment;
         if (!batches.has(batchId)) {
           const profileName = sanitizeInput(String(user.profile || ""));
+          const profileDetail = profileDetails.get(profileName) || {};
           const timestamp = Number.parseInt(batchId.split("-", 1)[0], 36);
           const timestampIsValid = Number.isFinite(timestamp)
             && timestamp >= Date.UTC(2020, 0, 1)
@@ -988,7 +993,8 @@ class MikrotikService {
             generationType: "BULK",
             server: sanitizeInput(String(user.server || "")) || "all",
             profile: profileName,
-            sellingPrice: profilePrices.get(profileName) || 0,
+            sellingPrice: profileDetail.sellingPrice || 0,
+            validity: profileDetail.validity || "",
             limitUptime: sanitizeInput(String(readRouterValue(user, "limit-uptime", "limitUptime", ""))) || null,
             dataLimitBytes: Math.max(0, Number(readRouterValue(user, "limit-bytes-total", "limitBytesTotal", 0)) || 0),
             comment: sanitizeInput(String(batchComment)),
@@ -1025,6 +1031,7 @@ class MikrotikService {
         const batch = batches.get(batchId);
         if (!batch.createdAt && knownBatch.createdAt) batch.createdAt = knownBatch.createdAt;
         if (!batch.profile && knownBatch.profile) batch.profile = knownBatch.profile;
+        if (!batch.validity && knownBatch.validity) batch.validity = knownBatch.validity;
         if ((!batch.server || batch.server === "all") && knownBatch.server) batch.server = knownBatch.server;
         if (!batch.limitUptime && knownBatch.limitUptime) batch.limitUptime = knownBatch.limitUptime;
         if (!batch.comment && knownBatch.comment) batch.comment = knownBatch.comment;
@@ -1225,6 +1232,7 @@ class MikrotikService {
         server: request.server,
         profile: request.profile,
         sellingPrice: Math.max(0, Number(profileMetadata.sellingPrice || profileMetadata.costPrice) || 0),
+        validity: sanitizeInput(String(profileMetadata.validity || "")),
         limitUptime: request.limitUptime || null,
         dataLimit: request.dataLimit,
         dataUnit: request.dataUnit,
@@ -2496,7 +2504,9 @@ class DataManager {
   }
 
   getVoucherBatches(limit = 50) {
-    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
+    const safeLimit = limit === "all"
+      ? Number.POSITIVE_INFINITY
+      : Math.min(100, Math.max(1, Number(limit) || 50));
     return Array.from(this.voucherBatches.values())
       .sort((a, b) => (
         new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
@@ -9317,13 +9327,15 @@ class WebServer {
       })
     )));
     this.app.get("/api/mikrotik/voucher-batches", requireApiAuth, handleApi(async (req) => {
-      const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+      const limit = req.query.limit === "all"
+        ? "all"
+        : Math.min(100, Math.max(1, Number(req.query.limit) || 50));
       try {
         const knownBatches = typeof this.dataManager.getVoucherBatches === "function"
-          ? this.dataManager.getVoucherBatches(100)
+          ? this.dataManager.getVoucherBatches(limit)
           : [];
         const routerBatches = await this.mikrotikService.getHotspotVoucherBatches({
-          limit: 100,
+          limit,
           knownBatches,
           timeZone: this.dataManager.getTimezone(),
         });
@@ -9331,7 +9343,7 @@ class WebServer {
           await this.dataManager.storeVoucherBatches(routerBatches);
           return this.dataManager.getVoucherBatches(limit);
         }
-        return routerBatches.slice(0, limit);
+        return routerBatches;
       } catch (error) {
         const stored = typeof this.dataManager.getVoucherBatches === "function"
           ? this.dataManager.getVoucherBatches(limit)
