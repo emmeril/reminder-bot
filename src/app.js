@@ -4976,6 +4976,14 @@ class DataManager {
       changed = true;
     }
 
+    if (reminder.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY) {
+      if (reminder.message !== sourceMessage) {
+        reminder.message = sourceMessage;
+        changed = true;
+      }
+      return changed;
+    }
+
     const scheduledAt = new Date(reminder.reminderDateTime || Date.now());
     const periodDate = Number.isNaN(scheduledAt.getTime()) ? new Date() : scheduledAt;
     const debtInfo = this.buildDebtInfo(

@@ -576,6 +576,7 @@ test("reminder tagihan lama pelanggan prabayar dimigrasikan menjadi pengingat pa
   assert.equal(reminder.reminderDateTime, "2026-11-25T16:59:59.999Z");
   assert.equal(reminder.activePeriodUntil, activeUntil);
   assert.equal(reminder.templateName, "PaketPrabayar");
+  assert.equal(reminder.message, DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate);
   assert.equal(reminder.messageSource, DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate);
   assert.equal(Object.hasOwn(reminder, "gracePeriodCreatedAt"), false);
   assert.equal(saves, 1);
