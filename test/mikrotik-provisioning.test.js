@@ -531,6 +531,44 @@ test("laporan voucher menghitung pendapatan dari catatan pemakaian pertama per p
   );
 });
 
+test("pembersihan hanya menghapus script voucher yang identitasnya sudah diverifikasi", async () => {
+  const profiles = [
+    { name: "VCR-1D", "on-login": ':put (",remc,25000,1d,40000,,Disable,15000,")' },
+  ];
+  const scripts = [
+    {
+      ".id": "*1",
+      name: "nov/03/2026-|-08:00:00-|-voucher-1-|-40000-|-10.0.0.2-|-AA:BB-|-1d-|-VCR-1D-|-vc|batch-1|Reward-|-hotspot-|-25000-|-15000",
+      owner: "nov2026",
+      source: "nov/03/2026",
+      comment: "mikhmon",
+    },
+    { ".id": "*2", name: "script-operasional", comment: "operasional" },
+  ];
+  const removedIds = [];
+  const service = new MikrotikService({ push() {} });
+  service.withConnection = async (operation) => operation({
+    menu(path) {
+      if (path === "/ip/hotspot/user/profile") return { print: async () => profiles };
+      if (path === "/system/script") {
+        return {
+          print: async () => scripts.filter((script) => !removedIds.includes(script[".id"])),
+          remove: async (id) => { removedIds.push(id); },
+        };
+      }
+      throw new Error(`Menu tidak dikenal: ${path}`);
+    },
+  }, {});
+
+  const records = await service.getVoucherUsageRecords({ timeZone: "Asia/Jakarta" });
+  const cleanup = await service.deleteVoucherUsageRecords(records);
+
+  assert.equal(records.length, 1);
+  assert.equal(records[0].batchId, "batch-1");
+  assert.deepEqual(removedIds, ["*1"]);
+  assert.deepEqual(cleanup, { removed: 1, skipped: 0, failed: 0 });
+});
+
 test("voucher ditolak ketika profile belum memiliki aturan kedaluwarsa", async () => {
   const { service, getAddCalls } = createServiceWithUsers();
   service.withConnection = async (operation) => operation({

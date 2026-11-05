@@ -1370,6 +1370,74 @@ class WhatsAppProviderStatusNotifier {
   }
 }
 
+class VoucherRevenueSyncScheduler {
+  constructor(mikrotikService, dataManager, activityLog) {
+    this.mikrotikService = mikrotikService;
+    this.dataManager = dataManager;
+    this.activityLog = activityLog;
+    this.currentRun = null;
+  }
+
+  async processSync(options = {}) {
+    if (this.currentRun) return this.currentRun;
+    this.currentRun = this.runSync(options).finally(() => {
+      this.currentRun = null;
+    });
+    return this.currentRun;
+  }
+
+  async runSync(options = {}) {
+    const timeZone = this.dataManager.getTimezone();
+    const records = await this.mikrotikService.getVoucherUsageRecords({ timeZone });
+    const storage = await this.dataManager.storeVoucherRevenueEntries(records);
+    const recordIds = records.map((record) => record.id);
+    if (!this.dataManager.hasVoucherRevenueEntries(recordIds)) {
+      throw new Error("Verifikasi penyimpanan riwayat pendapatan voucher gagal.");
+    }
+
+    const retentionHours = Number.isFinite(Number(options.retentionHours))
+      ? Math.max(0, Number(options.retentionHours))
+      : CONFIG.VOUCHER_SCRIPT_RETENTION_HOURS;
+    const now = options.now instanceof Date ? options.now : new Date();
+    const cutoff = now.getTime() - (retentionHours * 60 * 60 * 1000);
+    const eligibleRecords = records.filter((record) => {
+      const usedAt = new Date(record.usedAt).getTime();
+      return !Number.isNaN(usedAt) && usedAt <= cutoff;
+    });
+
+    let cleanup = { removed: 0, skipped: 0, failed: 0 };
+    if (eligibleRecords.length > 0) {
+      try {
+        cleanup = await this.mikrotikService.deleteVoucherUsageRecords(eligibleRecords);
+      } catch (error) {
+        cleanup = { removed: 0, skipped: 0, failed: eligibleRecords.length };
+        this.activityLog.push("error", "voucher", `Pembersihan catatan voucher MikroTik gagal: ${error.message}`);
+      }
+    }
+
+    if (storage.saved > 0 || cleanup.removed > 0 || cleanup.failed > 0 || cleanup.skipped > 0) {
+      this.activityLog.push("info", "voucher", "Sinkronisasi pendapatan voucher selesai", {
+        found: records.length,
+        stored: storage.saved,
+        totalStored: storage.total,
+        batchesUpdated: storage.batchesUpdated,
+        eligibleForCleanup: eligibleRecords.length,
+        removedFromMikrotik: cleanup.removed,
+        cleanupSkipped: cleanup.skipped,
+        cleanupFailed: cleanup.failed,
+        retentionHours,
+      });
+    }
+
+    return {
+      found: records.length,
+      ...storage,
+      cleanup,
+      retentionHours,
+    };
+  }
+}
+
 module.exports = {
   ApDownNotifier,
   DatabaseBackupScheduler,
@@ -1377,5 +1445,6 @@ module.exports = {
   HotspotStatusSyncScheduler,
   MikrotikBackupScheduler,
   ReminderScheduler,
+  VoucherRevenueSyncScheduler,
   WhatsAppProviderStatusNotifier,
 };

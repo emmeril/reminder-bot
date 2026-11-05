@@ -85,6 +85,46 @@ test("riwayat batch voucher disimpan terpisah dari komentar user MikroTik", asyn
   assert.equal(saveCalls, 2);
 });
 
+test("riwayat pendapatan voucher tersimpan permanen dan memperbarui status voucher batch", async () => {
+  const manager = createManager({ id: "contact-placeholder", phoneNumber: "6281234567890" });
+  manager.voucherBatches.set("batch-pendapatan", {
+    batchId: "batch-pendapatan",
+    vouchers: [{ username: "voucher-1", password: "rahasia", used: false, usageStatus: "UNUSED" }],
+  });
+  let revenueSaveCalls = 0;
+  manager.upsertVoucherRevenueEntries = async () => { revenueSaveCalls += 1; };
+  manager.saveVoucherBatches = async () => {};
+  const entry = {
+    id: "voucher-usage-1",
+    username: "voucher-1",
+    profile: "VCR-1D",
+    amount: 40000,
+    costPrice: 25000,
+    commission: 15000,
+    usedAt: "2026-11-03T01:00:00.000Z",
+    period: "2026-11",
+    validity: "1d",
+    address: "10.0.0.2",
+    macAddress: "AA:BB:CC:DD:EE:FF",
+    batchId: "batch-pendapatan",
+  };
+
+  const first = await manager.storeVoucherRevenueEntries([entry]);
+  const duplicate = await manager.storeVoucherRevenueEntries([entry]);
+  const report = manager.getVoucherRevenueReport("2026-11");
+  const voucher = manager.getVoucherBatch("batch-pendapatan").vouchers[0];
+
+  assert.equal(first.saved, 1);
+  assert.equal(duplicate.saved, 0);
+  assert.equal(manager.hasVoucherRevenueEntries([entry.id]), true);
+  assert.equal(report.summary.revenue, 40000);
+  assert.equal(report.summary.quantity, 1);
+  assert.equal(voucher.used, true);
+  assert.equal(voucher.usageStatus, "USED");
+  assert.equal(voucher.usedAt, entry.usedAt);
+  assert.equal(revenueSaveCalls, 1);
+});
+
 test("seluruh riwayat batch voucher dapat dimuat tanpa batas 100 batch", () => {
   const manager = createManager({ id: "contact-placeholder", phoneNumber: "6281234567890" });
   for (let index = 0; index < 125; index += 1) {

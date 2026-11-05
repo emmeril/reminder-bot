@@ -32,7 +32,7 @@ afterEach(async () => {
   })));
 });
 
-async function startServer(dataManager = {}, notificationBot = {}, mikrotikService = {}, hotspotReactivationScheduler = {}, midtransService = null) {
+async function startServer(dataManager = {}, notificationBot = {}, mikrotikService = {}, hotspotReactivationScheduler = {}, midtransService = null, voucherRevenueSyncScheduler = null) {
   const activityLog = { push() {}, list: () => [] };
   const authManager = new AuthManager(activityLog);
   const server = new WebServer(
@@ -57,7 +57,8 @@ async function startServer(dataManager = {}, notificationBot = {}, mikrotikServi
     authManager,
     mikrotikService,
     { isProcessing: false, ...hotspotReactivationScheduler },
-    midtransService
+    midtransService,
+    voucherRevenueSyncScheduler
   ).app.listen(0, "127.0.0.1");
   openServers.push(server);
   await new Promise((resolve) => server.once("listening", resolve));
@@ -326,6 +327,40 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
   assert.equal(deleteResponse.status, 200);
   assert.equal(deletePayload.data.removedUsers, 1);
   assert.deepEqual(removedStoredVoucher, { batchId: "batch-lama", username: "lama-1" });
+});
+
+test("API laporan voucher menyinkronkan MikroTik lalu membaca riwayat database", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  let syncCalls = 0;
+  let requestedPeriod = "";
+  const baseUrl = await startServer({
+    getVoucherRevenueEntries: () => [{ id: "tersimpan-1" }],
+    getVoucherRevenueReport: (period) => {
+      requestedPeriod = period;
+      return {
+        period,
+        summary: { revenue: 40000, costPrice: 25000, commission: 15000, quantity: 1, profiles: 1 },
+        profileSummary: [],
+        entries: [{ id: "tersimpan-1", username: "voucher-db" }],
+      };
+    },
+  }, {}, {
+    getVoucherRevenueReport: async () => {
+      throw new Error("laporan tidak boleh dibaca langsung dari MikroTik");
+    },
+  }, {}, null, {
+    processSync: async () => { syncCalls += 1; },
+  });
+
+  const response = await fetch(`${baseUrl}/api/mikrotik/voucher-revenue?period=2026-11`, {
+    headers: { "x-api-key": CONFIG.WEB_API_KEY },
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(syncCalls, 1);
+  assert.equal(requestedPeriod, "2026-11");
+  assert.equal(payload.data.entries[0].username, "voucher-db");
 });
 
 test("pembuatan batch voucher berjalan sebagai pekerjaan latar belakang", async () => {

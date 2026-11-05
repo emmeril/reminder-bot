@@ -49,6 +49,7 @@ const {
   HotspotStatusSyncScheduler,
   MikrotikBackupScheduler,
   ReminderScheduler,
+  VoucherRevenueSyncScheduler,
   WhatsAppProviderStatusNotifier,
 } = require("./schedulers");
 const TemplateManager = require("./template-manager");
@@ -539,8 +540,16 @@ function parseVoucherUsageRecord(script, profileFinancials, timeZone = DEFAULT_S
   const amount = recordedPrice || Math.max(0, Number(financials.sellingPrice || financials.costPrice) || 0);
   const costPrice = readRecordedMoney(10, financials.costPrice);
   const commission = readRecordedMoney(11, financials.commission);
+  const rawRecord = [
+    String(script.name || ""),
+    String(script.owner || ""),
+    String(script.source || ""),
+    String(script.comment || ""),
+  ].join("\u001f");
+  const batch = parseVoucherBatchComment(parts[8]);
   return {
-    id: sanitizeInput(String(script[".id"] || script.id || script.name || `${profile}-${username}`)),
+    id: `voucher-usage-${crypto.createHash("sha256").update(rawRecord).digest("hex")}`,
+    routerScriptId: sanitizeInput(String(script[".id"] || script.id || "")),
     username,
     profile,
     amount,
@@ -551,6 +560,47 @@ function parseVoucherUsageRecord(script, profileFinancials, timeZone = DEFAULT_S
     validity: sanitizeInput(String(parts[6] || "")),
     address: sanitizeInput(String(parts[4] || "")),
     macAddress: sanitizeInput(String(parts[5] || "")),
+    batchId: batch?.batchId || "",
+  };
+}
+
+function buildVoucherRevenueReport(entries = [], period = "") {
+  const periodEntries = Array.from(entries)
+    .filter((entry) => entry?.period === period)
+    .map((entry) => structuredClone(entry))
+    .sort((a, b) => (
+      new Date(b.usedAt).getTime() - new Date(a.usedAt).getTime()
+      || String(a.username || "").localeCompare(String(b.username || ""), "id-ID")
+    ));
+  const profileMap = new Map();
+  for (const entry of periodEntries) {
+    const row = profileMap.get(entry.profile) || {
+      profile: entry.profile,
+      quantity: 0,
+      revenue: 0,
+      costPrice: 0,
+      commission: 0,
+    };
+    row.quantity += 1;
+    row.revenue += Math.max(0, Number(entry.amount) || 0);
+    row.costPrice += Math.max(0, Number(entry.costPrice) || 0);
+    row.commission += Math.max(0, Number(entry.commission) || 0);
+    profileMap.set(entry.profile, row);
+  }
+  const profileSummary = Array.from(profileMap.values()).sort((a, b) => (
+    b.revenue - a.revenue || a.profile.localeCompare(b.profile, "id-ID")
+  ));
+  return {
+    period,
+    summary: {
+      revenue: periodEntries.reduce((total, entry) => total + Math.max(0, Number(entry.amount) || 0), 0),
+      costPrice: periodEntries.reduce((total, entry) => total + Math.max(0, Number(entry.costPrice) || 0), 0),
+      commission: periodEntries.reduce((total, entry) => total + Math.max(0, Number(entry.commission) || 0), 0),
+      quantity: periodEntries.length,
+      profiles: profileSummary.length,
+    },
+    profileSummary,
+    entries: periodEntries,
   };
 }
 
@@ -849,7 +899,7 @@ class MikrotikService {
     });
   }
 
-  async getVoucherProfileStats() {
+  async getVoucherProfileStats(options = {}) {
     return this.withConnection(async (conn) => {
       const [profiles, users, reportScripts] = await Promise.all([
         conn.menu("/ip/hotspot/user/profile").print(),
@@ -908,6 +958,13 @@ class MikrotikService {
         markUsed(row, username);
       }
 
+      for (const entry of Array.isArray(options.knownUsageEntries) ? options.knownUsageEntries : []) {
+        const row = statsByProfile.get(sanitizeInput(String(entry?.profile || "")));
+        const username = sanitizeInput(String(entry?.username || ""));
+        if (!row || !username || !VOUCHER_EXPIRY_MODES[row.expiredMode]?.recordsUsage) continue;
+        markUsed(row, username);
+      }
+
       const profileStats = Array.from(statsByProfile.values())
         .map((row) => ({
           profile: row.profile,
@@ -959,40 +1016,66 @@ class MikrotikService {
         if (!entry || entry.period !== period || !recordProfiles.has(entry.profile)) continue;
         entriesById.set(entry.id, entry);
       }
-      const entries = Array.from(entriesById.values()).sort((a, b) => (
-        new Date(b.usedAt).getTime() - new Date(a.usedAt).getTime()
-        || a.username.localeCompare(b.username, "id-ID")
-      ));
-      const profileMap = new Map();
-      for (const entry of entries) {
-        const row = profileMap.get(entry.profile) || {
-          profile: entry.profile,
-          quantity: 0,
-          revenue: 0,
-          costPrice: 0,
-          commission: 0,
-        };
-        row.quantity += 1;
-        row.revenue += entry.amount;
-        row.costPrice += entry.costPrice;
-        row.commission += entry.commission;
-        profileMap.set(entry.profile, row);
+      return buildVoucherRevenueReport(Array.from(entriesById.values()), period);
+    });
+  }
+
+  async getVoucherUsageRecords(options = {}) {
+    const timeZone = sanitizeInput(String(options.timeZone || DEFAULT_SETTINGS.timezone)) || DEFAULT_SETTINGS.timezone;
+    return this.withConnection(async (conn) => {
+      const [profiles, reportScripts] = await Promise.all([
+        conn.menu("/ip/hotspot/user/profile").print(),
+        conn.menu("/system/script").print(),
+      ]);
+      const profileFinancials = new Map();
+      for (const profile of profiles || []) {
+        const name = sanitizeInput(String(profile.name || ""));
+        if (!name) continue;
+        const metadata = parseVoucherProfileMetadata(readRouterValue(profile, "on-login", "onLogin", ""));
+        profileFinancials.set(name, {
+          sellingPrice: metadata.sellingPrice,
+          costPrice: metadata.costPrice,
+          commission: metadata.commission,
+        });
       }
-      const profileSummary = Array.from(profileMap.values()).sort((a, b) => (
-        b.revenue - a.revenue || a.profile.localeCompare(b.profile, "id-ID")
-      ));
-      return {
-        period,
-        summary: {
-          revenue: entries.reduce((total, entry) => total + entry.amount, 0),
-          costPrice: entries.reduce((total, entry) => total + entry.costPrice, 0),
-          commission: entries.reduce((total, entry) => total + entry.commission, 0),
-          quantity: entries.length,
-          profiles: profileSummary.length,
-        },
-        profileSummary,
-        entries,
-      };
+      return (reportScripts || [])
+        .map((script) => parseVoucherUsageRecord(script, profileFinancials, timeZone))
+        .filter(Boolean);
+    });
+  }
+
+  async deleteVoucherUsageRecords(records = []) {
+    const expectedByRouterId = new Map((Array.isArray(records) ? records : [])
+      .filter((record) => record?.routerScriptId && record?.id)
+      .map((record) => [String(record.routerScriptId), String(record.id)]));
+    if (expectedByRouterId.size === 0) return { removed: 0, skipped: 0, failed: 0 };
+
+    return this.withConnection(async (conn) => {
+      const menu = conn.menu("/system/script");
+      const scripts = await menu.print();
+      let removed = 0;
+      let skipped = 0;
+      let failed = 0;
+      for (const script of scripts || []) {
+        const routerScriptId = sanitizeInput(String(script[".id"] || script.id || ""));
+        const expectedId = expectedByRouterId.get(routerScriptId);
+        if (!expectedId) continue;
+        const currentRecord = parseVoucherUsageRecord(script, new Map(), DEFAULT_SETTINGS.timezone);
+        if (!currentRecord || currentRecord.id !== expectedId) {
+          skipped += 1;
+          continue;
+        }
+        try {
+          await menu.remove(routerScriptId);
+          removed += 1;
+        } catch (error) {
+          failed += 1;
+          this.activityLog.push("error", "voucher", `Catatan voucher ${routerScriptId} gagal dihapus dari MikroTik`, {
+            error: error.message,
+          });
+        }
+      }
+      return { removed, skipped, failed };
     });
   }
 
@@ -1129,6 +1212,23 @@ class MikrotikService {
         user,
       ]).filter(([username]) => username));
       const usageByUsername = new Map();
+      const rememberUsage = (entry) => {
+        const username = sanitizeInput(String(entry?.username || ""));
+        if (!username) return;
+        const key = username.toLowerCase();
+        const records = usageByUsername.get(key) || [];
+        const usage = {
+          batchId: sanitizeInput(String(entry?.batchId || "")),
+          usedAt: entry?.usedAt || null,
+        };
+        if (!records.some((record) => record.batchId === usage.batchId && record.usedAt === usage.usedAt)) {
+          records.push(usage);
+        }
+        usageByUsername.set(key, records);
+      };
+      for (const entry of Array.isArray(options.knownUsageEntries) ? options.knownUsageEntries : []) {
+        rememberUsage(entry);
+      }
       for (const script of reportScripts || []) {
         if (String(script.comment || "").trim().toLowerCase() !== "mikhmon") continue;
         const parts = String(script.name || "").split("-|-");
@@ -1136,14 +1236,11 @@ class MikrotikService {
         if (!username) continue;
         const usageDate = parseRouterVoucherUsageDate(parts[0], parts[1], timeZone);
         const batch = parseVoucherBatchComment(parts[8]);
-        const key = username.toLowerCase();
-        const usage = {
+        rememberUsage({
+          username,
           batchId: batch?.batchId || "",
           usedAt: usageDate?.date?.toISOString() || null,
-        };
-        const records = usageByUsername.get(key) || [];
-        records.push(usage);
-        usageByUsername.set(key, records);
+        });
       }
       const findBatchUsage = (username, batchId) => {
         const records = usageByUsername.get(String(username || "").toLowerCase()) || [];
@@ -2597,6 +2694,7 @@ class DataManager {
     this.reminders = new Map();
     this.sentReminders = new Map();
     this.voucherBatches = new Map();
+    this.voucherRevenueEntries = new Map();
     this.roles = new Map();
     this.settings = { ...DEFAULT_SETTINGS };
     this.fileLocks = new Map();
@@ -2666,6 +2764,11 @@ class DataManager {
     this.models.Reminder = jsonPayloadModel("Reminder", "reminders", "id");
     this.models.SentReminder = jsonPayloadModel("SentReminder", "sent_reminders", "id");
     this.models.VoucherBatch = jsonPayloadModel("VoucherBatch", "voucher_batches", "batchId");
+    this.models.VoucherRevenueEntry = jsonPayloadModel(
+      "VoucherRevenueEntry",
+      "voucher_revenue_entries",
+      "id"
+    );
     this.models.Role = this.sequelize.define("Role", {
       phoneNumber: {
         type: DataTypes.STRING,
@@ -2755,6 +2858,7 @@ class DataManager {
         reminders: structuredClone(this.reminders),
         sentReminders: structuredClone(this.sentReminders),
         voucherBatches: structuredClone(this.voucherBatches),
+        voucherRevenueEntries: structuredClone(this.voucherRevenueEntries),
         roles: structuredClone(this.roles),
         settings: structuredClone(this.settings),
       };
@@ -2769,6 +2873,7 @@ class DataManager {
         this.reminders = snapshot.reminders;
         this.sentReminders = snapshot.sentReminders;
         this.voucherBatches = snapshot.voucherBatches;
+        this.voucherRevenueEntries = snapshot.voucherRevenueEntries;
         this.roles = snapshot.roles;
         this.settings = snapshot.settings;
         throw error;
@@ -2903,6 +3008,7 @@ class DataManager {
       this.models.Reminder.count(),
       this.models.SentReminder.count(),
       this.models.VoucherBatch.count(),
+      this.models.VoucherRevenueEntry.count(),
       this.models.Role.count(),
       this.models.Setting.count(),
     ]);
@@ -2920,6 +3026,7 @@ class DataManager {
     this.reminders = await this.loadJsonPayloadMap(this.models.Reminder, "id");
     this.sentReminders = await this.loadJsonPayloadMap(this.models.SentReminder, "id");
     this.voucherBatches = await this.loadJsonPayloadMap(this.models.VoucherBatch, "batchId");
+    this.voucherRevenueEntries = await this.loadJsonPayloadMap(this.models.VoucherRevenueEntry, "id");
 
     const roleRows = await this.models.Role.findAll({ raw: true });
     this.roles = new Map(roleRows.map((row) => [String(row.phoneNumber), row.role]));
@@ -2944,6 +3051,7 @@ class DataManager {
     this.reminders = await this.loadLegacyMapFromFile(this.getPath("reminders.json"), "id");
     this.sentReminders = await this.loadLegacyMapFromFile(this.getPath("sent_reminders.json"), "id");
     this.voucherBatches = new Map();
+    this.voucherRevenueEntries = new Map();
     this.roles = await this.loadLegacyRoles();
     this.settings = await this.loadLegacySettings();
   }
@@ -2986,6 +3094,7 @@ class DataManager {
       reminders: this.reminders.size,
       sentReminders: this.sentReminders.size,
       voucherBatches: this.voucherBatches.size,
+      voucherRevenueEntries: this.voucherRevenueEntries.size,
       adminRecipients: this.getAdminRecipients().length,
       portalAccountsCreated,
     });
@@ -3079,6 +3188,116 @@ class DataManager {
       ),
       options
     );
+  }
+
+  async saveVoucherRevenueEntries(options = {}) {
+    if (!this.models.VoucherRevenueEntry) return;
+    await this.runSaveOperation(
+      (transaction) => this.replaceJsonPayloadTable(
+        this.models.VoucherRevenueEntry,
+        "id",
+        this.voucherRevenueEntries.values(),
+        { transaction }
+      ),
+      options
+    );
+  }
+
+  async upsertVoucherRevenueEntries(entries = [], options = {}) {
+    if (!this.models.VoucherRevenueEntry) return;
+    const transaction = options.transaction || null;
+    for (const entry of entries) {
+      await this.models.VoucherRevenueEntry.upsert({
+        id: String(entry.id),
+        data: entry,
+      }, { transaction });
+    }
+  }
+
+  getVoucherRevenueEntries() {
+    return Array.from(this.voucherRevenueEntries.values()).map((entry) => structuredClone(entry));
+  }
+
+  hasVoucherRevenueEntries(ids = []) {
+    return (Array.isArray(ids) ? ids : []).every((id) => this.voucherRevenueEntries.has(String(id)));
+  }
+
+  getVoucherRevenueReport(period) {
+    const safePeriod = sanitizeInput(String(period || ""));
+    if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(safePeriod)) {
+      throw new Error("Periode laporan voucher tidak valid.");
+    }
+    return buildVoucherRevenueReport(this.voucherRevenueEntries.values(), safePeriod);
+  }
+
+  async storeVoucherRevenueEntries(entries = []) {
+    const validEntries = (Array.isArray(entries) ? entries : []).filter((entry) => (
+      entry?.id
+      && entry?.username
+      && entry?.profile
+      && /^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(entry.period || ""))
+      && !Number.isNaN(new Date(entry.usedAt).getTime())
+    ));
+    if (validEntries.length === 0) {
+      return { saved: 0, total: this.voucherRevenueEntries.size, batchesUpdated: 0 };
+    }
+
+    return this.withDataMutation(async () => {
+      let batchesUpdated = 0;
+      const changedEntries = [];
+      for (const sourceEntry of validEntries) {
+        const id = String(sourceEntry.id);
+        const existing = this.voucherRevenueEntries.get(id) || {};
+        const entry = {
+          ...existing,
+          id,
+          username: sanitizeInput(String(sourceEntry.username || "")),
+          profile: sanitizeInput(String(sourceEntry.profile || "")),
+          amount: Math.max(0, Number(sourceEntry.amount) || 0),
+          costPrice: Math.max(0, Number(sourceEntry.costPrice) || 0),
+          commission: Math.max(0, Number(sourceEntry.commission) || 0),
+          usedAt: new Date(sourceEntry.usedAt).toISOString(),
+          period: String(sourceEntry.period),
+          validity: sanitizeInput(String(sourceEntry.validity || "")),
+          address: sanitizeInput(String(sourceEntry.address || "")),
+          macAddress: sanitizeInput(String(sourceEntry.macAddress || "")),
+          batchId: sanitizeInput(String(sourceEntry.batchId || "")),
+          storedAt: existing.storedAt || new Date().toISOString(),
+        };
+        if (JSON.stringify(existing) !== JSON.stringify(entry)) {
+          this.voucherRevenueEntries.set(id, entry);
+          changedEntries.push(entry);
+        }
+
+        const batch = entry.batchId ? this.voucherBatches.get(entry.batchId) : null;
+        if (!batch || !Array.isArray(batch.vouchers)) continue;
+        let changed = false;
+        const vouchers = batch.vouchers.map((voucher) => {
+          if (String(voucher.username || "").toLowerCase() !== entry.username.toLowerCase()) return voucher;
+          if (voucher.used === true && voucher.usedAt === entry.usedAt && voucher.usageStatus === "USED") return voucher;
+          changed = true;
+          return { ...voucher, used: true, usageStatus: "USED", usedAt: entry.usedAt };
+        });
+        if (changed) {
+          batchesUpdated += 1;
+          this.voucherBatches.set(entry.batchId, { ...batch, vouchers, updatedAt: new Date().toISOString() });
+        }
+      }
+
+      if (changedEntries.length > 0 || batchesUpdated > 0) {
+        await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+          const options = { transaction };
+          if (changedEntries.length > 0) await this.upsertVoucherRevenueEntries(changedEntries, options);
+          if (batchesUpdated > 0) await this.saveVoucherBatches(options);
+        }));
+      }
+      return {
+        saved: changedEntries.length,
+        observed: validEntries.length,
+        total: this.voucherRevenueEntries.size,
+        batchesUpdated,
+      };
+    });
   }
 
   getVoucherBatches(limit = 50) {
@@ -4426,6 +4645,7 @@ class DataManager {
           await this.saveReminders(options);
           await this.saveSentReminders(options);
           await this.saveVoucherBatches(options);
+          await this.saveVoucherRevenueEntries(options);
           await this.saveRoles(options);
           await this.saveSettings(options);
         })
@@ -8761,7 +8981,7 @@ class NotificationBot {
 // ===============================
 
 class WebServer {
-  constructor(notificationBot, dataManager, templateManager, activityLog, reminderScheduler, authManager, mikrotikService, hotspotReactivationScheduler, midtransService = null) {
+  constructor(notificationBot, dataManager, templateManager, activityLog, reminderScheduler, authManager, mikrotikService, hotspotReactivationScheduler, midtransService = null, voucherRevenueSyncScheduler = null) {
     this.app = express();
     this.app.disable("x-powered-by");
     this.app.set("trust proxy", CONFIG.TRUST_PROXY);
@@ -8774,6 +8994,7 @@ class WebServer {
     this.mikrotikService = mikrotikService;
     this.hotspotReactivationScheduler = hotspotReactivationScheduler;
     this.midtransService = midtransService || new MidtransService();
+    this.voucherRevenueSyncScheduler = voucherRevenueSyncScheduler;
     this.hotspotProvisioningLock = new AsyncLock();
     this.voucherGenerationLock = new AsyncLock();
     this.voucherProfileLock = new AsyncLock();
@@ -10959,14 +11180,30 @@ class WebServer {
       this.mikrotikService.getVoucherProfiles()
     )));
     this.app.get("/api/mikrotik/voucher-stats", requireApiAuth, handleApi(async () => (
-      this.mikrotikService.getVoucherProfileStats()
-    )));
-    this.app.get("/api/mikrotik/voucher-revenue", requireApiAuth, handleApi(async (req) => (
-      this.mikrotikService.getVoucherRevenueReport({
-        period: req.query.period,
-        timeZone: this.dataManager.getTimezone(),
+      this.mikrotikService.getVoucherProfileStats({
+        knownUsageEntries: typeof this.dataManager.getVoucherRevenueEntries === "function"
+          ? this.dataManager.getVoucherRevenueEntries()
+          : [],
       })
     )));
+    this.app.get("/api/mikrotik/voucher-revenue", requireApiAuth, handleApi(async (req) => {
+      if (!this.voucherRevenueSyncScheduler || typeof this.dataManager.getVoucherRevenueReport !== "function") {
+        return this.mikrotikService.getVoucherRevenueReport({
+          period: req.query.period,
+          timeZone: this.dataManager.getTimezone(),
+        });
+      }
+      try {
+        await this.voucherRevenueSyncScheduler.processSync();
+      } catch (error) {
+        const storedEntries = this.dataManager.getVoucherRevenueEntries();
+        if (storedEntries.length === 0) throw error;
+        this.activityLog.push("error", "voucher", "MikroTik tidak dapat disinkronkan; memakai laporan voucher database", {
+          error: error.message,
+        });
+      }
+      return this.dataManager.getVoucherRevenueReport(req.query.period);
+    }));
     this.app.post("/api/mikrotik/voucher-profiles", requireApiAuth, handleApi(async (req) => (
       this.voucherProfileLock.runExclusive("mikrotik-voucher-profiles", async () => {
         if (typeof this.dataManager.storeVoucherBatches === "function") {
@@ -10987,6 +11224,9 @@ class WebServer {
         const routerBatches = await this.mikrotikService.getHotspotVoucherBatches({
           limit,
           knownBatches,
+          knownUsageEntries: typeof this.dataManager.getVoucherRevenueEntries === "function"
+            ? this.dataManager.getVoucherRevenueEntries()
+            : [],
           timeZone: this.dataManager.getTimezone(),
         });
         if (typeof this.dataManager.storeVoucherBatches === "function") {
@@ -11826,7 +12066,8 @@ async function bootstrap() {
   assertSecureConfiguration();
   if (!cron.validate(CONFIG.CRON_SCHEDULE)
     || !cron.validate(CONFIG.HOTSPOT_STATUS_SYNC_SCHEDULE)
-    || !cron.validate(CONFIG.SENT_HISTORY_CLEANUP_SCHEDULE)) {
+    || !cron.validate(CONFIG.SENT_HISTORY_CLEANUP_SCHEDULE)
+    || !cron.validate(CONFIG.VOUCHER_REVENUE_SYNC_SCHEDULE)) {
     throw new Error("Konfigurasi cron tidak valid.");
   }
 
@@ -11863,6 +12104,11 @@ async function bootstrap() {
     dataManager,
     activityLog
   );
+  const voucherRevenueSyncScheduler = new VoucherRevenueSyncScheduler(
+    mikrotikService,
+    dataManager,
+    activityLog
+  );
 
   await dataManager.loadAll();
   await dataManager.syncActiveRemindersWithTemplates(await templateManager.listTemplates());
@@ -11876,7 +12122,9 @@ async function bootstrap() {
     reminderScheduler,
     authManager,
     mikrotikService,
-    hotspotReactivationScheduler
+    hotspotReactivationScheduler,
+    null,
+    voucherRevenueSyncScheduler
   );
 
   await sendMonthlyResetNotification(notificationBot, dataManager, activityLog);
@@ -11909,6 +12157,12 @@ async function bootstrap() {
   scheduledJobs.push(cron.schedule(CONFIG.HOTSPOT_STATUS_SYNC_SCHEDULE, () => {
     void trackBackgroundTask(runScheduledTasks([
       { name: "hotspot-status-sync", run: () => hotspotStatusSyncScheduler.processStatusSync() },
+    ], activityLog));
+  }));
+
+  scheduledJobs.push(cron.schedule(CONFIG.VOUCHER_REVENUE_SYNC_SCHEDULE, () => {
+    void trackBackgroundTask(runScheduledTasks([
+      { name: "voucher-revenue-sync", run: () => voucherRevenueSyncScheduler.processSync() },
     ], activityLog));
   }));
 
@@ -11997,6 +12251,9 @@ async function bootstrap() {
   process.once("unhandledRejection", handleUnhandledRejection);
 
   await webServer.start();
+  void trackBackgroundTask(voucherRevenueSyncScheduler.processSync().catch((error) => {
+    activityLog.push("error", "voucher", `Sinkronisasi awal pendapatan voucher gagal: ${error.message}`);
+  }));
   const notificationInitialization = notificationBot.initialize()
     .then(() => activityLog.push("info", "notification", "Notification transport initialized"))
     .catch((error) => {
