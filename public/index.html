@@ -485,7 +485,8 @@
                       <th class="px-4 py-3">User Hotspot</th>
                       <th class="px-4 py-3">Profile</th>
                       <th class="px-4 py-3">IP Binding</th>
-                      <th class="px-4 py-3">Status Akun</th>
+                      <th class="px-4 py-3">Akun Hotspot</th>
+                      <th class="px-4 py-3">Akun IP Binding</th>
                       <th class="px-4 py-3">Status Jadwal</th>
                       <th class="px-4 py-3">Jadwal layanan</th>
                       <th class="px-4 py-3">IP Access Point</th>
@@ -496,7 +497,7 @@
                   </thead>
                   <tbody class="divide-y divide-ink/6 bg-white/70">
                     <template x-if="!filteredHotspotContacts.length">
-                      <tr><td colspan="12" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada akun hotspot yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
+                      <tr><td colspan="13" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada akun hotspot yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
                     </template>
                     <template x-for="contact in paginatedHotspotContacts" :key="'hotspot-' + contact.id">
                       <tr>
@@ -512,12 +513,12 @@
                           <strong class="customer-ip-binding-count" x-text="getIpBindingCountLabel(contact)"></strong>
                           <small x-show="(contact.mikrotikMacAddresses || []).length" class="customer-meta" x-text="getIpBindingTableStatus(contact)"></small>
                         </td>
-                        <td class="px-4 py-4" data-label="Status Akun">
-                          <div class="customer-access-status-stack">
-                            <div><small>Akun</small><span class="customer-hotspot-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getHotspotUserAccessClass(contact)" x-text="getHotspotUserAccessLabel(contact)"></span></div>
-                            <div><small>IP Binding</small><span class="customer-hotspot-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getIpBindingAccessClass(contact)" x-text="getIpBindingAccessLabel(contact)"></span></div>
-                          </div>
+                        <td class="px-4 py-4" data-label="Akun Hotspot">
+                          <span class="customer-hotspot-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getHotspotUserAccessClass(contact)" x-text="getHotspotUserAccessLabel(contact)"></span>
                           <small x-show="contact.hotspotProvisioningError && canRetryHotspotProvisioning(contact)" class="customer-hotspot-error" x-text="contact.hotspotProvisioningError"></small>
+                        </td>
+                        <td class="px-4 py-4" data-label="Akun IP Binding">
+                          <span class="customer-hotspot-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getIpBindingAccessClass(contact)" x-text="getIpBindingAccessLabel(contact)"></span>
                         </td>
                         <td class="px-4 py-4" data-label="Status Jadwal">
                           <span class="customer-schedule-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getReactivationClass(contact)" x-text="getReactivationLabel(contact)"></span>

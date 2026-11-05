@@ -1025,46 +1025,31 @@
         },
 
         getHotspotUserAccessLabel(contact) {
-          if (!contact?.mikrotikUsername) return "Belum ada";
-          const status = this.getHotspotProvisioningStatus(contact);
-          if (["PENDING", "PROVISIONING", "FAILED", "MISSING", "CHANGED"].includes(status)) {
-            return this.getHotspotProvisioningLabel(contact);
-          }
-          const mode = this.getEffectiveHotspotAccessMode(contact);
-          return ["DISABLED", "IP_BINDING_ONLY"].includes(mode) ? "Nonaktif" : "Aktif";
+          if (!contact?.mikrotikUsername) return "Nonaktif";
+          if (this.getHotspotProvisioningStatus(contact) !== "ACTIVE") return "Nonaktif";
+          return ["HOTSPOT_ONLY", "BOTH"].includes(this.getEffectiveHotspotAccessMode(contact))
+            ? "Aktif"
+            : "Nonaktif";
         },
 
         getHotspotUserAccessClass(contact) {
-          const status = this.getHotspotProvisioningStatus(contact);
-          if (["PENDING", "PROVISIONING", "FAILED", "MISSING", "CHANGED"].includes(status)) {
-            return this.getHotspotProvisioningClass(contact);
-          }
-          return ["DISABLED", "IP_BINDING_ONLY"].includes(this.getEffectiveHotspotAccessMode(contact))
-            ? "bg-red-100 text-red-700"
-            : "bg-moss/10 text-moss";
+          return this.getHotspotUserAccessLabel(contact) === "Aktif"
+            ? "bg-moss/10 text-moss"
+            : "bg-red-100 text-red-700";
         },
 
         getIpBindingAccessLabel(contact) {
           const hasBindings = Array.isArray(contact?.mikrotikMacAddresses) && contact.mikrotikMacAddresses.length > 0;
-          if (!hasBindings) return "Belum ada";
-          const status = this.getHotspotProvisioningStatus(contact);
-          if (["PENDING", "PROVISIONING", "FAILED", "MISSING", "CHANGED"].includes(status)) return "Perlu sinkron";
-          const mode = this.getEffectiveHotspotAccessMode(contact);
-          if (mode === "DISABLED") return "Diblokir";
-          if (mode === "HOTSPOT_ONLY") return "Login wajib";
-          return "Aktif otomatis";
+          if (!hasBindings || this.getHotspotProvisioningStatus(contact) !== "ACTIVE") return "Nonaktif";
+          return ["IP_BINDING_ONLY", "BOTH"].includes(this.getEffectiveHotspotAccessMode(contact))
+            ? "Aktif"
+            : "Nonaktif";
         },
 
         getIpBindingAccessClass(contact) {
-          const hasBindings = Array.isArray(contact?.mikrotikMacAddresses) && contact.mikrotikMacAddresses.length > 0;
-          if (!hasBindings) return "bg-slate-200/70 text-slate-700";
-          const status = this.getHotspotProvisioningStatus(contact);
-          if (["FAILED", "MISSING"].includes(status)) return "bg-red-100 text-red-700";
-          if (["PENDING", "PROVISIONING", "CHANGED"].includes(status)) return "bg-amber-100 text-amber-800";
-          const mode = this.getEffectiveHotspotAccessMode(contact);
-          if (mode === "DISABLED") return "bg-red-100 text-red-700";
-          if (mode === "HOTSPOT_ONLY") return "bg-slate-200/70 text-slate-700";
-          return "bg-moss/10 text-moss";
+          return this.getIpBindingAccessLabel(contact) === "Aktif"
+            ? "bg-moss/10 text-moss"
+            : "bg-red-100 text-red-700";
         },
 
         canConfigureHotspotAccessMode(contact) {

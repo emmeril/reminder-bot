@@ -101,16 +101,16 @@ test("mode akses membedakan status akun hotspot dan IP Binding", () => {
   };
 
   assert.equal(app.getHotspotUserAccessLabel(contact), "Nonaktif");
-  assert.equal(app.getIpBindingAccessLabel(contact), "Aktif otomatis");
+  assert.equal(app.getIpBindingAccessLabel(contact), "Aktif");
   assert.equal(app.canSendHotspotAccount(contact), false);
 
   contact.hotspotAccessMode = "HOTSPOT_ONLY";
   assert.equal(app.getHotspotUserAccessLabel(contact), "Aktif");
-  assert.equal(app.getIpBindingAccessLabel(contact), "Login wajib");
+  assert.equal(app.getIpBindingAccessLabel(contact), "Nonaktif");
 
   contact.hotspotProvisioningStatus = "DISABLED";
   assert.equal(app.getHotspotUserAccessLabel(contact), "Nonaktif");
-  assert.equal(app.getIpBindingAccessLabel(contact), "Diblokir");
+  assert.equal(app.getIpBindingAccessLabel(contact), "Nonaktif");
 });
 
 test("modal mode akses menyediakan empat pilihan dan tombol tabel", () => {
@@ -1140,7 +1140,8 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(html, /data-label="Sumber Nominal"/);
   assert.match(html, /data-label="Bulan Ini"/);
   assert.match(html, /data-label="Tunggakan"/);
-  assert.match(html, /data-label="Status Akun"/);
+  assert.match(html, /data-label="Akun Hotspot"/);
+  assert.match(html, /data-label="Akun IP Binding"/);
   assert.match(html, /data-label="User Hotspot"/);
   assert.match(html, /data-label="Profile"/);
   assert.match(html, /data-label="IP Binding"/);
@@ -1151,17 +1152,17 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(html, /data-label="Aksi Akun"/);
   assert.match(html, /data-label="Aksi Layanan"/);
   assert.match(html, /<td colspan="10"[^>]*Tidak ada tagihan yang cocok/);
-  assert.match(html, /<td colspan="12"[^>]*Tidak ada akun hotspot yang cocok/);
+  assert.match(html, /<td colspan="13"[^>]*Tidak ada akun hotspot yang cocok/);
   assert.match(html, /Pelanggan<\/th>\s*<th[^>]*>Nomor HP<\/th>\s*<th[^>]*>User Hotspot<\/th>/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 36px !important;[^}]*border-radius: 9px !important;[^}]*font-size: 10px !important;/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 44px !important;[^}]*font-size: 11px !important;/);
   assert.match(styles, /\.customer-due-status \{[^}]*white-space: nowrap;/);
   assert.match(styles, /\.customer-hotspot-status, \.customer-schedule-status \{[^}]*white-space: nowrap;/);
-  assert.match(styles, /\.customer-hotspot-table \{ min-width: 1880px; \}/);
-  assert.match(styles, /\.customer-hotspot-table th:nth-child\(6\) \{ width: 11%; \}/);
-  assert.match(styles, /\.customer-hotspot-table th:nth-child\(7\) \{ width: 11%; \}/);
+  assert.match(styles, /\.customer-hotspot-table \{ min-width: 1960px; \}/);
+  assert.match(styles, /\.customer-hotspot-table th:nth-child\(6\) \{ width: 8%; \}/);
+  assert.match(styles, /\.customer-hotspot-table th:nth-child\(7\) \{ width: 8%; \}/);
   assert.match(styles, /\.customer-hotspot-account-actions button \{[^}]*gap: 7px;[^}]*padding-inline: 12px !important;/);
-  assert.match(styles, /\.customer-hotspot-table th:nth-child\(11\) \{ width: 8%; \}/);
+  assert.match(styles, /\.customer-hotspot-table th:nth-child\(12\) \{ width: 8%; \}/);
 });
 
 test("filter tagihan dan hotspot dapat direset tanpa mengubah jumlah baris", () => {
