@@ -1,9 +1,9 @@
-*Pemberitahuan Layanan*
+*Pemberitahuan Layanan WiFi*
 
-Yth. Bapak/Ibu Pelanggan,
-Tagihan WiFi Anda belum lunas dan akun akan dinonaktifkan sementara jika melewati batas pembayaran.
+Yth. Bapak/Ibu {{name}},
+Layanan WiFi Anda dinonaktifkan sementara karena pembayaran belum kami terima.
 
-Mohon lakukan pembayaran agar layanan dapat digunakan kembali.
+Silakan lakukan pembayaran. Layanan akan diaktifkan kembali setelah pembayaran dikonfirmasi.
 
 Terima kasih,
-CS Emmeril Hotspot
+{{supportSignature}}

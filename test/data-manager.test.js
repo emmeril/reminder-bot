@@ -5,9 +5,14 @@ const { DataManager } = require("../src/app");
 const {
   BILLING_CYCLES,
   CONFIG,
+  DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE,
   DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   DEFAULT_SETTINGS,
   LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE,
+  LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3,
+  LEGACY_DEFAULT_REMINDER_MESSAGE_TEMPLATE_V3,
+  LEGACY_DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE_V4,
+  LEGACY_NOTIFICATION_TEMPLATES_V3,
   LEGACY_PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD,
   PAYMENT_STATUS,
   PAYMENT_TYPES,
@@ -1590,7 +1595,7 @@ test("reminder periode berikutnya tidak mewarisi status lunas bulan berjalan", (
   assert.equal(futureBilling.currentPaymentStatus, PAYMENT_STATUS.UNPAID);
   assert.equal(futureBilling.debtCount, 0);
   assert.doesNotMatch(reminder.message, /Status pembayaran: LUNAS/);
-  assert.match(reminder.message, /Tagihan WiFi/);
+  assert.match(reminder.message, /Pengingat Pembayaran WiFi/);
 });
 
 test("pembayaran tanpa nominal tetap memindahkan reminder ke periode berikutnya", async () => {
@@ -2365,12 +2370,12 @@ test("migration menerapkan bahasa ringkas pada template notifikasi dan reminder 
   const first = await manager.migrateFormalNotificationTemplates();
   const second = await manager.migrateFormalNotificationTemplates();
 
-  assert.deepEqual(first, { migrated: true, remindersUpdated: 2, version: 3 });
-  assert.deepEqual(second, { migrated: false, remindersUpdated: 0, version: 3 });
+  assert.deepEqual(first, { migrated: true, remindersUpdated: 2, version: 5 });
+  assert.deepEqual(second, { migrated: false, remindersUpdated: 0, version: 5 });
   assert.equal(manager.settings.apDownMessageTemplate, DEFAULT_SETTINGS.apDownMessageTemplate);
   assert.equal(manager.settings.billingReminderMessageTemplate, DEFAULT_SETTINGS.billingReminderMessageTemplate);
   assert.equal(manager.settings.paymentHotspotAccountMessageTemplate, DEFAULT_SETTINGS.paymentHotspotAccountMessageTemplate);
-  assert.equal(manager.settings.notificationTemplateCopyMigrationVersion, 3);
+  assert.equal(manager.settings.notificationTemplateCopyMigrationVersion, 5);
   assert.equal(manager.reminders.get("formal-billing").messageSource, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
   assert.equal(
     manager.reminders.get("formal-active-period").messageSource,
@@ -2419,7 +2424,7 @@ test("migration memperjelas template masa aktif lama tanpa menimpa template khus
 
   const result = await manager.migrateFormalNotificationTemplates();
 
-  assert.deepEqual(result, { migrated: true, remindersUpdated: 1, version: 3 });
+  assert.deepEqual(result, { migrated: true, remindersUpdated: 1, version: 5 });
   assert.equal(
     manager.settings.paymentMessageTemplateActivePeriod,
     DEFAULT_SETTINGS.paymentMessageTemplateActivePeriod
@@ -2436,6 +2441,97 @@ test("migration memperjelas template masa aktif lama tanpa menimpa template khus
   assert.equal(
     manager.reminders.get("custom-active-period").messageSource,
     "Pesan khusus masa aktif"
+  );
+});
+
+test("migration memperbarui pesan bawaan versi tiga tanpa menimpa pesan kustom", async () => {
+  const postpaid = {
+    id: "contact-copy-v3-postpaid",
+    name: "Pelanggan Pascabayar",
+    phoneNumber: "6281234567801",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.POSTPAID,
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  };
+  const prepaid = {
+    ...postpaid,
+    id: "contact-copy-v3-prepaid",
+    name: "Pelanggan Prabayar",
+    phoneNumber: "6281234567802",
+    billingCycle: BILLING_CYCLES.PREPAID,
+  };
+  const manager = createManager(postpaid);
+  manager.contacts.set(prepaid.id, prepaid);
+  manager.settings.notificationTemplateCopyMigrationVersion = 3;
+  manager.settings.billingReminderMessageTemplate =
+    LEGACY_NOTIFICATION_TEMPLATES_V3.billingReminderMessageTemplate;
+  manager.settings.gracePeriodReminderMessageTemplate =
+    LEGACY_NOTIFICATION_TEMPLATES_V3.gracePeriodReminderMessageTemplate;
+  manager.settings.activePeriodReminderMessageTemplate =
+    LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3;
+  manager.settings.prepaidPackageReminderMessageTemplate =
+    LEGACY_NOTIFICATION_TEMPLATES_V3.prepaidPackageReminderMessageTemplate;
+  manager.settings.apDownMessageTemplate = "Pesan jaringan khusus";
+  manager.reminders.set("billing-copy-v3", {
+    id: "billing-copy-v3",
+    contactId: postpaid.id,
+    reminderDateTime: "2026-11-30T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.BILLING,
+    templateName: "Penagihan.txt",
+    message: LEGACY_DEFAULT_REMINDER_MESSAGE_TEMPLATE_V3,
+    messageSource: LEGACY_DEFAULT_REMINDER_MESSAGE_TEMPLATE_V3,
+  });
+  manager.reminders.set("prepaid-copy-v3", {
+    id: "prepaid-copy-v3",
+    contactId: prepaid.id,
+    reminderDateTime: "2026-11-27T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    activePeriodUntil: "2026-11-30T01:00:00.000Z",
+    templateName: "PaketPrabayar",
+    message: LEGACY_NOTIFICATION_TEMPLATES_V3.prepaidPackageReminderMessageTemplate,
+    messageSource: LEGACY_NOTIFICATION_TEMPLATES_V3.prepaidPackageReminderMessageTemplate,
+  });
+
+  const result = await manager.migrateFormalNotificationTemplates();
+
+  assert.deepEqual(result, { migrated: true, remindersUpdated: 2, version: 5 });
+  assert.equal(manager.settings.notificationTemplateCopyMigrationVersion, 5);
+  assert.equal(manager.settings.billingReminderMessageTemplate, DEFAULT_SETTINGS.billingReminderMessageTemplate);
+  assert.equal(manager.settings.gracePeriodReminderMessageTemplate, DEFAULT_SETTINGS.gracePeriodReminderMessageTemplate);
+  assert.equal(manager.settings.activePeriodReminderMessageTemplate, DEFAULT_SETTINGS.activePeriodReminderMessageTemplate);
+  assert.equal(manager.settings.prepaidPackageReminderMessageTemplate, DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate);
+  assert.equal(manager.settings.apDownMessageTemplate, "Pesan jaringan khusus");
+  assert.equal(manager.reminders.get("billing-copy-v3").messageSource, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
+  assert.equal(
+    manager.reminders.get("prepaid-copy-v3").messageSource,
+    DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate
+  );
+});
+
+test("migration memperbarui bahasa template tagihan rinci versi empat", async () => {
+  const manager = createManager({
+    id: "contact-copy-v4",
+    name: "Pelanggan Rinci",
+    phoneNumber: "6281234567803",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.POSTPAID,
+    monthlyPaymentAmount: 100_000,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    paymentMonths: {},
+  });
+  manager.settings.notificationTemplateCopyMigrationVersion = 4;
+  manager.settings.billingReminderMessageTemplate =
+    LEGACY_DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE_V4;
+
+  const result = await manager.migrateFormalNotificationTemplates();
+
+  assert.deepEqual(result, { migrated: true, remindersUpdated: 0, version: 5 });
+  assert.equal(manager.settings.notificationTemplateCopyMigrationVersion, 5);
+  assert.equal(
+    manager.settings.billingReminderMessageTemplate,
+    DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE
   );
 });
 

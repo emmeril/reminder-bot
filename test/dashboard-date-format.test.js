@@ -293,6 +293,38 @@ test("pengaturan menyediakan template akun WiFi setelah pembayaran", () => {
   assert.equal(app.forms.settings.paymentHotspotAccountMessageTemplate, "");
 });
 
+test("menu template memakai variabel pengiriman personal dan broadcast", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const app = createDashboardApp();
+  app.forms.settings.companyName = "Emmeril Hotspot";
+  app.forms.settings.supportSignature = "CS Emmeril";
+
+  const message = app.applyTemplateContent(
+    "Halo {{name}} ({{phoneNumber}}) dari {{companyName}} / {{companyNameUpper}}. {{supportSignature}}",
+    { name: "Aldi", phoneNumber: "6281234567890" },
+    "2026-11-05T01:00:00.000Z"
+  );
+
+  assert.match(html, /pengiriman personal dan broadcast/);
+  assert.match(html, /<code>{{phoneNumber}}<\/code>/);
+  assert.match(html, /<code>{{companyName}}<\/code>/);
+  assert.match(html, /<code>{{supportSignature}}<\/code>/);
+  assert.equal(
+    message,
+    "Halo Aldi (6281234567890) dari Emmeril Hotspot / EMMERIL HOTSPOT. CS Emmeril"
+  );
+});
+
+test("file template tidak memakai variabel lama yang tidak dapat dirender", () => {
+  const templateDirectory = path.join(__dirname, "../templates");
+  const contents = fs.readdirSync(templateDirectory)
+    .filter((name) => name.endsWith(".txt"))
+    .map((name) => fs.readFileSync(path.join(templateDirectory, name), "utf8"))
+    .join("\n");
+
+  assert.doesNotMatch(contents, /{{\s*(?:nama|bulan|tanggal)\s*}}/i);
+});
+
 test("tombol tagihan bulan ini tetap tampil dengan status tindakan yang sesuai", () => {
   const app = createDashboardApp();
   app.billingPeriod = "2026-11";

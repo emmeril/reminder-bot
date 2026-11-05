@@ -1,15 +1,15 @@
-*Pengingat Tagihan*
+*Pengingat Pembayaran WiFi*
 
 Yth. Bapak/Ibu {{name}},
-Tagihan WiFi Anda belum lunas.
+Kami belum menerima pembayaran layanan WiFi Anda.
 
 {{billingDetails}}
 
-Jatuh tempo: {{date}}
+Batas pembayaran: {{date}}
 Masa tenggang: {{graceDays}} hari
 Layanan aktif sampai: {{isolationDate}}{{renewalStatusInfo}}
 
-Mohon lakukan pembayaran sebelum layanan dinonaktifkan. Abaikan pesan ini jika Anda sudah membayar.
+Mohon selesaikan pembayaran sebelum layanan dinonaktifkan. Abaikan pesan ini jika pembayaran sudah dilakukan.
 
 Pembayaran:
 BCA 134-266-9497 a.n. Hafriyanto

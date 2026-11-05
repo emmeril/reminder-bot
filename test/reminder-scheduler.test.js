@@ -49,16 +49,16 @@ test("template reminder dirender dari variabel saat pesan akan dikirim", () => {
     new Date("2026-08-15T01:00:00.000Z")
   );
 
-  assert.match(message, /^\*Pengingat Masa Tenggang\*/);
+  assert.match(message, /^\*Pengingat Sebelum Penonaktifan\*/);
   assert.match(message, /Yth\. Bapak\/Ibu Nouval,/);
-  assert.match(message, /Tagihan WiFi Anda sudah jatuh tempo dan belum lunas/);
+  assert.match(message, /Pembayaran layanan WiFi Anda belum kami terima dan telah melewati batas pembayaran/);
   assert.match(message, /\*Rincian tagihan\*/);
   assert.match(message, /Juli 2026: Rp\s?100\.000/);
   assert.match(message, /Agustus 2026: Rp\s?100\.000/);
   assert.match(message, /\*Total: Rp\s?200\.000\*/);
-  assert.match(message, /Jatuh tempo: 2026-08-15/);
+  assert.match(message, /Batas pembayaran: 2026-08-15/);
   assert.match(message, /Masa tenggang: 3 hari/);
-  assert.match(message, /Layanan aktif sampai: 2026-08-18/);
+  assert.match(message, /Layanan dijadwalkan nonaktif pada 2026-08-18/);
   assert.match(message, /Perpanjangan otomatis: Dijeda sampai tunggakan lunas/);
   assert.match(message, /CS Emmeril Hotspot$/);
   assert.doesNotMatch(message, /{{|}}/);
@@ -293,7 +293,7 @@ test("scheduler mengirim saat jatuh tempo lalu H-1 dan hanya menjadwalkan bulan 
   await scheduler.processDueReminders();
 
   assert.equal(sentMessages.length, 2);
-  assert.match(sentMessages[0], /^\*Pengingat Tagihan\*/);
+  assert.match(sentMessages[0], /^\*Pengingat Pembayaran WiFi\*/);
   assert.match(sentMessages[1], /^\*Pengingat Masa Tenggang\*/);
   assert.equal(graceTransitions, 1);
   assert.equal(histories.length, 2);
@@ -337,7 +337,7 @@ test("reminder menampilkan nominal setiap periode pada tagihan akumulasi", () =>
   assert.match(message, /Oktober 2026: Rp\s?75\.000/);
   assert.match(message, /November 2026: Rp\s?75\.000/);
   assert.match(message, /\*Total: Rp\s?150\.000\*/);
-  assert.match(message, /Jatuh tempo: 2026-11-01/);
+  assert.match(message, /Batas pembayaran: 2026-11-01/);
   assert.doesNotMatch(message, /{{|}}/);
 });
 
@@ -408,11 +408,11 @@ test("reminder masa aktif menampilkan batas aktif dan tunggakan yang masih tersi
 
   const message = new ReminderScheduler({}, dataManager, { push() {} }).buildReminderMessage(reminder);
 
-  assert.match(message, /Masa aktif sementara WiFi Anda akan berakhir pada 28 November 2026 pukul 08\.00/);
+  assert.match(message, /Masa aktif sementara WiFi Anda berlaku sampai 28 November 2026 pukul 08\.00/);
   assert.match(message, /Tunggakan: 2 bulan/);
   assert.match(message, /Total: Rp\s?200\.000/);
   assert.match(message, /September 2026, Oktober 2026/);
-  assert.match(message, /Lunasi tunggakan atau beli masa aktif/);
+  assert.match(message, /Silakan lunasi tunggakan atau beli masa aktif sementara/);
   assert.doesNotMatch(message, /{{|}}/);
 });
 

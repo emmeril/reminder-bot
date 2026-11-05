@@ -1,12 +1,9 @@
-*Pengingat Tagihan*
+*Pengingat Pembayaran WiFi*
 
-Yth. Bapak/Ibu {{nama}},
-Tagihan WiFi bulan {{bulan}} sebesar Rp 40.000 belum lunas.
+Yth. Bapak/Ibu {{name}},
+Kami belum menerima pembayaran WiFi sebesar Rp40.000.
 
-Jatuh tempo: {{tanggal}}
-Pembayaran: BCA 134-266-9497 a.n. Hafriyanto
-
-Mohon lakukan pembayaran sesuai jumlah tagihan. Abaikan pesan ini jika Anda sudah membayar.
+Mohon lakukan pembayaran sesuai jumlah tagihan. Abaikan pesan ini jika pembayaran sudah dilakukan.
 
 Terima kasih,
-CS Emmeril Hotspot
+{{supportSignature}}

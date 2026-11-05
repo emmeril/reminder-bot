@@ -1362,7 +1362,7 @@
           <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="font-display text-2xl"><i class="fa-solid fa-file-pen mr-2 text-moss"></i>Template pesan</h2>
-              <p class="card-description mt-1">Kelola isi pesan yang dapat dipakai kembali pada reminder dan pengiriman manual.</p>
+              <p class="card-description mt-1">Kelola pesan yang dapat dipakai kembali untuk pengiriman personal dan broadcast.</p>
             </div>
             <button id="template-add-button" type="button" @click="openTemplateCreateModal($event.currentTarget)" class="template-add-button ui-primary-button inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
               <i class="fa-solid fa-plus"></i><span>Tambah template</span>
@@ -1806,7 +1806,7 @@
         <div class="mb-4 flex items-start justify-between gap-4">
           <div class="min-w-0">
             <h3 id="template-modal-title" class="text-lg font-semibold text-ink" x-text="templateModal.mode === 'edit' ? 'Edit template pesan' : 'Tambah template pesan'"></h3>
-            <p id="template-modal-description" class="mt-1 text-sm text-ink/60" x-text="templateModal.mode === 'edit' ? 'Perbarui isi template yang sudah tersimpan.' : 'Buat template baru untuk reminder dan pesan manual.'"></p>
+            <p id="template-modal-description" class="mt-1 text-sm text-ink/60" x-text="templateModal.mode === 'edit' ? 'Perbarui isi template yang sudah tersimpan.' : 'Buat template untuk pengiriman personal dan broadcast.'"></p>
           </div>
           <button type="button" @click="closeTemplateModal()" :disabled="templateModal.loading" class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-ink/10 text-ink transition hover:bg-haze disabled:opacity-50" aria-label="Tutup modal template">
             <i class="fa-solid fa-xmark"></i>
@@ -1816,15 +1816,15 @@
           <label class="block text-sm text-ink/60">
             Nama file template
             <input id="template-name-input" x-model="forms.template.name" :disabled="templateModal.mode === 'edit'" aria-describedby="template-name-help" autocomplete="off" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="tagihan-bulanan.txt" required>
-            <span id="template-name-help" class="mt-1.5 block text-xs text-ink/60" x-text="templateModal.mode === 'edit' ? 'Nama file tetap agar template yang dipakai jadwal lama tidak terputus.' : 'Ekstensi .txt akan ditambahkan otomatis jika belum ditulis.'"></span>
+            <span id="template-name-help" class="mt-1.5 block text-xs text-ink/60" x-text="templateModal.mode === 'edit' ? 'Nama file tetap agar pilihan template tidak terputus.' : 'Ekstensi .txt akan ditambahkan otomatis jika belum ditulis.'"></span>
           </label>
           <label class="block text-sm text-ink/60">
             Isi template
             <textarea id="template-content-input" x-model="forms.template.content" class="mt-2 min-h-44 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="Tulis isi pesan dan gunakan variabel yang tersedia." required></textarea>
             <span class="notification-template-variables mt-3">
-              <strong>Variabel reminder yang bisa digunakan</strong>
+              <strong>Variabel yang bisa digunakan</strong>
               <span class="template-variable-list">
-                <code>{{name}}</code><code>{{date}}</code><code>{{graceDays}}</code><code>{{isolationDate}}</code><code>{{renewalStatusInfo}}</code><code>{{monthlyAmount}}</code><code>{{currentAmount}}</code><code>{{debtAmount}}</code><code>{{totalAmount}}</code><code>{{debtCount}}</code>
+                <code>{{name}}</code><code>{{phoneNumber}}</code><code>{{date}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code>
               </span>
             </span>
           </label>

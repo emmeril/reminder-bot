@@ -15,9 +15,14 @@ const {
   BILLING_CYCLES,
   BILLING_REMINDER_STOP_DEBT_COUNT,
   CONFIG,
+  DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE,
   DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   DEFAULT_SETTINGS,
   LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE,
+  LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3,
+  LEGACY_DEFAULT_REMINDER_MESSAGE_TEMPLATE_V3,
+  LEGACY_DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE_V4,
+  LEGACY_NOTIFICATION_TEMPLATES_V3,
   LEGACY_PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD,
   MONTH_NAMES,
   PAYMENT_STATUS,
@@ -4773,8 +4778,8 @@ class DataManager {
     return this.withDataMutation(async () => {
       const settings = this.getSettings();
       const currentVersion = Number(settings.notificationTemplateCopyMigrationVersion) || 0;
-      if (currentVersion >= 3) {
-        return { migrated: false, remindersUpdated: 0, version: 3 };
+      if (currentVersion >= 5) {
+        return { migrated: false, remindersUpdated: 0, version: 5 };
       }
 
       const templateKeys = [
@@ -4807,24 +4812,51 @@ class DataManager {
             DEFAULT_SETTINGS.activePeriodReminderMessageTemplate;
         }
       }
-      this.settings.notificationTemplateCopyMigrationVersion = 3;
+      for (const [key, legacyTemplate] of Object.entries(LEGACY_NOTIFICATION_TEMPLATES_V3)) {
+        if (this.settings[key] === legacyTemplate) {
+          this.settings[key] = DEFAULT_SETTINGS[key];
+        }
+      }
+      if (this.settings.billingReminderMessageTemplate
+        === LEGACY_DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE_V4) {
+        this.settings.billingReminderMessageTemplate =
+          DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE;
+      }
+      this.settings.notificationTemplateCopyMigrationVersion = 5;
 
       let remindersUpdated = 0;
       for (const reminder of this.reminders.values()) {
         const templateName = String(reminder.templateName || "").toLowerCase();
+        const currentMessage = String(reminder.message || "");
+        const currentSource = String(reminder.messageSource || "");
         let messageTemplate = null;
-        if (currentVersion < 2 && templateName === "penagihan.txt") {
-          messageTemplate = DEFAULT_REMINDER_MESSAGE_TEMPLATE;
+        const usesLegacyBillingCopy = [currentMessage, currentSource]
+          .includes(LEGACY_DEFAULT_REMINDER_MESSAGE_TEMPLATE_V3);
+        const usesLegacyGraceCopy = [currentMessage, currentSource]
+          .includes(LEGACY_NOTIFICATION_TEMPLATES_V3.gracePeriodReminderMessageTemplate);
+        if (templateName === "penagihan.txt"
+          && (currentVersion < 2 || usesLegacyBillingCopy || usesLegacyGraceCopy)) {
+          messageTemplate = usesLegacyGraceCopy
+            ? DEFAULT_SETTINGS.gracePeriodReminderMessageTemplate
+            : DEFAULT_REMINDER_MESSAGE_TEMPLATE;
         } else if (reminder.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY) {
           const contact = this.getResolvedReminderContact(reminder);
           const prepaidPackage = isPrepaidPackage(contact);
           const usesLegacyTemporaryCopy = reminder.messageSource
             === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE
-            || reminder.message === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE;
-          if (currentVersion < 2 || (!prepaidPackage && usesLegacyTemporaryCopy)) {
+            || reminder.message === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE
+            || reminder.messageSource === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3
+            || reminder.message === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3;
+          const usesLegacyPrepaidCopy = reminder.messageSource
+            === LEGACY_NOTIFICATION_TEMPLATES_V3.prepaidPackageReminderMessageTemplate
+            || reminder.message
+              === LEGACY_NOTIFICATION_TEMPLATES_V3.prepaidPackageReminderMessageTemplate;
+          if (currentVersion < 2
+            || (!prepaidPackage && usesLegacyTemporaryCopy)
+            || (prepaidPackage && usesLegacyPrepaidCopy)) {
             messageTemplate = prepaidPackage
-              ? DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate
-              : DEFAULT_SETTINGS.activePeriodReminderMessageTemplate;
+              ? this.settings.prepaidPackageReminderMessageTemplate
+              : this.settings.activePeriodReminderMessageTemplate;
           }
         }
         if (!messageTemplate) continue;
@@ -4842,10 +4874,10 @@ class DataManager {
         if (remindersUpdated > 0) await this.saveReminders(options);
       }));
       this.activityLog.push("info", "storage", "Template notifikasi diselaraskan dengan siklus pembayaran", {
-        migration: "billing-cycle-notification-copy-v3",
+        migration: "billing-cycle-notification-copy-v5",
         remindersUpdated,
       });
-      return { migrated: true, remindersUpdated, version: 3 };
+      return { migrated: true, remindersUpdated, version: 5 };
     });
   }
 
@@ -10480,6 +10512,10 @@ class WebServer {
         body = sanitizeMultilineText(await fs.readFile(templatePath, "utf-8"));
       }
       if (!body) throw new Error("Pesan broadcast wajib diisi.");
+      const settings = this.dataManager.getSettings();
+      const companyName = sanitizeInput(settings.companyName) || DEFAULT_SETTINGS.companyName;
+      const supportSignature = sanitizeInput(settings.supportSignature)
+        || DEFAULT_SETTINGS.supportSignature;
       const total = Math.max(1, Number(this.dataManager.getContacts().length) || 0);
       const job = this.createBackgroundJob({
         type: "CONTACT_BROADCAST",
@@ -10492,6 +10528,9 @@ class WebServer {
                 name: contact?.name || "",
                 phoneNumber: contact?.phoneNumber || "",
                 date: new Date().toLocaleDateString("id-ID", { timeZone: this.dataManager.getTimezone() }),
+                companyName,
+                companyNameUpper: companyName.toUpperCase(),
+                supportSignature,
               }),
           })
         )),

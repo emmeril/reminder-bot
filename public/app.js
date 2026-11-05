@@ -3159,13 +3159,21 @@
 
         applyTemplateContent(templateContent, contact, dateIso) {
           let msg = String(templateContent || "");
-          if (contact && contact.name) {
-            msg = msg.replace(/{{\s*name\s*}}/gi, contact.name);
-          }
+          const companyName = String(this.forms.settings.companyName || "Emmeril Hotspot").trim();
+          const variables = {
+            name: contact?.name || "",
+            phoneNumber: contact?.phoneNumber || "",
+            companyName,
+            companyNameUpper: companyName.toUpperCase(),
+            supportSignature: String(this.forms.settings.supportSignature || "CS Emmeril Hotspot").trim(),
+          };
           if (dateIso) {
             try {
-              msg = msg.replace(/{{\s*date\s*}}/gi, new Date(dateIso).toLocaleString("id-ID", { timeZone: this.getAppTimezone() }));
+              variables.date = new Date(dateIso).toLocaleString("id-ID", { timeZone: this.getAppTimezone() });
             } catch {}
+          }
+          for (const [key, value] of Object.entries(variables)) {
+            msg = msg.replace(new RegExp(`{{\\s*${key}\\s*}}`, "gi"), String(value));
           }
           return msg;
         },

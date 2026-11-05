@@ -1,0 +1,9 @@
+*Informasi Pembayaran WiFi*
+
+Yth. Bapak/Ibu {{name}},
+Kami belum menerima pembayaran layanan WiFi Anda.
+
+Mohon lakukan pembayaran sesuai jadwal. Abaikan pesan ini jika pembayaran sudah dilakukan.
+
+Terima kasih,
+{{supportSignature}}
