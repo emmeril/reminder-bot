@@ -198,3 +198,57 @@ test("kegagalan membaca MikroTik tidak mengubah database dan melepaskan lock sch
   assert.equal(reconcileCalls, 0);
   assert.equal(scheduler.isProcessing, false);
 });
+
+test("scheduler mencoba ulang target bandwidth perangkat yang belum mendapat IP", async () => {
+  const saved = [];
+  const scheduler = new HotspotStatusSyncScheduler(
+    {
+      async getHotspotUsersForStatusSync() {
+        return [{ username: "pelanggan_mac", profile: "Rumah" }];
+      },
+      async syncIpBindingBandwidthForCustomers(customers) {
+        assert.equal(customers.length, 1);
+        assert.deepEqual(customers[0].macAddresses, ["AA:BB:CC:DD:EE:40"]);
+        return [{
+          contactId: "contact-mac",
+          status: "ACTIVE",
+          rateLimit: "5M/15M",
+          targetAddresses: ["10.50.0.40"],
+          pendingMacAddresses: [],
+          devices: [{
+            macAddress: "AA:BB:CC:DD:EE:40",
+            address: "10.50.0.40",
+            source: "DHCP",
+            status: "READY",
+          }],
+          syncedAt: "2026-11-05T00:00:00.000Z",
+        }];
+      },
+    },
+    {
+      getContacts() {
+        return [{
+          id: "contact-mac",
+          mikrotikUsername: "pelanggan_mac",
+          mikrotikProfile: "Rumah",
+          mikrotikMacAddresses: ["AA:BB:CC:DD:EE:40"],
+          hotspotProvisioningStatus: "ACTIVE",
+        }];
+      },
+      async reconcileHotspotStatuses() {
+        return { checked: 1, active: 1, missing: 0, changed: 0, updated: 0 };
+      },
+      async updateContactIpBindingBandwidthStatus(contactId, result) {
+        saved.push({ contactId, result });
+      },
+    },
+    { push() {} }
+  );
+
+  const result = await scheduler.processStatusSync();
+
+  assert.equal(result.bandwidth.active, 1);
+  assert.equal(result.bandwidth.failed, 0);
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].result.targetAddresses[0], "10.50.0.40");
+});

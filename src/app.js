@@ -1,6 +1,7 @@
 require("dotenv").config({ quiet: true });
 
 const fs = require("fs/promises");
+const net = require("net");
 const os = require("os");
 const path = require("path");
 const express = require("express");
@@ -107,6 +108,14 @@ const HOTSPOT_PROVISIONING_OPERATION = Object.freeze({
   ENABLE: "ENABLE",
   DISABLE: "DISABLE",
 });
+const IP_BINDING_BANDWIDTH_STATUS = Object.freeze({
+  NONE: "NONE",
+  ACTIVE: "ACTIVE",
+  PARTIAL: "PARTIAL",
+  PENDING_DHCP: "PENDING_DHCP",
+  NO_RATE_LIMIT: "NO_RATE_LIMIT",
+  FAILED: "FAILED",
+});
 function normalizeMacAddress(value, { required = false } = {}) {
   const raw = String(value || "").trim();
   if (!raw) {
@@ -133,6 +142,93 @@ function normalizeMacAddresses(values, { max = 10 } = {}) {
 
 function buildIpBindingOwnerComment(contactId) {
   return `reminder-bot:${String(contactId || "").trim()}`;
+}
+
+function buildIpBindingBandwidthOwnerComment(contactId) {
+  return `reminder-bot-bandwidth:${String(contactId || "").trim()}`;
+}
+
+function buildIpBindingBandwidthQueueName(contactId) {
+  const rawId = String(contactId || "").trim();
+  const readable = rawId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 16) || "customer";
+  const suffix = crypto.createHash("sha256").update(rawId).digest("hex").slice(0, 8);
+  return `RB-${readable}-${suffix}`;
+}
+
+function normalizeIpBindingBandwidthStatus(value, fallback = IP_BINDING_BANDWIDTH_STATUS.NONE) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return Object.values(IP_BINDING_BANDWIDTH_STATUS).includes(normalized) ? normalized : fallback;
+}
+
+function normalizeHotspotRatePair(value, fieldName) {
+  const parts = String(value || "").trim().split("/");
+  if (parts.length > 2 || parts.some((part) => !/^\d+(?:\.\d+)?[kKmMgGtTpP]?$/.test(part))) {
+    throw new Error(`${fieldName} profile "${value}" tidak dapat dipakai untuk bandwidth IP Binding.`);
+  }
+  return parts.length === 1 ? `${parts[0]}/${parts[0]}` : `${parts[0]}/${parts[1]}`;
+}
+
+function normalizeHotspotBurstTime(value) {
+  const parts = String(value || "").trim().split("/");
+  if (parts.length > 2 || parts.some((part) => !/^\d+(?:\.\d+)?s?$/.test(part))) {
+    throw new Error(`Burst time profile "${value}" tidak dapat dipakai untuk bandwidth IP Binding.`);
+  }
+  const normalized = parts.map((part) => (part.endsWith("s") ? part : `${part}s`));
+  return normalized.length === 1 ? `${normalized[0]}/${normalized[0]}` : normalized.join("/");
+}
+
+function parseHotspotRateLimitForSimpleQueue(value) {
+  const source = sanitizeInput(String(value || ""));
+  if (!source) return null;
+  const parts = source.split(/\s+/);
+  if (parts.length > 6) {
+    throw new Error(`Rate limit profile "${source}" memiliki parameter yang tidak dikenal.`);
+  }
+  const maxLimit = normalizeHotspotRatePair(parts[0], "Max limit");
+  const burstLimit = parts[1]
+    ? normalizeHotspotRatePair(parts[1], "Burst limit")
+    : "0/0";
+  const burstThreshold = parts[2]
+    ? normalizeHotspotRatePair(parts[2], "Burst threshold")
+    : (parts[1] ? maxLimit : "0/0");
+  const burstTime = parts[3] ? normalizeHotspotBurstTime(parts[3]) : (parts[1] ? "1s/1s" : "0s/0s");
+  const priorityValue = parts[4] || "8";
+  if (!/^[1-8]$/.test(priorityValue)) {
+    throw new Error(`Priority profile "${priorityValue}" harus antara 1 sampai 8.`);
+  }
+  const limitAt = parts[5]
+    ? normalizeHotspotRatePair(parts[5], "Limit at")
+    : "0/0";
+  return {
+    source,
+    maxLimit,
+    burstLimit,
+    burstThreshold,
+    burstTime,
+    priority: `${priorityValue}/${priorityValue}`,
+    limitAt,
+  };
+}
+
+function normalizeSimpleQueueLimitForComparison(value) {
+  const parts = sanitizeInput(String(value || "")).split("/");
+  if (parts.length !== 2) return "";
+  const multipliers = { "": 1, k: 1_000, m: 1_000_000, g: 1_000_000_000, t: 1_000_000_000_000, p: 1_000_000_000_000_000 };
+  const normalized = parts.map((part) => {
+    const match = String(part).trim().match(/^(\d+(?:\.\d+)?)([kKmMgGtTpP]?)$/);
+    if (!match) return null;
+    const amount = Number(match[1]) * multipliers[match[2].toLowerCase()];
+    return Number.isFinite(amount) ? String(Math.round(amount)) : null;
+  });
+  return normalized.some((part) => part === null) ? "" : normalized.join("/");
+}
+
+function normalizeQueueTarget(value) {
+  const values = Array.isArray(value) ? value : String(value || "").split(",");
+  return [...new Set(values
+    .map((item) => String(item || "").trim().replace(/\/32$/, ""))
+    .filter((item) => net.isIP(item) === 4))]
+    .sort((left, right) => left.localeCompare(right, "en", { numeric: true }));
 }
 
 function normalizeHotspotProvisioningStatus(value, fallback = HOTSPOT_PROVISIONING_STATUS.NONE) {
@@ -1610,6 +1706,224 @@ class MikrotikService {
     });
   }
 
+  async syncIpBindingBandwidthForCustomer(customer) {
+    return this.withConnection((conn) => this.syncIpBindingBandwidthWithConnection(conn, customer));
+  }
+
+  async syncIpBindingBandwidthForCustomers(customers = []) {
+    return this.withConnection(async (conn) => {
+      const results = [];
+      for (const customer of customers) {
+        try {
+          results.push(await this.syncIpBindingBandwidthWithConnection(conn, customer));
+        } catch (error) {
+          results.push({
+            contactId: String(customer?.contactId || customer?.id || ""),
+            status: IP_BINDING_BANDWIDTH_STATUS.FAILED,
+            rateLimit: "",
+            targetAddresses: [],
+            pendingMacAddresses: normalizeMacAddresses(customer?.macAddresses || customer?.mikrotikMacAddresses),
+            devices: [],
+            error: error.message,
+            syncedAt: new Date().toISOString(),
+          });
+        }
+      }
+      return results;
+    });
+  }
+
+  async syncIpBindingBandwidthWithConnection(conn, customer = {}) {
+    const contactId = String(customer.contactId || customer.id || "").trim();
+    if (!contactId) throw new Error("ID pelanggan wajib diisi untuk sinkronisasi bandwidth.");
+    const profileName = sanitizeInput(String(customer.profile || customer.mikrotikProfile || ""));
+    const macAddresses = normalizeMacAddresses(customer.macAddresses || customer.mikrotikMacAddresses);
+    const ownerComment = buildIpBindingBandwidthOwnerComment(contactId);
+    const queueMenu = conn.menu("/queue/simple");
+    const queueRows = await queueMenu.print();
+    const ownedQueues = (queueRows || []).filter((row) => sanitizeInput(String(row.comment || "")) === ownerComment);
+    const removeOwnedQueues = async () => {
+      for (const row of ownedQueues) {
+        const id = row[".id"] || row.id || row.numbers || row.number;
+        if (!id) throw new Error("ID Simple Queue bandwidth pelanggan tidak ditemukan.");
+        await queueMenu.remove(String(id));
+      }
+      return ownedQueues.length;
+    };
+    const baseResult = {
+      contactId,
+      rateLimit: "",
+      targetAddresses: [],
+      pendingMacAddresses: [],
+      devices: [],
+      error: "",
+      syncedAt: new Date().toISOString(),
+    };
+
+    if (macAddresses.length === 0) {
+      const removedQueues = await removeOwnedQueues();
+      return { ...baseResult, status: IP_BINDING_BANDWIDTH_STATUS.NONE, removedQueues };
+    }
+    if (!profileName) throw new Error("Profile hotspot wajib diisi untuk mengatur bandwidth IP Binding.");
+
+    const profiles = await conn.menu("/ip/hotspot/user/profile").print();
+    const profile = (profiles || []).find((row) => String(row.name || "") === profileName);
+    if (!profile) throw new Error(`Profile hotspot "${profileName}" tidak ditemukan di MikroTik.`);
+    const queueLimits = parseHotspotRateLimitForSimpleQueue(
+      readRouterValue(profile, "rate-limit", "rateLimit", "")
+    );
+    if (!queueLimits) {
+      const removedQueues = await removeOwnedQueues();
+      return {
+        ...baseResult,
+        status: IP_BINDING_BANDWIDTH_STATUS.NO_RATE_LIMIT,
+        pendingMacAddresses: macAddresses,
+        devices: macAddresses.map((macAddress) => ({ macAddress, address: "", source: "", status: "NO_RATE_LIMIT" })),
+        removedQueues,
+      };
+    }
+
+    const [leases, hotspotHosts] = await Promise.all([
+      conn.menu("/ip/dhcp-server/lease").print(),
+      conn.menu("/ip/hotspot/host").print(),
+    ]);
+    const addressByMac = new Map();
+    const rememberAddress = (row, source) => {
+      let macAddress;
+      try {
+        macAddress = normalizeMacAddress(readRouterValue(row, "mac-address", "macAddress", ""));
+      } catch (_error) {
+        return;
+      }
+      if (!macAddresses.includes(macAddress) || addressByMac.has(macAddress)) return;
+      const candidates = source === "DHCP"
+        ? [
+            readRouterValue(row, "active-address", "activeAddress", ""),
+            row.address,
+          ]
+        : [
+            readRouterValue(row, "to-address", "toAddress", ""),
+            row.address,
+          ];
+      const address = candidates.map((value) => String(value || "").trim())
+        .find((value) => net.isIP(value) === 4);
+      if (address) addressByMac.set(macAddress, { address, source });
+    };
+    for (const lease of leases || []) rememberAddress(lease, "DHCP");
+    for (const host of hotspotHosts || []) rememberAddress(host, "HOTSPOT");
+
+    const devices = macAddresses.map((macAddress) => {
+      const resolved = addressByMac.get(macAddress);
+      return resolved
+        ? { macAddress, address: resolved.address, source: resolved.source, status: "READY" }
+        : { macAddress, address: "", source: "", status: "PENDING_DHCP" };
+    });
+    const targetAddresses = normalizeQueueTarget(devices.map((device) => device.address));
+    const pendingMacAddresses = devices
+      .filter((device) => !device.address)
+      .map((device) => device.macAddress);
+
+    if (targetAddresses.length === 0) {
+      const removedQueues = await removeOwnedQueues();
+      return {
+        ...baseResult,
+        status: IP_BINDING_BANDWIDTH_STATUS.PENDING_DHCP,
+        rateLimit: queueLimits.source,
+        pendingMacAddresses,
+        devices,
+        removedQueues,
+      };
+    }
+
+    if (ownedQueues.length > 1) {
+      throw new Error("Ditemukan lebih dari satu Simple Queue bandwidth untuk pelanggan ini.");
+    }
+    const target = targetAddresses.map((address) => `${address}/32`).join(",");
+    const disabled = Boolean(customer.disabled);
+    const payload = {
+      name: buildIpBindingBandwidthQueueName(contactId),
+      target,
+      "max-limit": queueLimits.maxLimit,
+      "burst-limit": queueLimits.burstLimit,
+      "burst-threshold": queueLimits.burstThreshold,
+      "burst-time": queueLimits.burstTime,
+      priority: queueLimits.priority,
+      "limit-at": queueLimits.limitAt,
+      disabled: disabled ? "yes" : "no",
+      comment: ownerComment,
+    };
+    const queueLimitsMatch = (row) => (
+      normalizeSimpleQueueLimitForComparison(readRouterValue(row, "max-limit", "maxLimit", ""))
+        === normalizeSimpleQueueLimitForComparison(queueLimits.maxLimit)
+      && normalizeSimpleQueueLimitForComparison(readRouterValue(row, "burst-limit", "burstLimit", ""))
+        === normalizeSimpleQueueLimitForComparison(queueLimits.burstLimit)
+      && normalizeSimpleQueueLimitForComparison(readRouterValue(row, "burst-threshold", "burstThreshold", ""))
+        === normalizeSimpleQueueLimitForComparison(queueLimits.burstThreshold)
+      && sanitizeInput(String(readRouterValue(row, "burst-time", "burstTime", ""))) === queueLimits.burstTime
+      && sanitizeInput(String(row.priority || "")) === queueLimits.priority
+      && normalizeSimpleQueueLimitForComparison(readRouterValue(row, "limit-at", "limitAt", ""))
+        === normalizeSimpleQueueLimitForComparison(queueLimits.limitAt)
+    );
+    const existing = ownedQueues[0] || null;
+    let changed = false;
+    if (existing) {
+      const currentTargets = normalizeQueueTarget(readRouterValue(existing, "target", "target", ""));
+      const currentDisabled = existing.disabled === true
+        || ["true", "yes"].includes(String(existing.disabled || "").toLowerCase());
+      changed = currentTargets.join(",") !== targetAddresses.join(",")
+        || !queueLimitsMatch(existing)
+        || currentDisabled !== disabled
+        || String(existing.name || "") !== payload.name;
+      if (changed) {
+        const id = existing[".id"] || existing.id || existing.numbers || existing.number;
+        if (!id) throw new Error("ID Simple Queue bandwidth pelanggan tidak ditemukan.");
+        await queueMenu.update(payload, String(id));
+      }
+    } else {
+      const nameConflict = (queueRows || []).some((row) => String(row.name || "") === payload.name);
+      if (nameConflict) throw new Error(`Nama Simple Queue "${payload.name}" sudah digunakan oleh konfigurasi lain.`);
+      await queueMenu.add(payload);
+      changed = true;
+    }
+
+    const verifiedQueues = await queueMenu.print();
+    const verified = (verifiedQueues || []).find((row) => sanitizeInput(String(row.comment || "")) === ownerComment);
+    if (!verified
+      || normalizeQueueTarget(readRouterValue(verified, "target", "target", "")).join(",") !== targetAddresses.join(",")
+      || !queueLimitsMatch(verified)) {
+      throw new Error("Simple Queue bandwidth IP Binding gagal diverifikasi setelah disimpan.");
+    }
+
+    return {
+      ...baseResult,
+      status: pendingMacAddresses.length > 0
+        ? IP_BINDING_BANDWIDTH_STATUS.PARTIAL
+        : IP_BINDING_BANDWIDTH_STATUS.ACTIVE,
+      rateLimit: queueLimits.source,
+      targetAddresses,
+      pendingMacAddresses,
+      devices,
+      queueName: payload.name,
+      changed,
+      disabled,
+    };
+  }
+
+  async deleteIpBindingBandwidthQueue(contactId) {
+    const ownerComment = buildIpBindingBandwidthOwnerComment(contactId);
+    return this.withConnection(async (conn) => {
+      const menu = conn.menu("/queue/simple");
+      const rows = await menu.print();
+      const matches = (rows || []).filter((row) => sanitizeInput(String(row.comment || "")) === ownerComment);
+      for (const row of matches) {
+        const id = row[".id"] || row.id || row.numbers || row.number;
+        if (!id) throw new Error("ID Simple Queue bandwidth pelanggan tidak ditemukan.");
+        await menu.remove(String(id));
+      }
+      return { contactId: String(contactId), removedQueues: matches.length };
+    });
+  }
+
   async getNetwatchStatus() {
     return this.withConnection(async (conn) => {
       const rows = await conn.menu("/tool/netwatch").print();
@@ -2967,6 +3281,44 @@ class DataManager {
       contact.mikrotikMacAddresses = normalizeMacAddresses(
         contact.mikrotikMacAddresses || contact.mikrotikMacAddress
       );
+      contact.ipBindingBandwidthStatus = normalizeIpBindingBandwidthStatus(
+        contact.ipBindingBandwidthStatus,
+        contact.mikrotikMacAddresses.length > 0
+          ? IP_BINDING_BANDWIDTH_STATUS.PENDING_DHCP
+          : IP_BINDING_BANDWIDTH_STATUS.NONE
+      );
+      contact.ipBindingBandwidthRateLimit = sanitizeInput(String(contact.ipBindingBandwidthRateLimit || ""));
+      contact.ipBindingBandwidthTargetAddresses = normalizeQueueTarget(contact.ipBindingBandwidthTargetAddresses);
+      contact.ipBindingBandwidthPendingMacAddresses = normalizeMacAddresses(
+        contact.ipBindingBandwidthPendingMacAddresses
+      ).filter((macAddress) => contact.mikrotikMacAddresses.includes(macAddress));
+      contact.ipBindingBandwidthDevices = (Array.isArray(contact.ipBindingBandwidthDevices)
+        ? contact.ipBindingBandwidthDevices
+        : [])
+        .map((device) => {
+          let macAddress;
+          try {
+            macAddress = normalizeMacAddress(device?.macAddress);
+          } catch (_error) {
+            return null;
+          }
+          if (!macAddress || !contact.mikrotikMacAddresses.includes(macAddress)) return null;
+          const address = net.isIP(String(device?.address || "").trim()) === 4
+            ? String(device.address).trim()
+            : "";
+          return {
+            macAddress,
+            address,
+            source: ["DHCP", "HOTSPOT"].includes(String(device?.source || "").toUpperCase())
+              ? String(device.source).toUpperCase()
+              : "",
+            status: address ? "READY" : "PENDING_DHCP",
+          };
+        })
+        .filter(Boolean);
+      contact.ipBindingBandwidthError = sanitizeInput(String(contact.ipBindingBandwidthError || ""));
+      contact.ipBindingBandwidthLastSyncedAt = this.normalizeOptionalDate(contact.ipBindingBandwidthLastSyncedAt);
+      contact.ipBindingBandwidthQueueName = sanitizeInput(String(contact.ipBindingBandwidthQueueName || ""));
       delete contact.mikrotikAccessMethod;
       delete contact.mikrotikMacAddress;
       contact.mikrotikUsername = sanitizeInput(String(contact.mikrotikUsername || ""));
@@ -4182,6 +4534,51 @@ class DataManager {
       if (duplicate) throw new Error(`MAC ${duplicate} sudah terhubung ke pelanggan lain.`);
       contact.mikrotikMacAddresses = normalized;
       contact.updatedAt = new Date().toISOString();
+      await this.saveContacts();
+      return this.hydrateContact(contact);
+    });
+  }
+
+  async updateContactIpBindingBandwidthStatus(contactId, result = {}) {
+    return this.withDataMutation(async () => {
+      const contact = this.getContact(contactId);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      const macAddresses = normalizeMacAddresses(contact.mikrotikMacAddresses);
+      const devices = (Array.isArray(result.devices) ? result.devices : [])
+        .map((device) => {
+          let macAddress;
+          try {
+            macAddress = normalizeMacAddress(device?.macAddress);
+          } catch (_error) {
+            return null;
+          }
+          if (!macAddresses.includes(macAddress)) return null;
+          const address = net.isIP(String(device?.address || "").trim()) === 4
+            ? String(device.address).trim()
+            : "";
+          return {
+            macAddress,
+            address,
+            source: ["DHCP", "HOTSPOT"].includes(String(device?.source || "").toUpperCase())
+              ? String(device.source).toUpperCase()
+              : "",
+            status: address ? "READY" : "PENDING_DHCP",
+          };
+        })
+        .filter(Boolean);
+      contact.ipBindingBandwidthStatus = normalizeIpBindingBandwidthStatus(
+        result.status,
+        macAddresses.length > 0 ? IP_BINDING_BANDWIDTH_STATUS.FAILED : IP_BINDING_BANDWIDTH_STATUS.NONE
+      );
+      contact.ipBindingBandwidthRateLimit = sanitizeInput(String(result.rateLimit || ""));
+      contact.ipBindingBandwidthTargetAddresses = normalizeQueueTarget(result.targetAddresses);
+      contact.ipBindingBandwidthPendingMacAddresses = normalizeMacAddresses(
+        result.pendingMacAddresses
+      ).filter((macAddress) => macAddresses.includes(macAddress));
+      contact.ipBindingBandwidthDevices = devices;
+      contact.ipBindingBandwidthError = sanitizeInput(String(result.error || ""));
+      contact.ipBindingBandwidthLastSyncedAt = this.normalizeOptionalDate(result.syncedAt || new Date());
+      contact.ipBindingBandwidthQueueName = sanitizeInput(String(result.queueName || ""));
       await this.saveContacts();
       return this.hydrateContact(contact);
     });
@@ -8511,7 +8908,9 @@ class WebServer {
 
     const added = desired.filter((macAddress) => !current.includes(macAddress));
     const removed = current.filter((macAddress) => !desired.includes(macAddress));
-    if (added.length === 0 && removed.length === 0) return this.dataManager.toPublicContact(contact);
+    if (added.length === 0 && removed.length === 0) {
+      return this.syncContactIpBindingBandwidth(contact);
+    }
 
     const disabled = normalizeHotspotProvisioningStatus(contact.hotspotProvisioningStatus) === HOTSPOT_PROVISIONING_STATUS.DISABLED;
     const completedAdds = [];
@@ -8529,9 +8928,8 @@ class WebServer {
         await this.mikrotikService.deleteIpBinding({ macAddress, contactId: contact.id });
         completedRemovals.push(macAddress);
       }
-      return this.dataManager.toPublicContact(
-        await this.dataManager.setContactMikrotikMacAddresses(contact.id, desired)
-      );
+      const updated = await this.dataManager.setContactMikrotikMacAddresses(contact.id, desired);
+      return this.syncContactIpBindingBandwidth(updated);
     } catch (error) {
       for (const macAddress of completedAdds.reverse()) {
         await this.mikrotikService.deleteIpBinding({ macAddress, contactId: contact.id }).catch(() => {});
@@ -8545,6 +8943,52 @@ class WebServer {
       }
       throw error;
     }
+  }
+
+  async syncContactIpBindingBandwidth(contact) {
+    const current = this.dataManager.getContact(contact?.id) || contact;
+    if (!current) throw new Error("Kontak tidak ditemukan.");
+    if (typeof this.mikrotikService.syncIpBindingBandwidthForCustomer !== "function"
+      || typeof this.dataManager.updateContactIpBindingBandwidthStatus !== "function") {
+      return this.dataManager.toPublicContact(current);
+    }
+
+    let result;
+    try {
+      result = await this.mikrotikService.syncIpBindingBandwidthForCustomer({
+        contactId: current.id,
+        profile: current.mikrotikProfile,
+        macAddresses: current.mikrotikMacAddresses,
+        disabled: normalizeHotspotProvisioningStatus(current.hotspotProvisioningStatus)
+          === HOTSPOT_PROVISIONING_STATUS.DISABLED,
+      });
+    } catch (error) {
+      result = {
+        contactId: String(current.id),
+        status: IP_BINDING_BANDWIDTH_STATUS.FAILED,
+        rateLimit: "",
+        targetAddresses: [],
+        pendingMacAddresses: normalizeMacAddresses(current.mikrotikMacAddresses),
+        devices: [],
+        error: error.message,
+        syncedAt: new Date().toISOString(),
+      };
+      this.activityLog.push("warn", "mikrotik", `Bandwidth IP Binding ${current.name || current.id} belum tersinkron: ${error.message}`, {
+        contactId: current.id,
+      });
+    }
+
+    const persisted = await this.dataManager.updateContactIpBindingBandwidthStatus(current.id, result);
+    if ([IP_BINDING_BANDWIDTH_STATUS.ACTIVE, IP_BINDING_BANDWIDTH_STATUS.PARTIAL].includes(result.status)
+      && result.changed) {
+      this.activityLog.push("info", "mikrotik", `Bandwidth bersama IP Binding ${current.name || current.id} disinkronkan`, {
+        contactId: current.id,
+        rateLimit: result.rateLimit,
+        targets: result.targetAddresses,
+        pendingMacAddresses: result.pendingMacAddresses,
+      });
+    }
+    return this.dataManager.toPublicContact(persisted);
   }
 
   async provisionHotspotContact(contact, options = {}) {
@@ -8886,15 +9330,21 @@ class WebServer {
         ? "blocked"
         : "bypassed";
       const removedMacAddresses = [];
+      let bandwidthQueueRemoved = false;
       let hotspotDeletion = {
         username: username || null,
         macAddresses,
         removedUsers: 0,
         removedBindings: 0,
+        removedQueues: 0,
         activeSessionsKilled: 0,
         skipped: !username && macAddresses.length === 0,
       };
-      const restoreMikrotikAccess = async ({ restoreUser = false, restoreBindings = [] } = {}) => {
+      const restoreMikrotikAccess = async ({
+        restoreUser = false,
+        restoreBindings = [],
+        restoreBandwidth = false,
+      } = {}) => {
         if (restoreUser) {
           if (!password || !contact.mikrotikProfile) throw new Error("Data profile atau password hotspot tidak lengkap.");
           await this.mikrotikService.reactivateHotspotUser({
@@ -8914,6 +9364,14 @@ class WebServer {
             type: bindingType,
           });
         }
+        if (restoreBandwidth && typeof this.mikrotikService.syncIpBindingBandwidthForCustomer === "function") {
+          await this.mikrotikService.syncIpBindingBandwidthForCustomer({
+            contactId: contact.id,
+            profile: contact.mikrotikProfile,
+            macAddresses,
+            disabled: bindingType === "blocked",
+          });
+        }
       };
 
       if (username || macAddresses.length > 0) {
@@ -8926,12 +9384,18 @@ class WebServer {
             hotspotDeletion.removedBindings += bindingResult.removedBindings || 0;
             if (bindingResult.removedBindings > 0) removedMacAddresses.push(macAddress);
           }
+          if (typeof this.mikrotikService.deleteIpBindingBandwidthQueue === "function") {
+            const queueResult = await this.mikrotikService.deleteIpBindingBandwidthQueue(contact.id);
+            hotspotDeletion.removedQueues = queueResult.removedQueues || 0;
+            bandwidthQueueRemoved = hotspotDeletion.removedQueues > 0;
+          }
           hotspotDeletion.skipped = false;
         } catch (error) {
           try {
             await restoreMikrotikAccess({
               restoreUser: hotspotDeletion.removedUsers > 0,
               restoreBindings: removedMacAddresses,
+              restoreBandwidth: bandwidthQueueRemoved,
             });
           } catch (rollbackError) {
             const wrapped = new Error(`Penghapusan akses MikroTik gagal dan rollback tidak lengkap: ${rollbackError.message}`);
@@ -8956,6 +9420,7 @@ class WebServer {
           await restoreMikrotikAccess({
             restoreUser: username && hotspotDeletion.removedUsers > 0,
             restoreBindings: removedMacAddresses,
+            restoreBandwidth: bandwidthQueueRemoved,
           });
         } catch (rollbackError) {
           this.activityLog.push("error", "mikrotik", `Rollback penghapusan akun hotspot ${username} gagal: ${rollbackError.message}`, {

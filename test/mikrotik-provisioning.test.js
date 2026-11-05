@@ -1081,3 +1081,128 @@ test("IP Binding menolak MAC yang sudah dimiliki pelanggan lain", async () => {
     /sudah terhubung ke pelanggan lain/,
   );
 });
+
+function createBandwidthService({ profiles = [], leases = [], hosts = [], queues = [] } = {}) {
+  const rows = queues.map((queue) => ({ ...queue }));
+  const queueMenu = {
+    print: async () => rows.map((queue) => ({ ...queue })),
+    add: async (payload) => {
+      rows.push({ ".id": `*Q${rows.length + 1}`, ...payload });
+      return {};
+    },
+    update: async (payload, id) => {
+      const queue = rows.find((item) => String(item[".id"] || item.id) === String(id));
+      if (!queue) throw new Error("queue tidak ditemukan");
+      Object.assign(queue, payload);
+      return [];
+    },
+    remove: async (id) => {
+      const index = rows.findIndex((item) => String(item[".id"] || item.id) === String(id));
+      if (index >= 0) rows.splice(index, 1);
+      return [];
+    },
+  };
+  const service = new MikrotikService({ push() {} });
+  service.withConnection = async (operation) => operation({
+    menu(path) {
+      if (path === "/queue/simple") return queueMenu;
+      if (path === "/ip/hotspot/user/profile") return { print: async () => profiles.map((row) => ({ ...row })) };
+      if (path === "/ip/dhcp-server/lease") return { print: async () => leases.map((row) => ({ ...row })) };
+      if (path === "/ip/hotspot/host") return { print: async () => hosts.map((row) => ({ ...row })) };
+      throw new Error(`Menu tidak dikenal: ${path}`);
+    },
+  }, {});
+  return { service, queues: rows };
+}
+
+test("bandwidth beberapa IP Binding memakai satu Simple Queue pelanggan", async () => {
+  const { service, queues } = createBandwidthService({
+    profiles: [{ name: "Keluarga", "rate-limit": "10M/30M 20M/40M 8M/24M 20/20 6 1M/2M" }],
+    leases: [
+      { "mac-address": "AA:BB:CC:DD:EE:10", address: "10.20.0.10", status: "bound" },
+      { "mac-address": "AA:BB:CC:DD:EE:11", "active-address": "10.20.0.11", status: "bound" },
+    ],
+  });
+
+  const result = await service.syncIpBindingBandwidthForCustomer({
+    contactId: "pelanggan-keluarga",
+    profile: "Keluarga",
+    macAddresses: ["AA:BB:CC:DD:EE:10", "AA:BB:CC:DD:EE:11"],
+  });
+
+  assert.equal(result.status, "ACTIVE");
+  assert.equal(result.rateLimit, "10M/30M 20M/40M 8M/24M 20/20 6 1M/2M");
+  assert.deepEqual(result.targetAddresses, ["10.20.0.10", "10.20.0.11"]);
+  assert.equal(queues.length, 1);
+  assert.equal(queues[0].target, "10.20.0.10/32,10.20.0.11/32");
+  assert.equal(queues[0]["max-limit"], "10M/30M");
+  assert.equal(queues[0]["burst-limit"], "20M/40M");
+  assert.equal(queues[0]["burst-threshold"], "8M/24M");
+  assert.equal(queues[0]["burst-time"], "20s/20s");
+  assert.equal(queues[0].priority, "6/6");
+  assert.equal(queues[0]["limit-at"], "1M/2M");
+  assert.equal(queues[0].comment, "reminder-bot-bandwidth:pelanggan-keluarga");
+
+  queues[0]["max-limit"] = "10000000/30000000";
+  queues[0]["burst-limit"] = "20000000/40000000";
+  queues[0]["burst-threshold"] = "8000000/24000000";
+  queues[0]["limit-at"] = "1000000/2000000";
+  const repeated = await service.syncIpBindingBandwidthForCustomer({
+    contactId: "pelanggan-keluarga",
+    profile: "Keluarga",
+    macAddresses: ["AA:BB:CC:DD:EE:10", "AA:BB:CC:DD:EE:11"],
+  });
+  assert.equal(repeated.changed, false);
+  assert.equal(queues.length, 1);
+});
+
+test("bandwidth IP Binding menunggu IP dan melengkapi target dari Hotspot host", async () => {
+  const { service, queues } = createBandwidthService({
+    profiles: [{ name: "Rumah", "rate-limit": "5M/15M" }],
+    hosts: [{ "mac-address": "AA:BB:CC:DD:EE:20", address: "10.30.0.20" }],
+  });
+
+  const partial = await service.syncIpBindingBandwidthForCustomer({
+    contactId: "pelanggan-rumah",
+    profile: "Rumah",
+    macAddresses: ["AA:BB:CC:DD:EE:20", "AA:BB:CC:DD:EE:21"],
+  });
+
+  assert.equal(partial.status, "PARTIAL");
+  assert.deepEqual(partial.pendingMacAddresses, ["AA:BB:CC:DD:EE:21"]);
+  assert.equal(queues[0].target, "10.30.0.20/32");
+
+  const pendingOnly = createBandwidthService({
+    profiles: [{ name: "Rumah", "rate-limit": "5M/15M" }],
+  });
+  const pending = await pendingOnly.service.syncIpBindingBandwidthForCustomer({
+    contactId: "pelanggan-baru",
+    profile: "Rumah",
+    macAddresses: ["AA:BB:CC:DD:EE:22"],
+  });
+  assert.equal(pending.status, "PENDING_DHCP");
+  assert.equal(pendingOnly.queues.length, 0);
+});
+
+test("profile tanpa rate limit tidak meninggalkan Simple Queue IP Binding", async () => {
+  const { service, queues } = createBandwidthService({
+    profiles: [{ name: "Tanpa Limit", "rate-limit": "" }],
+    queues: [{
+      ".id": "*Q1",
+      name: "lama",
+      target: "10.40.0.10/32",
+      "max-limit": "1M/1M",
+      comment: "reminder-bot-bandwidth:pelanggan-tanpa-limit",
+    }],
+  });
+
+  const result = await service.syncIpBindingBandwidthForCustomer({
+    contactId: "pelanggan-tanpa-limit",
+    profile: "Tanpa Limit",
+    macAddresses: ["AA:BB:CC:DD:EE:30"],
+  });
+
+  assert.equal(result.status, "NO_RATE_LIMIT");
+  assert.equal(result.removedQueues, 1);
+  assert.equal(queues.length, 0);
+});

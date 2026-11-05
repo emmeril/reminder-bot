@@ -746,11 +746,48 @@ class HotspotStatusSyncScheduler {
         checkedAt: new Date().toISOString(),
       });
 
+      const bandwidth = { checked: 0, active: 0, pending: 0, failed: 0 };
+      if (typeof this.mikrotikService.syncIpBindingBandwidthForCustomers === "function"
+        && typeof this.dataManager.getContacts === "function"
+        && typeof this.dataManager.updateContactIpBindingBandwidthStatus === "function") {
+        const contacts = this.dataManager.getContacts().filter((contact) => (
+          Array.isArray(contact.mikrotikMacAddresses) && contact.mikrotikMacAddresses.length > 0
+        ));
+        if (contacts.length > 0) {
+          try {
+            const bandwidthResults = await this.mikrotikService.syncIpBindingBandwidthForCustomers(
+              contacts.map((contact) => ({
+                contactId: contact.id,
+                profile: contact.mikrotikProfile,
+                macAddresses: contact.mikrotikMacAddresses,
+                disabled: String(contact.hotspotProvisioningStatus || "").toUpperCase() === "DISABLED",
+              }))
+            );
+            for (const bandwidthResult of bandwidthResults) {
+              bandwidth.checked += 1;
+              if (bandwidthResult.status === "ACTIVE") bandwidth.active += 1;
+              else if (["PARTIAL", "PENDING_DHCP", "NO_RATE_LIMIT"].includes(bandwidthResult.status)) bandwidth.pending += 1;
+              else if (bandwidthResult.status === "FAILED") bandwidth.failed += 1;
+              await this.dataManager.updateContactIpBindingBandwidthStatus(
+                bandwidthResult.contactId,
+                bandwidthResult
+              );
+            }
+          } catch (error) {
+            bandwidth.failed = contacts.length;
+            this.activityLog.push("warn", "hotspot-sync", `Sinkronisasi bandwidth IP Binding gagal: ${error.message}`);
+          }
+        }
+      }
+
       if (result.updated > 0) {
         const level = result.missing > 0 || result.changed > 0 ? "warn" : "info";
         this.activityLog.push(level, "hotspot-sync", `Status hotspot diperbarui untuk ${result.updated} pelanggan`, result);
       }
-      return result;
+      if (bandwidth.failed > 0) {
+        this.activityLog.push("warn", "hotspot-sync", `${bandwidth.failed} bandwidth IP Binding belum tersinkron`, bandwidth);
+      }
+      return { ...result, bandwidth };
     } finally {
       this.isProcessing = false;
     }

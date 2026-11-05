@@ -848,6 +848,60 @@
           );
         },
 
+        getHotspotAccountSelectedContact() {
+          return this.contacts.find((contact) => (
+            String(contact.id) === String(this.forms.hotspotAccount.contactId)
+          )) || null;
+        },
+
+        getIpBindingBandwidthDevice(macAddress) {
+          const contact = this.getHotspotAccountSelectedContact();
+          return (contact?.ipBindingBandwidthDevices || []).find((device) => (
+            device.macAddress === macAddress
+          )) || null;
+        },
+
+        getIpBindingDeviceStatus(macAddress) {
+          const device = this.getIpBindingBandwidthDevice(macAddress);
+          if (device?.address) return `${device.address} · ${device.source === "HOTSPOT" ? "Hotspot" : "DHCP"}`;
+          const contact = this.getHotspotAccountSelectedContact();
+          const bandwidthStatus = String(contact?.ipBindingBandwidthStatus || "").toUpperCase();
+          if (bandwidthStatus === "NO_RATE_LIMIT") return "Menunggu rate limit pada profile";
+          if (bandwidthStatus === "FAILED") return "Status bandwidth belum tersedia";
+          if ((contact?.mikrotikMacAddresses || []).includes(macAddress)) {
+            return "Menunggu IP dari DHCP atau Hotspot";
+          }
+          return "IP akan dicari setelah disimpan";
+        },
+
+        getIpBindingBandwidthSummary() {
+          const form = this.forms.hotspotAccount;
+          if (!form.macAddresses.length) return { status: "NONE", text: "" };
+          const contact = this.getHotspotAccountSelectedContact();
+          const savedMacs = [...(contact?.mikrotikMacAddresses || [])].sort().join(",");
+          const formMacs = [...form.macAddresses].sort().join(",");
+          if (!contact || savedMacs !== formMacs || String(contact.mikrotikProfile || "") !== String(form.profile || "")) {
+            return { status: "PENDING_SAVE", text: "Bandwidth bersama akan disinkronkan setelah perubahan disimpan." };
+          }
+          const status = String(contact.ipBindingBandwidthStatus || "PENDING_DHCP").toUpperCase();
+          const rateLimit = contact.ipBindingBandwidthRateLimit || "";
+          const targetCount = (contact.ipBindingBandwidthTargetAddresses || []).length;
+          const pendingCount = (contact.ipBindingBandwidthPendingMacAddresses || []).length;
+          if (status === "ACTIVE") {
+            return { status, text: `Bandwidth bersama ${rateLimit} aktif untuk ${targetCount} perangkat.` };
+          }
+          if (status === "PARTIAL") {
+            return { status, text: `Bandwidth bersama ${rateLimit} aktif; ${pendingCount} perangkat masih menunggu IP.` };
+          }
+          if (status === "NO_RATE_LIMIT") {
+            return { status, text: `Profile ${form.profile || "ini"} belum memiliki rate limit.` };
+          }
+          if (status === "FAILED") {
+            return { status, text: contact.ipBindingBandwidthError || "Sinkronisasi bandwidth perlu dicoba ulang." };
+          }
+          return { status: "PENDING_DHCP", text: "Menunggu perangkat memperoleh IP dari DHCP atau Hotspot." };
+        },
+
         isRecurringSubscription(contact) {
           return String(contact?.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "RECURRING";
         },
@@ -2791,7 +2845,16 @@
                 method: "POST",
                 body: JSON.stringify(payload),
               });
-              this.notify(result.hotspotSynced ? "Akun hotspot berhasil disinkronkan ke MikroTik." : "Akun hotspot sudah tersimpan.");
+              const bandwidthStatus = String(result.ipBindingBandwidthStatus || "").toUpperCase();
+              if (["PARTIAL", "PENDING_DHCP"].includes(bandwidthStatus)) {
+                this.notify("Akun hotspot tersimpan. Bandwidth bersama akan melengkapi target saat perangkat mendapat IP.");
+              } else if (bandwidthStatus === "NO_RATE_LIMIT") {
+                this.notify("Akun hotspot tersimpan. Atur rate limit profile agar IP Binding memiliki batas bandwidth.");
+              } else if (bandwidthStatus === "FAILED") {
+                this.notify("Akun hotspot tersimpan, tetapi sinkronisasi bandwidth perlu dicoba ulang.");
+              } else {
+                this.notify(result.hotspotSynced ? "Akun hotspot berhasil disinkronkan ke MikroTik." : "Akun hotspot sudah tersimpan.");
+              }
               this.closeHotspotAccountModal();
               await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
             });

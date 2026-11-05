@@ -41,6 +41,40 @@ test("form hotspot dapat menampung beberapa MAC IP Binding tanpa alamat IP", () 
   assert.deepEqual(Array.from(app.forms.hotspotAccount.macAddresses), ["AA:BB:CC:DD:EE:06"]);
 });
 
+test("form hotspot menjelaskan bandwidth bersama dan status IP setiap perangkat", () => {
+  const app = createDashboardApp();
+  app.contacts = [{
+    id: "contact-bandwidth",
+    mikrotikProfile: "Rumah",
+    mikrotikMacAddresses: ["AA:BB:CC:DD:EE:07", "AA:BB:CC:DD:EE:08"],
+    ipBindingBandwidthStatus: "PARTIAL",
+    ipBindingBandwidthRateLimit: "10M/30M",
+    ipBindingBandwidthTargetAddresses: ["10.10.0.7"],
+    ipBindingBandwidthPendingMacAddresses: ["AA:BB:CC:DD:EE:08"],
+    ipBindingBandwidthDevices: [{
+      macAddress: "AA:BB:CC:DD:EE:07",
+      address: "10.10.0.7",
+      source: "DHCP",
+    }],
+  }];
+  app.forms.hotspotAccount = {
+    ...app.blankHotspotAccountForm(),
+    contactId: "contact-bandwidth",
+    profile: "Rumah",
+    macAddresses: ["AA:BB:CC:DD:EE:07", "AA:BB:CC:DD:EE:08"],
+  };
+
+  assert.equal(app.getIpBindingDeviceStatus("AA:BB:CC:DD:EE:07"), "10.10.0.7 · DHCP");
+  assert.equal(app.getIpBindingDeviceStatus("AA:BB:CC:DD:EE:08"), "Menunggu IP dari DHCP atau Hotspot");
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(app.getIpBindingBandwidthSummary())),
+    {
+      status: "PARTIAL",
+      text: "Bandwidth bersama 10M/30M aktif; 1 perangkat masih menunggu IP.",
+    }
+  );
+});
+
 test("jadwal layanan membedakan aktif otomatis, penonaktifan, dan tanpa jadwal", () => {
   const app = createDashboardApp();
 
