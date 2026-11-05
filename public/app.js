@@ -218,6 +218,8 @@
           },
           hotspotAccount: {
             contactId: "",
+            macAddresses: [],
+            newMacAddress: "",
             username: "",
             profile: "",
             password: "",
@@ -769,6 +771,8 @@
         blankHotspotAccountForm() {
           return {
             contactId: "",
+            macAddresses: [],
+            newMacAddress: "",
             username: "",
             profile: "",
             password: "",
@@ -793,6 +797,54 @@
           const editingContactId = String(this.hotspotAccountModal.editingContactId || "");
           return this.contacts.filter(
             (contact) => !contact.mikrotikUsername || String(contact.id) === editingContactId
+          );
+        },
+
+        hasMikrotikAccess(contact) {
+          return Boolean(contact?.mikrotikUsername);
+        },
+
+        getMikrotikAccessIdentifier(contact) {
+          return contact?.mikrotikUsername || "Belum ada user";
+        },
+
+        getMikrotikAccessMethodLabel(contact) {
+          const count = Array.isArray(contact?.mikrotikMacAddresses) ? contact.mikrotikMacAddresses.length : 0;
+          return count > 0
+            ? `${contact?.mikrotikProfile || "Hotspot User"} · ${count} IP Binding`
+            : (contact?.mikrotikProfile || "Hotspot User");
+        },
+
+        normalizeMacAddressInput(value) {
+          const compact = String(value || "").replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+          if (!/^[A-F0-9]{12}$/.test(compact)) return "";
+          const normalized = compact.match(/.{2}/g).join(":");
+          if (normalized === "00:00:00:00:00:00" || (Number.parseInt(normalized.slice(0, 2), 16) & 1) === 1) return "";
+          return normalized;
+        },
+
+        addHotspotMacAddress() {
+          const normalized = this.normalizeMacAddressInput(this.forms.hotspotAccount.newMacAddress);
+          if (!normalized) {
+            this.formErrors.hotspotAccount = "Format MAC address tidak valid. Gunakan AA:BB:CC:DD:EE:FF.";
+            return;
+          }
+          if (this.forms.hotspotAccount.macAddresses.includes(normalized)) {
+            this.formErrors.hotspotAccount = `MAC ${normalized} sudah ada dalam daftar.`;
+            return;
+          }
+          if (this.forms.hotspotAccount.macAddresses.length >= 10) {
+            this.formErrors.hotspotAccount = "Maksimal 10 MAC address per pelanggan.";
+            return;
+          }
+          this.forms.hotspotAccount.macAddresses.push(normalized);
+          this.forms.hotspotAccount.newMacAddress = "";
+          this.clearFormError("hotspotAccount");
+        },
+
+        removeHotspotMacAddress(macAddress) {
+          this.forms.hotspotAccount.macAddresses = this.forms.hotspotAccount.macAddresses.filter(
+            (item) => item !== macAddress
           );
         },
 
@@ -850,7 +902,7 @@
         getHotspotProvisioningStatus(contact) {
           const status = String(contact?.hotspotProvisioningStatus || "").trim().toUpperCase();
           if (status) return status;
-          return contact?.mikrotikUsername && contact?.mikrotikProfile ? "ACTIVE" : "NONE";
+          return this.hasMikrotikAccess(contact) ? "ACTIVE" : "NONE";
         },
 
         getHotspotProvisioningLabel(contact) {
@@ -1606,7 +1658,7 @@
         get filteredHotspotContacts() {
           return this.contacts.filter((contact) => {
             const selectedStatus = String(this.filters.contactHotspot.status || "ALL").toUpperCase();
-            const hasAccount = Boolean(contact.mikrotikUsername);
+            const hasAccount = this.hasMikrotikAccess(contact);
             const provisioningStatus = this.getHotspotProvisioningStatus(contact);
             if (selectedStatus === "CONFIGURED" && !hasAccount) return false;
             if (selectedStatus === "UNCONFIGURED" && hasAccount) return false;
@@ -2683,6 +2735,7 @@
           this.forms.hotspotAccount = this.blankHotspotAccountForm();
           if (selected) {
             this.forms.hotspotAccount.contactId = String(selected.id);
+            this.forms.hotspotAccount.macAddresses = [...(selected.mikrotikMacAddresses || [])];
             this.forms.hotspotAccount.username = selected.mikrotikUsername || this.suggestHotspotUsername(selected.name);
             this.forms.hotspotAccount.profile = selected.mikrotikProfile || "";
             this.forms.hotspotAccount.password = selected.mikrotikUsername ? "" : String(selected.phoneNumber || "").slice(-5);
@@ -2708,6 +2761,7 @@
             (contact) => String(contact.id) === String(this.forms.hotspotAccount.contactId)
           );
           if (!selected) return;
+          this.forms.hotspotAccount.macAddresses = [...(selected.mikrotikMacAddresses || [])];
           this.forms.hotspotAccount.username = selected.mikrotikUsername || this.suggestHotspotUsername(selected.name);
           this.forms.hotspotAccount.profile = selected.mikrotikProfile || "";
           this.forms.hotspotAccount.password = selected.mikrotikUsername ? "" : String(selected.phoneNumber || "").slice(-5);
@@ -2718,11 +2772,16 @@
           if (this.hotspotAccountModal.loading) return;
           const form = this.forms.hotspotAccount;
           if (!form.contactId) return;
+          if (String(form.newMacAddress || "").trim()) {
+            this.addHotspotMacAddress();
+            if (String(form.newMacAddress || "").trim()) return;
+          }
           this.hotspotAccountModal.loading = true;
           this.clearFormError("hotspotAccount");
           try {
             await this.withProcessing("Menyimpan akun hotspot...", async () => {
               const payload = {
+                mikrotikMacAddresses: form.macAddresses,
                 mikrotikUsername: form.username,
                 mikrotikProfile: form.profile,
                 sendCredentials: form.sendCredentials,

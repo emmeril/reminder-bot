@@ -107,6 +107,33 @@ const HOTSPOT_PROVISIONING_OPERATION = Object.freeze({
   ENABLE: "ENABLE",
   DISABLE: "DISABLE",
 });
+function normalizeMacAddress(value, { required = false } = {}) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    if (required) throw new Error("MAC address wajib diisi untuk IP Binding.");
+    return "";
+  }
+  const compact = raw.replace(/[^a-fA-F0-9]/g, "");
+  if (!/^[a-fA-F0-9]{12}$/.test(compact)) {
+    throw new Error("Format MAC address tidak valid. Gunakan format AA:BB:CC:DD:EE:FF.");
+  }
+  const normalized = compact.match(/.{2}/g).join(":").toUpperCase();
+  if (normalized === "00:00:00:00:00:00" || (parseInt(normalized.slice(0, 2), 16) & 1) === 1) {
+    throw new Error("MAC address perangkat harus berupa alamat unicast yang valid.");
+  }
+  return normalized;
+}
+
+function normalizeMacAddresses(values, { max = 10 } = {}) {
+  const source = Array.isArray(values) ? values : (values ? [values] : []);
+  const normalized = [...new Set(source.map((value) => normalizeMacAddress(value)).filter(Boolean))];
+  if (normalized.length > max) throw new Error(`Maksimal ${max} MAC address per pelanggan.`);
+  return normalized;
+}
+
+function buildIpBindingOwnerComment(contactId) {
+  return `reminder-bot:${String(contactId || "").trim()}`;
+}
 
 function normalizeHotspotProvisioningStatus(value, fallback = HOTSPOT_PROVISIONING_STATUS.NONE) {
   const normalized = String(value || "").trim().toUpperCase();
@@ -1473,6 +1500,116 @@ class MikrotikService {
     });
   }
 
+  async getIpBindingsForStatusSync(macAddresses = []) {
+    const managedMacs = new Set(macAddresses.map((value) => normalizeMacAddress(value)).filter(Boolean));
+    return this.withConnection(async (conn) => {
+      const rows = await conn.menu("/ip/hotspot/ip-binding").print();
+      return (rows || []).map((row) => ({
+        id: row[".id"] || row.id || row.numbers || "",
+        macAddress: normalizeMacAddress(readRouterValue(row, "mac-address", "macAddress", "")),
+        type: sanitizeInput(String(row.type || "regular")).toLowerCase(),
+        server: sanitizeInput(String(row.server || "all")) || "all",
+        comment: sanitizeInput(String(row.comment || "")),
+      })).filter((row) => row.macAddress && (managedMacs.size === 0 || managedMacs.has(row.macAddress)));
+    });
+  }
+
+  async upsertIpBinding({ macAddress, contactId, type = "bypassed" }) {
+    const normalizedMac = normalizeMacAddress(macAddress, { required: true });
+    const normalizedType = String(type || "").trim().toLowerCase();
+    if (!["bypassed", "blocked"].includes(normalizedType)) throw new Error("Tipe IP Binding tidak valid.");
+    const ownerComment = buildIpBindingOwnerComment(contactId);
+
+    return this.withConnection(async (conn) => {
+      const menu = conn.menu("/ip/hotspot/ip-binding");
+      const rows = await menu.print();
+      const matches = (rows || []).filter((row) => {
+        try {
+          return normalizeMacAddress(readRouterValue(row, "mac-address", "macAddress", "")) === normalizedMac;
+        } catch (_error) {
+          return false;
+        }
+      });
+      if (matches.length > 1) throw new Error(`MAC ${normalizedMac} memiliki lebih dari satu IP Binding di MikroTik.`);
+      const existing = matches[0] || null;
+      const existingComment = sanitizeInput(String(existing?.comment || ""));
+      if (existingComment.startsWith("reminder-bot:") && existingComment !== ownerComment) {
+        throw new Error(`MAC ${normalizedMac} sudah terhubung ke pelanggan lain.`);
+      }
+
+      const payload = {
+        "mac-address": normalizedMac,
+        type: normalizedType,
+        server: "all",
+        comment: ownerComment,
+      };
+      let created = false;
+      if (existing) {
+        const id = existing[".id"] || existing.id || existing.numbers || existing.number;
+        if (!id) throw new Error(`ID IP Binding ${normalizedMac} tidak ditemukan di MikroTik.`);
+        await menu.update(payload, String(id));
+      } else {
+        await menu.add(payload);
+        created = true;
+      }
+
+      const verifiedRows = await menu.print();
+      const verified = (verifiedRows || []).find((row) => {
+        try {
+          return normalizeMacAddress(readRouterValue(row, "mac-address", "macAddress", "")) === normalizedMac;
+        } catch (_error) {
+          return false;
+        }
+      });
+      if (!verified
+        || String(verified.type || "").toLowerCase() !== normalizedType
+        || sanitizeInput(String(verified.comment || "")) !== ownerComment) {
+        throw new Error(`IP Binding ${normalizedMac} gagal diverifikasi setelah disimpan.`);
+      }
+      return {
+        id: verified[".id"] || verified.id || verified.numbers || "",
+        macAddress: normalizedMac,
+        type: normalizedType,
+        server: sanitizeInput(String(verified.server || "all")) || "all",
+        created,
+        updated: !created,
+      };
+    });
+  }
+
+  async setIpBindingDisabled({ macAddress, contactId, disabled = true }) {
+    return this.upsertIpBinding({
+      macAddress,
+      contactId,
+      type: disabled ? "blocked" : "bypassed",
+    });
+  }
+
+  async deleteIpBinding({ macAddress, contactId }) {
+    const normalizedMac = normalizeMacAddress(macAddress, { required: true });
+    const ownerComment = buildIpBindingOwnerComment(contactId);
+    return this.withConnection(async (conn) => {
+      const menu = conn.menu("/ip/hotspot/ip-binding");
+      const rows = await menu.print();
+      const matches = (rows || []).filter((row) => {
+        try {
+          return normalizeMacAddress(readRouterValue(row, "mac-address", "macAddress", "")) === normalizedMac;
+        } catch (_error) {
+          return false;
+        }
+      });
+      if (matches.some((row) => sanitizeInput(String(row.comment || "")) !== ownerComment)) {
+        throw new Error(`IP Binding ${normalizedMac} bukan milik pelanggan ini.`);
+      }
+      for (const row of matches) {
+        const id = row[".id"] || row.id || row.numbers || row.number;
+        if (!id) throw new Error(`ID IP Binding ${normalizedMac} tidak ditemukan di MikroTik.`);
+        await menu.remove(String(id));
+      }
+      return { macAddress: normalizedMac, removedBindings: matches.length };
+    });
+  }
+
   async getNetwatchStatus() {
     return this.withConnection(async (conn) => {
       const rows = await conn.menu("/tool/netwatch").print();
@@ -2827,6 +2964,11 @@ class DataManager {
         })
         .filter(Boolean);
       contact.linkedApHost = sanitizeInput(String(contact.linkedApHost || ""));
+      contact.mikrotikMacAddresses = normalizeMacAddresses(
+        contact.mikrotikMacAddresses || contact.mikrotikMacAddress
+      );
+      delete contact.mikrotikAccessMethod;
+      delete contact.mikrotikMacAddress;
       contact.mikrotikUsername = sanitizeInput(String(contact.mikrotikUsername || ""));
       contact.mikrotikProfile = sanitizeInput(String(contact.mikrotikProfile || ""));
       contact.mikrotikPassword = sanitizeInput(String(contact.mikrotikPassword || ""));
@@ -4020,6 +4162,29 @@ class DataManager {
       sanitizeInput(String(contact.mikrotikUsername || "")).toLowerCase() === normalized
       && String(contact.id) !== String(excludeId)
     ));
+  }
+
+  hasContactMikrotikMac(macAddress, excludeId = null) {
+    const normalized = normalizeMacAddress(macAddress);
+    if (!normalized) return false;
+    return Array.from(this.contacts.values()).some((contact) => (
+      normalizeMacAddresses(contact.mikrotikMacAddresses).includes(normalized)
+      && String(contact.id) !== String(excludeId)
+    ));
+  }
+
+  async setContactMikrotikMacAddresses(contactId, macAddresses) {
+    return this.withDataMutation(async () => {
+      const contact = this.getContact(contactId);
+      if (!contact) throw new Error("Kontak tidak ditemukan.");
+      const normalized = normalizeMacAddresses(macAddresses);
+      const duplicate = normalized.find((macAddress) => this.hasContactMikrotikMac(macAddress, contact.id));
+      if (duplicate) throw new Error(`MAC ${duplicate} sudah terhubung ke pelanggan lain.`);
+      contact.mikrotikMacAddresses = normalized;
+      contact.updatedAt = new Date().toISOString();
+      await this.saveContacts();
+      return this.hydrateContact(contact);
+    });
   }
 
   getContact(id) {
@@ -6034,7 +6199,6 @@ class DataManager {
         const username = sanitizeInput(routerUser?.username || routerUser?.name || "");
         if (username) usersByUsername.set(username.toLowerCase(), routerUser);
       }
-
       const summary = {
         checked: 0,
         active: 0,
@@ -8339,6 +8503,50 @@ class WebServer {
     };
   }
 
+  async syncContactIpBindings(contact, requestedMacAddresses) {
+    const desired = normalizeMacAddresses(requestedMacAddresses);
+    const current = normalizeMacAddresses(contact.mikrotikMacAddresses);
+    const duplicate = desired.find((macAddress) => this.dataManager.hasContactMikrotikMac(macAddress, contact.id));
+    if (duplicate) throw new Error(`MAC ${duplicate} sudah terhubung ke pelanggan lain.`);
+
+    const added = desired.filter((macAddress) => !current.includes(macAddress));
+    const removed = current.filter((macAddress) => !desired.includes(macAddress));
+    if (added.length === 0 && removed.length === 0) return this.dataManager.toPublicContact(contact);
+
+    const disabled = normalizeHotspotProvisioningStatus(contact.hotspotProvisioningStatus) === HOTSPOT_PROVISIONING_STATUS.DISABLED;
+    const completedAdds = [];
+    const completedRemovals = [];
+    try {
+      for (const macAddress of added) {
+        await this.mikrotikService.upsertIpBinding({
+          macAddress,
+          contactId: contact.id,
+          type: disabled ? "blocked" : "bypassed",
+        });
+        completedAdds.push(macAddress);
+      }
+      for (const macAddress of removed) {
+        await this.mikrotikService.deleteIpBinding({ macAddress, contactId: contact.id });
+        completedRemovals.push(macAddress);
+      }
+      return this.dataManager.toPublicContact(
+        await this.dataManager.setContactMikrotikMacAddresses(contact.id, desired)
+      );
+    } catch (error) {
+      for (const macAddress of completedAdds.reverse()) {
+        await this.mikrotikService.deleteIpBinding({ macAddress, contactId: contact.id }).catch(() => {});
+      }
+      for (const macAddress of completedRemovals.reverse()) {
+        await this.mikrotikService.upsertIpBinding({
+          macAddress,
+          contactId: contact.id,
+          type: disabled ? "blocked" : "bypassed",
+        }).catch(() => {});
+      }
+      throw error;
+    }
+  }
+
   async provisionHotspotContact(contact, options = {}) {
     return this.hotspotProvisioningLock.runExclusive(String(contact.id), async () => {
       const current = this.dataManager.getContact(contact.id);
@@ -8485,12 +8693,39 @@ class WebServer {
       await this.dataManager.prepareHotspotLifecycleOperation(current.id, operation);
       await this.dataManager.updateHotspotProvisioningStatus(current.id, HOTSPOT_PROVISIONING_STATUS.PROVISIONING, { error: "" });
       let result;
+      let bindingsUpdated = 0;
       try {
         result = await this.mikrotikService.setHotspotUserDisabled(
           current.mikrotikUsername,
           current.phoneNumber,
           disabled
         );
+        const updatedBindings = [];
+        try {
+          for (const macAddress of normalizeMacAddresses(current.mikrotikMacAddresses)) {
+            await this.mikrotikService.setIpBindingDisabled({
+              macAddress,
+              contactId: current.id,
+              disabled,
+            });
+            updatedBindings.push(macAddress);
+          }
+          bindingsUpdated = updatedBindings.length;
+        } catch (bindingError) {
+          for (const macAddress of updatedBindings.reverse()) {
+            await this.mikrotikService.setIpBindingDisabled({
+              macAddress,
+              contactId: current.id,
+              disabled: !disabled,
+            }).catch(() => {});
+          }
+          await this.mikrotikService.setHotspotUserDisabled(
+            current.mikrotikUsername,
+            current.phoneNumber,
+            !disabled
+          ).catch(() => {});
+          throw bindingError;
+        }
       } catch (error) {
         await this.dataManager.updateHotspotProvisioningStatus(current.id, HOTSPOT_PROVISIONING_STATUS.FAILED, {
           error: error.message,
@@ -8519,6 +8754,13 @@ class WebServer {
             current.phoneNumber,
             !disabled
           );
+          for (const macAddress of normalizeMacAddresses(current.mikrotikMacAddresses)) {
+            await this.mikrotikService.setIpBindingDisabled({
+              macAddress,
+              contactId: current.id,
+              disabled: !disabled,
+            });
+          }
         } catch (rollbackError) {
           this.activityLog.push("error", "mikrotik", `Rollback status akun hotspot ${current.mikrotikUsername} gagal: ${rollbackError.message}`, {
             contactId: current.id,
@@ -8538,7 +8780,7 @@ class WebServer {
         throw wrapped;
       }
 
-      this.activityLog.push("info", "mikrotik", `User hotspot ${current.mikrotikUsername} ${disabled ? "dinonaktifkan" : "diaktifkan"} oleh administrator`, {
+      this.activityLog.push("info", "mikrotik", `Akun hotspot ${current.mikrotikUsername} dan ${bindingsUpdated} IP Binding ${disabled ? "dinonaktifkan" : "diaktifkan"} oleh administrator`, {
         contactId: current.id,
         username: current.mikrotikUsername,
         activeSessionsKilled: result.activeSessionsKilled || 0,
@@ -8547,6 +8789,7 @@ class WebServer {
         operation: disabled ? "DISABLE" : "ENABLE",
         contact: persisted,
         username: result.username,
+        bindingsUpdated,
         disabled: Boolean(disabled),
         activeSessionsKilled: result.activeSessionsKilled || 0,
       };
@@ -8636,21 +8879,67 @@ class WebServer {
       if (!contact) throw new Error("Kontak tidak ditemukan.");
 
       const username = sanitizeInput(contact.mikrotikUsername || "");
+      const macAddresses = normalizeMacAddresses(contact.mikrotikMacAddresses);
+      const password = sanitizeInput(contact.mikrotikPassword || "")
+        || String(contact.phoneNumber || "").slice(-5);
+      const bindingType = normalizeHotspotProvisioningStatus(contact.hotspotProvisioningStatus) === HOTSPOT_PROVISIONING_STATUS.DISABLED
+        ? "blocked"
+        : "bypassed";
+      const removedMacAddresses = [];
       let hotspotDeletion = {
         username: username || null,
+        macAddresses,
         removedUsers: 0,
+        removedBindings: 0,
         activeSessionsKilled: 0,
-        skipped: !username,
+        skipped: !username && macAddresses.length === 0,
+      };
+      const restoreMikrotikAccess = async ({ restoreUser = false, restoreBindings = [] } = {}) => {
+        if (restoreUser) {
+          if (!password || !contact.mikrotikProfile) throw new Error("Data profile atau password hotspot tidak lengkap.");
+          await this.mikrotikService.reactivateHotspotUser({
+            username,
+            password,
+            profile: contact.mikrotikProfile,
+            phoneNumber: contact.phoneNumber,
+          });
+          if (bindingType === "blocked") {
+            await this.mikrotikService.setHotspotUserDisabled(username, contact.phoneNumber, true);
+          }
+        }
+        for (const macAddress of restoreBindings) {
+          await this.mikrotikService.upsertIpBinding({
+            macAddress,
+            contactId: contact.id,
+            type: bindingType,
+          });
+        }
       };
 
-      if (username) {
+      if (username || macAddresses.length > 0) {
         try {
-          hotspotDeletion = {
-            ...await this.mikrotikService.deleteHotspotUser(username, contact.phoneNumber),
-            skipped: false,
-          };
+          if (username) {
+            Object.assign(hotspotDeletion, await this.mikrotikService.deleteHotspotUser(username, contact.phoneNumber));
+          }
+          for (const macAddress of macAddresses) {
+            const bindingResult = await this.mikrotikService.deleteIpBinding({ macAddress, contactId: contact.id });
+            hotspotDeletion.removedBindings += bindingResult.removedBindings || 0;
+            if (bindingResult.removedBindings > 0) removedMacAddresses.push(macAddress);
+          }
+          hotspotDeletion.skipped = false;
         } catch (error) {
-          const wrapped = new Error(`Data pelanggan belum dihapus karena akun hotspot gagal dihapus: ${error.message}`);
+          try {
+            await restoreMikrotikAccess({
+              restoreUser: hotspotDeletion.removedUsers > 0,
+              restoreBindings: removedMacAddresses,
+            });
+          } catch (rollbackError) {
+            const wrapped = new Error(`Penghapusan akses MikroTik gagal dan rollback tidak lengkap: ${rollbackError.message}`);
+            wrapped.statusCode = 502;
+            wrapped.cause = error;
+            throw wrapped;
+          }
+          const wrapped = new Error(`Data pelanggan belum dihapus karena akses MikroTik gagal dihapus: ${error.message}`);
           wrapped.statusCode = 502;
           wrapped.cause = error;
           throw wrapped;
@@ -8661,23 +8950,13 @@ class WebServer {
       try {
         deleted = await this.dataManager.deleteContact(contact.id);
       } catch (error) {
-        if (!username || hotspotDeletion.removedUsers < 1) throw error;
+        if ((!username || hotspotDeletion.removedUsers < 1) && hotspotDeletion.removedBindings < 1) throw error;
 
-        const password = sanitizeInput(contact.mikrotikPassword || "")
-          || String(contact.phoneNumber || "").slice(-5);
         try {
-          if (!password || !contact.mikrotikProfile) {
-            throw new Error("Data profile atau password hotspot tidak lengkap.");
-          }
-          await this.mikrotikService.reactivateHotspotUser({
-            username,
-            password,
-            profile: contact.mikrotikProfile,
-            phoneNumber: contact.phoneNumber,
+          await restoreMikrotikAccess({
+            restoreUser: username && hotspotDeletion.removedUsers > 0,
+            restoreBindings: removedMacAddresses,
           });
-          if (normalizeHotspotProvisioningStatus(contact.hotspotProvisioningStatus) === HOTSPOT_PROVISIONING_STATUS.DISABLED) {
-            await this.mikrotikService.setHotspotUserDisabled(username, contact.phoneNumber, true);
-          }
         } catch (rollbackError) {
           this.activityLog.push("error", "mikrotik", `Rollback penghapusan akun hotspot ${username} gagal: ${rollbackError.message}`, {
             contactId: contact.id,
@@ -8694,12 +8973,14 @@ class WebServer {
         throw wrapped;
       }
 
-      this.activityLog.push("info", "mikrotik", username
-        ? `Pelanggan dan akun hotspot ${username} dihapus`
+      this.activityLog.push("info", "mikrotik", username || macAddresses.length > 0
+        ? `Pelanggan, akun hotspot, dan ${macAddresses.length} IP Binding dihapus`
         : `Pelanggan ${contact.name || contact.id} dihapus tanpa akun hotspot`, {
         contactId: contact.id,
         username: username || null,
+        macAddresses,
         removedUsers: hotspotDeletion.removedUsers,
+        removedBindings: hotspotDeletion.removedBindings,
         activeSessionsKilled: hotspotDeletion.activeSessionsKilled,
       });
       return {
@@ -9816,6 +10097,10 @@ class WebServer {
       const current = this.dataManager.getContact(req.params.id);
       if (!current) throw new Error("Pelanggan tidak ditemukan.");
 
+      const macAddresses = Object.hasOwn(req.body, "mikrotikMacAddresses")
+        ? normalizeMacAddresses(req.body.mikrotikMacAddresses)
+        : normalizeMacAddresses(current.mikrotikMacAddresses);
+      const bindingsChanged = macAddresses.join(",") !== normalizeMacAddresses(current.mikrotikMacAddresses).join(",");
       const username = sanitizeInput(String(req.body.mikrotikUsername || req.body.username || ""));
       const profile = sanitizeInput(String(req.body.mikrotikProfile || req.body.profile || ""));
       const password = req.body.mikrotikPassword !== undefined
@@ -9835,13 +10120,18 @@ class WebServer {
 
       const prepared = await this.dataManager.prepareContactUpdate(req.params.id, hotspotPayload);
       if (!prepared.hotspotSyncRequired) {
-        return this.dataManager.toPublicContact(prepared.contact);
+        const syncedContact = await this.syncContactIpBindings(prepared.contact, macAddresses);
+        return bindingsChanged ? { ...syncedContact, hotspotSynced: true } : syncedContact;
       }
 
       const result = await this.provisionHotspotContact(prepared.contact, {
         sendCredentials: req.body.sendCredentials,
       });
-      return { ...result.contact, hotspotSynced: true };
+      const syncedContact = await this.syncContactIpBindings(
+        this.dataManager.getContact(req.params.id),
+        macAddresses
+      );
+      return { ...syncedContact, hotspotSynced: true };
     }));
     this.app.delete("/api/contacts/:id", requireApiAuth, handleApi(async (req) => this.deleteContactWithHotspot(req.params.id)));
     this.app.post("/api/contacts/:id/account-credentials", requireApiAuth, handleApi(async (req) => {

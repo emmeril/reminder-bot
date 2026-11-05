@@ -22,6 +22,25 @@ test("formatter input tanggal membiarkan jadwal kosong tetap kosong", () => {
   assert.equal(app.formatTimeInput(null), "");
 });
 
+test("form hotspot dapat menampung beberapa MAC IP Binding tanpa alamat IP", () => {
+  const app = createDashboardApp();
+  app.forms.hotspotAccount = app.blankHotspotAccountForm();
+  app.forms.hotspotAccount.newMacAddress = "aa-bb-cc-dd-ee-02";
+
+  app.addHotspotMacAddress();
+  assert.deepEqual(Array.from(app.forms.hotspotAccount.macAddresses), ["AA:BB:CC:DD:EE:02"]);
+
+  app.forms.hotspotAccount.newMacAddress = "AA:BB:CC:DD:EE:06";
+  app.addHotspotMacAddress();
+  assert.deepEqual(Array.from(app.forms.hotspotAccount.macAddresses), [
+    "AA:BB:CC:DD:EE:02",
+    "AA:BB:CC:DD:EE:06",
+  ]);
+
+  app.removeHotspotMacAddress("AA:BB:CC:DD:EE:02");
+  assert.deepEqual(Array.from(app.forms.hotspotAccount.macAddresses), ["AA:BB:CC:DD:EE:06"]);
+});
+
 test("jadwal layanan membedakan aktif otomatis, penonaktifan, dan tanpa jadwal", () => {
   const app = createDashboardApp();
 

@@ -779,6 +779,7 @@ class HotspotReactivationScheduler {
     let operationPrepared = false;
     let result;
     let updatedContact;
+    const updatedBindings = [];
     try {
       const prepared = await this.dataManager.prepareHotspotLifecycleOperation(contact.id, "DEACTIVATE");
       operationPrepared = true;
@@ -788,12 +789,37 @@ class HotspotReactivationScheduler {
         prepared.phoneNumber,
         true
       );
+      let bindingsUpdated = 0;
+      for (const macAddress of Array.isArray(prepared.mikrotikMacAddresses) ? prepared.mikrotikMacAddresses : []) {
+        await this.mikrotikService.setIpBindingDisabled({
+          macAddress,
+          contactId: prepared.id,
+          disabled: true,
+        });
+        updatedBindings.push(macAddress);
+        bindingsUpdated += 1;
+      }
+      result.bindingsUpdated = bindingsUpdated;
       updatedContact = await this.dataManager.markHotspotDisabled(contact.id, result, {
         ...options,
         scheduled: true,
         clearSchedule: true,
       });
     } catch (error) {
+      if (result) {
+        for (const macAddress of updatedBindings.reverse()) {
+          await this.mikrotikService.setIpBindingDisabled({
+            macAddress,
+            contactId: contact.id,
+            disabled: false,
+          }).catch(() => {});
+        }
+        await this.mikrotikService.setHotspotUserDisabled(
+          contact.mikrotikUsername,
+          contact.phoneNumber,
+          false
+        ).catch(() => {});
+      }
       if (operationPrepared) {
         await this.dataManager.updateHotspotProvisioningStatus(contact.id, "FAILED", {
           error: error.message,
@@ -804,7 +830,7 @@ class HotspotReactivationScheduler {
       }
       throw new Error(`Deaktivasi hotspot gagal: ${error.message}`, { cause: error });
     }
-    this.activityLog.push("info", "hotspot-reactivation", `User hotspot ${result.username} dinonaktifkan sesuai jadwal`, {
+    this.activityLog.push("info", "hotspot-reactivation", `User hotspot ${result.username} dan ${result.bindingsUpdated || 0} IP Binding dinonaktifkan sesuai jadwal`, {
       contactId: contact.id,
       username: result.username,
       activeSessionsKilled: result.activeSessionsKilled,
@@ -823,6 +849,7 @@ class HotspotReactivationScheduler {
     let prepared;
     let result;
     let updatedContact;
+    const updatedBindings = [];
     const password = this.buildPassword(contact);
     if (!password) {
       throw new Error("Password hotspot kosong. Isi password atau nomor WhatsApp yang valid.");
@@ -843,8 +870,33 @@ class HotspotReactivationScheduler {
         phoneNumber: prepared.phoneNumber,
         profile: result.profile,
       });
+      let bindingsUpdated = 0;
+      for (const macAddress of Array.isArray(prepared.mikrotikMacAddresses) ? prepared.mikrotikMacAddresses : []) {
+        await this.mikrotikService.upsertIpBinding({
+          macAddress,
+          contactId: prepared.id,
+          type: "bypassed",
+        });
+        updatedBindings.push(macAddress);
+        bindingsUpdated += 1;
+      }
+      result.bindingsUpdated = bindingsUpdated;
       updatedContact = await this.dataManager.markHotspotReactivated(contact.id, result, options);
     } catch (error) {
+      if (result) {
+        for (const macAddress of updatedBindings.reverse()) {
+          await this.mikrotikService.setIpBindingDisabled({
+            macAddress,
+            contactId: contact.id,
+            disabled: true,
+          }).catch(() => {});
+        }
+        await this.mikrotikService.setHotspotUserDisabled(
+          contact.mikrotikUsername,
+          contact.phoneNumber,
+          true
+        ).catch(() => {});
+      }
       if (operationPrepared) {
         await this.dataManager.updateHotspotProvisioningStatus(contact.id, "FAILED", {
           error: error.message,
@@ -855,7 +907,7 @@ class HotspotReactivationScheduler {
       }
       throw new Error(`Reaktivasi hotspot gagal: ${error.message}`, { cause: error });
     }
-    this.activityLog.push("info", "hotspot-reactivation", `User hotspot ${result.username} direaktivasi`, {
+    this.activityLog.push("info", "hotspot-reactivation", `User hotspot ${result.username} dan ${result.bindingsUpdated || 0} IP Binding direaktivasi`, {
       contactId: contact.id,
       username: result.username,
       profile: result.profile,

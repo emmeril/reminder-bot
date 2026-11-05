@@ -2138,6 +2138,60 @@ test("endpoint akun hotspot menyimpan jadwal tanpa provisioning ulang", async ()
   assert.equal(payload.data.hotspotSynced, undefined);
 });
 
+test("endpoint akun hotspot menyinkronkan beberapa MAC IP Binding milik pelanggan", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const contact = {
+    id: "contact-multi-binding",
+    name: "Pelanggan Multi Perangkat",
+    phoneNumber: "6281234567810",
+    mikrotikUsername: "pelanggan_multi",
+    mikrotikProfile: "50M",
+    mikrotikMacAddresses: ["AA:BB:CC:DD:EE:02"],
+    hotspotProvisioningStatus: "ACTIVE",
+  };
+  const routerCalls = [];
+  const baseUrl = await startServer({
+    getContact: (id) => (String(id) === contact.id ? contact : null),
+    prepareContactUpdate: async () => ({ contact, hotspotSyncRequired: false }),
+    hasContactMikrotikMac: () => false,
+    setContactMikrotikMacAddresses: async (_id, macAddresses) => {
+      contact.mikrotikMacAddresses = [...macAddresses];
+      return contact;
+    },
+    toPublicContact: (value) => value,
+  }, {}, {
+    upsertIpBinding: async (payload) => {
+      routerCalls.push({ action: "upsert", ...payload });
+      return payload;
+    },
+    deleteIpBinding: async (payload) => {
+      routerCalls.push({ action: "delete", ...payload });
+      return { ...payload, removedBindings: 1 };
+    },
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/hotspot`, {
+    method: "POST",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({
+      mikrotikUsername: contact.mikrotikUsername,
+      mikrotikProfile: contact.mikrotikProfile,
+      mikrotikMacAddresses: ["AA:BB:CC:DD:EE:02", "AA-BB-CC-DD-EE-06"],
+    }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.hotspotSynced, true);
+  assert.deepEqual(contact.mikrotikMacAddresses, ["AA:BB:CC:DD:EE:02", "AA:BB:CC:DD:EE:06"]);
+  assert.deepEqual(routerCalls, [{
+    action: "upsert",
+    macAddress: "AA:BB:CC:DD:EE:06",
+    contactId: contact.id,
+    type: "bypassed",
+  }]);
+});
+
 test("kegagalan provisioning mempertahankan pelanggan sebagai FAILED", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   const statuses = [];

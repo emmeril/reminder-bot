@@ -3,9 +3,10 @@ const test = require("node:test");
 
 const { MikrotikService } = require("../src/app");
 
-function createServiceWithUsers(initialUsers = [], initialScripts = []) {
+function createServiceWithUsers(initialUsers = [], initialScripts = [], initialBindings = []) {
   const users = initialUsers.map((user) => ({ ...user }));
   const scripts = initialScripts.map((script) => ({ ...script }));
+  const bindings = initialBindings.map((binding) => ({ ...binding }));
   const addedPayloads = [];
   let addCalls = 0;
   let updateCalls = 0;
@@ -36,6 +37,26 @@ function createServiceWithUsers(initialUsers = [], initialScripts = []) {
   const connection = {
     menu: (path) => {
       if (path === "/ip/hotspot/user") return userMenu;
+      if (path === "/ip/hotspot/ip-binding") {
+        return {
+          print: async () => bindings.map((binding) => ({ ...binding })),
+          add: async (payload) => {
+            bindings.push({ ".id": `*B${bindings.length + 1}`, ...payload });
+            return {};
+          },
+          update: async (payload, id) => {
+            const binding = bindings.find((item) => String(item[".id"] || item.id) === String(id));
+            if (!binding) throw new Error("binding tidak ditemukan");
+            Object.assign(binding, payload);
+            return [];
+          },
+          remove: async (id) => {
+            const index = bindings.findIndex((item) => String(item[".id"] || item.id) === String(id));
+            if (index >= 0) bindings.splice(index, 1);
+            return [];
+          },
+        };
+      }
       if (path === "/ip/hotspot/user/profile") {
         return { print: async () => [{ name: "100M", "on-login": ':put (",rem,0,1d,40000,,Disable,0,")' }] };
       }
@@ -66,6 +87,7 @@ function createServiceWithUsers(initialUsers = [], initialScripts = []) {
   return {
     service,
     users,
+    bindings,
     getAddCalls: () => addCalls,
     getUpdateCalls: () => updateCalls,
     getRemoveCalls: () => removeCalls,
@@ -1011,4 +1033,51 @@ test("menonaktifkan dan mengaktifkan akun hotspot tanpa menghapus user", async (
   assert.equal(getUpdateCalls(), 2);
   assert.equal(getRemoveCalls(), 0);
   assert.equal(getKilledSessions(), 1);
+});
+
+test("IP Binding pelanggan memakai MAC saja dan mempertahankan penanda pemilik", async () => {
+  const { service, bindings } = createServiceWithUsers();
+
+  const created = await service.upsertIpBinding({
+    macAddress: "aa-bb-cc-dd-ee-02",
+    contactId: "contact-binding-1",
+    type: "bypassed",
+  });
+
+  assert.equal(created.macAddress, "AA:BB:CC:DD:EE:02");
+  assert.equal(bindings[0]["mac-address"], "AA:BB:CC:DD:EE:02");
+  assert.equal(bindings[0].address, undefined);
+  assert.equal(bindings[0].type, "bypassed");
+  assert.equal(bindings[0].comment, "reminder-bot:contact-binding-1");
+
+  await service.setIpBindingDisabled({
+    macAddress: "AA:BB:CC:DD:EE:02",
+    contactId: "contact-binding-1",
+    disabled: true,
+  });
+  assert.equal(bindings[0].type, "blocked");
+
+  const deleted = await service.deleteIpBinding({
+    macAddress: "AA:BB:CC:DD:EE:02",
+    contactId: "contact-binding-1",
+  });
+  assert.equal(deleted.removedBindings, 1);
+  assert.equal(bindings.length, 0);
+});
+
+test("IP Binding menolak MAC yang sudah dimiliki pelanggan lain", async () => {
+  const { service } = createServiceWithUsers([], [], [{
+    ".id": "*B1",
+    "mac-address": "AA:BB:CC:DD:EE:04",
+    type: "bypassed",
+    comment: "reminder-bot:contact-lain",
+  }]);
+
+  await assert.rejects(
+    () => service.upsertIpBinding({
+      macAddress: "AA:BB:CC:DD:EE:04",
+      contactId: "contact-binding-2",
+    }),
+    /sudah terhubung ke pelanggan lain/,
+  );
 });
