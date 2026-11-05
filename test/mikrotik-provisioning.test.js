@@ -39,7 +39,11 @@ function createServiceWithUsers(initialUsers = [], initialScripts = [], initialB
       if (path === "/ip/hotspot/user") return userMenu;
       if (path === "/ip/hotspot/ip-binding") {
         return {
-          print: async () => bindings.map((binding) => ({ ...binding })),
+          print: async () => bindings.map((binding) => {
+            const returned = { ...binding };
+            if (returned.type === "regular") delete returned.type;
+            return returned;
+          }),
           add: async (payload) => {
             bindings.push({ ".id": `*B${bindings.length + 1}`, ...payload });
             return {};
@@ -1049,6 +1053,13 @@ test("IP Binding pelanggan memakai MAC saja dan mempertahankan penanda pemilik",
   assert.equal(bindings[0].address, undefined);
   assert.equal(bindings[0].type, "bypassed");
   assert.equal(bindings[0].comment, "reminder-bot:contact-binding-1");
+
+  await service.upsertIpBinding({
+    macAddress: "AA:BB:CC:DD:EE:02",
+    contactId: "contact-binding-1",
+    type: "regular",
+  });
+  assert.equal(bindings[0].type, "regular");
 
   await service.setIpBindingDisabled({
     macAddress: "AA:BB:CC:DD:EE:02",

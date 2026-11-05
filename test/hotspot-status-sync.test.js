@@ -86,8 +86,11 @@ test("sinkronisasi otomatis menandai profile, pemilik, atau disabled yang beruba
   assert.match(contact.hotspotProvisioningError, /akun dinonaktifkan/);
 });
 
-test("sinkronisasi otomatis membedakan akun hotspot yang disabled", async () => {
-  const contact = createContact();
+test("sinkronisasi otomatis mempertahankan layanan yang memang dinonaktifkan admin", async () => {
+  const contact = createContact({
+    hotspotProvisioningStatus: "DISABLED",
+    hotspotProvisioningError: "Akses hotspot dinonaktifkan.",
+  });
   const manager = createManager([contact]);
 
   const result = await manager.reconcileHotspotStatuses([{
@@ -101,6 +104,27 @@ test("sinkronisasi otomatis membedakan akun hotspot yang disabled", async () => 
   assert.equal(contact.hotspotProvisioningStatus, "DISABLED");
   assert.match(contact.hotspotProvisioningError, /dinonaktifkan/);
   assert.equal(manager.pelanggan.get(contact.mikrotikUsername).status, "disabled");
+});
+
+test("mode IP Binding saja menganggap user disabled sebagai kondisi ACTIVE yang benar", async () => {
+  const contact = createContact({
+    hotspotAccessMode: "IP_BINDING_ONLY",
+    mikrotikMacAddresses: ["AA:BB:CC:DD:EE:01"],
+  });
+  const manager = createManager([contact]);
+
+  const result = await manager.reconcileHotspotStatuses([{
+    username: contact.mikrotikUsername,
+    profile: contact.mikrotikProfile,
+    email: "6281234567890@localhost.local",
+    disabled: true,
+  }], syncOptions);
+
+  assert.equal(result.active, 1);
+  assert.equal(result.changed, 0);
+  assert.equal(contact.hotspotProvisioningStatus, "ACTIVE");
+  assert.equal(contact.hotspotProvisioningError, "");
+  assert.equal(manager.pelanggan.get(contact.mikrotikUsername).status, "verified");
 });
 
 test("akun yang kembali cocok dipulihkan otomatis menjadi ACTIVE", async () => {

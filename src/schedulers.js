@@ -760,7 +760,8 @@ class HotspotStatusSyncScheduler {
                 contactId: contact.id,
                 profile: contact.mikrotikProfile,
                 macAddresses: contact.mikrotikMacAddresses,
-                disabled: String(contact.hotspotProvisioningStatus || "").toUpperCase() === "DISABLED",
+                disabled: String(contact.hotspotProvisioningStatus || "").toUpperCase() === "DISABLED"
+                  || String(contact.hotspotAccessMode || "").toUpperCase() === "HOTSPOT_ONLY",
               }))
             );
             for (const bandwidthResult of bandwidthResults) {
@@ -817,6 +818,13 @@ class HotspotReactivationScheduler {
     let result;
     let updatedContact;
     const updatedBindings = [];
+    const accessMode = String(contact.hotspotAccessMode || (
+      Array.isArray(contact.mikrotikMacAddresses) && contact.mikrotikMacAddresses.length > 0
+        ? "BOTH"
+        : "HOTSPOT_ONLY"
+    )).toUpperCase();
+    const previousUserDisabled = accessMode === "IP_BINDING_ONLY";
+    const previousBindingType = accessMode === "HOTSPOT_ONLY" ? "regular" : "bypassed";
     try {
       const prepared = await this.dataManager.prepareHotspotLifecycleOperation(contact.id, "DEACTIVATE");
       operationPrepared = true;
@@ -845,16 +853,16 @@ class HotspotReactivationScheduler {
     } catch (error) {
       if (result) {
         for (const macAddress of updatedBindings.reverse()) {
-          await this.mikrotikService.setIpBindingDisabled({
+          await this.mikrotikService.upsertIpBinding({
             macAddress,
             contactId: contact.id,
-            disabled: false,
+            type: previousBindingType,
           }).catch(() => {});
         }
         await this.mikrotikService.setHotspotUserDisabled(
           contact.mikrotikUsername,
           contact.phoneNumber,
-          false
+          previousUserDisabled
         ).catch(() => {});
       }
       if (operationPrepared) {
@@ -907,17 +915,33 @@ class HotspotReactivationScheduler {
         phoneNumber: prepared.phoneNumber,
         profile: result.profile,
       });
+      const accessMode = String(prepared.hotspotAccessMode || (
+        Array.isArray(prepared.mikrotikMacAddresses) && prepared.mikrotikMacAddresses.length > 0
+          ? "BOTH"
+          : "HOTSPOT_ONLY"
+      )).toUpperCase();
+      const userDisabled = accessMode === "IP_BINDING_ONLY";
+      const bindingType = accessMode === "HOTSPOT_ONLY" ? "regular" : "bypassed";
+      if (userDisabled) {
+        await this.mikrotikService.setHotspotUserDisabled(
+          prepared.mikrotikUsername,
+          prepared.phoneNumber,
+          true
+        );
+      }
       let bindingsUpdated = 0;
       for (const macAddress of Array.isArray(prepared.mikrotikMacAddresses) ? prepared.mikrotikMacAddresses : []) {
         await this.mikrotikService.upsertIpBinding({
           macAddress,
           contactId: prepared.id,
-          type: "bypassed",
+          type: bindingType,
         });
         updatedBindings.push(macAddress);
         bindingsUpdated += 1;
       }
       result.bindingsUpdated = bindingsUpdated;
+      result.accessMode = accessMode;
+      result.userDisabled = userDisabled;
       updatedContact = await this.dataManager.markHotspotReactivated(contact.id, result, options);
     } catch (error) {
       if (result) {

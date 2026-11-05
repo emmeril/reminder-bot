@@ -2511,6 +2511,58 @@ test("admin dapat menonaktifkan akun hotspot di MikroTik tanpa menghapus data", 
   ]);
 });
 
+test("admin dapat memilih IP Binding saja tanpa menonaktifkan layanan pelanggan", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const contact = {
+    id: "contact-binding-only",
+    name: "Pelanggan Binding",
+    phoneNumber: "6281234567808",
+    mikrotikUsername: "pelanggan_binding",
+    mikrotikProfile: "50M",
+    mikrotikMacAddresses: ["AA:BB:CC:DD:EE:08", "AA:BB:CC:DD:EE:0A"],
+    hotspotAccessMode: "BOTH",
+    hotspotProvisioningStatus: "ACTIVE",
+  };
+  const calls = [];
+  const baseUrl = await startServer({
+    getContact: () => contact,
+    setContactHotspotAccessMode: async (_id, mode) => {
+      calls.push(`db:${mode}`);
+      contact.hotspotAccessMode = mode;
+      contact.hotspotProvisioningStatus = "ACTIVE";
+      return contact;
+    },
+    toPublicContact: (value) => value,
+  }, {}, {
+    setHotspotUserDisabled: async (username, phoneNumber, disabled) => {
+      calls.push(`user:${username}:${phoneNumber}:${disabled}`);
+      return { username, disabled, activeSessionsKilled: 1 };
+    },
+    upsertIpBinding: async ({ macAddress, contactId, type }) => {
+      calls.push(`binding:${macAddress}:${contactId}:${type}`);
+      return { macAddress, contactId, type };
+    },
+  });
+
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/hotspot/access-mode`, {
+    method: "POST",
+    headers: { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({ mode: "IP_BINDING_ONLY" }),
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.operation, "ACCESS_MODE");
+  assert.equal(payload.data.contact.hotspotAccessMode, "IP_BINDING_ONLY");
+  assert.equal(payload.data.contact.hotspotProvisioningStatus, "ACTIVE");
+  assert.deepEqual(calls, [
+    "user:pelanggan_binding:6281234567808:true",
+    `binding:AA:BB:CC:DD:EE:08:${contact.id}:bypassed`,
+    `binding:AA:BB:CC:DD:EE:0A:${contact.id}:bypassed`,
+    "db:IP_BINDING_ONLY",
+  ]);
+});
+
 test("endpoint pembayaran meneruskan nominal tunggakan custom", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   let updateArguments = null;

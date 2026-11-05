@@ -75,6 +75,55 @@ test("form hotspot menjelaskan bandwidth bersama dan status IP setiap perangkat"
   );
 });
 
+test("tabel hotspot memisahkan profile dan ringkasan IP Binding", () => {
+  const app = createDashboardApp();
+  const contact = {
+    mikrotikMacAddresses: ["AA:BB:CC:DD:EE:07", "AA:BB:CC:DD:EE:08"],
+    ipBindingBandwidthStatus: "PARTIAL",
+    ipBindingBandwidthPendingMacAddresses: ["AA:BB:CC:DD:EE:08"],
+  };
+
+  assert.equal(app.getIpBindingCountLabel(contact), "2 perangkat");
+  assert.equal(app.getIpBindingTableStatus(contact), "1 menunggu IP");
+  assert.equal(app.getIpBindingCountLabel({ mikrotikMacAddresses: [] }), "Belum ada");
+  assert.equal(app.getIpBindingTableStatus({ ipBindingBandwidthStatus: "ACTIVE" }), "Bandwidth aktif");
+});
+
+test("mode akses membedakan status akun hotspot dan IP Binding", () => {
+  const app = createDashboardApp();
+  const contact = {
+    id: "contact-access-mode",
+    mikrotikUsername: "pelanggan_mode",
+    mikrotikProfile: "Rumah",
+    mikrotikMacAddresses: ["AA:BB:CC:DD:EE:07"],
+    hotspotProvisioningStatus: "ACTIVE",
+    hotspotAccessMode: "IP_BINDING_ONLY",
+  };
+
+  assert.equal(app.getHotspotUserAccessLabel(contact), "Nonaktif");
+  assert.equal(app.getIpBindingAccessLabel(contact), "Aktif otomatis");
+  assert.equal(app.canSendHotspotAccount(contact), false);
+
+  contact.hotspotAccessMode = "HOTSPOT_ONLY";
+  assert.equal(app.getHotspotUserAccessLabel(contact), "Aktif");
+  assert.equal(app.getIpBindingAccessLabel(contact), "Login wajib");
+
+  contact.hotspotProvisioningStatus = "DISABLED";
+  assert.equal(app.getHotspotUserAccessLabel(contact), "Nonaktif");
+  assert.equal(app.getIpBindingAccessLabel(contact), "Diblokir");
+});
+
+test("modal mode akses menyediakan empat pilihan dan tombol tabel", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+
+  assert.match(html, /@click="openHotspotAccessModeModal\(contact, \$event\.currentTarget\)"[\s\S]*?>Mode akses</);
+  assert.match(html, /value="HOTSPOT_ONLY"/);
+  assert.match(html, /value="IP_BINDING_ONLY"/);
+  assert.match(html, /value="BOTH"/);
+  assert.match(html, /value="DISABLED"/);
+  assert.match(html, /Tambahkan MAC address melalui Atur akses/);
+});
+
 test("jadwal layanan membedakan aktif otomatis, penonaktifan, dan tanpa jadwal", () => {
   const app = createDashboardApp();
 
@@ -1094,6 +1143,7 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(html, /data-label="Status Akun"/);
   assert.match(html, /data-label="User Hotspot"/);
   assert.match(html, /data-label="Profile"/);
+  assert.match(html, /data-label="IP Binding"/);
   assert.match(html, /data-label="Status Jadwal"/);
   assert.match(html, /data-label="Jadwal Layanan"/);
   assert.match(html, /data-label="IP Access Point"/);
@@ -1101,17 +1151,17 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(html, /data-label="Aksi Akun"/);
   assert.match(html, /data-label="Aksi Layanan"/);
   assert.match(html, /<td colspan="10"[^>]*Tidak ada tagihan yang cocok/);
-  assert.match(html, /<td colspan="11"[^>]*Tidak ada akun hotspot yang cocok/);
+  assert.match(html, /<td colspan="12"[^>]*Tidak ada akun hotspot yang cocok/);
   assert.match(html, /Pelanggan<\/th>\s*<th[^>]*>Nomor HP<\/th>\s*<th[^>]*>User Hotspot<\/th>/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 36px !important;[^}]*border-radius: 9px !important;[^}]*font-size: 10px !important;/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 44px !important;[^}]*font-size: 11px !important;/);
   assert.match(styles, /\.customer-due-status \{[^}]*white-space: nowrap;/);
   assert.match(styles, /\.customer-hotspot-status, \.customer-schedule-status \{[^}]*white-space: nowrap;/);
-  assert.match(styles, /\.customer-hotspot-table \{ min-width: 1780px; \}/);
-  assert.match(styles, /\.customer-hotspot-table th:nth-child\(5\) \{ width: 12%; \}/);
-  assert.match(styles, /\.customer-hotspot-table th:nth-child\(6\) \{ width: 12%; \}/);
+  assert.match(styles, /\.customer-hotspot-table \{ min-width: 1880px; \}/);
+  assert.match(styles, /\.customer-hotspot-table th:nth-child\(6\) \{ width: 11%; \}/);
+  assert.match(styles, /\.customer-hotspot-table th:nth-child\(7\) \{ width: 11%; \}/);
   assert.match(styles, /\.customer-hotspot-account-actions button \{[^}]*gap: 7px;[^}]*padding-inline: 12px !important;/);
-  assert.match(styles, /\.customer-hotspot-table th:nth-child\(10\) \{ width: 8%; \}/);
+  assert.match(styles, /\.customer-hotspot-table th:nth-child\(11\) \{ width: 8%; \}/);
 });
 
 test("filter tagihan dan hotspot dapat direset tanpa mengubah jumlah baris", () => {
