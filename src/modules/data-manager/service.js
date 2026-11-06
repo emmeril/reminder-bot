@@ -32,6 +32,7 @@ const {
   sanitizeInput,
   sanitizeMultilineText,
   sanitizePositiveInteger,
+  sanitizeTimeHHMM,
 } = require("../../utils");
 const CustomerDataManager = require("./customers");
 
