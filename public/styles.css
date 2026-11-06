@@ -562,6 +562,18 @@ input:focus, textarea:focus, select:focus { border-color: #8b85f2 !important; bo
 .login-page .login-input input:not([type="checkbox"]):not([type="radio"]) { padding-left: 39px !important; }
 .filter-inline { gap: 9px; padding: 10px !important; border: 1px solid #eceef3; border-radius: 12px; background: #fafbfc; }
 .panel-shell > .filter-inline + div { margin-top: 14px !important; }
+.filter-inline.table-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  align-items: end;
+  overflow: visible;
+}
+.filter-inline.table-filter-bar > * { width: 100%; min-width: 0; flex: none !important; }
+.table-filter-field { display: flex; min-width: 0; flex-direction: column; gap: 6px; }
+.table-filter-field > span { color: #475467; font-size: 11px; font-weight: 700; }
+.table-filter-field input, .table-filter-field select { width: 100%; min-width: 0; min-height: 44px; }
+.table-filter-search { grid-column: span 2; }
+.table-filter-bar .customer-filter-reset { align-self: end; }
 .panel-shell button[class*="bg-moss"], .panel-shell button[class*="bg-ink"], .panel-shell button[class*="from-moss"] { border-color: #4f46e5 !important; border-radius: 9px !important; background: #4f46e5 !important; }
 .panel-shell button[class*="bg-clay"], .panel-shell button[class*="from-clay"] { border-color: #4f46e5 !important; border-radius: 9px !important; background: #4f46e5 !important; }
 .panel-shell button[class*="bg-white"] { color: #4b5565 !important; border: 1px solid #dfe2e9 !important; border-radius: 9px !important; background: #fff !important; }
@@ -1143,6 +1155,8 @@ input:focus, textarea:focus, select:focus, .currency-input-group:focus-within {
   .dashboard-content { padding: 0 10px 26px; }
   .filter-inline { flex-wrap: wrap; }
   .filter-inline > * { width: 100%; min-width: 0; flex: 1 1 100% !important; }
+  .filter-inline.table-filter-bar { grid-template-columns: minmax(0, 1fr); }
+  .table-filter-search { grid-column: auto; }
   .panel-shell button { min-height: 44px; }
   .service-card > a { width: 44px; height: 44px; }
   .customer-tabs > button { min-height: 56px; }

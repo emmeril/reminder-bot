@@ -588,6 +588,12 @@ function createDashboardSelectors() {
             : "Bulanan prabayar";
         },
 
+        getBillingCycleValue(contact) {
+          return String(contact?.billingCycle || "PREPAID").toUpperCase() === "POSTPAID"
+            ? "POSTPAID"
+            : "PREPAID";
+        },
+
         getBillingCycleBadgeClass(contact) {
           return String(contact?.billingCycle || "PREPAID").toUpperCase() === "POSTPAID"
             ? "border-amber-200 bg-amber-50 text-amber-800"
@@ -607,6 +613,13 @@ function createDashboardSelectors() {
           if (contact?.currentPaymentStatus !== "PAID") return "Belum Bayar";
           if (contact?.currentPaymentType) return this.getPaymentTypeLabel(contact.currentPaymentType);
           return "Lunas";
+        },
+
+        getPaymentAmountSourceLabel(contact) {
+          if (!this.hasProfileMonthlyAmount(contact)) return "Tarif manual";
+          if (!contact?.monthlyPaymentAmountCustomized) return "Mengikuti tarif profile";
+          const amount = Number(this.getProfileMonthlyAmount(contact.mikrotikProfile)).toLocaleString("id-ID");
+          return `Nominal custom · default profile Rp ${amount}`;
         },
 
         getDebtNote(contact) {
@@ -1078,6 +1091,90 @@ function createDashboardSelectors() {
           return fields.some((field) => String(item[field] || "").toLowerCase().includes(needle));
         },
 
+        searchValuesMatch(values, search) {
+          const needle = String(search || "").trim().toLocaleLowerCase("id-ID");
+          if (!needle) return true;
+          return values
+            .flat(Infinity)
+            .map((value) => String(value ?? "").toLocaleLowerCase("id-ID"))
+            .some((value) => value.includes(needle));
+        },
+
+        get contactBillingCycleOptions() {
+          const values = new Map();
+          for (const contact of this.contacts) {
+            values.set(this.getBillingCycleValue(contact), this.getBillingCycleLabel(contact));
+          }
+          return Array.from(values, ([value, label]) => ({ value, label }));
+        },
+
+        get contactApStatusOptions() {
+          const values = new Map();
+          for (const contact of this.contacts) {
+            values.set(this.getContactApStatus(contact), this.getContactApStatusLabel(contact));
+          }
+          return Array.from(values, ([value, label]) => ({ value, label }));
+        },
+
+        get billingStatusFilterOptions() {
+          const values = new Map();
+          let hasDebt = false;
+          let hasNoDebt = false;
+          for (const contact of this.contacts) {
+            const label = this.getCurrentPaymentLabel(contact);
+            values.set(`PAYMENT|${label}`, `Bulan ini · ${label}`);
+            if (this.hasDebt(contact)) hasDebt = true;
+            else hasNoDebt = true;
+          }
+          if (hasDebt) values.set("DEBT|YES", "Tunggakan · Ada tunggakan");
+          if (hasNoDebt) values.set("DEBT|NO", "Tunggakan · Tidak ada tunggakan");
+          return Array.from(values, ([value, label]) => ({ value, label }));
+        },
+
+        get billingDueStatusOptions() {
+          const values = new Map();
+          for (const contact of this.contacts) {
+            const value = String(contact.dueStatus || "NOT_SCHEDULED").toUpperCase();
+            values.set(value, this.getDueStatusLabel(value));
+          }
+          return Array.from(values, ([value, label]) => ({ value, label }));
+        },
+
+        get hotspotTableStatusOptions() {
+          const values = new Map();
+          const add = (scope, label, column) => values.set(`${scope}|${label}`, `${column} · ${label}`);
+          for (const contact of this.contacts) {
+            add("HOTSPOT", this.getHotspotUserAccessLabel(contact), "Akun Hotspot");
+            add("IP_BINDING", this.getIpBindingAccessLabel(contact), "Akun IP Binding");
+            add("SCHEDULE", this.getReactivationLabel(contact), "Status Jadwal");
+            add("AP", this.getContactApStatusLabel(contact), "Status AP");
+          }
+          return Array.from(values, ([value, label]) => ({ value, label }));
+        },
+
+        get reminderBillingCycleOptions() {
+          const values = new Map();
+          for (const reminder of this.reminders) {
+            values.set(this.getBillingCycleValue(reminder), this.getBillingCycleLabel(reminder));
+          }
+          return Array.from(values, ([value, label]) => ({ value, label }));
+        },
+
+        get reminderDeliveryTypeOptions() {
+          const values = new Map();
+          for (const reminder of this.reminders) {
+            const value = String(reminder.deliveryScheduleType || "DEFAULT").toUpperCase();
+            values.set(value, this.getReminderDeliveryLabel(reminder));
+          }
+          return Array.from(values, ([value, label]) => ({ value, label }));
+        },
+
+        get sentDeliveryStatuses() {
+          return Array.from(new Set(this.sent.map((item) => (
+            String(item.deliveryStatus || "SENT").toUpperCase()
+          )))).sort((a, b) => a.localeCompare(b, "id-ID"));
+        },
+
         isToday(value) {
           const dateParts = this.getZonedParts(value);
           const todayParts = this.getZonedParts(new Date());
@@ -1088,54 +1185,86 @@ function createDashboardSelectors() {
         },
 
         get filteredContacts() {
-          return this.contacts.filter((contact) => this.searchMatches(
-            contact,
-            ["name", "phoneNumber", "linkedApHost"],
-            this.filters.contacts.search
-          ));
+          return this.contacts.filter((contact) => {
+            const billingCycle = this.getBillingCycleValue(contact);
+            const apStatus = this.getContactApStatus(contact);
+            const selectedBillingCycle = String(this.filters.contacts.billingCycle || "ALL").toUpperCase();
+            const selectedApStatus = String(this.filters.contacts.apStatus || "ALL").toUpperCase();
+            if (selectedBillingCycle !== "ALL" && billingCycle !== selectedBillingCycle) return false;
+            if (selectedApStatus !== "ALL" && apStatus !== selectedApStatus) return false;
+            return this.searchValuesMatch([
+              contact.name,
+              contact.phoneNumber,
+              this.getBillingCycleLabel(contact),
+              contact.linkedApHost || "-",
+              this.getContactApStatusLabel(contact),
+            ], this.filters.contacts.search);
+          });
         },
 
         get filteredBillingContacts() {
           return this.contacts.filter((contact) => {
             const selectedStatus = String(this.filters.contactBilling.status || "ALL").toUpperCase();
             const selectedDueStatus = String(this.filters.contactBilling.dueStatus || "ALL").toUpperCase();
-            const paymentStatus = String(contact.paymentStatus || "UNPAID").toUpperCase();
-            const savedPaymentType = String(contact.paymentType || "").toUpperCase();
+            const selectedBillingCycle = String(this.filters.contactBilling.billingCycle || "ALL").toUpperCase();
             const dueStatus = String(contact.dueStatus || "NOT_SCHEDULED").toUpperCase();
 
+            if (selectedBillingCycle !== "ALL" && this.getBillingCycleValue(contact) !== selectedBillingCycle) return false;
             if (selectedStatus !== "ALL") {
-              if (selectedStatus === "HAS-DEBT" && !this.hasDebt(contact)) return false;
-              if (selectedStatus === "ARREARS-ONLY" && (savedPaymentType !== "ARREARS-ONLY" || paymentStatus === "PAID")) return false;
-              if (selectedStatus === "UNPAID" && (paymentStatus === "PAID" || savedPaymentType === "ARREARS-ONLY")) return false;
-              if (selectedStatus === "CURRENT-ONLY" && (savedPaymentType !== "CURRENT-ONLY" || paymentStatus !== "PAID")) return false;
-              if (selectedStatus === "FULL-PAID" && (savedPaymentType !== "FULL-PAID" || paymentStatus !== "PAID")) return false;
+              const [scope, ...labelParts] = String(this.filters.contactBilling.status).split("|");
+              const expected = labelParts.join("|");
+              if (scope === "PAYMENT" && this.getCurrentPaymentLabel(contact) !== expected) return false;
+              if (scope === "DEBT" && (this.hasDebt(contact) ? "YES" : "NO") !== expected) return false;
             }
             if (selectedDueStatus !== "ALL" && dueStatus !== selectedDueStatus) return false;
 
-            return this.searchMatches(
-              contact,
-              ["name", "phoneNumber", "monthlyPaymentAmount", "paymentStatus", "paymentType", "debtNote", "dueStatus", "dueDate"],
-              this.filters.contactBilling.search
-            );
+            return this.searchValuesMatch([
+              contact.name,
+              contact.phoneNumber,
+              this.getBillingCycleLabel(contact),
+              this.getDueDateLabel(contact),
+              contact.dueDate,
+              this.getDueStatusLabel(dueStatus),
+              contact.monthlyPaymentAmount,
+              this.formatRupiah(contact.monthlyPaymentAmount),
+              this.getPaymentAmountSourceLabel(contact),
+              this.getCurrentPaymentLabel(contact),
+              this.hasDebt(contact) ? this.getDebtCountLabel(contact) : "Tidak ada tunggakan",
+              this.hasDebt(contact) ? this.getDebtNote(contact) : "",
+            ], this.filters.contactBilling.search);
           });
         },
 
         get filteredHotspotContacts() {
           return this.contacts.filter((contact) => {
             const selectedStatus = String(this.filters.contactHotspot.status || "ALL").toUpperCase();
-            const hasAccount = this.hasMikrotikAccess(contact);
-            const provisioningStatus = this.getHotspotProvisioningStatus(contact);
-            if (selectedStatus === "CONFIGURED" && !hasAccount) return false;
-            if (selectedStatus === "UNCONFIGURED" && hasAccount) return false;
-            if (selectedStatus === "AUTO" && !contact.hotspotReactivationEnabled) return false;
-            if (["ACTIVE", "PENDING", "FAILED", "DEACTIVATED", "DISABLED", "MISSING", "CHANGED"].includes(selectedStatus)
-              && provisioningStatus !== selectedStatus) return false;
+            if (selectedStatus !== "ALL") {
+              const [scope, ...labelParts] = String(this.filters.contactHotspot.status).split("|");
+              const expected = labelParts.join("|");
+              const actual = {
+                HOTSPOT: this.getHotspotUserAccessLabel(contact),
+                IP_BINDING: this.getIpBindingAccessLabel(contact),
+                SCHEDULE: this.getReactivationLabel(contact),
+                AP: this.getContactApStatusLabel(contact),
+              }[scope];
+              if (actual !== expected) return false;
+            }
 
-            return this.searchMatches(
-              contact,
-              ["name", "phoneNumber", "mikrotikUsername", "mikrotikProfile", "linkedApHost", "hotspotReactivationAt", "hotspotProvisioningStatus", "hotspotProvisioningError"],
-              this.filters.contactHotspot.search
-            );
+            return this.searchValuesMatch([
+              contact.name,
+              contact.phoneNumber,
+              this.getMikrotikAccessIdentifier(contact),
+              contact.mikrotikProfile || "Belum ada profile",
+              this.getIpBindingCountLabel(contact),
+              this.getIpBindingTableStatus(contact),
+              this.getHotspotUserAccessLabel(contact),
+              contact.hotspotProvisioningError,
+              this.getIpBindingAccessLabel(contact),
+              this.getReactivationLabel(contact),
+              this.getReactivationDetail(contact),
+              contact.linkedApHost || "Belum dipilih",
+              this.getContactApStatusLabel(contact),
+            ], this.filters.contactHotspot.search);
           });
         },
 
@@ -1172,18 +1301,44 @@ function createDashboardSelectors() {
             const deliveryDateTime = reminder.deliveryDateTime || reminder.reminderDateTime;
             const reminderTime = new Date(deliveryDateTime).getTime();
             const schedule = this.filters.reminders.schedule;
+            const billingCycle = this.getBillingCycleValue(reminder);
+            const deliveryType = String(reminder.deliveryScheduleType || "DEFAULT").toUpperCase();
+            const selectedBillingCycle = String(this.filters.reminders.billingCycle || "ALL").toUpperCase();
+            const selectedDeliveryType = String(this.filters.reminders.deliveryType || "ALL").toUpperCase();
+            if (selectedBillingCycle !== "ALL" && billingCycle !== selectedBillingCycle) return false;
+            if (selectedDeliveryType !== "ALL" && deliveryType !== selectedDeliveryType) return false;
             if (schedule === "TODAY" && !this.isToday(deliveryDateTime)) return false;
             if (schedule === "UPCOMING" && (!Number.isFinite(reminderTime) || reminderTime < now)) return false;
             if (schedule === "OVERDUE" && (!Number.isFinite(reminderTime) || reminderTime >= now)) return false;
-            return this.searchMatches(reminder, ["contactName", "phoneNumber", "templateName", "message", "reminderDateTime", "deliveryDateTime"], this.filters.reminders.search);
+            return this.searchValuesMatch([
+              reminder.contactName || "Contact tidak ditemukan",
+              reminder.phoneNumber || "-",
+              this.getBillingCycleLabel(reminder),
+              this.getReminderDeliveryLabel(reminder),
+              deliveryDateTime,
+              this.formatDateTime(deliveryDateTime),
+              reminder.reminderDateTime,
+              reminder.reminderDateTime ? this.formatDateTime(reminder.reminderDateTime) : "",
+              reminder.templateName || "-",
+              reminder.message,
+            ], this.filters.reminders.search);
           });
         },
 
         get filteredSent() {
           return this.sent.filter((item) => {
             const status = String(item.deliveryStatus || "SENT").toUpperCase();
-            if (this.filters.sent.status !== "ALL" && status !== this.filters.sent.status) return false;
-            return this.searchMatches(item, ["contactName", "phoneNumber", "deliveryStatus", "message", "sentAt", "reminderDateTime"], this.filters.sent.search);
+            const selectedStatus = String(this.filters.sent.status || "ALL").toUpperCase();
+            if (selectedStatus !== "ALL" && status !== selectedStatus) return false;
+            const sentAt = item.sentAt || item.reminderDateTime;
+            return this.searchValuesMatch([
+              item.contactName || "Contact tidak ditemukan",
+              item.phoneNumber || "-",
+              sentAt,
+              sentAt ? this.formatDateTime(sentAt) : "",
+              status,
+              item.message || "-",
+            ], this.filters.sent.search);
           });
         },
 
@@ -1259,12 +1414,14 @@ function createDashboardSelectors() {
         get hasContactBillingFilters() {
           const filters = this.filters.contactBilling;
           return Boolean(String(filters.search || "").trim())
+            || String(filters.billingCycle || "ALL") !== "ALL"
             || String(filters.status || "ALL") !== "ALL"
             || String(filters.dueStatus || "ALL") !== "ALL";
         },
 
         resetContactBillingFilters() {
           this.filters.contactBilling.search = "";
+          this.filters.contactBilling.billingCycle = "ALL";
           this.filters.contactBilling.status = "ALL";
           this.filters.contactBilling.dueStatus = "ALL";
           this.resetPage("contactBilling");
@@ -1280,6 +1437,48 @@ function createDashboardSelectors() {
           this.filters.contactHotspot.search = "";
           this.filters.contactHotspot.status = "ALL";
           this.resetPage("contactHotspot");
+        },
+
+        get hasContactDataFilters() {
+          const filters = this.filters.contacts;
+          return Boolean(String(filters.search || "").trim())
+            || String(filters.billingCycle || "ALL") !== "ALL"
+            || String(filters.apStatus || "ALL") !== "ALL";
+        },
+
+        resetContactDataFilters() {
+          this.filters.contacts.search = "";
+          this.filters.contacts.billingCycle = "ALL";
+          this.filters.contacts.apStatus = "ALL";
+          this.resetPage("contacts");
+        },
+
+        get hasReminderFilters() {
+          const filters = this.filters.reminders;
+          return Boolean(String(filters.search || "").trim())
+            || String(filters.billingCycle || "ALL") !== "ALL"
+            || String(filters.deliveryType || "ALL") !== "ALL"
+            || String(filters.schedule || "ALL") !== "ALL";
+        },
+
+        resetReminderFilters() {
+          this.filters.reminders.search = "";
+          this.filters.reminders.billingCycle = "ALL";
+          this.filters.reminders.deliveryType = "ALL";
+          this.filters.reminders.schedule = "ALL";
+          this.resetPage("reminders");
+        },
+
+        get hasSentFilters() {
+          const filters = this.filters.sent;
+          return Boolean(String(filters.search || "").trim())
+            || String(filters.status || "ALL") !== "ALL";
+        },
+
+        resetSentFilters() {
+          this.filters.sent.search = "";
+          this.filters.sent.status = "ALL";
+          this.resetPage("sent");
         },
 
         paginationLabel(key, total) {

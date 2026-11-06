@@ -545,7 +545,7 @@ test("filter jatuh tempo hanya menampilkan jadwal pelanggan bulanan", () => {
 
   assert.equal(app.getDueStatusLabel("NOT_SCHEDULED"), "Perlu Dijadwalkan");
   assert.equal(app.getDueDateLabel({ dueStatus: "NOT_SCHEDULED" }), "Jadwal belum tersedia");
-  assert.match(html, /<option value="NOT_SCHEDULED">Belum ada jadwal<\/option>/);
+  assert.match(html, /billingDueStatusOptions/);
   assert.doesNotMatch(html, /ONE_TIME|Sekali berlangganan|Tanpa jadwal bulanan/);
   assert.match(html, /x-text="getDueDateLabel\(contact\)"/);
 });
@@ -1232,10 +1232,10 @@ test("filter tagihan dan hotspot dapat direset tanpa mengubah jumlah baris", () 
   const app = createDashboardApp();
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
 
-  app.filters.contactBilling = { search: "Nayya", status: "HAS-DEBT", dueStatus: "OVERDUE", page: 3, pageSize: 25 };
+  app.filters.contactBilling = { search: "Nayya", billingCycle: "POSTPAID", status: "DEBT|YES", dueStatus: "OVERDUE", page: 3, pageSize: 25 };
   assert.equal(app.hasContactBillingFilters, true);
   app.resetContactBillingFilters();
-  assert.deepEqual(app.filters.contactBilling, { search: "", status: "ALL", dueStatus: "ALL", page: 1, pageSize: 25 });
+  assert.deepEqual(app.filters.contactBilling, { search: "", billingCycle: "ALL", status: "ALL", dueStatus: "ALL", page: 1, pageSize: 25 });
   assert.equal(app.hasContactBillingFilters, false);
 
   app.filters.contactHotspot = { search: "bintang", status: "ACTIVE", page: 2, pageSize: 50 };
@@ -1248,6 +1248,120 @@ test("filter tagihan dan hotspot dapat direset tanpa mengubah jumlah baris", () 
   assert.match(html, /@click="resetContactHotspotFilters\(\)"/);
   assert.match(html, /Jumlah tagihan per halaman/);
   assert.match(html, /Jumlah akun hotspot per halaman/);
+});
+
+test("filter operasional memakai seluruh nilai yang tampil pada tabel", () => {
+  const app = createDashboardApp();
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
+  app.forms.settings.profileMonthlyAmounts = { Bisnis: 150000 };
+  app.apMonitors = [{ host: "ap-kantor.local", status: "UP" }];
+  app.contacts = [
+    {
+      id: "filter-postpaid",
+      name: "Pelanggan Kantor",
+      phoneNumber: "628111111111",
+      billingCycle: "POSTPAID",
+      linkedApHost: "ap-kantor.local",
+      dueDate: "2026-11-10T03:00:00.000Z",
+      dueStatus: "OVERDUE",
+      monthlyPaymentAmount: 150000,
+      monthlyPaymentAmountCustomized: false,
+      currentPaymentStatus: "PAID",
+      currentPaymentType: "FULL-PAID",
+      hasDebt: true,
+      debtCount: 1,
+      debtNote: "Masih ada hutang Oktober 2026.",
+      mikrotikUsername: "kantor-hotspot",
+      mikrotikProfile: "Bisnis",
+      mikrotikMacAddresses: ["AA:BB:CC:DD:EE:FF"],
+      ipBindingBandwidthStatus: "ACTIVE",
+      hotspotProvisioningStatus: "ACTIVE",
+      hotspotAccessMode: "BOTH",
+      hotspotReactivationEnabled: true,
+      hotspotReactivationAt: "2026-12-10T03:00:00.000Z",
+    },
+    {
+      id: "filter-prepaid",
+      name: "Pelanggan Rumah",
+      phoneNumber: "628222222222",
+      billingCycle: "PREPAID",
+      linkedApHost: "",
+      dueStatus: "NOT_SCHEDULED",
+      monthlyPaymentAmount: 90000,
+      currentPaymentStatus: "UNPAID",
+      hasDebt: false,
+      mikrotikMacAddresses: [],
+      hotspotProvisioningStatus: "NONE",
+    },
+  ];
+
+  app.filters.contacts.search = "bulanan pascabayar";
+  assert.deepEqual(app.filteredContacts.map((contact) => contact.id), ["filter-postpaid"]);
+  app.filters.contacts.search = "";
+  app.filters.contacts.apStatus = "NOT_LINKED";
+  assert.deepEqual(app.filteredContacts.map((contact) => contact.id), ["filter-prepaid"]);
+
+  app.filters.contactBilling.search = "mengikuti tarif profile";
+  assert.deepEqual(app.filteredBillingContacts.map((contact) => contact.id), ["filter-postpaid"]);
+  app.filters.contactBilling.search = "";
+  app.filters.contactBilling.status = "PAYMENT|Lunas Semua";
+  assert.deepEqual(app.filteredBillingContacts.map((contact) => contact.id), ["filter-postpaid"]);
+  app.filters.contactBilling.status = "ALL";
+  app.filters.contactBilling.dueStatus = "NOT_SCHEDULED";
+  assert.deepEqual(app.filteredBillingContacts.map((contact) => contact.id), ["filter-prepaid"]);
+
+  app.filters.contactHotspot.search = "queue per ip aktif";
+  assert.deepEqual(app.filteredHotspotContacts.map((contact) => contact.id), ["filter-postpaid"]);
+  app.filters.contactHotspot.search = "";
+  app.filters.contactHotspot.status = "IP_BINDING|Aktif";
+  assert.deepEqual(app.filteredHotspotContacts.map((contact) => contact.id), ["filter-postpaid"]);
+
+  app.reminders = [
+    {
+      id: "reminder-grace",
+      contactName: "Pelanggan Kantor",
+      phoneNumber: "628111111111",
+      billingCycle: "POSTPAID",
+      deliveryScheduleType: "GRACE_PERIOD",
+      deliveryDateTime: "2026-11-09T03:00:00.000Z",
+      reminderDateTime: "2026-11-10T03:00:00.000Z",
+      templateName: "MasaTenggang.txt",
+      message: "Pengingat sebelum isolir.",
+    },
+    {
+      id: "reminder-due",
+      contactName: "Pelanggan Rumah",
+      phoneNumber: "628222222222",
+      billingCycle: "PREPAID",
+      deliveryScheduleType: "BILLING_DUE",
+      deliveryDateTime: "2026-11-15T03:00:00.000Z",
+      reminderDateTime: "2026-11-15T03:00:00.000Z",
+      templateName: "PaketPrabayar.txt",
+      message: "Paket akan berakhir.",
+    },
+  ];
+  app.filters.reminders.search = "pengingat masa tenggang";
+  assert.deepEqual(app.filteredReminders.map((reminder) => reminder.id), ["reminder-grace"]);
+  app.filters.reminders.search = "";
+  app.filters.reminders.deliveryType = "BILLING_DUE";
+  assert.deepEqual(app.filteredReminders.map((reminder) => reminder.id), ["reminder-due"]);
+
+  app.sent = [
+    { id: "sent-delivered", contactName: "Pelanggan Kantor", phoneNumber: "628111111111", deliveryStatus: "DELIVERED", sentAt: "2026-11-06T03:00:00.000Z", message: "Pesan diterima." },
+    { id: "sent-failed", contactName: "Pelanggan Rumah", phoneNumber: "628222222222", deliveryStatus: "FAILED", sentAt: "2026-11-05T03:00:00.000Z", message: "Pesan gagal." },
+  ];
+  assert.deepEqual(Array.from(app.sentDeliveryStatuses), ["DELIVERED", "FAILED"]);
+  app.filters.sent.status = "DELIVERED";
+  assert.deepEqual(app.filteredSent.map((item) => item.id), ["sent-delivered"]);
+
+  assert.match(html, /x-model="filters\.contacts\.billingCycle"/);
+  assert.match(html, /x-model="filters\.contactBilling\.billingCycle"/);
+  assert.match(html, /hotspotTableStatusOptions/);
+  assert.match(html, /reminderDeliveryTypeOptions/);
+  assert.match(html, /sentDeliveryStatuses/);
+  assert.match(styles, /\.filter-inline\.table-filter-bar \{[^}]*display: grid;/);
+  assert.match(styles, /\.table-filter-field input, \.table-filter-field select \{[^}]*min-height: 44px;/);
 });
 
 test("jadwal reminder memakai waktu kirim H-1 dan tetap menampilkan jatuh tempo", () => {

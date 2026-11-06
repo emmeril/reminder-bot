@@ -286,13 +286,12 @@
           </div>
 
           <div id="customer-data-panel" role="tabpanel" aria-labelledby="customer-data-tab" x-cloak x-show="activeContactTab === 'data'" x-transition.opacity class="customer-tab-panel">
-            <div class="filter-inline">
-              <input x-model="filters.contacts.search" @input="resetPage('contacts')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama, nomor WA, atau IP AP">
-              <select x-model.number="filters.contacts.pageSize" @change="resetPage('contacts')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-                <template x-for="size in pageSizes" :key="'contacts-size-' + size">
-                  <option :value="size" x-text="size + ' per halaman'"></option>
-                </template>
-              </select>
+            <div class="filter-inline table-filter-bar">
+              <label class="table-filter-field table-filter-search"><span>Pencarian</span><input x-model="filters.contacts.search" @input="resetPage('contacts')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari semua nilai tabel data pelanggan"></label>
+              <label class="table-filter-field"><span>Siklus pembayaran</span><select x-model="filters.contacts.billingCycle" @change="resetPage('contacts')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua siklus</option><template x-for="option in contactBillingCycleOptions" :key="'contact-cycle-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+              <label class="table-filter-field"><span>Status AP</span><select x-model="filters.contacts.apStatus" @change="resetPage('contacts')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status AP</option><template x-for="option in contactApStatusOptions" :key="'contact-ap-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+              <label class="table-filter-field"><span>Baris</span><select x-model.number="filters.contacts.pageSize" @change="resetPage('contacts')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'contacts-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
+              <button type="button" @click="resetContactDataFilters()" :disabled="!hasContactDataFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
             </div>
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Data pelanggan">
@@ -352,24 +351,12 @@
               <p>Atur nominal bulanan dan catat pembayaran tanpa bercampur dengan pengaturan hotspot.</p>
               <button type="button" @click="exportPaymentRecap()" class="ui-secondary-button border border-moss/20 bg-white px-4 py-2 text-sm font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-file-excel mr-2"></i>Rekap Excel</button>
             </div>
-            <div class="filter-inline customer-filter-bar">
-              <input x-model="filters.contactBilling.search" @input="resetPage('contactBilling')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama, nomor HP, atau nominal" aria-label="Cari tagihan pelanggan">
-              <select x-model="filters.contactBilling.status" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Filter status pembayaran">
-                <option value="ALL">Semua pembayaran</option>
-                <option value="HAS-DEBT">Ada tunggakan</option>
-                <option value="ARREARS-ONLY">Pembayaran tunggakan saja</option>
-                <option value="UNPAID">Periode tagihan belum dibayar</option>
-                <option value="CURRENT-ONLY">Hanya periode tagihan lunas</option>
-                <option value="FULL-PAID">Semua tagihan lunas</option>
-              </select>
-              <select x-model="filters.contactBilling.dueStatus" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Filter jadwal jatuh tempo">
-                <option value="ALL">Semua jadwal</option>
-                <option value="NOT_SCHEDULED">Belum ada jadwal</option>
-                <option value="UPCOMING">Belum jatuh tempo</option>
-                <option value="OVERDUE">Sudah jatuh tempo</option>
-                <option value="PAID">Sudah dibayar</option>
-              </select>
-              <button type="button" @click="resetContactBillingFilters()" :disabled="!hasContactBillingFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2"></i>Reset filter</button>
+            <div class="filter-inline customer-filter-bar table-filter-bar">
+              <label class="table-filter-field table-filter-search"><span>Pencarian</span><input x-model="filters.contactBilling.search" @input="resetPage('contactBilling')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari semua nilai tabel tagihan"></label>
+              <label class="table-filter-field"><span>Langganan</span><select x-model="filters.contactBilling.billingCycle" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua langganan</option><template x-for="option in contactBillingCycleOptions" :key="'billing-cycle-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+              <label class="table-filter-field"><span>Status pembayaran</span><select x-model="filters.contactBilling.status" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status pembayaran</option><template x-for="option in billingStatusFilterOptions" :key="'billing-status-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+              <label class="table-filter-field"><span>Status jatuh tempo</span><select x-model="filters.contactBilling.dueStatus" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status jatuh tempo</option><template x-for="option in billingDueStatusOptions" :key="'due-status-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+              <button type="button" @click="resetContactBillingFilters()" :disabled="!hasContactBillingFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
             </div>
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Tagihan pelanggan">
@@ -413,8 +400,7 @@
                           </div>
                         </td>
                         <td class="px-4 py-4" data-label="Sumber Nominal">
-                          <small x-show="hasProfileMonthlyAmount(contact)" class="mt-1 block text-xs" :class="contact.monthlyPaymentAmountCustomized ? 'text-clay' : 'text-moss'" x-text="contact.monthlyPaymentAmountCustomized ? 'Nominal custom · default profile Rp ' + Number(getProfileMonthlyAmount(contact.mikrotikProfile)).toLocaleString('id-ID') : 'Mengikuti tarif profile'"></small>
-                          <small x-show="!hasProfileMonthlyAmount(contact)" class="block text-xs text-ink/50">Tarif manual</small>
+                          <small class="block text-xs" :class="hasProfileMonthlyAmount(contact) ? (contact.monthlyPaymentAmountCustomized ? 'text-clay' : 'text-moss') : 'text-ink/50'" x-text="getPaymentAmountSourceLabel(contact)"></small>
                         </td>
                         <td class="px-4 py-4" data-label="Bulan Ini">
                           <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="contact.currentPaymentStatus === 'PAID' ? 'bg-moss/10 text-moss' : 'bg-clay/10 text-clay'" x-text="getCurrentPaymentLabel(contact)"></span>
@@ -467,20 +453,10 @@
           </div>
 
           <div id="customer-hotspot-panel" role="tabpanel" aria-labelledby="customer-hotspot-tab" x-cloak x-show="activeContactTab === 'hotspot'" x-transition.opacity class="customer-tab-panel">
-            <div class="filter-inline customer-filter-bar">
-              <input x-model="filters.contactHotspot.search" @input="resetPage('contactHotspot')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari nama, user, profile, atau IP AP" aria-label="Cari akun hotspot pelanggan">
-              <select x-model="filters.contactHotspot.status" @change="resetPage('contactHotspot')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Filter status akun hotspot">
-                <option value="ALL">Semua status akun</option>
-                <option value="CONFIGURED">Sudah punya akun</option>
-                <option value="UNCONFIGURED">Belum punya akun</option>
-                <option value="ACTIVE">Aktif</option>
-                <option value="PENDING">Sedang diproses</option>
-                <option value="FAILED">Gagal sinkron</option>
-                <option value="DEACTIVATED">Nonaktif terjadwal</option>
-                <option value="DISABLED">Nonaktif oleh admin</option>
-                <option value="AUTO">Aktivasi otomatis</option>
-              </select>
-              <button type="button" @click="resetContactHotspotFilters()" :disabled="!hasContactHotspotFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2"></i>Reset filter</button>
+            <div class="filter-inline customer-filter-bar table-filter-bar">
+              <label class="table-filter-field table-filter-search"><span>Pencarian</span><input x-model="filters.contactHotspot.search" @input="resetPage('contactHotspot')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari semua nilai tabel hotspot"></label>
+              <label class="table-filter-field"><span>Nilai status tabel</span><select x-model="filters.contactHotspot.status" @change="resetPage('contactHotspot')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua nilai status</option><template x-for="option in hotspotTableStatusOptions" :key="'hotspot-status-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+              <button type="button" @click="resetContactHotspotFilters()" :disabled="!hasContactHotspotFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
             </div>
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Hotspot pelanggan">
@@ -1286,19 +1262,13 @@
           <div class="mb-4 rounded-xl border border-moss/20 bg-moss/5 px-4 py-3 text-sm text-ink/70">
             Ubah jadwal melalui data pelanggan. Ubah isi pesan melalui Pengaturan, lalu buka Template notifikasi.
           </div>
-          <div class="filter-inline mt-5">
-            <input x-model="filters.reminders.search" @input="resetPage('reminders')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari tujuan, nomor, template, atau pesan">
-            <select x-model="filters.reminders.schedule" @change="resetPage('reminders')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-              <option value="ALL">Semua jadwal</option>
-              <option value="TODAY">Hari ini</option>
-              <option value="UPCOMING">Akan datang</option>
-              <option value="OVERDUE">Terlambat</option>
-            </select>
-            <select x-model.number="filters.reminders.pageSize" @change="resetPage('reminders')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-              <template x-for="size in pageSizes" :key="'reminders-size-' + size">
-                <option :value="size" x-text="size + ' per halaman'"></option>
-              </template>
-            </select>
+          <div class="filter-inline table-filter-bar mt-5">
+            <label class="table-filter-field table-filter-search"><span>Pencarian</span><input x-model="filters.reminders.search" @input="resetPage('reminders')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari semua nilai tabel reminder"></label>
+            <label class="table-filter-field"><span>Siklus</span><select x-model="filters.reminders.billingCycle" @change="resetPage('reminders')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua siklus</option><template x-for="option in reminderBillingCycleOptions" :key="'reminder-cycle-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+            <label class="table-filter-field"><span>Jenis waktu</span><select x-model="filters.reminders.deliveryType" @change="resetPage('reminders')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua jenis waktu</option><template x-for="option in reminderDeliveryTypeOptions" :key="'reminder-delivery-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+            <label class="table-filter-field"><span>Rentang waktu</span><select x-model="filters.reminders.schedule" @change="resetPage('reminders')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua jadwal</option><option value="TODAY">Hari ini</option><option value="UPCOMING">Akan datang</option><option value="OVERDUE">Terlambat</option></select></label>
+            <label class="table-filter-field"><span>Baris</span><select x-model.number="filters.reminders.pageSize" @change="resetPage('reminders')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'reminders-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
+            <button type="button" @click="resetReminderFilters()" :disabled="!hasReminderFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
           </div>
           <div class="sent-history-table mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8 bg-white/80 shadow-sm">
             <div class="table-scroll" tabindex="0" role="region" aria-label="Tabel reminder aktif">
@@ -1674,18 +1644,11 @@
             <h2 class="font-display text-2xl"><i class="fa-solid fa-paper-plane mr-2 text-clay"></i>Riwayat pengiriman</h2>
             <!-- <p class="mt-1 text-sm text-ink/60">Output notifikasi yang sudah keluar dari bot.</p> -->
           </div>
-          <div class="filter-inline mb-5">
-            <input x-model="filters.sent.search" @input="resetPage('sent')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari tujuan, nomor, status, atau pesan">
-            <select x-model="filters.sent.status" @change="resetPage('sent')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-              <option value="ALL">Semua status</option>
-              <option value="SENT">Sent</option>
-              <option value="FAILED">Failed</option>
-            </select>
-            <select x-model.number="filters.sent.pageSize" @change="resetPage('sent')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
-              <template x-for="size in pageSizes" :key="'sent-size-' + size">
-                <option :value="size" x-text="size + ' per halaman'"></option>
-              </template>
-            </select>
+          <div class="filter-inline table-filter-bar mb-5">
+            <label class="table-filter-field table-filter-search"><span>Pencarian</span><input x-model="filters.sent.search" @input="resetPage('sent')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari semua nilai riwayat pengiriman"></label>
+            <label class="table-filter-field"><span>Status</span><select x-model="filters.sent.status" @change="resetPage('sent')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status</option><template x-for="status in sentDeliveryStatuses" :key="'sent-status-' + status"><option :value="status" x-text="status"></option></template></select></label>
+            <label class="table-filter-field"><span>Baris</span><select x-model.number="filters.sent.pageSize" @change="resetPage('sent')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'sent-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
+            <button type="button" @click="resetSentFilters()" :disabled="!hasSentFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
           </div>
           <div class="sent-history-table overflow-hidden rounded-[1.5rem] border border-ink/8 bg-white/80 shadow-sm">
             <div class="table-scroll" tabindex="0" role="region" aria-label="Tabel riwayat pengiriman">
