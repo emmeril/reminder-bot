@@ -1175,6 +1175,7 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 36px !important;[^}]*border-radius: 9px !important;[^}]*font-size: 10px !important;/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 44px !important;[^}]*font-size: 11px !important;/);
   assert.match(styles, /\.customer-due-status \{[^}]*white-space: nowrap;/);
+  assert.match(styles, /\.customer-billing-table th:nth-child\(3\) \{ width: 11%; \}/);
   assert.match(styles, /\.customer-hotspot-status, \.customer-schedule-status \{[^}]*white-space: nowrap;/);
   assert.match(styles, /\.customer-hotspot-table \{ min-width: 1960px; \}/);
   assert.match(styles, /\.customer-hotspot-table th:nth-child\(6\) \{ width: 8%; \}/);
