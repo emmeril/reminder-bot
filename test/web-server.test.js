@@ -123,10 +123,18 @@ test("halaman login membedakan akses administrator dan pelanggan", async () => {
 
 test("JavaScript dashboard tidak disimpan di cache browser", async () => {
   const baseUrl = await startServer();
-  const response = await fetch(`${baseUrl}/public/app.js?v=test`);
-
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
+  for (const scriptPath of [
+    "app.js",
+    "dashboard/state.js",
+    "dashboard/ui.js",
+    "dashboard/selectors.js",
+    "dashboard/data.js",
+    "dashboard/actions.js",
+  ]) {
+    const response = await fetch(`${baseUrl}/public/${scriptPath}?v=test`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
+  }
 });
 
 test("API reminder hanya menyediakan akses baca untuk jadwal otomatis", async () => {

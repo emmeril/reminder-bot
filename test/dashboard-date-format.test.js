@@ -4,8 +4,23 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
+const dashboardScriptPaths = [
+  "../public/dashboard/state.js",
+  "../public/dashboard/ui.js",
+  "../public/dashboard/selectors.js",
+  "../public/dashboard/data.js",
+  "../public/dashboard/actions.js",
+  "../public/app.js",
+];
+
+function readDashboardSource() {
+  return dashboardScriptPaths
+    .map((relativePath) => fs.readFileSync(path.join(__dirname, relativePath), "utf8"))
+    .join("\n");
+}
+
 function createDashboardApp(globals = {}) {
-  const source = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
+  const source = readDashboardSource();
   const dashboardApp = vm.runInNewContext(`${source}\n;dashboardApp`, {
     window: { matchMedia: () => ({ matches: false }) },
     ...globals,
@@ -611,7 +626,7 @@ test("ringkasan menempatkan status di kiri dan kondisi utama di kanan", () => {
   });
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
-  const script = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
+  const script = readDashboardSource();
 
   assert.ok(html.indexOf("status-panel") < html.indexOf("overview-summary-region"));
   assert.match(html, /Kondisi hari ini/);
@@ -912,7 +927,7 @@ test("ekspor laporan voucher membuat berkas CSV tersendiri", async () => {
 
 test("sidebar dan panel laporan pendapatan tersedia dengan filter serta ekspor", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
-  const script = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
+  const script = readDashboardSource();
 
   assert.match(script, /key: "revenue"[^\n]*label: "Laporan Pendapatan"/);
   assert.match(html, /activeMenu === 'revenue'/);
@@ -1190,7 +1205,7 @@ test("filter tagihan dan hotspot dapat direset tanpa mengubah jumlah baris", () 
 test("jadwal reminder memakai waktu kirim H-1 dan tetap menampilkan jatuh tempo", () => {
   const app = createDashboardApp();
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
-  const script = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
+  const script = readDashboardSource();
 
   assert.match(html, /Waktu pengiriman/);
   assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "GRACE_PERIOD" }), "Pengingat masa tenggang");
@@ -1212,7 +1227,7 @@ test("menu jadwal hanya memantau reminder otomatis tanpa CRUD manual", () => {
     },
   });
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
-  const script = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
+  const script = readDashboardSource();
   const server = fs.readFileSync(path.join(__dirname, "../src/app.js"), "utf8");
   const remindersSection = html.match(/<section x-show="activeMenu === 'reminders'"[\s\S]*?<\/section>/)?.[0] || "";
 
@@ -1249,7 +1264,7 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   const app = createDashboardApp();
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "../public/interface.css"), "utf8");
-  const script = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
+  const script = readDashboardSource();
   let request = null;
   let reloadedUsers = false;
 
