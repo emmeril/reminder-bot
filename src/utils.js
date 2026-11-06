@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const { CONFIG, MONTH_NAMES } = require("./config");
+const { CONFIG, DEFAULT_SETTINGS, MONTH_NAMES, REMINDER_KINDS } = require("./config");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -523,6 +523,18 @@ function isGracePeriodReminder(reminder) {
     || Boolean(reminder?.gracePeriodCreatedAt);
 }
 
+function getSettingsReminderTemplate(reminder, settings = {}) {
+  if (String(reminder?.reminderKind || "").trim().toUpperCase() !== REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY) {
+    return null;
+  }
+  const templateName = String(reminder?.templateName || "").trim().toLowerCase();
+  const settingKey = templateName === "masaaktifsementara"
+    ? "activePeriodReminderMessageTemplate"
+    : (templateName === "paketprabayar" ? "prepaidPackageReminderMessageTemplate" : null);
+  if (!settingKey) return null;
+  return sanitizeMultilineText(settings?.[settingKey]) || DEFAULT_SETTINGS[settingKey];
+}
+
 function getReminderDeliveryDate(reminder, graceDays = 0, timeZone = "Asia/Jakarta") {
   const retryDate = new Date(reminder?.nextDeliveryAttemptAt || "");
   if (!Number.isNaN(retryDate.getTime())) return retryDate;
@@ -552,6 +564,7 @@ module.exports = {
   getDateTimePartsInTimezone,
   getPreviousBillingPeriod,
   getReminderDeliveryDate,
+  getSettingsReminderTemplate,
   isValidPhoneNumber,
   isValidTimeZone,
   isAutomaticBillingReminder,

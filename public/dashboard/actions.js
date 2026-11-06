@@ -820,8 +820,8 @@ function createDashboardActions() {
                 body: JSON.stringify(this.forms.settings),
               });
               this.settingsDirty = false;
+              await Promise.all([this.loadStatus(), this.loadReminders()]);
               this.notify("Settings diperbarui.");
-              await this.loadStatus();
             });
           } catch (error) {
             this.setFormError("settings", error);

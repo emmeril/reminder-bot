@@ -16,6 +16,7 @@ const {
   getBillingPeriodParts,
   getDateTimePartsInTimezone,
   getReminderDeliveryDate,
+  getSettingsReminderTemplate,
   isAutomaticBillingReminder,
   isGracePeriodReminder,
   isValidTimeZone,
@@ -254,7 +255,7 @@ class ReminderScheduler {
       && !prepaidReminder
       && gracePeriodTemplate
       ? gracePeriodTemplate
-      : reminder.messageSource || reminder.message || "";
+      : getSettingsReminderTemplate(reminder, settings) || reminder.messageSource || reminder.message || "";
     let message = String(sourceMessage);
     let usedBillingDetailsPlaceholder = false;
     let usedDetailedAmountPlaceholder = false;

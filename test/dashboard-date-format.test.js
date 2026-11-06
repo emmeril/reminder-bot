@@ -373,30 +373,90 @@ test("pengaturan menyediakan template pengingat masa tenggang", () => {
   assert.equal(app.forms.settings.gracePeriodReminderMessageTemplate, "");
 });
 
-test("simpan pengaturan mengirim template pengingat masa tenggang", async () => {
+test("simpan pengaturan memperbarui pesan reminder sebelum menampilkan sukses", async () => {
   const app = createDashboardApp();
   const template = "Halo {{name}}, masa tenggang berakhir {{isolationDate}}.";
+  const message = "Halo Budi, masa tenggang berakhir 10 November 2026.";
+  const requests = [];
+  const notifications = [];
+  let completeSave;
+  let completeReminderLoad;
+  const saveResponse = new Promise((resolve) => { completeSave = resolve; });
+  const reminderResponse = new Promise((resolve) => { completeReminderLoad = resolve; });
   let request = null;
-  let notification = "";
+  let saveCompleted = false;
   let statusReloaded = false;
+  app.settingsDirty = true;
+  app.reminders = [{ id: "reminder-1", contactName: "Budi", message: "Pesan lama" }];
   app.forms.settings.gracePeriodReminderMessageTemplate = template;
   app.clearFormError = () => {};
   app.setFormError = (_key, error) => { throw error; };
   app.withProcessing = async (_message, action) => action();
-  app.api = async (url, options) => {
-    request = { url, method: options.method, payload: JSON.parse(options.body) };
-    return {};
+  app.api = async (url, options = {}) => {
+    requests.push(url);
+    if (url === "/api/settings") {
+      request = { url, method: options.method, payload: JSON.parse(options.body) };
+      await saveResponse;
+      saveCompleted = true;
+      return {};
+    }
+    assert.equal(url, "/api/reminders");
+    assert.equal(saveCompleted, true);
+    return reminderResponse;
   };
-  app.notify = (message) => { notification = message; };
-  app.loadStatus = async () => { statusReloaded = true; };
+  app.notify = (message) => { notifications.push(message); };
+  app.loadStatus = async () => {
+    assert.equal(saveCompleted, true);
+    statusReloaded = true;
+  };
 
-  await app.saveSettings();
+  const saving = app.saveSettings();
+  assert.deepEqual(requests, ["/api/settings"]);
+  assert.equal(statusReloaded, false);
+  assert.equal(app.settingsDirty, true);
+  assert.deepEqual(notifications, []);
+
+  completeSave();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(requests, ["/api/settings", "/api/reminders"]);
+  assert.equal(statusReloaded, true);
+  assert.equal(app.reminders[0].message, "Pesan lama");
+  assert.deepEqual(notifications, []);
+
+  completeReminderLoad([{ id: "reminder-1", contactName: "Budi", message }]);
+  await saving;
 
   assert.equal(request.url, "/api/settings");
   assert.equal(request.method, "PUT");
   assert.equal(request.payload.gracePeriodReminderMessageTemplate, template);
-  assert.equal(notification, "Settings diperbarui.");
-  assert.equal(statusReloaded, true);
+  assert.equal(app.paginatedReminders[0].message, message);
+  assert.equal(app.settingsDirty, false);
+  assert.deepEqual(notifications, ["Settings diperbarui."]);
+});
+
+test("simpan pengaturan yang gagal mempertahankan form dan pesan reminder", async () => {
+  const app = createDashboardApp();
+  const template = "Halo {{name}}, masa tenggang berakhir {{isolationDate}}.";
+  const requests = [];
+  const notifications = [];
+  app.settingsDirty = true;
+  app.forms.settings.gracePeriodReminderMessageTemplate = template;
+  app.reminders = [{ id: "reminder-1", contactName: "Budi", message: "Pesan lama" }];
+  app.withProcessing = async (_message, action) => action();
+  app.api = async (url) => {
+    requests.push(url);
+    throw new Error("Pengaturan gagal disimpan.");
+  };
+  app.notify = (message) => { notifications.push(message); };
+
+  await app.saveSettings();
+
+  assert.deepEqual(requests, ["/api/settings"]);
+  assert.deepEqual(notifications, []);
+  assert.equal(app.settingsDirty, true);
+  assert.equal(app.forms.settings.gracePeriodReminderMessageTemplate, template);
+  assert.equal(app.paginatedReminders[0].message, "Pesan lama");
+  assert.match(app.formErrors.settings, /Pengaturan gagal disimpan\./);
 });
 
 test("pengaturan menyediakan template akun WiFi setelah pembayaran", () => {

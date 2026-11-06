@@ -2167,7 +2167,14 @@ class WebServer {
       return job;
     }));
 
-    this.app.get("/api/reminders", requireApiAuth, handleApi(async () => this.dataManager.getSortedReminders()));
+    this.app.get("/api/reminders", requireApiAuth, handleApi(async () => {
+      const now = new Date();
+      return this.dataManager.getSortedReminders().map((reminder) => {
+        if (reminder.processingAt || reminder.deliveryAttemptedAt
+          || this.reminderScheduler.isPaidReminder(reminder)) return reminder;
+        return { ...reminder, message: this.reminderScheduler.buildReminderMessage(reminder, now) };
+      });
+    }));
     this.app.get("/api/reminders/sent", requireApiAuth, handleApi(async () => this.dataManager.getSentReminders()));
 
     this.app.get("/api/templates", requireApiAuth, handleApi(async () => this.templateManager.listTemplates()));

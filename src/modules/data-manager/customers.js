@@ -61,6 +61,7 @@ const {
   getDateTimePartsInTimezone,
   getPreviousBillingPeriod,
   getReminderDeliveryDate,
+  getSettingsReminderTemplate,
   isAutomaticBillingReminder,
   isGracePeriodReminder,
   isValidPhoneNumber,
@@ -1598,6 +1599,21 @@ class CustomerDataManager extends DataManagerCore {
     }
     if (this.rewriteReminderPaymentMessage(reminder, contact)) changed += 1;
     return changed;
+  }
+
+  syncActiveRemindersWithSettings(settings = this.getSettings()) {
+    let updated = 0;
+    for (const reminder of this.reminders.values()) {
+      if (reminder.processingAt || reminder.deliveryAttemptedAt) continue;
+      const messageTemplate = getSettingsReminderTemplate(reminder, settings);
+      if (messageTemplate === null) continue;
+      if (reminder.messageSource === messageTemplate && reminder.message === messageTemplate) continue;
+
+      reminder.messageSource = messageTemplate;
+      reminder.message = messageTemplate;
+      updated += 1;
+    }
+    return updated;
   }
 
   async syncActiveRemindersWithTemplates(templates) {

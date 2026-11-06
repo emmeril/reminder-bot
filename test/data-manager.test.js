@@ -2363,6 +2363,123 @@ test("menyimpan template pengingat berakhirnya masa aktif", async () => {
   );
 });
 
+test("perubahan template notifikasi menyinkronkan reminder bawaan tanpa mengubah jadwal atau pesan lain", async () => {
+  const manager = createManager({
+    id: "contact-settings-template",
+    name: "Pelanggan Template",
+    phoneNumber: "6281234567803",
+    monthlyPaymentAmount: 100_000,
+  });
+  const originalContacts = structuredClone(manager.contacts);
+  const reminderDefinitions = [
+    { id: "active-period", templateName: "MasaAktifSementara" },
+    { id: "prepaid-package", templateName: "PaketPrabayar" },
+    { id: "custom", templateName: null },
+    { id: "file-template", templateName: "Info.txt" },
+    { id: "billing", templateName: "PaketPrabayar", reminderKind: REMINDER_KINDS.BILLING },
+    { id: "processing-active", templateName: "MasaAktifSementara", processingAt: "2026-11-10T01:00:00.000Z" },
+    { id: "processing-prepaid", templateName: "PaketPrabayar", processingAt: "2026-11-10T01:00:00.000Z" },
+    { id: "attempted-active", templateName: "MasaAktifSementara", deliveryAttemptedAt: "2026-11-10T01:00:00.000Z" },
+    { id: "attempted-prepaid", templateName: "PaketPrabayar", deliveryAttemptedAt: "2026-11-10T01:00:00.000Z" },
+  ];
+  for (const definition of reminderDefinitions) {
+    manager.reminders.set(definition.id, {
+      contactId: "contact-settings-template",
+      reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+      reminderDateTime: "2026-11-10T01:00:00.000Z",
+      activePeriodUntil: "2026-11-10T01:00:00.000Z",
+      nextDeliveryAttemptAt: "2026-11-11T01:00:00.000Z",
+      gracePeriodCreatedAt: "2026-11-10T01:00:00.000Z",
+      message: `Pesan lama ${definition.id}`,
+      messageSource: `Pesan lama ${definition.id}`,
+      ...definition,
+    });
+  }
+  manager.sentReminders.set("sent", {
+    ...manager.reminders.get("active-period"),
+    id: "sent",
+    sentAt: "2026-11-10T01:05:00.000Z",
+    deliveryStatus: "SENT",
+  });
+  const originalReminders = structuredClone(manager.reminders);
+  const originalSentReminders = structuredClone(manager.sentReminders);
+  const transaction = {};
+  manager.sequelize.transaction = async (operation) => operation(transaction);
+  let savedSettings;
+  const reminderWrites = [];
+  manager.saveSettings = async (options = {}) => {
+    savedSettings = { settings: structuredClone(manager.settings), transaction: options.transaction };
+  };
+  manager.saveReminders = async (options = {}) => {
+    reminderWrites.push({ reminders: structuredClone(manager.reminders), transaction: options.transaction });
+  };
+  const payload = {
+    activePeriodReminderMessageTemplate: "Halo {{name}}, masa aktif baru sampai {{activeUntil}}.",
+    prepaidPackageReminderMessageTemplate: "Paket terbaru {{name}} berakhir {{activeUntil}}.",
+  };
+
+  await manager.updateSettings(payload);
+
+  assert.equal(savedSettings.transaction, transaction);
+  assert.equal(savedSettings.settings.activePeriodReminderMessageTemplate, payload.activePeriodReminderMessageTemplate);
+  assert.equal(savedSettings.settings.prepaidPackageReminderMessageTemplate, payload.prepaidPackageReminderMessageTemplate);
+  assert.equal(reminderWrites.length, 1);
+  assert.equal(reminderWrites[0].transaction, transaction);
+  assert.deepEqual(reminderWrites[0].reminders, manager.reminders);
+  for (const [id, messageTemplate] of [
+    ["active-period", payload.activePeriodReminderMessageTemplate],
+    ["prepaid-package", payload.prepaidPackageReminderMessageTemplate],
+  ]) {
+    assert.deepEqual(manager.reminders.get(id), {
+      ...originalReminders.get(id),
+      message: messageTemplate,
+      messageSource: messageTemplate,
+    });
+  }
+  for (const { id } of reminderDefinitions.slice(2)) {
+    assert.deepEqual(manager.reminders.get(id), originalReminders.get(id), id);
+  }
+  assert.deepEqual(manager.contacts, originalContacts);
+  assert.deepEqual(manager.sentReminders, originalSentReminders);
+
+  await manager.updateSettings(payload);
+  assert.equal(reminderWrites.length, 1);
+});
+
+test("kegagalan menyimpan reminder mengembalikan perubahan template notifikasi", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.reminders.set("active-period", {
+    id: "active-period",
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    templateName: "MasaAktifSementara",
+    reminderDateTime: "2026-11-10T01:00:00.000Z",
+    message: "Pesan lama",
+    messageSource: "Pesan lama",
+  });
+  const originalSettings = structuredClone(manager.settings);
+  const originalReminders = structuredClone(manager.reminders);
+  const transaction = {};
+  manager.sequelize = { transaction: async (operation) => operation(transaction) };
+  let settingsSaved = false;
+  manager.saveSettings = async (options) => {
+    assert.equal(options.transaction, transaction);
+    settingsSaved = true;
+  };
+  manager.saveReminders = async (options) => {
+    assert.equal(options.transaction, transaction);
+    throw new Error("database gagal menyimpan reminder");
+  };
+
+  await assert.rejects(
+    () => manager.updateSettings({ activePeriodReminderMessageTemplate: "Template baru {{name}}" }),
+    /database gagal menyimpan reminder/
+  );
+
+  assert.equal(settingsSaved, true);
+  assert.deepEqual(manager.settings, originalSettings);
+  assert.deepEqual(manager.reminders, originalReminders);
+});
+
 test("menyimpan template pengiriman akun pelanggan dari menu pengaturan", async () => {
   const manager = new DataManager({ push() {} });
   manager.saveSettings = async () => {};

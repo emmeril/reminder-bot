@@ -164,7 +164,7 @@ class DataManager extends CustomerDataManager {
         databaseBackupLastRunDate: current.databaseBackupLastRunDate,
       };
       let contactsChanged = false;
-      let remindersChanged = 0;
+      let remindersChanged = this.syncActiveRemindersWithSettings(this.settings);
       const updatedAt = new Date().toISOString();
       for (const contact of this.contacts.values()) {
         if (!this.applyProfileMonthlyAmount(contact)) continue;

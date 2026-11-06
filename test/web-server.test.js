@@ -4,6 +4,7 @@ const { afterEach, test } = require("node:test");
 
 const AuthManager = require("../src/auth-manager");
 const { MidtransService, WebServer } = require("../src/app");
+const { ReminderScheduler } = require("../src/schedulers");
 const { CONFIG, PAYMENT_STATUS, PAYMENT_TYPES } = require("../src/config");
 
 const originalAuthConfig = {
@@ -32,7 +33,7 @@ afterEach(async () => {
   })));
 });
 
-async function startServer(dataManager = {}, notificationBot = {}, mikrotikService = {}, hotspotReactivationScheduler = {}, midtransService = null, voucherRevenueSyncScheduler = null) {
+async function startServer(dataManager = {}, notificationBot = {}, mikrotikService = {}, hotspotReactivationScheduler = {}, midtransService = null, voucherRevenueSyncScheduler = null, reminderScheduler = null) {
   const activityLog = { push() {}, list: () => [] };
   const authManager = new AuthManager(activityLog);
   const server = new WebServer(
@@ -53,7 +54,7 @@ async function startServer(dataManager = {}, notificationBot = {}, mikrotikServi
     },
     {},
     activityLog,
-    { isProcessing: false, processDueReminders: async () => {} },
+    reminderScheduler || { isProcessing: false, processDueReminders: async () => {} },
     authManager,
     mikrotikService,
     { isProcessing: false, ...hotspotReactivationScheduler },
@@ -158,6 +159,70 @@ test("API reminder hanya menyediakan akses baca untuk jadwal otomatis", async ()
     });
     assert.equal(response.status, 404);
   }
+});
+
+test("API reminder menampilkan template terbaru setelah simpan tanpa mengubah snapshot dan riwayat", async () => {
+  let settings = { hotspotIsolationGraceDays: 3 };
+  const dueAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const reminders = [
+    { id: "active", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "MasaAktifSementara" },
+    { id: "prepaid", contactId: "prepaid", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "PaketPrabayar" },
+    { id: "grace", contactId: "regular", reminderKind: "GRACE_PERIOD", templateName: "Penagihan.txt" },
+    { id: "paid", contactId: "paid", reminderKind: "BILLING", templateName: "Penagihan.txt", message: "*Status pembayaran: LUNAS*" },
+    { id: "custom", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "Khusus.txt", messageSource: "Khusus {{name}}" },
+    { id: "processing", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "MasaAktifSementara", processingAt: dueAt },
+    { id: "attempted", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "MasaAktifSementara", deliveryAttemptedAt: dueAt },
+  ].map((reminder) => ({
+    reminderDateTime: dueAt,
+    message: "Salinan lama",
+    messageSource: "Salinan lama",
+    ...reminder,
+  }));
+  const snapshot = structuredClone(reminders);
+  const history = [{ ...reminders[0], id: "sent", message: "Pesan yang sudah terkirim" }];
+  const dataManager = {
+    getSettings: () => settings,
+    getTimezone: () => "Asia/Jakarta",
+    updateSettings: async (payload) => (settings = { ...settings, ...payload }),
+    getSortedReminders: () => reminders,
+    getSentReminders: () => history,
+    getResolvedReminderContact: (reminder) => ({
+      name: "Pelanggan",
+      billingCycle: reminder.contactId === "prepaid" ? "PREPAID" : "POSTPAID",
+      currentPaymentStatus: reminder.contactId === "paid" ? "PAID" : "UNPAID",
+      monthlyPaymentAmount: 0,
+    }),
+  };
+  const scheduler = new ReminderScheduler({}, dataManager, { push() {} });
+  const baseUrl = await startServer(dataManager, {}, {}, {}, null, null, scheduler);
+  const cookie = await login(baseUrl);
+  const saved = await fetch(`${baseUrl}/api/settings`, {
+    method: "PUT",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({
+      activePeriodReminderMessageTemplate: "Masa aktif baru {{name}}",
+      prepaidPackageReminderMessageTemplate: "Prabayar baru {{name}}",
+      gracePeriodReminderMessageTemplate: "Masa tenggang baru {{name}}",
+    }),
+  });
+  assert.equal(saved.status, 200);
+
+  const response = await fetch(`${baseUrl}/api/reminders`, { headers: { cookie } });
+  assert.equal(response.status, 200);
+  const { data } = await response.json();
+  const messages = Object.fromEntries(data.map((reminder) => [reminder.id, reminder.message]));
+  assert.equal(messages.active, "Masa aktif baru Pelanggan");
+  assert.equal(messages.prepaid, "Prabayar baru Pelanggan");
+  assert.equal(messages.grace, "Masa tenggang baru Pelanggan");
+  assert.equal(messages.custom, "Khusus Pelanggan");
+  assert.equal(messages.paid, "*Status pembayaran: LUNAS*");
+  assert.equal(messages.processing, "Salinan lama");
+  assert.equal(messages.attempted, "Salinan lama");
+  assert.deepEqual(reminders, snapshot);
+
+  const historyResponse = await fetch(`${baseUrl}/api/reminders/sent`, { headers: { cookie } });
+  assert.equal(historyResponse.status, 200);
+  assert.deepEqual((await historyResponse.json()).data, history);
 });
 
 test("permintaan favicon tidak menghasilkan error 404 di browser", async () => {
