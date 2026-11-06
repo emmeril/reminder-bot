@@ -120,6 +120,9 @@ function customerPortalApp() {
         this.passwordMessage = { type: "error", text: error.message || "Password gagal diubah." };
       } finally {
         this.changingPassword = false;
+        if (this.passwordMessage.type === "success") {
+          this.closePasswordModal();
+        }
       }
     },
 
