@@ -360,6 +360,29 @@ textarea,
   outline-offset: 2px;
 }
 
+.navbar-account-caret {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ui-muted);
+  font-size: 10px;
+  transition: transform .15s ease, color .15s ease;
+}
+
+.navbar-account-caret.is-open {
+  color: var(--ui-primary-dark);
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navbar-account-caret {
+    transition: none;
+  }
+}
+
 .navbar-account-popover {
   position: absolute;
   top: calc(100% + 8px);

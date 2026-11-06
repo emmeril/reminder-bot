@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/public/tailwind.css?v=20261105-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261106-3">
-  <link rel="stylesheet" href="/public/interface.css?v=20261106-4">
+  <link rel="stylesheet" href="/public/interface.css?v=20261106-5">
   <script defer src="/public/dashboard/state.js?v=20261106-2"></script>
   <script defer src="/public/dashboard/ui.js?v=20261106-1"></script>
   <script defer src="/public/dashboard/selectors.js?v=20261106-2"></script>
@@ -84,6 +84,7 @@
           >
             <span class="navbar-user-avatar" aria-hidden="true"><i class="fa-solid fa-user"></i></span>
             <span class="navbar-user-info"><strong>Administrator</strong><small><span class="status-dot" aria-hidden="true"></span> Sistem berjalan</small></span>
+            <span class="navbar-account-caret" :class="{ 'is-open': open }" aria-hidden="true"><i class="fa-solid fa-chevron-down"></i></span>
           </button>
           <div
             x-cloak
