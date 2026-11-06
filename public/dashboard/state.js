@@ -195,6 +195,18 @@ function createDashboardState() {
           sent: { search: "", status: "ALL", page: 1, pageSize: 10 },
           logs: { page: 1, pageSize: 10 },
         },
+        sorts: {
+          contacts: { key: "", direction: "" },
+          contactBilling: { key: "", direction: "" },
+          contactHotspot: { key: "", direction: "" },
+          voucherProfiles: { key: "", direction: "" },
+          voucherStats: { key: "", direction: "" },
+          revenue: { key: "", direction: "" },
+          voucherRevenue: { key: "", direction: "" },
+          monitorAp: { key: "", direction: "" },
+          reminders: { key: "", direction: "" },
+          sent: { key: "", direction: "" },
+        },
         forms: {
           manual: { contactId: "", phoneNumber: "", templateName: "", message: "" },
           broadcast: { title: "", templateName: "", message: "" },

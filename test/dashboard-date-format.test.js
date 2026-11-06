@@ -1219,7 +1219,7 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(html, /data-label="Aksi Layanan"/);
   assert.match(html, /<td colspan="10"[^>]*Tidak ada tagihan yang cocok/);
   assert.match(html, /<td colspan="13"[^>]*Tidak ada akun hotspot yang cocok/);
-  assert.match(html, /Pelanggan<\/th>\s*<th[^>]*>Nomor HP<\/th>\s*<th[^>]*>User Hotspot<\/th>/);
+  assert.match(html, /getSortLabel\('contactHotspot', 'name', 'Pelanggan'\)[\s\S]*getSortLabel\('contactHotspot', 'phone', 'Nomor HP'\)[\s\S]*getSortLabel\('contactHotspot', 'username', 'User Hotspot'\)/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 36px !important;[^}]*border-radius: 9px !important;[^}]*font-size: 10px !important;/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 44px !important;[^}]*font-size: 11px !important;/);
   assert.match(styles, /\.customer-due-status \{[^}]*white-space: nowrap;/);
@@ -1899,4 +1899,81 @@ test("riwayat voucher memilih kembali batch yang tersimpan di MikroTik", async (
   app.selectVoucherBatch("batch-baru");
   assert.equal(app.voucherResult.quantity, 2);
   assert.match(app.getVoucherBatchLabel(app.voucherResult), /2 voucher/);
+});
+
+test("sorting tabel berputar dari menaik, menurun, lalu kembali ke urutan awal", () => {
+  const app = createDashboardApp();
+  const rows = [
+    { name: "Zeta", amount: 20, date: "2026-11-03T00:00:00.000Z" },
+    { name: "Alfa", amount: 5, date: "2026-11-01T00:00:00.000Z" },
+    { name: "Kosong", amount: 10, date: null },
+  ];
+  const valueGetters = {
+    name: (row) => row.name,
+    amount: (row) => row.amount,
+    date: (row) => app.getSortTimestamp(row.date),
+  };
+
+  app.filters.contacts.page = 3;
+  app.toggleSort("contacts", "name");
+  assert.equal(app.filters.contacts.page, 1);
+  assert.equal(app.getSortAria("contacts", "name"), "ascending");
+  assert.match(app.getSortIcon("contacts", "name"), /fa-sort-up/);
+  assert.deepEqual(app.sortTableItems(rows, "contacts", valueGetters).map((row) => row.name), ["Alfa", "Kosong", "Zeta"]);
+
+  app.toggleSort("contacts", "name");
+  assert.equal(app.getSortAria("contacts", "name"), "descending");
+  assert.deepEqual(app.sortTableItems(rows, "contacts", valueGetters).map((row) => row.name), ["Zeta", "Kosong", "Alfa"]);
+
+  app.toggleSort("contacts", "name");
+  assert.equal(app.getSortAria("contacts", "name"), "none");
+  assert.deepEqual(app.sortTableItems(rows, "contacts", valueGetters).map((row) => row.name), ["Zeta", "Alfa", "Kosong"]);
+
+  app.toggleSort("contacts", "date");
+  assert.deepEqual(app.sortTableItems(rows, "contacts", valueGetters).map((row) => row.name), ["Alfa", "Zeta", "Kosong"]);
+  app.toggleSort("contacts", "date");
+  assert.deepEqual(app.sortTableItems(rows, "contacts", valueGetters).map((row) => row.name), ["Zeta", "Alfa", "Kosong"]);
+});
+
+test("profile dan statistik voucher memakai sorting numerik dan teks yang sama", () => {
+  const app = createDashboardApp();
+  app.voucherProfiles = [
+    { name: "Paket 10", validity: "10h", voucherReady: true },
+    { name: "Paket 2", validity: "2h", voucherReady: false },
+  ];
+  app.voucherStats.profiles = [
+    { profile: "Paket 10", total: 10, used: 8, unused: 2 },
+    { profile: "Paket 2", total: 2, used: 1, unused: 1 },
+  ];
+
+  app.toggleSort("voucherProfiles", "name");
+  assert.deepEqual(app.sortedVoucherProfiles.map((profile) => profile.name), ["Paket 2", "Paket 10"]);
+  app.toggleSort("voucherStats", "total");
+  assert.deepEqual(app.sortedVoucherStatsProfiles.map((row) => row.total), [2, 10]);
+});
+
+test("semua kolom tabel target dapat diurutkan kecuali kolom aksi", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
+  const expectedControls = {
+    contacts: 5,
+    contactBilling: 9,
+    contactHotspot: 11,
+    voucherProfiles: 4,
+    voucherStats: 5,
+    revenue: 6,
+    voucherRevenue: 7,
+    monitorAp: 8,
+    reminders: 5,
+    sent: 4,
+  };
+
+  for (const [tableKey, expected] of Object.entries(expectedControls)) {
+    const matches = html.match(new RegExp(`toggleSort\\('${tableKey}'`, "g")) || [];
+    assert.equal(matches.length, expected, `jumlah kontrol sort ${tableKey}`);
+  }
+  assert.doesNotMatch(html, /toggleSort\([^\n]*(?:Aksi|action)/i);
+  assert.match(html, /:aria-sort="getSortAria\('contacts', 'name'\)"/);
+  assert.match(styles, /\.table-sort-button\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(styles, /\.table-sort-button:focus-visible/);
 });

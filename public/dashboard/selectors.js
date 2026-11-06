@@ -799,13 +799,22 @@ function createDashboardSelectors() {
 
         get filteredVoucherRevenueEntries() {
           const selectedProfile = this.filters.voucherRevenue.profile || "ALL";
-          return this.voucherRevenue.entries.filter((entry) => {
+          const entries = this.voucherRevenue.entries.filter((entry) => {
             if (selectedProfile !== "ALL" && entry.profile !== selectedProfile) return false;
             return this.searchMatches(
               entry,
               ["username", "profile", "amount", "costPrice", "commission", "validity"],
               this.filters.voucherRevenue.search
             );
+          });
+          return this.sortTableItems(entries, "voucherRevenue", {
+            username: (entry) => entry.username,
+            profile: (entry) => entry.profile,
+            amount: (entry) => Number(entry.amount || 0),
+            costPrice: (entry) => Number(entry.costPrice || 0),
+            commission: (entry) => Number(entry.commission || 0),
+            validity: (entry) => entry.validity,
+            usedAt: (entry) => this.getSortTimestamp(entry.usedAt),
           });
         },
 
@@ -875,13 +884,21 @@ function createDashboardSelectors() {
 
         get filteredRevenueEntries() {
           const selectedStatus = String(this.filters.revenue.status || "ALL").toUpperCase();
-          return this.revenueEntries.filter((entry) => {
+          const entries = this.revenueEntries.filter((entry) => {
             if (selectedStatus !== "ALL" && entry.status !== selectedStatus) return false;
             return this.searchMatches(
               entry,
               ["name", "phoneNumber", "paymentType", "status", "amount"],
               this.filters.revenue.search
             );
+          });
+          return this.sortTableItems(entries, "revenue", {
+            name: (entry) => entry.name,
+            period: (entry) => entry.period,
+            status: (entry) => entry.status === "PAID" ? "Lunas" : "Sebagian",
+            paymentType: (entry) => this.getPaymentTypeLabel(entry.paymentType),
+            amount: (entry) => Number(entry.amount || 0),
+            paymentDate: (entry) => this.getSortTimestamp(entry.paymentDate),
           });
         },
 
@@ -1100,6 +1117,102 @@ function createDashboardSelectors() {
             .some((value) => value.includes(needle));
         },
 
+        toggleSort(tableKey, columnKey) {
+          const current = this.sorts[tableKey] || { key: "", direction: "" };
+          if (current.key !== columnKey) {
+            this.sorts[tableKey] = { key: columnKey, direction: "asc" };
+          } else if (current.direction === "asc") {
+            this.sorts[tableKey] = { key: columnKey, direction: "desc" };
+          } else {
+            this.sorts[tableKey] = { key: "", direction: "" };
+          }
+          if (this.filters[tableKey]) this.resetPage(tableKey);
+        },
+
+        getSortDirection(tableKey, columnKey) {
+          const sort = this.sorts[tableKey];
+          return sort?.key === columnKey ? sort.direction : "";
+        },
+
+        getSortAria(tableKey, columnKey) {
+          const direction = this.getSortDirection(tableKey, columnKey);
+          if (direction === "asc") return "ascending";
+          if (direction === "desc") return "descending";
+          return "none";
+        },
+
+        getSortIcon(tableKey, columnKey) {
+          const direction = this.getSortDirection(tableKey, columnKey);
+          if (direction === "asc") return "fa-solid fa-sort-up";
+          if (direction === "desc") return "fa-solid fa-sort-down";
+          return "fa-solid fa-sort";
+        },
+
+        getSortLabel(tableKey, columnKey, label) {
+          const direction = this.getSortDirection(tableKey, columnKey);
+          if (direction === "asc") return `Urutkan ${label} menurun`;
+          if (direction === "desc") return `Kembalikan urutan awal ${label}`;
+          return `Urutkan ${label} menaik`;
+        },
+
+        sortTableItems(items, tableKey, valueGetters) {
+          const list = Array.isArray(items) ? items : [];
+          const sort = this.sorts[tableKey];
+          const getValue = sort?.key ? valueGetters[sort.key] : null;
+          if (!getValue || !sort.direction) return list;
+
+          return list
+            .map((item, index) => ({ item, index, value: getValue(item) }))
+            .sort((left, right) => {
+              const leftEmpty = left.value === null || left.value === undefined || left.value === "";
+              const rightEmpty = right.value === null || right.value === undefined || right.value === "";
+              if (leftEmpty || rightEmpty) {
+                if (leftEmpty !== rightEmpty) return leftEmpty ? 1 : -1;
+                return left.index - right.index;
+              }
+
+              let comparison;
+              if (typeof left.value === "number" && typeof right.value === "number") {
+                comparison = left.value - right.value;
+              } else {
+                comparison = String(left.value).localeCompare(String(right.value), "id-ID", {
+                  numeric: true,
+                  sensitivity: "base",
+                });
+              }
+              if (!comparison) return left.index - right.index;
+              return sort.direction === "desc" ? -comparison : comparison;
+            })
+            .map(({ item }) => item);
+        },
+
+        getSortTimestamp(value) {
+          if (!value) return null;
+          const timestamp = new Date(value).getTime();
+          return Number.isFinite(timestamp) ? timestamp : null;
+        },
+
+        get sortedVoucherProfiles() {
+          return this.sortTableItems(this.voucherProfiles, "voucherProfiles", {
+            name: (profile) => profile.name,
+            validity: (profile) => profile.validity,
+            expiredMode: (profile) => this.voucherExpiryModes.find((mode) => mode.value === profile.expiredMode)?.label || "Belum diatur",
+            status: (profile) => profile.voucherReady
+              ? "Siap voucher"
+              : (profile.status === "SCHEDULER_MISSING" ? "Monitor tidak aktif" : "Masa berlaku belum diatur"),
+          });
+        },
+
+        get sortedVoucherStatsProfiles() {
+          return this.sortTableItems(this.voucherStats.profiles, "voucherStats", {
+            profile: (row) => row.profile,
+            validity: (row) => row.validity,
+            total: (row) => Number(row.total || 0),
+            used: (row) => Number(row.used || 0),
+            unused: (row) => Number(row.unused || 0),
+          });
+        },
+
         get contactBillingCycleOptions() {
           const values = new Map();
           for (const contact of this.contacts) {
@@ -1185,7 +1298,7 @@ function createDashboardSelectors() {
         },
 
         get filteredContacts() {
-          return this.contacts.filter((contact) => {
+          const contacts = this.contacts.filter((contact) => {
             const billingCycle = this.getBillingCycleValue(contact);
             const apStatus = this.getContactApStatus(contact);
             const selectedBillingCycle = String(this.filters.contacts.billingCycle || "ALL").toUpperCase();
@@ -1200,10 +1313,17 @@ function createDashboardSelectors() {
               this.getContactApStatusLabel(contact),
             ], this.filters.contacts.search);
           });
+          return this.sortTableItems(contacts, "contacts", {
+            name: (contact) => contact.name,
+            phone: (contact) => contact.phoneNumber,
+            billingCycle: (contact) => this.getBillingCycleLabel(contact),
+            linkedAp: (contact) => contact.linkedApHost,
+            apStatus: (contact) => this.getContactApStatusLabel(contact),
+          });
         },
 
         get filteredBillingContacts() {
-          return this.contacts.filter((contact) => {
+          const contacts = this.contacts.filter((contact) => {
             const selectedStatus = String(this.filters.contactBilling.status || "ALL").toUpperCase();
             const selectedDueStatus = String(this.filters.contactBilling.dueStatus || "ALL").toUpperCase();
             const selectedBillingCycle = String(this.filters.contactBilling.billingCycle || "ALL").toUpperCase();
@@ -1233,10 +1353,21 @@ function createDashboardSelectors() {
               this.hasDebt(contact) ? this.getDebtNote(contact) : "",
             ], this.filters.contactBilling.search);
           });
+          return this.sortTableItems(contacts, "contactBilling", {
+            name: (contact) => contact.name,
+            phone: (contact) => contact.phoneNumber,
+            billingCycle: (contact) => this.getBillingCycleLabel(contact),
+            dueDate: (contact) => this.getSortTimestamp(contact.dueDate),
+            dueStatus: (contact) => this.getDueStatusLabel(contact.dueStatus || "NOT_SCHEDULED"),
+            amount: (contact) => Number(contact.monthlyPaymentAmount || 0),
+            amountSource: (contact) => this.getPaymentAmountSourceLabel(contact),
+            currentPayment: (contact) => this.getCurrentPaymentLabel(contact),
+            debt: (contact) => this.hasDebt(contact) ? Number(contact.debtCount || 1) : 0,
+          });
         },
 
         get filteredHotspotContacts() {
-          return this.contacts.filter((contact) => {
+          const contacts = this.contacts.filter((contact) => {
             const selectedStatus = String(this.filters.contactHotspot.status || "ALL").toUpperCase();
             if (selectedStatus !== "ALL") {
               const [scope, ...labelParts] = String(this.filters.contactHotspot.status).split("|");
@@ -1266,10 +1397,23 @@ function createDashboardSelectors() {
               this.getContactApStatusLabel(contact),
             ], this.filters.contactHotspot.search);
           });
+          return this.sortTableItems(contacts, "contactHotspot", {
+            name: (contact) => contact.name,
+            phone: (contact) => contact.phoneNumber,
+            username: (contact) => this.getMikrotikAccessIdentifier(contact),
+            profile: (contact) => contact.mikrotikProfile,
+            ipBinding: (contact) => Array.isArray(contact.mikrotikMacAddresses) ? contact.mikrotikMacAddresses.length : 0,
+            hotspotAccess: (contact) => this.getHotspotUserAccessLabel(contact),
+            ipBindingAccess: (contact) => this.getIpBindingAccessLabel(contact),
+            scheduleStatus: (contact) => this.getReactivationLabel(contact),
+            scheduleAt: (contact) => this.getSortTimestamp(contact.hotspotReactivationAt),
+            linkedAp: (contact) => contact.linkedApHost,
+            apStatus: (contact) => this.getContactApStatusLabel(contact),
+          });
         },
 
         get filteredApMonitors() {
-          return this.apMonitors.filter((ap) => {
+          const monitors = this.apMonitors.filter((ap) => {
             const selectedStatus = String(this.filters.monitorAp.status || "ALL").toUpperCase();
             const selectedLinkStatus = String(this.filters.monitorAp.linkStatus || "ALL").toUpperCase();
             const status = String(ap.status || "UNKNOWN").toUpperCase();
@@ -1293,11 +1437,21 @@ function createDashboardSelectors() {
               "linkedCustomerPhones",
             ], this.filters.monitorAp.search);
           });
+          return this.sortTableItems(monitors, "monitorAp", {
+            host: (ap) => ap.host,
+            status: (ap) => ap.status,
+            customers: (ap) => Number(ap.customerCount ?? ap.linkedContacts?.length ?? 0),
+            linkStatus: (ap) => ap.linkStatus,
+            since: (ap) => ap.since,
+            interval: (ap) => ap.interval,
+            timeout: (ap) => ap.timeout,
+            comment: (ap) => ap.comment,
+          });
         },
 
         get filteredReminders() {
           const now = Date.now();
-          return this.reminders.filter((reminder) => {
+          const reminders = this.reminders.filter((reminder) => {
             const deliveryDateTime = reminder.deliveryDateTime || reminder.reminderDateTime;
             const reminderTime = new Date(deliveryDateTime).getTime();
             const schedule = this.filters.reminders.schedule;
@@ -1323,10 +1477,17 @@ function createDashboardSelectors() {
               reminder.message,
             ], this.filters.reminders.search);
           });
+          return this.sortTableItems(reminders, "reminders", {
+            contact: (reminder) => reminder.contactName || reminder.phoneNumber,
+            billingCycle: (reminder) => this.getBillingCycleLabel(reminder),
+            deliveryAt: (reminder) => this.getSortTimestamp(reminder.deliveryDateTime || reminder.reminderDateTime),
+            template: (reminder) => reminder.templateName,
+            message: (reminder) => reminder.message,
+          });
         },
 
         get filteredSent() {
-          return this.sent.filter((item) => {
+          const entries = this.sent.filter((item) => {
             const status = String(item.deliveryStatus || "SENT").toUpperCase();
             const selectedStatus = String(this.filters.sent.status || "ALL").toUpperCase();
             if (selectedStatus !== "ALL" && status !== selectedStatus) return false;
@@ -1339,6 +1500,12 @@ function createDashboardSelectors() {
               status,
               item.message || "-",
             ], this.filters.sent.search);
+          });
+          return this.sortTableItems(entries, "sent", {
+            contact: (item) => item.contactName || item.phoneNumber,
+            sentAt: (item) => this.getSortTimestamp(item.sentAt || item.reminderDateTime),
+            status: (item) => item.deliveryStatus || "SENT",
+            message: (item) => item.message,
           });
         },
 

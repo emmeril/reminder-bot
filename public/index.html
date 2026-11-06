@@ -6,11 +6,11 @@
   <title>__DASHBOARD_TITLE__</title>
   <link rel="stylesheet" href="/public/tailwind.css?v=20261105-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20261028-1">
+  <link rel="stylesheet" href="/public/styles.css?v=20261106-2">
   <link rel="stylesheet" href="/public/interface.css?v=20261104-9">
-  <script defer src="/public/dashboard/state.js?v=20261106-1"></script>
+  <script defer src="/public/dashboard/state.js?v=20261106-2"></script>
   <script defer src="/public/dashboard/ui.js?v=20261106-1"></script>
-  <script defer src="/public/dashboard/selectors.js?v=20261106-1"></script>
+  <script defer src="/public/dashboard/selectors.js?v=20261106-2"></script>
   <script defer src="/public/dashboard/data.js?v=20261106-1"></script>
   <script defer src="/public/dashboard/actions.js?v=20261106-1"></script>
   <script defer src="/public/app.js?v=20261106-1"></script>
@@ -303,11 +303,11 @@
                 <table class="customer-workspace-table customer-data-table contacts-table min-w-full text-sm">
                   <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
                     <tr>
-                      <th class="px-4 py-3"><i class="fa-solid fa-user mr-2"></i>Nama</th>
-                      <th class="px-4 py-3"><i class="fa-brands fa-whatsapp mr-2"></i>No. WA</th>
-                      <th class="px-4 py-3"><i class="fa-solid fa-repeat mr-2"></i>Siklus Pembayaran</th>
-                      <th class="px-4 py-3"><i class="fa-solid fa-link mr-2"></i>AP Terkait</th>
-                      <th class="px-4 py-3"><i class="fa-solid fa-signal mr-2"></i>Status AP</th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contacts', 'name')"><button type="button" class="table-sort-button" @click="toggleSort('contacts', 'name')" :aria-label="getSortLabel('contacts', 'name', 'Nama')"><i class="fa-solid fa-user table-sort-leading-icon" aria-hidden="true"></i><span>Nama</span><i class="table-sort-indicator" :class="getSortIcon('contacts', 'name')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contacts', 'phone')"><button type="button" class="table-sort-button" @click="toggleSort('contacts', 'phone')" :aria-label="getSortLabel('contacts', 'phone', 'Nomor WhatsApp')"><i class="fa-brands fa-whatsapp table-sort-leading-icon" aria-hidden="true"></i><span>No. WA</span><i class="table-sort-indicator" :class="getSortIcon('contacts', 'phone')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contacts', 'billingCycle')"><button type="button" class="table-sort-button" @click="toggleSort('contacts', 'billingCycle')" :aria-label="getSortLabel('contacts', 'billingCycle', 'Siklus Pembayaran')"><i class="fa-solid fa-repeat table-sort-leading-icon" aria-hidden="true"></i><span>Siklus Pembayaran</span><i class="table-sort-indicator" :class="getSortIcon('contacts', 'billingCycle')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contacts', 'linkedAp')"><button type="button" class="table-sort-button" @click="toggleSort('contacts', 'linkedAp')" :aria-label="getSortLabel('contacts', 'linkedAp', 'AP Terkait')"><i class="fa-solid fa-link table-sort-leading-icon" aria-hidden="true"></i><span>AP Terkait</span><i class="table-sort-indicator" :class="getSortIcon('contacts', 'linkedAp')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contacts', 'apStatus')"><button type="button" class="table-sort-button" @click="toggleSort('contacts', 'apStatus')" :aria-label="getSortLabel('contacts', 'apStatus', 'Status AP')"><i class="fa-solid fa-signal table-sort-leading-icon" aria-hidden="true"></i><span>Status AP</span><i class="table-sort-indicator" :class="getSortIcon('contacts', 'apStatus')" aria-hidden="true"></i></button></th>
                       <th class="px-4 py-3"><i class="fa-solid fa-bolt mr-2"></i>Aksi</th>
                     </tr>
                   </thead>
@@ -369,15 +369,15 @@
                 <table class="customer-workspace-table customer-billing-table min-w-full text-sm">
                   <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
                     <tr>
-                      <th class="px-4 py-3">Pelanggan</th>
-                      <th class="px-4 py-3">Nomor HP</th>
-                      <th class="px-4 py-3">Langganan</th>
-                      <th class="px-4 py-3">Jatuh Tempo</th>
-                      <th class="px-4 py-3">Status Jatuh Tempo</th>
-                      <th class="px-4 py-3">Nominal Bulanan</th>
-                      <th class="px-4 py-3">Sumber Nominal</th>
-                      <th class="px-4 py-3">Bulan Ini</th>
-                      <th class="px-4 py-3">Tunggakan</th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'name')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'name')" :aria-label="getSortLabel('contactBilling', 'name', 'Pelanggan')"><span>Pelanggan</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'name')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'phone')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'phone')" :aria-label="getSortLabel('contactBilling', 'phone', 'Nomor HP')"><span>Nomor HP</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'phone')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'billingCycle')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'billingCycle')" :aria-label="getSortLabel('contactBilling', 'billingCycle', 'Langganan')"><span>Langganan</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'billingCycle')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'dueDate')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'dueDate')" :aria-label="getSortLabel('contactBilling', 'dueDate', 'Jatuh Tempo')"><span>Jatuh Tempo</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'dueDate')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'dueStatus')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'dueStatus')" :aria-label="getSortLabel('contactBilling', 'dueStatus', 'Status Jatuh Tempo')"><span>Status Jatuh Tempo</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'dueStatus')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'amount')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'amount')" :aria-label="getSortLabel('contactBilling', 'amount', 'Nominal Bulanan')"><span>Nominal Bulanan</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'amount')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'amountSource')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'amountSource')" :aria-label="getSortLabel('contactBilling', 'amountSource', 'Sumber Nominal')"><span>Sumber Nominal</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'amountSource')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'currentPayment')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'currentPayment')" :aria-label="getSortLabel('contactBilling', 'currentPayment', 'Bulan Ini')"><span>Bulan Ini</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'currentPayment')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'debt')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'debt')" :aria-label="getSortLabel('contactBilling', 'debt', 'Tunggakan')"><span>Tunggakan</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'debt')" aria-hidden="true"></i></button></th>
                       <th class="px-4 py-3">Aksi</th>
                     </tr>
                   </thead>
@@ -462,17 +462,17 @@
                 <table class="customer-workspace-table customer-hotspot-table min-w-full text-sm">
                   <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
                     <tr>
-                      <th class="px-4 py-3">Pelanggan</th>
-                      <th class="px-4 py-3">Nomor HP</th>
-                      <th class="px-4 py-3">User Hotspot</th>
-                      <th class="px-4 py-3">Profile</th>
-                      <th class="px-4 py-3">IP Binding</th>
-                      <th class="px-4 py-3">Akun Hotspot</th>
-                      <th class="px-4 py-3">Akun IP Binding</th>
-                      <th class="px-4 py-3">Status Jadwal</th>
-                      <th class="px-4 py-3">Jadwal layanan</th>
-                      <th class="px-4 py-3">IP Access Point</th>
-                      <th class="px-4 py-3">Status AP</th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'name')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'name')" :aria-label="getSortLabel('contactHotspot', 'name', 'Pelanggan')"><span>Pelanggan</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'name')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'phone')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'phone')" :aria-label="getSortLabel('contactHotspot', 'phone', 'Nomor HP')"><span>Nomor HP</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'phone')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'username')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'username')" :aria-label="getSortLabel('contactHotspot', 'username', 'User Hotspot')"><span>User Hotspot</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'username')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'profile')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'profile')" :aria-label="getSortLabel('contactHotspot', 'profile', 'Profile')"><span>Profile</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'profile')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'ipBinding')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'ipBinding')" :aria-label="getSortLabel('contactHotspot', 'ipBinding', 'IP Binding')"><span>IP Binding</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'ipBinding')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'hotspotAccess')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'hotspotAccess')" :aria-label="getSortLabel('contactHotspot', 'hotspotAccess', 'Akun Hotspot')"><span>Akun Hotspot</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'hotspotAccess')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'ipBindingAccess')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'ipBindingAccess')" :aria-label="getSortLabel('contactHotspot', 'ipBindingAccess', 'Akun IP Binding')"><span>Akun IP Binding</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'ipBindingAccess')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'scheduleStatus')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'scheduleStatus')" :aria-label="getSortLabel('contactHotspot', 'scheduleStatus', 'Status Jadwal')"><span>Status Jadwal</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'scheduleStatus')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'scheduleAt')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'scheduleAt')" :aria-label="getSortLabel('contactHotspot', 'scheduleAt', 'Jadwal layanan')"><span>Jadwal layanan</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'scheduleAt')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'linkedAp')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'linkedAp')" :aria-label="getSortLabel('contactHotspot', 'linkedAp', 'IP Access Point')"><span>IP Access Point</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'linkedAp')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'apStatus')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'apStatus')" :aria-label="getSortLabel('contactHotspot', 'apStatus', 'Status AP')"><span>Status AP</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'apStatus')" aria-hidden="true"></i></button></th>
                       <th class="px-4 py-3">Aksi Akun</th>
                       <th class="px-4 py-3">Aksi Layanan</th>
                     </tr>
@@ -862,9 +862,15 @@
               </div>
               <div class="voucher-profile-table-wrap">
                 <table class="voucher-profile-table">
-                  <thead><tr><th>Profile</th><th>Masa berlaku</th><th>Aturan expired</th><th>Status</th><th>Aksi</th></tr></thead>
+                  <thead><tr>
+                    <th :aria-sort="getSortAria('voucherProfiles', 'name')"><button type="button" class="table-sort-button" @click="toggleSort('voucherProfiles', 'name')" :aria-label="getSortLabel('voucherProfiles', 'name', 'Profile')"><span>Profile</span><i class="table-sort-indicator" :class="getSortIcon('voucherProfiles', 'name')" aria-hidden="true"></i></button></th>
+                    <th :aria-sort="getSortAria('voucherProfiles', 'validity')"><button type="button" class="table-sort-button" @click="toggleSort('voucherProfiles', 'validity')" :aria-label="getSortLabel('voucherProfiles', 'validity', 'Masa berlaku')"><span>Masa berlaku</span><i class="table-sort-indicator" :class="getSortIcon('voucherProfiles', 'validity')" aria-hidden="true"></i></button></th>
+                    <th :aria-sort="getSortAria('voucherProfiles', 'expiredMode')"><button type="button" class="table-sort-button" @click="toggleSort('voucherProfiles', 'expiredMode')" :aria-label="getSortLabel('voucherProfiles', 'expiredMode', 'Aturan expired')"><span>Aturan expired</span><i class="table-sort-indicator" :class="getSortIcon('voucherProfiles', 'expiredMode')" aria-hidden="true"></i></button></th>
+                    <th :aria-sort="getSortAria('voucherProfiles', 'status')"><button type="button" class="table-sort-button" @click="toggleSort('voucherProfiles', 'status')" :aria-label="getSortLabel('voucherProfiles', 'status', 'Status')"><span>Status</span><i class="table-sort-indicator" :class="getSortIcon('voucherProfiles', 'status')" aria-hidden="true"></i></button></th>
+                    <th>Aksi</th>
+                  </tr></thead>
                   <tbody>
-                    <template x-for="profile in voucherProfiles" :key="'profile-row-' + profile.name">
+                    <template x-for="profile in sortedVoucherProfiles" :key="'profile-row-' + profile.name">
                       <tr>
                         <td><strong x-text="profile.name"></strong><small x-text="profile.rateLimit || 'Tanpa rate limit'"></small></td>
                         <td x-text="profile.validity || '-' "></td>
@@ -982,9 +988,15 @@
               <p x-cloak x-show="voucherStatsError" class="voucher-history-error" role="alert" x-text="voucherStatsError"></p>
               <div class="voucher-stats-table-wrap">
                 <table class="voucher-stats-table">
-                  <thead><tr><th>Profile</th><th>Masa berlaku</th><th>Total voucher</th><th>Terpakai</th><th>Belum terpakai</th></tr></thead>
+                  <thead><tr>
+                    <th :aria-sort="getSortAria('voucherStats', 'profile')"><button type="button" class="table-sort-button" @click="toggleSort('voucherStats', 'profile')" :aria-label="getSortLabel('voucherStats', 'profile', 'Profile')"><span>Profile</span><i class="table-sort-indicator" :class="getSortIcon('voucherStats', 'profile')" aria-hidden="true"></i></button></th>
+                    <th :aria-sort="getSortAria('voucherStats', 'validity')"><button type="button" class="table-sort-button" @click="toggleSort('voucherStats', 'validity')" :aria-label="getSortLabel('voucherStats', 'validity', 'Masa berlaku')"><span>Masa berlaku</span><i class="table-sort-indicator" :class="getSortIcon('voucherStats', 'validity')" aria-hidden="true"></i></button></th>
+                    <th :aria-sort="getSortAria('voucherStats', 'total')"><button type="button" class="table-sort-button" @click="toggleSort('voucherStats', 'total')" :aria-label="getSortLabel('voucherStats', 'total', 'Total voucher')"><span>Total voucher</span><i class="table-sort-indicator" :class="getSortIcon('voucherStats', 'total')" aria-hidden="true"></i></button></th>
+                    <th :aria-sort="getSortAria('voucherStats', 'used')"><button type="button" class="table-sort-button" @click="toggleSort('voucherStats', 'used')" :aria-label="getSortLabel('voucherStats', 'used', 'Terpakai')"><span>Terpakai</span><i class="table-sort-indicator" :class="getSortIcon('voucherStats', 'used')" aria-hidden="true"></i></button></th>
+                    <th :aria-sort="getSortAria('voucherStats', 'unused')"><button type="button" class="table-sort-button" @click="toggleSort('voucherStats', 'unused')" :aria-label="getSortLabel('voucherStats', 'unused', 'Belum terpakai')"><span>Belum terpakai</span><i class="table-sort-indicator" :class="getSortIcon('voucherStats', 'unused')" aria-hidden="true"></i></button></th>
+                  </tr></thead>
                   <tbody>
-                    <template x-for="row in voucherStats.profiles" :key="'voucher-stat-' + row.profile">
+                    <template x-for="row in sortedVoucherStatsProfiles" :key="'voucher-stat-' + row.profile">
                       <tr>
                         <td><strong x-text="row.profile"></strong><small x-text="voucherExpiryModes.find(mode => mode.value === row.expiredMode)?.label || row.expiredMode"></small></td>
                         <td x-text="row.validity || '-'"></td>
@@ -1069,7 +1081,14 @@
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Rincian pendapatan pelanggan">
                 <table class="customer-workspace-table revenue-table min-w-full text-sm">
-                  <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50"><tr><th class="px-4 py-3">Pelanggan</th><th class="px-4 py-3">Periode</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Jenis pembayaran</th><th class="px-4 py-3">Pendapatan</th><th class="px-4 py-3">Tanggal tercatat</th></tr></thead>
+                  <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50"><tr>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('revenue', 'name')"><button type="button" class="table-sort-button" @click="toggleSort('revenue', 'name')" :aria-label="getSortLabel('revenue', 'name', 'Pelanggan')"><span>Pelanggan</span><i class="table-sort-indicator" :class="getSortIcon('revenue', 'name')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('revenue', 'period')"><button type="button" class="table-sort-button" @click="toggleSort('revenue', 'period')" :aria-label="getSortLabel('revenue', 'period', 'Periode')"><span>Periode</span><i class="table-sort-indicator" :class="getSortIcon('revenue', 'period')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('revenue', 'status')"><button type="button" class="table-sort-button" @click="toggleSort('revenue', 'status')" :aria-label="getSortLabel('revenue', 'status', 'Status')"><span>Status</span><i class="table-sort-indicator" :class="getSortIcon('revenue', 'status')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('revenue', 'paymentType')"><button type="button" class="table-sort-button" @click="toggleSort('revenue', 'paymentType')" :aria-label="getSortLabel('revenue', 'paymentType', 'Jenis pembayaran')"><span>Jenis pembayaran</span><i class="table-sort-indicator" :class="getSortIcon('revenue', 'paymentType')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('revenue', 'amount')"><button type="button" class="table-sort-button" @click="toggleSort('revenue', 'amount')" :aria-label="getSortLabel('revenue', 'amount', 'Pendapatan')"><span>Pendapatan</span><i class="table-sort-indicator" :class="getSortIcon('revenue', 'amount')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('revenue', 'paymentDate')"><button type="button" class="table-sort-button" @click="toggleSort('revenue', 'paymentDate')" :aria-label="getSortLabel('revenue', 'paymentDate', 'Tanggal tercatat')"><span>Tanggal tercatat</span><i class="table-sort-indicator" :class="getSortIcon('revenue', 'paymentDate')" aria-hidden="true"></i></button></th>
+                  </tr></thead>
                   <tbody class="divide-y divide-ink/6 bg-white/70">
                     <template x-if="!filteredRevenueEntries.length"><tr><td colspan="6" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Belum ada pendapatan pelanggan pada rentang tanggal ini.' : 'Belum ada data pelanggan.'"></td></tr></template>
                     <template x-for="entry in paginatedRevenueEntries" :key="entry.id">
@@ -1118,7 +1137,15 @@
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Rincian pendapatan voucher">
                 <table class="customer-workspace-table revenue-table voucher-revenue-table min-w-full text-sm">
-                  <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50"><tr><th class="px-4 py-3">Voucher</th><th class="px-4 py-3">Profile</th><th class="px-4 py-3">Harga jual</th><th class="px-4 py-3">HPP</th><th class="px-4 py-3">Keuntungan</th><th class="px-4 py-3">Masa berlaku</th><th class="px-4 py-3">Tanggal digunakan</th></tr></thead>
+                  <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50"><tr>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('voucherRevenue', 'username')"><button type="button" class="table-sort-button" @click="toggleSort('voucherRevenue', 'username')" :aria-label="getSortLabel('voucherRevenue', 'username', 'Voucher')"><span>Voucher</span><i class="table-sort-indicator" :class="getSortIcon('voucherRevenue', 'username')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('voucherRevenue', 'profile')"><button type="button" class="table-sort-button" @click="toggleSort('voucherRevenue', 'profile')" :aria-label="getSortLabel('voucherRevenue', 'profile', 'Profile')"><span>Profile</span><i class="table-sort-indicator" :class="getSortIcon('voucherRevenue', 'profile')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('voucherRevenue', 'amount')"><button type="button" class="table-sort-button" @click="toggleSort('voucherRevenue', 'amount')" :aria-label="getSortLabel('voucherRevenue', 'amount', 'Harga jual')"><span>Harga jual</span><i class="table-sort-indicator" :class="getSortIcon('voucherRevenue', 'amount')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('voucherRevenue', 'costPrice')"><button type="button" class="table-sort-button" @click="toggleSort('voucherRevenue', 'costPrice')" :aria-label="getSortLabel('voucherRevenue', 'costPrice', 'HPP')"><span>HPP</span><i class="table-sort-indicator" :class="getSortIcon('voucherRevenue', 'costPrice')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('voucherRevenue', 'commission')"><button type="button" class="table-sort-button" @click="toggleSort('voucherRevenue', 'commission')" :aria-label="getSortLabel('voucherRevenue', 'commission', 'Keuntungan')"><span>Keuntungan</span><i class="table-sort-indicator" :class="getSortIcon('voucherRevenue', 'commission')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('voucherRevenue', 'validity')"><button type="button" class="table-sort-button" @click="toggleSort('voucherRevenue', 'validity')" :aria-label="getSortLabel('voucherRevenue', 'validity', 'Masa berlaku')"><span>Masa berlaku</span><i class="table-sort-indicator" :class="getSortIcon('voucherRevenue', 'validity')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('voucherRevenue', 'usedAt')"><button type="button" class="table-sort-button" @click="toggleSort('voucherRevenue', 'usedAt')" :aria-label="getSortLabel('voucherRevenue', 'usedAt', 'Tanggal digunakan')"><span>Tanggal digunakan</span><i class="table-sort-indicator" :class="getSortIcon('voucherRevenue', 'usedAt')" aria-hidden="true"></i></button></th>
+                  </tr></thead>
                   <tbody class="divide-y divide-ink/6 bg-white/70">
                     <tr x-show.important="loading.voucherRevenue && !voucherRevenue.entries.length"><td colspan="7" class="px-4 py-8 text-center text-ink/45"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memuat pendapatan voucher...</td></tr>
                     <tr x-show.important="!loading.voucherRevenue && !voucherRevenueError && !filteredVoucherRevenueEntries.length"><td colspan="7" class="px-4 py-8 text-center text-ink/45">Belum ada pemakaian voucher yang tercatat pada rentang tanggal ini.</td></tr>
@@ -1192,14 +1219,14 @@
               <table class="dashboard-table min-w-full text-sm">
                 <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50">
                   <tr>
-                    <th class="px-4 py-3">Host AP</th>
-                    <th class="px-4 py-3">Status</th>
-                    <th class="px-4 py-3">Pelanggan</th>
-                    <th class="px-4 py-3">Sinkronisasi</th>
-                    <th class="px-4 py-3">Since</th>
-                    <th class="px-4 py-3">Interval</th>
-                    <th class="px-4 py-3">Timeout</th>
-                    <th class="px-4 py-3">Comment</th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('monitorAp', 'host')"><button type="button" class="table-sort-button" @click="toggleSort('monitorAp', 'host')" :aria-label="getSortLabel('monitorAp', 'host', 'Host AP')"><span>Host AP</span><i class="table-sort-indicator" :class="getSortIcon('monitorAp', 'host')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('monitorAp', 'status')"><button type="button" class="table-sort-button" @click="toggleSort('monitorAp', 'status')" :aria-label="getSortLabel('monitorAp', 'status', 'Status')"><span>Status</span><i class="table-sort-indicator" :class="getSortIcon('monitorAp', 'status')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('monitorAp', 'customers')"><button type="button" class="table-sort-button" @click="toggleSort('monitorAp', 'customers')" :aria-label="getSortLabel('monitorAp', 'customers', 'Pelanggan')"><span>Pelanggan</span><i class="table-sort-indicator" :class="getSortIcon('monitorAp', 'customers')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('monitorAp', 'linkStatus')"><button type="button" class="table-sort-button" @click="toggleSort('monitorAp', 'linkStatus')" :aria-label="getSortLabel('monitorAp', 'linkStatus', 'Sinkronisasi')"><span>Sinkronisasi</span><i class="table-sort-indicator" :class="getSortIcon('monitorAp', 'linkStatus')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('monitorAp', 'since')"><button type="button" class="table-sort-button" @click="toggleSort('monitorAp', 'since')" :aria-label="getSortLabel('monitorAp', 'since', 'Since')"><span>Since</span><i class="table-sort-indicator" :class="getSortIcon('monitorAp', 'since')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('monitorAp', 'interval')"><button type="button" class="table-sort-button" @click="toggleSort('monitorAp', 'interval')" :aria-label="getSortLabel('monitorAp', 'interval', 'Interval')"><span>Interval</span><i class="table-sort-indicator" :class="getSortIcon('monitorAp', 'interval')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('monitorAp', 'timeout')"><button type="button" class="table-sort-button" @click="toggleSort('monitorAp', 'timeout')" :aria-label="getSortLabel('monitorAp', 'timeout', 'Timeout')"><span>Timeout</span><i class="table-sort-indicator" :class="getSortIcon('monitorAp', 'timeout')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-3" :aria-sort="getSortAria('monitorAp', 'comment')"><button type="button" class="table-sort-button" @click="toggleSort('monitorAp', 'comment')" :aria-label="getSortLabel('monitorAp', 'comment', 'Comment')"><span>Comment</span><i class="table-sort-indicator" :class="getSortIcon('monitorAp', 'comment')" aria-hidden="true"></i></button></th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white/70">
@@ -1266,11 +1293,11 @@
               <table class="dashboard-table min-w-full text-sm">
                 <thead class="bg-haze/90 text-left text-xs uppercase text-ink/50">
                   <tr>
-                    <th class="w-[24%] px-5 py-4"><i class="fa-solid fa-user mr-2 text-moss"></i>Tujuan</th>
-                    <th class="w-[14%] px-5 py-4"><i class="fa-solid fa-repeat mr-2 text-moss"></i>Siklus</th>
-                    <th class="w-[20%] px-5 py-4"><i class="fa-solid fa-clock mr-2 text-clay"></i>Waktu pengiriman</th>
-                    <th class="w-[16%] px-5 py-4"><i class="fa-solid fa-file-lines mr-2 text-moss"></i>Template</th>
-                    <th class="px-5 py-4"><i class="fa-solid fa-message mr-2 text-ink/45"></i>Pesan</th>
+                    <th class="w-[24%] px-5 py-4" :aria-sort="getSortAria('reminders', 'contact')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'contact')" :aria-label="getSortLabel('reminders', 'contact', 'Tujuan')"><i class="fa-solid fa-user table-sort-leading-icon text-moss" aria-hidden="true"></i><span>Tujuan</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'contact')" aria-hidden="true"></i></button></th>
+                    <th class="w-[14%] px-5 py-4" :aria-sort="getSortAria('reminders', 'billingCycle')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'billingCycle')" :aria-label="getSortLabel('reminders', 'billingCycle', 'Siklus')"><i class="fa-solid fa-repeat table-sort-leading-icon text-moss" aria-hidden="true"></i><span>Siklus</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'billingCycle')" aria-hidden="true"></i></button></th>
+                    <th class="w-[20%] px-5 py-4" :aria-sort="getSortAria('reminders', 'deliveryAt')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'deliveryAt')" :aria-label="getSortLabel('reminders', 'deliveryAt', 'Waktu pengiriman')"><i class="fa-solid fa-clock table-sort-leading-icon text-clay" aria-hidden="true"></i><span>Waktu pengiriman</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'deliveryAt')" aria-hidden="true"></i></button></th>
+                    <th class="w-[16%] px-5 py-4" :aria-sort="getSortAria('reminders', 'template')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'template')" :aria-label="getSortLabel('reminders', 'template', 'Template')"><i class="fa-solid fa-file-lines table-sort-leading-icon text-moss" aria-hidden="true"></i><span>Template</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'template')" aria-hidden="true"></i></button></th>
+                    <th class="px-5 py-4" :aria-sort="getSortAria('reminders', 'message')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'message')" :aria-label="getSortLabel('reminders', 'message', 'Pesan')"><i class="fa-solid fa-message table-sort-leading-icon text-ink/45" aria-hidden="true"></i><span>Pesan</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'message')" aria-hidden="true"></i></button></th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white">
@@ -1646,10 +1673,10 @@
               <table class="dashboard-table min-w-full text-sm">
                 <thead class="bg-haze/90 text-left text-xs uppercase text-ink/50">
                   <tr>
-                    <th class="w-[28%] px-5 py-4"><i class="fa-solid fa-user mr-2 text-moss"></i>Tujuan</th>
-                    <th class="w-[20%] px-5 py-4"><i class="fa-solid fa-clock mr-2 text-clay"></i>Terkirim</th>
-                    <th class="w-[14%] px-5 py-4"><i class="fa-solid fa-circle-check mr-2 text-moss"></i>Status</th>
-                    <th class="px-5 py-4"><i class="fa-solid fa-message mr-2 text-ink/45"></i>Pesan</th>
+                    <th class="w-[28%] px-5 py-4" :aria-sort="getSortAria('sent', 'contact')"><button type="button" class="table-sort-button" @click="toggleSort('sent', 'contact')" :aria-label="getSortLabel('sent', 'contact', 'Tujuan')"><i class="fa-solid fa-user table-sort-leading-icon text-moss" aria-hidden="true"></i><span>Tujuan</span><i class="table-sort-indicator" :class="getSortIcon('sent', 'contact')" aria-hidden="true"></i></button></th>
+                    <th class="w-[20%] px-5 py-4" :aria-sort="getSortAria('sent', 'sentAt')"><button type="button" class="table-sort-button" @click="toggleSort('sent', 'sentAt')" :aria-label="getSortLabel('sent', 'sentAt', 'Terkirim')"><i class="fa-solid fa-clock table-sort-leading-icon text-clay" aria-hidden="true"></i><span>Terkirim</span><i class="table-sort-indicator" :class="getSortIcon('sent', 'sentAt')" aria-hidden="true"></i></button></th>
+                    <th class="w-[14%] px-5 py-4" :aria-sort="getSortAria('sent', 'status')"><button type="button" class="table-sort-button" @click="toggleSort('sent', 'status')" :aria-label="getSortLabel('sent', 'status', 'Status')"><i class="fa-solid fa-circle-check table-sort-leading-icon text-moss" aria-hidden="true"></i><span>Status</span><i class="table-sort-indicator" :class="getSortIcon('sent', 'status')" aria-hidden="true"></i></button></th>
+                    <th class="px-5 py-4" :aria-sort="getSortAria('sent', 'message')"><button type="button" class="table-sort-button" @click="toggleSort('sent', 'message')" :aria-label="getSortLabel('sent', 'message', 'Pesan')"><i class="fa-solid fa-message table-sort-leading-icon text-ink/45" aria-hidden="true"></i><span>Pesan</span><i class="table-sort-indicator" :class="getSortIcon('sent', 'message')" aria-hidden="true"></i></button></th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white">
