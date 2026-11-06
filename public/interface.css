@@ -332,6 +332,110 @@ textarea,
   flex-basis: 6px;
 }
 
+.navbar-account {
+  position: relative;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.navbar-user-trigger {
+  min-height: 44px;
+  margin: 0;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.navbar-user-trigger:hover,
+.navbar-user-trigger[aria-expanded="true"] {
+  background: var(--ui-primary-soft);
+}
+
+.navbar-user-trigger:focus-visible {
+  outline: 3px solid rgba(15, 107, 87, .22);
+  outline-offset: 2px;
+}
+
+.navbar-account-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 1060;
+  width: min(260px, calc(100vw - 20px));
+  padding: 6px;
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 14px 34px rgba(16, 24, 40, .14);
+}
+
+.navbar-account-action {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 10px;
+  color: var(--ui-ink);
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.navbar-account-action:hover,
+.navbar-account-action:focus-visible {
+  color: var(--ui-primary-dark);
+  background: var(--ui-primary-soft);
+  outline: none;
+}
+
+.navbar-account-action:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(15, 107, 87, .28);
+}
+
+.navbar-account-action-icon {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ui-muted);
+  border-radius: 8px;
+  background: var(--ui-surface-soft);
+}
+
+.navbar-account-action-icon.whatsapp {
+  color: #15803d;
+  background: #ecfdf3;
+}
+
+.navbar-account-divider {
+  height: 1px;
+  margin: 5px 6px;
+  background: var(--ui-border);
+}
+
+.navbar-account-logout {
+  color: #b42318;
+}
+
+.navbar-account-logout:hover,
+.navbar-account-logout:focus-visible {
+  color: #912018;
+  background: #fff1f0;
+}
+
 .navbar-title {
   margin: 0 !important;
   color: var(--ui-ink) !important;
@@ -1634,6 +1738,14 @@ span[class*="rounded-full"][class*="text-xs"],
     margin-right: 0;
   }
 
+  .navbar-account {
+    margin-left: auto;
+  }
+
+  .navbar-account-popover {
+    right: 0;
+  }
+
   .header-context small,
   .provider-link .action-text,
   .provider-link > i {
@@ -2003,6 +2115,17 @@ span[class*="rounded-full"][class*="text-xs"],
 
   .navbar-user {
     justify-self: end;
+  }
+
+  .navbar-account {
+    justify-self: end;
+    margin-left: 0;
+  }
+
+  .navbar-account-popover {
+    position: fixed;
+    top: 66px;
+    right: 10px;
   }
 
   .header-actions {
