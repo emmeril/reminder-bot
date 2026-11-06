@@ -356,6 +356,7 @@
               <label class="table-filter-field"><span>Langganan</span><select x-model="filters.contactBilling.billingCycle" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua langganan</option><template x-for="option in contactBillingCycleOptions" :key="'billing-cycle-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
               <label class="table-filter-field"><span>Status pembayaran</span><select x-model="filters.contactBilling.status" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status pembayaran</option><template x-for="option in billingStatusFilterOptions" :key="'billing-status-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
               <label class="table-filter-field"><span>Status jatuh tempo</span><select x-model="filters.contactBilling.dueStatus" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status jatuh tempo</option><template x-for="option in billingDueStatusOptions" :key="'due-status-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+              <label class="table-filter-field"><span>Baris</span><select x-model.number="filters.contactBilling.pageSize" @change="resetPage('contactBilling')" aria-label="Jumlah tagihan per halaman" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'contact-billing-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
               <button type="button" @click="resetContactBillingFilters()" :disabled="!hasContactBillingFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
             </div>
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
@@ -437,14 +438,6 @@
             <div class="customer-pagination">
               <div x-text="paginationLabel('contactBilling', filteredBillingContacts.length)"></div>
               <div class="customer-pagination-controls">
-                <label class="customer-page-size-control">
-                  <span>Baris</span>
-                  <select x-model.number="filters.contactBilling.pageSize" @change="resetPage('contactBilling')" aria-label="Jumlah tagihan per halaman">
-                    <template x-for="size in pageSizes" :key="'contact-billing-size-' + size">
-                      <option :value="size" x-text="size"></option>
-                    </template>
-                  </select>
-                </label>
                 <button type="button" aria-label="Halaman sebelumnya" @click="setPage('contactBilling', filters.contactBilling.page - 1)" :disabled="filters.contactBilling.page <= 1" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
                 <span x-text="filters.contactBilling.page + ' / ' + totalPages('contactBilling', filteredBillingContacts.length)"></span>
                 <button type="button" aria-label="Halaman berikutnya" @click="setPage('contactBilling', filters.contactBilling.page + 1)" :disabled="filters.contactBilling.page >= totalPages('contactBilling', filteredBillingContacts.length)" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>
@@ -456,6 +449,7 @@
             <div class="filter-inline customer-filter-bar table-filter-bar">
               <label class="table-filter-field table-filter-search"><span>Pencarian</span><input x-model="filters.contactHotspot.search" @input="resetPage('contactHotspot')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari semua nilai tabel hotspot"></label>
               <label class="table-filter-field"><span>Nilai status tabel</span><select x-model="filters.contactHotspot.status" @change="resetPage('contactHotspot')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua nilai status</option><template x-for="option in hotspotTableStatusOptions" :key="'hotspot-status-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+              <label class="table-filter-field"><span>Baris</span><select x-model.number="filters.contactHotspot.pageSize" @change="resetPage('contactHotspot')" aria-label="Jumlah akun hotspot per halaman" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'contact-hotspot-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
               <button type="button" @click="resetContactHotspotFilters()" :disabled="!hasContactHotspotFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
             </div>
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
@@ -538,14 +532,6 @@
             <div class="customer-pagination">
               <div x-text="paginationLabel('contactHotspot', filteredHotspotContacts.length)"></div>
               <div class="customer-pagination-controls">
-                <label class="customer-page-size-control">
-                  <span>Baris</span>
-                  <select x-model.number="filters.contactHotspot.pageSize" @change="resetPage('contactHotspot')" aria-label="Jumlah akun hotspot per halaman">
-                    <template x-for="size in pageSizes" :key="'contact-hotspot-size-' + size">
-                      <option :value="size" x-text="size"></option>
-                    </template>
-                  </select>
-                </label>
                 <button type="button" aria-label="Halaman sebelumnya" @click="setPage('contactHotspot', filters.contactHotspot.page - 1)" :disabled="filters.contactHotspot.page <= 1" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-left"></i></button>
                 <span x-text="filters.contactHotspot.page + ' / ' + totalPages('contactHotspot', filteredHotspotContacts.length)"></span>
                 <button type="button" aria-label="Halaman berikutnya" @click="setPage('contactHotspot', filters.contactHotspot.page + 1)" :disabled="filters.contactHotspot.page >= totalPages('contactHotspot', filteredHotspotContacts.length)" class="pagination-button border border-ink/10 bg-white px-3 py-2 font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-chevron-right"></i></button>

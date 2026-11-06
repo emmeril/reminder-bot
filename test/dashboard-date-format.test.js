@@ -1231,6 +1231,8 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
 test("filter tagihan dan hotspot dapat direset tanpa mengubah jumlah baris", () => {
   const app = createDashboardApp();
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const billingPanel = html.slice(html.indexOf('id="customer-billing-panel"'), html.indexOf('id="customer-hotspot-panel"'));
+  const hotspotPanel = html.slice(html.indexOf('id="customer-hotspot-panel"'), html.indexOf('id="contact-modal"'));
 
   app.filters.contactBilling = { search: "Nayya", billingCycle: "POSTPAID", status: "DEBT|YES", dueStatus: "OVERDUE", page: 3, pageSize: 25 };
   assert.equal(app.hasContactBillingFilters, true);
@@ -1248,6 +1250,10 @@ test("filter tagihan dan hotspot dapat direset tanpa mengubah jumlah baris", () 
   assert.match(html, /@click="resetContactHotspotFilters\(\)"/);
   assert.match(html, /Jumlah tagihan per halaman/);
   assert.match(html, /Jumlah akun hotspot per halaman/);
+  assert.match(billingPanel, /table-filter-bar[\s\S]*filters\.contactBilling\.pageSize[\s\S]*resetContactBillingFilters/);
+  assert.match(hotspotPanel, /table-filter-bar[\s\S]*filters\.contactHotspot\.pageSize[\s\S]*resetContactHotspotFilters/);
+  assert.doesNotMatch(billingPanel, /customer-page-size-control/);
+  assert.doesNotMatch(hotspotPanel, /customer-page-size-control/);
 });
 
 test("filter operasional memakai seluruh nilai yang tampil pada tabel", () => {

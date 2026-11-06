@@ -896,9 +896,6 @@ table tbody tr:hover { background: #fafaff; }
 .customer-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; color: #667085; font-size: 12px; }
 .customer-pagination-controls { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; white-space: nowrap; }
 .customer-pagination-controls span { min-width: 48px; text-align: center; }
-.customer-page-size-control { display: inline-flex; align-items: center; gap: 6px; color: #667085; font-size: 11px; font-weight: 700; }
-.customer-page-size-control span { min-width: 0; }
-.customer-page-size-control select { width: 62px; min-height: 36px; padding: 6px 8px; color: #344054; border: 1px solid #dfe2e9; border-radius: 8px; background: #fff; font-size: 12px; }
 .customer-billing-table { min-width: 1600px; }
 .customer-billing-table th:nth-child(1) { width: 9%; }
 .customer-billing-table th:nth-child(2) { width: 9%; }
@@ -969,7 +966,6 @@ table tbody tr:hover { background: #fafaff; }
   .customer-heading-actions button { width: 100%; }
   .customer-pagination { flex-direction: column; }
   .customer-pagination-controls { flex-wrap: wrap; justify-content: space-between; width: 100%; }
-  .customer-page-size-control { width: 100%; justify-content: flex-end; }
 }
 
 /* Simple, unified interface */
