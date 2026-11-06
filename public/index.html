@@ -56,7 +56,6 @@
       <div class="sidebar-footer">
         <span class="user-avatar"><i class="fa-solid fa-user"></i></span>
         <span class="user-info"><strong>Administrator</strong><small><span class="status-dot"></span> Sistem berjalan</small></span>
-        <button type="button" @click="logout()" class="sidebar-logout" aria-label="Keluar dari dashboard"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
       </div>
     </aside>
 
@@ -81,6 +80,7 @@
             <span class="provider-dot"></span><span class="action-text">Status WhatsApp</span><i class="fa-solid fa-arrow-up-right-from-square"></i>
           </a>
           <button type="button" @click="refreshAll()" class="navbar-button icon-only" aria-label="Muat ulang data"><i class="fa-solid fa-rotate"></i></button>
+          <button type="button" @click="logout()" class="navbar-button icon-only" aria-label="Keluar dari dashboard" title="Keluar dari dashboard"><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i></button>
         </div>
       </header>
 
