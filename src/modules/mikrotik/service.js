@@ -15,6 +15,7 @@ const {
   normalizeVoucherCredential,
   normalizeVoucherGenerationPayload,
   normalizeVoucherProfilePayload,
+  normalizeVoucherRevenueRange,
   parseRouterVoucherUsageDate,
   parseVoucherBatchComment,
   parseVoucherProfileMetadata,
@@ -240,8 +241,7 @@ class MikrotikService {
   }
 
   async getVoucherRevenueReport(options = {}) {
-    const period = sanitizeInput(String(options.period || ""));
-    if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(period)) throw new Error("Periode laporan voucher tidak valid.");
+    const range = normalizeVoucherRevenueRange(options);
     const timeZone = sanitizeInput(String(options.timeZone || DEFAULT_SETTINGS.timezone)) || DEFAULT_SETTINGS.timezone;
     return this.withConnection(async (conn) => {
       const [profiles, reportScripts] = await Promise.all([
@@ -267,10 +267,10 @@ class MikrotikService {
       const entriesById = new Map();
       for (const script of reportScripts || []) {
         const entry = parseVoucherUsageRecord(script, profileFinancials, timeZone);
-        if (!entry || entry.period !== period || !recordProfiles.has(entry.profile)) continue;
+        if (!entry || !recordProfiles.has(entry.profile)) continue;
         entriesById.set(entry.id, entry);
       }
-      return buildVoucherRevenueReport(Array.from(entriesById.values()), period);
+      return buildVoucherRevenueReport(Array.from(entriesById.values()), { ...range, timeZone });
     });
   }
 

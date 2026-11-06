@@ -1252,13 +1252,30 @@ input:focus, textarea:focus, select:focus, .currency-input-group:focus-within {
   transform: none;
 }
 
+.filter-inline.revenue-filter {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, .8fr)) minmax(240px, 1.5fr) minmax(170px, .9fr) minmax(120px, .6fr);
+  align-items: end;
+  overflow: visible;
+}
+.filter-inline.revenue-filter > * { width: 100%; min-width: 0; flex: none !important; }
+.revenue-date-field { display: flex; min-width: 0; flex-direction: column; gap: 6px; }
+.revenue-date-field > span { color: #475467; font-size: 11px; font-weight: 700; }
+.revenue-date-field input { width: 100%; }
+.revenue-date-field input[aria-invalid="true"] { border-color: #b42318 !important; }
+.revenue-range-error { margin: 8px 2px 0; color: #b42318; font-size: 12px; font-weight: 650; }
+
 .voucher-revenue-table { min-width: 920px; }
 
 @media (max-width: 1199px) {
   .revenue-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .filter-inline.revenue-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .filter-inline.revenue-filter .filter-inline-search { grid-column: 1 / -1; }
 }
 
 @media (max-width: 767px) {
   .customer-heading-actions button { min-height: 44px; }
   .revenue-summary-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .filter-inline.revenue-filter { grid-template-columns: minmax(0, 1fr); }
+  .filter-inline.revenue-filter .filter-inline-search { grid-column: auto; }
 }

@@ -17,7 +17,8 @@ function createDashboardData() {
           try {
             const data = await this.api("/api/status", { silent: Boolean(options.silent) });
             this.billingPeriod = data.billingPeriod || this.billingPeriod;
-            if (!this.revenuePeriod) this.revenuePeriod = this.billingPeriod;
+            if (!this.revenueDateFrom && this.billingPeriod) this.revenueDateFrom = `${this.billingPeriod}-01`;
+            if (!this.revenueDateTo) this.revenueDateTo = this.formatDateInput(new Date());
             this.statusCards = [
               { label: `WhatsApp ${data.bot.selectedProvider || "Provider"}`, value: data.bot.deviceReady ? "Ready" : "Not ready", icon: data.bot.deviceReady ? "fa-solid fa-plug-circle-check" : "fa-solid fa-plug-circle-xmark" },
               { label: "Telegram", value: data.bot.telegramEnabled ? "Ready" : "Not ready", icon: "fa-brands fa-telegram" },

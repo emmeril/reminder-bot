@@ -29,6 +29,8 @@ function registerVoucherRoutes({
     if (!voucherRevenueSyncScheduler || typeof dataManager.getVoucherRevenueReport !== "function") {
       return mikrotikService.getVoucherRevenueReport({
         period: req.query.period,
+        dateFrom: req.query.from,
+        dateTo: req.query.to,
         timeZone: dataManager.getTimezone(),
       });
     }
@@ -41,7 +43,11 @@ function registerVoucherRoutes({
         error: error.message,
       });
     }
-    return dataManager.getVoucherRevenueReport(req.query.period);
+    return dataManager.getVoucherRevenueReport({
+      period: req.query.period,
+      dateFrom: req.query.from,
+      dateTo: req.query.to,
+    });
   }));
 
   app.post("/api/mikrotik/voucher-profiles", requireApiAuth, handleApi(async (req) => (

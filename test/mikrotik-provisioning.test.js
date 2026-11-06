@@ -470,7 +470,7 @@ test("statistik voucher menghitung total, terpakai, dan belum terpakai per profi
   assert.equal(stats.profiles[1].total, 0);
 });
 
-test("laporan voucher menghitung pendapatan dari catatan pemakaian pertama per periode", async () => {
+test("laporan voucher menghitung pendapatan dari catatan pemakaian dalam rentang tanggal", async () => {
   const profiles = [
     { name: "VCR-1D", "on-login": ':put (",remc,25000,1d,40000,,Disable,15000,")' },
     { name: "VCR-4H", "on-login": ':put (",ntfc,5000,4h,10000,,Disable,5000,")' },
@@ -507,7 +507,10 @@ test("laporan voucher menghitung pendapatan dari catatan pemakaian pertama per p
     },
   }, {});
 
-  const report = await service.getVoucherRevenueReport({ period: "2026-11" });
+  const report = await service.getVoucherRevenueReport({
+    dateFrom: "2026-11-02",
+    dateTo: "2026-11-03",
+  });
 
   assert.deepEqual(report.summary, {
     revenue: 50000,
@@ -525,9 +528,11 @@ test("laporan voucher menghitung pendapatan dari catatan pemakaian pertama per p
   assert.equal(report.entries[1].amount, 10000);
   assert.equal(report.entries[1].costPrice, 5000);
   assert.equal(report.entries[1].commission, 5000);
+  assert.equal(report.dateFrom, "2026-11-02");
+  assert.equal(report.dateTo, "2026-11-03");
   await assert.rejects(
-    () => service.getVoucherRevenueReport({ period: "November 2026" }),
-    /Periode laporan voucher tidak valid/,
+    () => service.getVoucherRevenueReport({ dateFrom: "2026-11-03", dateTo: "2026-11-02" }),
+    /Tanggal mulai laporan voucher tidak boleh melewati tanggal akhir/,
   );
 });
 

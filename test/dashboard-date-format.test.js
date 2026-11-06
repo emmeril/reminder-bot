@@ -690,7 +690,8 @@ test("pembayaran tunggakan mengirim nominal custom admin", async () => {
 
 test("laporan pendapatan menghitung pembayaran lunas dan sebagian tanpa bulan jeda", () => {
   const app = createDashboardApp();
-  app.revenuePeriod = "2026-10";
+  app.revenueDateFrom = "2026-10-10";
+  app.revenueDateTo = "2026-10-12";
   app.contacts = [
     {
       id: "revenue-paid",
@@ -728,6 +729,15 @@ test("laporan pendapatan menghitung pembayaran lunas dan sebagian tanpa bulan je
         "2026-10": { status: "PAID", paidAmount: 100000, billingPaused: true },
       },
     },
+    {
+      id: "revenue-outside-range",
+      name: "Pelanggan Di Luar Rentang",
+      phoneNumber: "628555555556",
+      monthlyPaymentAmount: 90000,
+      paymentMonths: {
+        "2026-09": { status: "PAID", paidAmount: 90000, paidDate: "2026-10-09T03:00:00.000Z" },
+      },
+    },
   ];
 
   assert.equal(app.revenueEntries.length, 3);
@@ -744,7 +754,8 @@ test("laporan pendapatan menghitung pembayaran lunas dan sebagian tanpa bulan je
 
 test("laporan pendapatan memasukkan pembelian masa aktif pada bulan transaksi", () => {
   const app = createDashboardApp();
-  app.revenuePeriod = "2026-10";
+  app.revenueDateFrom = "2026-10-28";
+  app.revenueDateTo = "2026-10-28";
   app.contacts = [{
     id: "revenue-active-period",
     name: "Pelanggan Masa Aktif",
@@ -791,7 +802,8 @@ test("ekspor laporan pendapatan membuat CSV aman dari formula spreadsheet", asyn
       body: { appendChild: () => {} },
     },
   });
-  app.revenuePeriod = "2026-10";
+  app.revenueDateFrom = "2026-10-01";
+  app.revenueDateTo = "2026-10-31";
   app.contacts = [{
     id: "revenue-export",
     name: "=Pelanggan Formula",
@@ -809,20 +821,22 @@ test("ekspor laporan pendapatan membuat CSV aman dari formula spreadsheet", asyn
   assert.equal(downloaded, true);
   assert.equal(removed, true);
   assert.equal(revokedUrl, "blob:revenue-report");
-  assert.equal(link.download, "laporan-pendapatan-2026-10.csv");
+  assert.equal(link.download, "laporan-pendapatan-2026-10-01-sampai-2026-10-31.csv");
   assert.match(csv, /"'=Pelanggan Formula"/);
   assert.match(csv, /"100000"/);
 });
 
 test("laporan pendapatan voucher dimuat dan difilter terpisah dari pelanggan", async () => {
   const app = createDashboardApp();
-  app.revenuePeriod = "2026-11";
+  app.revenueDateFrom = "2026-11-01";
+  app.revenueDateTo = "2026-11-30";
   app.api = async (url, options) => {
-    assert.equal(url, "/api/mikrotik/voucher-revenue?period=2026-11");
+    assert.equal(url, "/api/mikrotik/voucher-revenue?from=2026-11-01&to=2026-11-30");
     assert.equal(options.timeoutMs, 45_000);
     assert.match(options.timeoutMessage, /MikroTik belum merespons laporan voucher/);
     return {
-      period: "2026-11",
+      dateFrom: "2026-11-01",
+      dateTo: "2026-11-30",
       summary: { revenue: 50000, costPrice: 30000, commission: 20000, quantity: 2, profiles: 2 },
       profileSummary: [
         { profile: "VCR-1D", quantity: 1, revenue: 40000 },
@@ -850,7 +864,8 @@ test("laporan pendapatan voucher dimuat dan difilter terpisah dari pelanggan", a
 
 test("laporan voucher keluar dari status memuat ketika MikroTik melewati batas waktu", async () => {
   const app = createDashboardApp({ AbortController, setTimeout, clearTimeout });
-  app.revenuePeriod = "2026-11";
+  app.revenueDateFrom = "2026-11-01";
+  app.revenueDateTo = "2026-11-30";
   app.api = async (_url, options) => {
     throw new Error(options.timeoutMessage);
   };
@@ -899,7 +914,8 @@ test("ekspor laporan voucher membuat berkas CSV tersendiri", async () => {
     },
     document: { createElement: () => link, body: { appendChild() {} } },
   });
-  app.revenuePeriod = "2026-11";
+  app.revenueDateFrom = "2026-11-01";
+  app.revenueDateTo = "2026-11-30";
   app.voucherRevenue.entries = [{
     id: "*1",
     username: "=voucher-formula",
@@ -918,7 +934,7 @@ test("ekspor laporan voucher membuat berkas CSV tersendiri", async () => {
   app.exportVoucherRevenueReport();
 
   const csv = await createdBlob.text();
-  assert.equal(link.download, "laporan-pendapatan-voucher-2026-11.csv");
+  assert.equal(link.download, "laporan-pendapatan-voucher-2026-11-01-sampai-2026-11-30.csv");
   assert.match(csv, /"'=voucher-formula"/);
   assert.match(csv, /"40000"/);
   assert.match(csv, /"HPP"/);
@@ -942,16 +958,44 @@ test("sidebar dan panel laporan pendapatan tersedia dengan filter serta ekspor",
   assert.match(html, /Pembayaran lunas/);
   assert.doesNotMatch(html, /<span class="metric-label">Pembayaran sebagian<\/span>/);
   assert.doesNotMatch(html, /<span class="metric-label">Rata-rata pembayaran<\/span>/);
-  assert.match(html, /x-model="revenuePeriod"/);
+  assert.equal((html.match(/x-model="revenueDateFrom"/g) || []).length, 2);
+  assert.equal((html.match(/x-model="revenueDateTo"/g) || []).length, 2);
+  assert.doesNotMatch(html, /x-model="revenuePeriod"/);
   assert.match(html, /exportRevenueReport\(\)/);
   assert.match(html, /exportVoucherRevenueReport\(\)/);
-  assert.match(html, /Belum ada pendapatan pelanggan pada periode ini/);
-  assert.match(html, /Belum ada pemakaian voucher yang tercatat pada periode ini/);
+  assert.match(html, /Belum ada pendapatan pelanggan pada rentang tanggal ini/);
+  assert.match(html, /Belum ada pemakaian voucher yang tercatat pada rentang tanggal ini/);
   assert.match(html, /x-show\.important="loading\.voucherRevenue && !voucherRevenue\.entries\.length"/);
   assert.match(html, /x-show\.important="!loading\.voucherRevenue && !voucherRevenueError && !filteredVoucherRevenueEntries\.length"/);
   assert.doesNotMatch(html, /voucher-revenue-volume/);
   const voucherRevenueTable = html.match(/<table class="[^"]*voucher-revenue-table[^"]*">[\s\S]*?<\/table>/)?.[0] || "";
   assert.doesNotMatch(voucherRevenueTable, />Perangkat</);
+});
+
+test("rentang tanggal laporan divalidasi sebelum laporan voucher dimuat", async () => {
+  const app = createDashboardApp();
+  let apiCalls = 0;
+  app.activeRevenueTab = "vouchers";
+  app.revenueDateFrom = "2026-11-30";
+  app.revenueDateTo = "2026-11-01";
+  app.api = async () => { apiCalls += 1; };
+
+  app.handleRevenueDateRangeChange();
+  await Promise.resolve();
+
+  assert.equal(app.revenueRangeError, "Tanggal mulai tidak boleh melewati tanggal akhir.");
+  assert.equal(apiCalls, 0);
+
+  app.revenueDateTo = "2026-11-30";
+  app.api = async () => {
+    apiCalls += 1;
+    return { dateFrom: "2026-11-30", dateTo: "2026-11-30", summary: {}, entries: [] };
+  };
+  app.handleRevenueDateRangeChange();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(app.revenueRangeError, "");
+  assert.equal(apiCalls, 1);
 });
 
 test("modal aksi tagihan hanya aktif ketika pelanggan memiliki tindakan", () => {

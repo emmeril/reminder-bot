@@ -1078,10 +1078,14 @@
               </article>
             </div>
 
-            <div class="filter-inline">
-              <label class="filter-field">
-                <span class="sr-only">Periode laporan pelanggan</span>
-                <input type="month" x-model="revenuePeriod" @change="handleRevenuePeriodChange()" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Periode laporan pendapatan pelanggan">
+            <div class="filter-inline revenue-filter">
+              <label class="filter-field revenue-date-field" for="customer-revenue-date-from">
+                <span>Tanggal mulai</span>
+                <input id="customer-revenue-date-from" type="date" x-model="revenueDateFrom" @change="handleRevenueDateRangeChange()" :max="revenueDateTo || null" :aria-invalid="Boolean(revenueRangeError)" aria-describedby="customer-revenue-range-error">
+              </label>
+              <label class="filter-field revenue-date-field" for="customer-revenue-date-to">
+                <span>Tanggal akhir</span>
+                <input id="customer-revenue-date-to" type="date" x-model="revenueDateTo" @change="handleRevenueDateRangeChange()" :min="revenueDateFrom || null" :aria-invalid="Boolean(revenueRangeError)" aria-describedby="customer-revenue-range-error">
               </label>
               <input x-model="filters.revenue.search" @input="resetPage('revenue')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari pelanggan, nomor WA, atau nominal" aria-label="Cari laporan pendapatan pelanggan">
               <select x-model="filters.revenue.status" @change="resetPage('revenue')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Filter status pembayaran pelanggan">
@@ -1093,13 +1097,14 @@
                 <template x-for="size in pageSizes" :key="'revenue-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template>
               </select>
             </div>
+            <p id="customer-revenue-range-error" x-cloak x-show="revenueRangeError" class="revenue-range-error" role="alert" x-text="revenueRangeError"></p>
 
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Rincian pendapatan pelanggan">
                 <table class="customer-workspace-table revenue-table min-w-full text-sm">
                   <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50"><tr><th class="px-4 py-3">Pelanggan</th><th class="px-4 py-3">Periode</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Jenis pembayaran</th><th class="px-4 py-3">Pendapatan</th><th class="px-4 py-3">Tanggal tercatat</th></tr></thead>
                   <tbody class="divide-y divide-ink/6 bg-white/70">
-                    <template x-if="!filteredRevenueEntries.length"><tr><td colspan="6" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Belum ada pendapatan pelanggan pada periode ini.' : 'Belum ada data pelanggan.'"></td></tr></template>
+                    <template x-if="!filteredRevenueEntries.length"><tr><td colspan="6" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Belum ada pendapatan pelanggan pada rentang tanggal ini.' : 'Belum ada data pelanggan.'"></td></tr></template>
                     <template x-for="entry in paginatedRevenueEntries" :key="entry.id">
                       <tr>
                         <td class="px-4 py-4" data-label="Pelanggan"><strong class="customer-name" x-text="entry.name"></strong><small class="customer-meta" x-text="entry.phoneNumber"></small></td>
@@ -1134,12 +1139,14 @@
             <div class="revenue-info-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><p><strong>Sumber laporan voucher</strong><span>Nilai dihitung saat voucher pertama kali digunakan. Keuntungan menunjukkan nominal yang diperoleh dari setiap voucher. Riwayat tersedia untuk profile yang mencatat pemakaian.</span></p></div>
             <p x-cloak x-show="voucherRevenueError" class="voucher-history-error" role="alert" x-text="voucherRevenueError"></p>
 
-            <div class="filter-inline revenue-voucher-filter">
-              <label class="filter-field"><span class="sr-only">Periode laporan voucher</span><input type="month" x-model="revenuePeriod" @change="handleRevenuePeriodChange()" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Periode laporan pendapatan voucher"></label>
+            <div class="filter-inline revenue-filter revenue-voucher-filter">
+              <label class="filter-field revenue-date-field" for="voucher-revenue-date-from"><span>Tanggal mulai</span><input id="voucher-revenue-date-from" type="date" x-model="revenueDateFrom" @change="handleRevenueDateRangeChange()" :max="revenueDateTo || null" :aria-invalid="Boolean(revenueRangeError)" aria-describedby="voucher-revenue-range-error"></label>
+              <label class="filter-field revenue-date-field" for="voucher-revenue-date-to"><span>Tanggal akhir</span><input id="voucher-revenue-date-to" type="date" x-model="revenueDateTo" @change="handleRevenueDateRangeChange()" :min="revenueDateFrom || null" :aria-invalid="Boolean(revenueRangeError)" aria-describedby="voucher-revenue-range-error"></label>
               <input x-model="filters.voucherRevenue.search" @input="resetPage('voucherRevenue')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari voucher atau profile" aria-label="Cari laporan pendapatan voucher">
               <select x-model="filters.voucherRevenue.profile" @change="resetPage('voucherRevenue')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Filter profile voucher"><option value="ALL">Semua profile</option><template x-for="profile in voucherRevenueProfiles" :key="'voucher-revenue-profile-' + profile"><option :value="profile" x-text="profile"></option></template></select>
               <select x-model.number="filters.voucherRevenue.pageSize" @change="resetPage('voucherRevenue')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Jumlah voucher per halaman"><template x-for="size in pageSizes" :key="'voucher-revenue-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select>
             </div>
+            <p id="voucher-revenue-range-error" x-cloak x-show="revenueRangeError" class="revenue-range-error" role="alert" x-text="revenueRangeError"></p>
 
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Rincian pendapatan voucher">
@@ -1147,7 +1154,7 @@
                   <thead class="bg-ink/[0.04] text-left text-xs uppercase tracking-[0.18em] text-ink/50"><tr><th class="px-4 py-3">Voucher</th><th class="px-4 py-3">Profile</th><th class="px-4 py-3">Harga jual</th><th class="px-4 py-3">HPP</th><th class="px-4 py-3">Keuntungan</th><th class="px-4 py-3">Masa berlaku</th><th class="px-4 py-3">Tanggal digunakan</th></tr></thead>
                   <tbody class="divide-y divide-ink/6 bg-white/70">
                     <tr x-show.important="loading.voucherRevenue && !voucherRevenue.entries.length"><td colspan="7" class="px-4 py-8 text-center text-ink/45"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Memuat pendapatan voucher...</td></tr>
-                    <tr x-show.important="!loading.voucherRevenue && !voucherRevenueError && !filteredVoucherRevenueEntries.length"><td colspan="7" class="px-4 py-8 text-center text-ink/45">Belum ada pemakaian voucher yang tercatat pada periode ini.</td></tr>
+                    <tr x-show.important="!loading.voucherRevenue && !voucherRevenueError && !filteredVoucherRevenueEntries.length"><td colspan="7" class="px-4 py-8 text-center text-ink/45">Belum ada pemakaian voucher yang tercatat pada rentang tanggal ini.</td></tr>
                     <template x-for="entry in paginatedVoucherRevenueEntries" :key="entry.id">
                       <tr>
                         <td class="px-4 py-4" data-label="Voucher"><strong class="customer-name voucher-username" x-text="entry.username"></strong></td>

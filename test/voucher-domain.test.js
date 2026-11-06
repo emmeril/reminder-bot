@@ -103,3 +103,27 @@ test("catatan pemakaian dan ringkasan pendapatan mempunyai ID stabil", () => {
   assert.equal(report.summary.commission, 15000);
   assert.equal(report.summary.quantity, 1);
 });
+
+test("laporan voucher memakai rentang tanggal lokal yang inklusif", () => {
+  const entries = [
+    { id: "before", username: "before", profile: "VCR", amount: 10000, usedAt: "2026-11-02T16:59:59.000Z" },
+    { id: "start", username: "start", profile: "VCR", amount: 20000, usedAt: "2026-11-02T17:00:00.000Z" },
+    { id: "end", username: "end", profile: "VCR", amount: 30000, usedAt: "2026-11-03T16:59:59.000Z" },
+    { id: "after", username: "after", profile: "VCR", amount: 40000, usedAt: "2026-11-03T17:00:00.000Z" },
+  ];
+
+  const report = buildVoucherRevenueReport(entries, {
+    dateFrom: "2026-11-03",
+    dateTo: "2026-11-03",
+    timeZone: "Asia/Jakarta",
+  });
+
+  assert.deepEqual(report.entries.map((entry) => entry.id), ["end", "start"]);
+  assert.equal(report.summary.revenue, 50000);
+  assert.equal(report.dateFrom, "2026-11-03");
+  assert.equal(report.dateTo, "2026-11-03");
+  assert.throws(
+    () => buildVoucherRevenueReport(entries, { dateFrom: "2026-11-04", dateTo: "2026-11-03" }),
+    /Tanggal mulai laporan voucher tidak boleh melewati tanggal akhir/
+  );
+});

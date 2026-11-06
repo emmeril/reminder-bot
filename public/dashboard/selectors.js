@@ -676,34 +676,79 @@ function createDashboardSelectors() {
           }).format(Math.max(0, Number(value) || 0));
         },
 
-        getRevenuePeriodLabel(period = this.revenuePeriod) {
+        getRevenuePeriodLabel(period = "") {
           const [year, month] = String(period || "").split("-").map(Number);
           if (!year || month < 1 || month > 12) return "Periode belum dipilih";
           return this.getBillingPeriodLabel(year, month);
         },
 
-        handleRevenuePeriodChange() {
+        isValidRevenueDate(value) {
+          const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (!match) return false;
+          const year = Number(match[1]);
+          const month = Number(match[2]);
+          const day = Number(match[3]);
+          const date = new Date(Date.UTC(year, month - 1, day));
+          return date.getUTCFullYear() === year
+            && date.getUTCMonth() === month - 1
+            && date.getUTCDate() === day;
+        },
+
+        validateRevenueDateRange(options = {}) {
+          const dateFrom = String(this.revenueDateFrom || "");
+          const dateTo = String(this.revenueDateTo || "");
+          let error = "";
+          if (!this.isValidRevenueDate(dateFrom) || !this.isValidRevenueDate(dateTo)) {
+            error = "Pilih tanggal mulai dan tanggal akhir laporan.";
+          } else if (dateFrom > dateTo) {
+            error = "Tanggal mulai tidak boleh melewati tanggal akhir.";
+          }
+          if (options.updateError) this.revenueRangeError = error;
+          return !error;
+        },
+
+        getRevenueDateKey(value) {
+          const parts = this.getZonedParts(value);
+          return parts ? `${parts.year}-${parts.month}-${parts.day}` : "";
+        },
+
+        isDateWithinRevenueRange(value) {
+          if (!this.validateRevenueDateRange()) return false;
+          const dateKey = this.getRevenueDateKey(value);
+          return Boolean(dateKey && dateKey >= this.revenueDateFrom && dateKey <= this.revenueDateTo);
+        },
+
+        getRevenueRangeFileSuffix() {
+          return this.validateRevenueDateRange()
+            ? `${this.revenueDateFrom}-sampai-${this.revenueDateTo}`
+            : "rentang-tanggal";
+        },
+
+        handleRevenueDateRangeChange() {
+          if (!this.validateRevenueDateRange({ updateError: true })) return;
           this.resetPage("revenue");
           this.resetPage("voucherRevenue");
           if (this.activeRevenueTab === "vouchers") void this.loadVoucherRevenue({ silent: true });
         },
 
         async loadVoucherRevenue(options = {}) {
-          const period = this.revenuePeriod || this.billingPeriod;
-          if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(period || ""))) return;
+          if (!this.validateRevenueDateRange({ updateError: true })) return;
+          const dateFrom = this.revenueDateFrom;
+          const dateTo = this.revenueDateTo;
           const requestId = ++this.voucherRevenueRequestId;
           this.loading.voucherRevenue = true;
           this.voucherRevenueError = "";
-          if (this.voucherRevenue.period !== period) {
+          if (this.voucherRevenue.dateFrom !== dateFrom || this.voucherRevenue.dateTo !== dateTo) {
             this.voucherRevenue = {
-              period,
+              dateFrom,
+              dateTo,
               summary: { revenue: 0, costPrice: 0, commission: 0, quantity: 0, profiles: 0 },
               profileSummary: [],
               entries: [],
             };
           }
           try {
-            const report = await this.api(`/api/mikrotik/voucher-revenue?period=${encodeURIComponent(period)}`, {
+            const report = await this.api(`/api/mikrotik/voucher-revenue?from=${dateFrom}&to=${dateTo}`, {
               silent: Boolean(options.silent),
               timeoutMs: 45_000,
               timeoutMessage: "MikroTik belum merespons laporan voucher. Periksa koneksi lalu tekan Muat ulang.",
@@ -713,7 +758,8 @@ function createDashboardSelectors() {
             const costPrice = Number(report?.summary?.costPrice || 0);
             const commission = Number(report?.summary?.commission || 0);
             this.voucherRevenue = {
-              period: report?.period || period,
+              dateFrom: report?.dateFrom || dateFrom,
+              dateTo: report?.dateTo || dateTo,
               summary: {
                 revenue,
                 costPrice,
@@ -755,14 +801,15 @@ function createDashboardSelectors() {
         },
 
         get revenueEntries() {
-          const period = this.revenuePeriod || this.billingPeriod;
-          if (!/^\d{4}-\d{2}$/.test(String(period || ""))) return [];
+          if (!this.validateRevenueDateRange()) return [];
 
           return this.contacts
             .flatMap((contact) => {
               const entries = [];
-              const payment = contact.paymentMonths?.[period];
-              if (payment && !payment.billingPaused) {
+              for (const [period, payment] of Object.entries(contact.paymentMonths || {})) {
+                if (!payment || payment.billingPaused) continue;
+                const paymentDate = payment.lastPaymentDate || payment.paidDate || null;
+                if (!this.isDateWithinRevenueRange(paymentDate)) continue;
                 const monthlyAmount = Math.max(0, Math.floor(Number(contact.monthlyPaymentAmount) || 0));
                 const status = String(payment.status || "UNPAID").toUpperCase();
                 const recordedAmount = Math.max(0, Math.floor(Number(payment.paidAmount) || 0));
@@ -779,17 +826,17 @@ function createDashboardSelectors() {
                     status: status === "PAID" ? "PAID" : "PARTIAL",
                     paymentType: payment.paymentType || null,
                     amount,
-                    paymentDate: payment.lastPaymentDate || payment.paidDate || null,
+                    paymentDate,
                     activeUntil: null,
                   });
                 }
               }
 
               for (const purchase of contact.activePeriodPurchases || []) {
+                if (!this.isDateWithinRevenueRange(purchase.purchasedAt)) continue;
                 const parts = this.getZonedParts(purchase.purchasedAt);
                 if (!parts) continue;
-                const purchasePeriod = `${parts.year}-${String(parts.month).padStart(2, "0")}`;
-                if (purchasePeriod !== period) continue;
+                const purchasePeriod = `${parts.year}-${parts.month}`;
                 const amount = Math.max(0, Math.floor(Number(purchase.amount) || 0));
                 if (amount <= 0) continue;
                 entries.push({
@@ -797,7 +844,7 @@ function createDashboardSelectors() {
                   contactId: contact.id,
                   name: contact.name || "-",
                   phoneNumber: contact.phoneNumber || "-",
-                  period,
+                  period: purchasePeriod,
                   status: "PAID",
                   paymentType: "ACTIVE-PERIOD",
                   amount,
@@ -870,7 +917,7 @@ function createDashboardSelectors() {
           const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
           const link = document.createElement("a");
           link.href = url;
-          link.download = `laporan-pendapatan-${this.revenuePeriod || "periode"}.csv`;
+          link.download = `laporan-pendapatan-${this.getRevenueRangeFileSuffix()}.csv`;
           document.body.appendChild(link);
           link.click();
           link.remove();
@@ -903,7 +950,7 @@ function createDashboardSelectors() {
           const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
           const link = document.createElement("a");
           link.href = url;
-          link.download = `laporan-pendapatan-voucher-${this.revenuePeriod || "periode"}.csv`;
+          link.download = `laporan-pendapatan-voucher-${this.getRevenueRangeFileSuffix()}.csv`;
           document.body.appendChild(link);
           link.click();
           link.remove();

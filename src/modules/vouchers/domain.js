@@ -141,9 +141,65 @@ function parseVoucherUsageRecord(script, profileFinancials, timeZone = DEFAULT_S
   };
 }
 
-function buildVoucherRevenueReport(entries = [], period = "") {
+function isValidCalendarDate(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
+
+function normalizeVoucherRevenueRange(options = {}) {
+  const input = typeof options === "string" ? { period: options } : (options || {});
+  const period = sanitizeInput(String(input.period || ""));
+  let dateFrom = sanitizeInput(String(input.dateFrom || input.from || ""));
+  let dateTo = sanitizeInput(String(input.dateTo || input.to || ""));
+  if (period && !dateFrom && !dateTo) {
+    if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(period)) {
+      throw new Error("Periode laporan voucher tidak valid.");
+    }
+    const [year, month] = period.split("-").map(Number);
+    dateFrom = `${period}-01`;
+    dateTo = `${period}-${String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, "0")}`;
+  }
+  if (!isValidCalendarDate(dateFrom) || !isValidCalendarDate(dateTo)) {
+    throw new Error("Rentang tanggal laporan voucher tidak valid.");
+  }
+  if (dateFrom > dateTo) {
+    throw new Error("Tanggal mulai laporan voucher tidak boleh melewati tanggal akhir.");
+  }
+  return { dateFrom, dateTo, period };
+}
+
+function getZonedDateKey(value, timeZone = DEFAULT_SETTINGS.timezone) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date).reduce((result, part) => {
+    if (part.type !== "literal") result[part.type] = part.value;
+    return result;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function buildVoucherRevenueReport(entries = [], options = {}) {
+  const range = normalizeVoucherRevenueRange(options);
+  const timeZone = sanitizeInput(String(
+    options && typeof options === "object" ? options.timeZone : DEFAULT_SETTINGS.timezone
+  )) || DEFAULT_SETTINGS.timezone;
   const periodEntries = Array.from(entries)
-    .filter((entry) => entry?.period === period)
+    .filter((entry) => {
+      const dateKey = getZonedDateKey(entry?.usedAt, timeZone);
+      return dateKey && dateKey >= range.dateFrom && dateKey <= range.dateTo;
+    })
     .map((entry) => structuredClone(entry))
     .sort((a, b) => (
       new Date(b.usedAt).getTime() - new Date(a.usedAt).getTime()
@@ -168,7 +224,9 @@ function buildVoucherRevenueReport(entries = [], period = "") {
     b.revenue - a.revenue || a.profile.localeCompare(b.profile, "id-ID")
   ));
   return {
-    period,
+    period: range.period,
+    dateFrom: range.dateFrom,
+    dateTo: range.dateTo,
     summary: {
       revenue: periodEntries.reduce((total, entry) => total + Math.max(0, Number(entry.amount) || 0), 0),
       costPrice: periodEntries.reduce((total, entry) => total + Math.max(0, Number(entry.costPrice) || 0), 0),
@@ -363,6 +421,7 @@ module.exports = {
   normalizeVoucherCredential,
   normalizeVoucherGenerationPayload,
   normalizeVoucherProfilePayload,
+  normalizeVoucherRevenueRange,
   parseRouterVoucherUsageDate,
   parseVoucherBatchComment,
   parseVoucherProfileMetadata,

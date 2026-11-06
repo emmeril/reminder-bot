@@ -207,6 +207,7 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
   let removedStoredVoucher = null;
   let resetStoredVoucher = null;
   let receivedHistoryOptions = null;
+  let receivedRevenueRange = null;
   const baseUrl = await startServer({
     getVoucherBatch: (batchId) => (batchId === "batch-lama" ? {
       batchId,
@@ -235,12 +236,16 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
       summary: { total: 2, used: 1, unused: 1 },
       profiles: [{ profile: "100M", total: 2, used: 1, unused: 1 }],
     }),
-    getVoucherRevenueReport: async ({ period }) => ({
-      period,
-      summary: { revenue: 40000, costPrice: 25000, commission: 15000, quantity: 1, profiles: 1 },
-      profileSummary: [{ profile: "100M", quantity: 1, revenue: 40000, costPrice: 25000, commission: 15000 }],
-      entries: [{ id: "*1", username: "voucher-api", profile: "100M", amount: 40000, costPrice: 25000, commission: 15000 }],
-    }),
+    getVoucherRevenueReport: async ({ dateFrom, dateTo }) => {
+      receivedRevenueRange = { dateFrom, dateTo };
+      return {
+        dateFrom,
+        dateTo,
+        summary: { revenue: 40000, costPrice: 25000, commission: 15000, quantity: 1, profiles: 1 },
+        profileSummary: [{ profile: "100M", quantity: 1, revenue: 40000, costPrice: 25000, commission: 15000 }],
+        entries: [{ id: "*1", username: "voucher-api", profile: "100M", amount: 40000, costPrice: 25000, commission: 15000 }],
+      };
+    },
     deleteHotspotVoucher: async ({ batchId, username }) => ({
       batchId,
       username,
@@ -294,11 +299,13 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
   assert.equal(statsResponse.status, 200);
   assert.deepEqual(statsPayload.data.summary, { total: 2, used: 1, unused: 1 });
 
-  const revenueResponse = await fetch(`${baseUrl}/api/mikrotik/voucher-revenue?period=2026-11`, { headers });
+  const revenueResponse = await fetch(`${baseUrl}/api/mikrotik/voucher-revenue?from=2026-11-01&to=2026-11-30`, { headers });
   const revenuePayload = await revenueResponse.json();
   assert.equal(revenueResponse.status, 200);
   assert.deepEqual(revenuePayload.data.summary, { revenue: 40000, costPrice: 25000, commission: 15000, quantity: 1, profiles: 1 });
-  assert.equal(revenuePayload.data.period, "2026-11");
+  assert.deepEqual(receivedRevenueRange, { dateFrom: "2026-11-01", dateTo: "2026-11-30" });
+  assert.equal(revenuePayload.data.dateFrom, "2026-11-01");
+  assert.equal(revenuePayload.data.dateTo, "2026-11-30");
 
   const resetDeviceResponse = await fetch(`${baseUrl}/api/mikrotik/voucher-batches/batch-lama/vouchers/lama-1/reset-device`, {
     method: "POST",
@@ -340,13 +347,14 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
 test("API laporan voucher menyinkronkan MikroTik lalu membaca riwayat database", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   let syncCalls = 0;
-  let requestedPeriod = "";
+  let requestedRange = null;
   const baseUrl = await startServer({
     getVoucherRevenueEntries: () => [{ id: "tersimpan-1" }],
-    getVoucherRevenueReport: (period) => {
-      requestedPeriod = period;
+    getVoucherRevenueReport: (range) => {
+      requestedRange = range;
       return {
-        period,
+        dateFrom: range.dateFrom,
+        dateTo: range.dateTo,
         summary: { revenue: 40000, costPrice: 25000, commission: 15000, quantity: 1, profiles: 1 },
         profileSummary: [],
         entries: [{ id: "tersimpan-1", username: "voucher-db" }],
@@ -360,14 +368,18 @@ test("API laporan voucher menyinkronkan MikroTik lalu membaca riwayat database",
     processSync: async () => { syncCalls += 1; },
   });
 
-  const response = await fetch(`${baseUrl}/api/mikrotik/voucher-revenue?period=2026-11`, {
+  const response = await fetch(`${baseUrl}/api/mikrotik/voucher-revenue?from=2026-11-01&to=2026-11-30`, {
     headers: { "x-api-key": CONFIG.WEB_API_KEY },
   });
   const payload = await response.json();
 
   assert.equal(response.status, 200);
   assert.equal(syncCalls, 1);
-  assert.equal(requestedPeriod, "2026-11");
+  assert.deepEqual(requestedRange, {
+    period: undefined,
+    dateFrom: "2026-11-01",
+    dateTo: "2026-11-30",
+  });
   assert.equal(payload.data.entries[0].username, "voucher-db");
 });
 

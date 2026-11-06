@@ -591,12 +591,11 @@ class DataManagerCore {
     return (Array.isArray(ids) ? ids : []).every((id) => this.voucherRevenueEntries.has(String(id)));
   }
 
-  getVoucherRevenueReport(period) {
-    const safePeriod = sanitizeInput(String(period || ""));
-    if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(safePeriod)) {
-      throw new Error("Periode laporan voucher tidak valid.");
-    }
-    return buildVoucherRevenueReport(this.voucherRevenueEntries.values(), safePeriod);
+  getVoucherRevenueReport(options = {}) {
+    return buildVoucherRevenueReport(this.voucherRevenueEntries.values(), {
+      ...(typeof options === "string" ? { period: options } : options),
+      timeZone: this.getTimezone(),
+    });
   }
 
   async storeVoucherRevenueEntries(entries = []) {
