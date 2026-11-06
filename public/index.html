@@ -123,7 +123,7 @@
 
         <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell summary-panel overview-summary-region rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="summary-heading mb-5">
-            <div><h2 class="font-display text-2xl">Kondisi hari ini</h2><p class="card-description">Ringkasan pelanggan, pembayaran, pesan, dan jaringan</p></div>
+            <div><h2 class="font-display text-2xl">Kondisi hari ini</h2><p class="card-description">Ringkasan pelanggan, layanan, pembayaran, pesan, dan jaringan</p></div>
             <span class="summary-date" x-text="currentDateLabel"></span>
           </div>
           <div class="summary-metric-grid grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -136,7 +136,7 @@
             </template>
           </div>
           <div class="payment-progress-card">
-            <div class="progress-copy"><span><i class="fa-solid fa-chart-pie"></i></span><div><strong>Progres pembayaran periode tagihan</strong><small><span x-text="summaryValue('Sudah bayar')"></span> dari <span x-text="summaryValue('Pelanggan')"></span> pelanggan sudah tercatat</small></div></div>
+            <div class="progress-copy"><span><i class="fa-solid fa-chart-pie"></i></span><div><strong>Status pembayaran pelanggan</strong><small><span x-text="summaryValue('Lunas / paket aktif')"></span> dari <span x-text="summaryValue('Pelanggan')"></span> pelanggan lunas atau memiliki paket aktif</small></div></div>
             <div class="progress-visual"><strong x-text="paymentProgress + '%'" ></strong><div><span :style="'width:' + paymentProgress + '%'" ></span></div></div>
           </div>
         </section>
@@ -144,12 +144,17 @@
         <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell attention-panel">
           <div class="mb-4 flex items-center justify-between">
             <div><h2>Perlu ditangani</h2><p class="card-description">Pekerjaan yang membutuhkan tindakan</p></div>
-            <span class="attention-count" x-text="summaryValue('Belum bayar') + summaryValue('AP bermasalah')"></span>
+            <span class="attention-count" x-text="summaryValue('Perlu pembayaran') + summaryValue('Layanan perlu dicek') + summaryValue('AP bermasalah')"></span>
           </div>
           <div class="attention-list">
             <button type="button" @click="selectMenu('payment-amount')" class="attention-item warning">
               <span class="attention-icon"><i class="fa-solid fa-wallet"></i></span>
-              <span><strong><span x-text="summaryValue('Belum bayar')"></span> pelanggan belum bayar</strong><small>Cek status dan tindak lanjuti tagihan</small></span>
+              <span><strong><span x-text="summaryValue('Perlu pembayaran')"></span> pelanggan perlu pembayaran</strong><small>Cek tagihan atau masa aktif paket</small></span>
+              <i class="fa-solid fa-arrow-right"></i>
+            </button>
+            <button type="button" @click="selectMenu('hotspot-accounts')" class="attention-item" :class="summaryValue('Layanan perlu dicek') ? 'warning' : 'success'">
+              <span class="attention-icon"><i class="fa-solid fa-screwdriver-wrench"></i></span>
+              <span><strong x-text="summaryValue('Layanan perlu dicek') ? summaryValue('Layanan perlu dicek') + ' layanan perlu dicek' : 'Semua layanan pelanggan aktif'"></strong><small>Periksa akun hotspot dan IP Binding</small></span>
               <i class="fa-solid fa-arrow-right"></i>
             </button>
             <button type="button" @click="selectMenu('monitor-ap')" class="attention-item" :class="summaryValue('AP bermasalah') ? 'danger' : 'success'">

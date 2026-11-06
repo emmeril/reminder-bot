@@ -45,6 +45,61 @@ function createManager(contact) {
   return manager;
 }
 
+test("ringkasan dashboard menghitung layanan dan pesan terkirim hari ini", () => {
+  const manager = createManager({
+    id: "summary-active",
+    name: "Aktif",
+    phoneNumber: "628111111111",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID,
+    mikrotikUsername: "aktif",
+    hotspotProvisioningStatus: "ACTIVE",
+    hotspotReactivationAt: "2026-11-20T00:00:00.000Z",
+  });
+  manager.settings.timezone = "Asia/Jakarta";
+  manager.contacts.set("summary-disabled", {
+    id: "summary-disabled",
+    name: "Nonaktif",
+    phoneNumber: "628222222222",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID,
+    mikrotikUsername: "nonaktif",
+    hotspotProvisioningStatus: "DISABLED",
+    hotspotReactivationAt: "2026-11-01T00:00:00.000Z",
+  });
+  manager.contacts.set("summary-contact-only", {
+    id: "summary-contact-only",
+    name: "Tanpa Layanan",
+    phoneNumber: "628333333333",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID,
+    hotspotProvisioningStatus: "NONE",
+    hotspotReactivationAt: "2026-11-20T00:00:00.000Z",
+  });
+  manager.reminders.set("summary-reminder", {
+    id: "summary-reminder",
+    contactId: "summary-active",
+    reminderDateTime: "2026-11-20T00:00:00.000Z",
+  });
+  for (const reminder of [
+    { id: "sent-today", sentAt: "2026-11-06T02:00:00.000Z", deliveryStatus: "SENT_BAILEYS" },
+    { id: "failed-today", sentAt: "2026-11-06T03:00:00.000Z", deliveryStatus: "FAILED" },
+    { id: "skipped-today", sentAt: "2026-11-06T04:00:00.000Z", deliveryStatus: "SKIPPED_PAID" },
+    { id: "sent-yesterday", sentAt: "2026-11-05T10:00:00.000Z", deliveryStatus: "SENT" },
+  ]) manager.sentReminders.set(reminder.id, reminder);
+
+  const summary = manager.getDashboardSummary(new Date("2026-11-06T05:00:00.000Z"));
+
+  assert.equal(summary.contacts, 3);
+  assert.equal(summary.activeServices, 1);
+  assert.equal(summary.serviceAttention, 1);
+  assert.equal(summary.paidContacts, 2);
+  assert.equal(summary.unpaidContacts, 1);
+  assert.equal(summary.reminders, 1);
+  assert.equal(summary.sentReminders, 4);
+  assert.equal(summary.sentToday, 1);
+});
+
 test("riwayat batch voucher disimpan terpisah dari komentar user MikroTik", async () => {
   const manager = createManager({ id: "contact-placeholder", phoneNumber: "6281234567890" });
   let saveCalls = 0;

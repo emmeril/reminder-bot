@@ -97,6 +97,9 @@ function createDashboardUi() {
           if (key === "payment-amount") {
             this.activeContactTab = "billing";
             key = "contacts";
+          } else if (key === "hotspot-accounts") {
+            this.activeContactTab = "hotspot";
+            key = "contacts";
           }
           this.activeMenu = key;
           this.mobileSidebarOpen = false;
@@ -167,7 +170,7 @@ function createDashboardUi() {
 
         get paymentProgress() {
           const total = this.summaryValue("Pelanggan");
-          return total ? Math.min(100, Math.round((this.summaryValue("Sudah bayar") / total) * 100)) : 0;
+          return total ? Math.min(100, Math.round((this.summaryValue("Lunas / paket aktif") / total) * 100)) : 0;
         },
 
         async loadNonCriticalData() {

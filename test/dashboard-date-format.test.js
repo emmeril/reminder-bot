@@ -638,12 +638,16 @@ test("ringkasan menempatkan status di kiri dan kondisi utama di kanan", () => {
   assert.match(styles, /\.page-grid\.overview-workspace \{ grid-template-columns: minmax\(300px, 1fr\) minmax\(0, 2fr\);/);
   assert.match(styles, /\.overview-workspace > \.status-panel,[\s\S]*?\.overview-workspace > \.quick-panel \{[^}]*width: 100%;[^}]*height: 100%;/);
   assert.match(styles, /@media \(max-width: 767px\)[\s\S]*?\.page-grid\.overview-workspace \{ grid-template-columns: minmax\(0, 1fr\);/);
-  assert.match(script, /label: "Penerima admin"[^\n]*menu: "notifications"/);
+  assert.match(script, /label: "Layanan aktif"[^\n]*menu: "hotspot-accounts"/);
+  assert.match(script, /label: "Pesan hari ini"[^\n]*data\.summary\.sentToday/);
   assert.match(script, /label: "AP bermasalah"[^\n]*menu: "monitor-ap"/);
 
   app.selectMenu("payment-amount");
   assert.equal(app.activeMenu, "contacts");
   assert.equal(app.activeContactTab, "billing");
+  app.selectMenu("hotspot-accounts");
+  assert.equal(app.activeMenu, "contacts");
+  assert.equal(app.activeContactTab, "hotspot");
 });
 
 test("pembayaran tunggakan mengirim nominal custom admin", async () => {

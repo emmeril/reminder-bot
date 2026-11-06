@@ -58,6 +58,7 @@ const {
   generateId,
   getBillingPeriodKey,
   getBillingPeriodParts,
+  getDateTimePartsInTimezone,
   getPreviousBillingPeriod,
   getReminderDeliveryDate,
   isAutomaticBillingReminder,
@@ -257,21 +258,42 @@ class CustomerDataManager extends DataManagerCore {
       .sort((a, b) => new Date(b.sentAt || b.reminderDateTime) - new Date(a.sentAt || a.reminderDateTime));
   }
 
-  getDashboardSummary() {
+  getDashboardSummary(now = new Date()) {
     const contacts = this.getSortedContacts();
     const reminders = this.getSortedReminders();
     const sentReminders = this.getSentReminders();
     const paid = contacts.filter((contact) => contact.paymentStatus === PAYMENT_STATUS.PAID).length;
     const unpaid = contacts.length - paid;
     const debt = contacts.filter((contact) => contact.hasDebt).length;
+    const managedServices = contacts.filter((contact) => {
+      const status = normalizeHotspotProvisioningStatus(contact.hotspotProvisioningStatus);
+      return Boolean(contact.mikrotikUsername)
+        || normalizeMacAddresses(contact.mikrotikMacAddresses).length > 0
+        || status !== HOTSPOT_PROVISIONING_STATUS.NONE;
+    });
+    const activeServices = managedServices.filter((contact) => (
+      normalizeHotspotProvisioningStatus(contact.hotspotProvisioningStatus)
+        === HOTSPOT_PROVISIONING_STATUS.ACTIVE
+    )).length;
+    const successfulDeliveryStatuses = new Set(["SENT", "SENT_BAILEYS", "ACCEPTED", "DELIVERED", "READ"]);
+    const todayKey = getDateTimePartsInTimezone(now, this.getTimezone()).dateKey;
+    const sentToday = sentReminders.filter((reminder) => {
+      if (!successfulDeliveryStatuses.has(String(reminder.deliveryStatus || "").toUpperCase())) return false;
+      const sentAt = new Date(reminder.sentAt || reminder.reminderDateTime || "");
+      return !Number.isNaN(sentAt.getTime())
+        && getDateTimePartsInTimezone(sentAt, this.getTimezone()).dateKey === todayKey;
+    }).length;
     return {
       contacts: contacts.length,
       pelanggan: this.pelanggan.size,
       reminders: reminders.length,
       sentReminders: sentReminders.length,
+      sentToday,
       paidContacts: paid,
       unpaidContacts: unpaid,
       debtContacts: debt,
+      activeServices,
+      serviceAttention: managedServices.length - activeServices,
       adminRecipients: this.getAdminRecipients().length,
       nextReminderAt: reminders[0]?.deliveryDateTime || reminders[0]?.reminderDateTime || null,
     };

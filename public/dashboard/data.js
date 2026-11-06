@@ -25,12 +25,13 @@ function createDashboardData() {
             ];
             this.summaryMetrics = [
               { label: "Pelanggan", value: data.summary.contacts, icon: "fa-solid fa-users", tone: "blue", menu: "contacts" },
+              { label: "Layanan aktif", value: data.summary.activeServices || 0, icon: "fa-solid fa-wifi", tone: "green", menu: "hotspot-accounts" },
+              { label: "Layanan perlu dicek", value: data.summary.serviceAttention || 0, icon: "fa-solid fa-screwdriver-wrench", tone: "amber", menu: "hotspot-accounts" },
               { label: "Reminder aktif", value: data.summary.reminders, icon: "fa-solid fa-calendar-check", tone: "violet", menu: "reminders" },
-              { label: "Pesan terkirim", value: data.summary.sentReminders, icon: "fa-solid fa-paper-plane", tone: "cyan", menu: "history" },
-              { label: "Penerima admin", value: data.summary.adminRecipients, icon: "fa-solid fa-user-shield", tone: "slate", menu: "notifications" },
-              { label: "Sudah bayar", value: data.summary.paidContacts, icon: "fa-solid fa-circle-check", tone: "green", menu: "payment-amount" },
-              { label: "Belum bayar", value: data.summary.unpaidContacts, icon: "fa-solid fa-clock", tone: "amber", menu: "payment-amount" },
-              { label: "Masih ada hutang", value: data.summary.debtContacts || 0, icon: "fa-solid fa-file-invoice-dollar", tone: "red", menu: "payment-amount" },
+              { label: "Pesan hari ini", value: data.summary.sentToday || 0, icon: "fa-solid fa-paper-plane", tone: "cyan", menu: "history" },
+              { label: "Lunas / paket aktif", value: data.summary.paidContacts, icon: "fa-solid fa-circle-check", tone: "green", menu: "payment-amount" },
+              { label: "Perlu pembayaran", value: data.summary.unpaidContacts, icon: "fa-solid fa-clock", tone: "amber", menu: "payment-amount" },
+              { label: "Memiliki tunggakan", value: data.summary.debtContacts || 0, icon: "fa-solid fa-file-invoice-dollar", tone: "red", menu: "payment-amount" },
             ];
             this.updateApSummaryMetrics();
             if (!this.settingsDirty) {
@@ -754,7 +755,7 @@ function createDashboardData() {
         updateApSummaryMetrics() {
           if (!Array.isArray(this.summaryMetrics) || this.summaryMetrics.length === 0) return;
 
-          const { up: apUp, down: apDown } = this.networkMonitorSummary;
+          const { down: apDown } = this.networkMonitorSummary;
 
           const baseMetrics = this.summaryMetrics.filter(
             (metric) => metric.label !== "AP online" && metric.label !== "AP bermasalah"
@@ -762,7 +763,6 @@ function createDashboardData() {
 
           this.summaryMetrics = [
             ...baseMetrics,
-            { label: "AP online", value: apUp, icon: "fa-solid fa-wifi", tone: "green", menu: "monitor-ap" },
             { label: "AP bermasalah", value: apDown, icon: "fa-solid fa-triangle-exclamation", tone: "red", menu: "monitor-ap" },
           ];
         },
