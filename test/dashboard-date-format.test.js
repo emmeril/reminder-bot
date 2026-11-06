@@ -469,6 +469,7 @@ test("mode pascabayar memakai periode tagihan dari server dan tersedia di form p
   assert.equal(app.getBillingCycleLabel(contact), "Bulanan pascabayar");
   assert.equal(app.getBillingCycleBadgeClass(contact), "border-amber-200 bg-amber-50 text-amber-800");
   assert.equal(app.getBillingCycleLabel({ billingCycle: "PREPAID" }), "Bulanan prabayar");
+  assert.equal(app.getBillingCycleLabel({}), "Bulanan prabayar");
   assert.equal(
     app.getBillingCycleBadgeClass({ billingCycle: "PREPAID" }),
     "border-moss/15 bg-moss/10 text-moss"
@@ -491,7 +492,7 @@ test("mode pascabayar memakai periode tagihan dari server dan tersedia di form p
   assert.match(html, /x-model="forms\.contact\.billingCycle"/);
   assert.match(html, /x-model="forms\.contactEdit\.billingCycle"/);
   assert.match(html, /Pascabayar, bayar bulan sebelumnya/);
-  assert.equal((html.match(/:class="getBillingCycleBadgeClass\(/g) || []).length, 2);
+  assert.equal((html.match(/:class="getBillingCycleBadgeClass\(/g) || []).length, 3);
   assert.doesNotMatch(html, /getBillingCycleIcon/);
 });
 
@@ -1150,6 +1151,8 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(html, /customer-hotspot-account-actions[^\"]*customer-row-actions/);
   assert.match(html, /customer-hotspot-service-actions[^\"]*customer-row-actions/);
   assert.match(html, /data-label="Langganan"/);
+  assert.match(html, /data-label="Langganan"[^>]*>\s*<span[^>]*:class="getBillingCycleBadgeClass\(contact\)"[^>]*x-text="getBillingCycleLabel\(contact\)"/);
+  assert.doesNotMatch(html, /getSubscriptionTypeLabel/);
   assert.match(html, /data-label="Nomor HP"/);
   assert.match(html, /data-label="Status Jatuh Tempo"/);
   assert.match(html, /data-label="Sumber Nominal"/);
