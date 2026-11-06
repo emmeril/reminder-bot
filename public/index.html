@@ -6,7 +6,7 @@
   <title>__DASHBOARD_TITLE__</title>
   <link rel="stylesheet" href="/public/tailwind.css?v=20261105-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20261106-2">
+  <link rel="stylesheet" href="/public/styles.css?v=20261106-3">
   <link rel="stylesheet" href="/public/interface.css?v=20261106-3">
   <script defer src="/public/dashboard/state.js?v=20261106-2"></script>
   <script defer src="/public/dashboard/ui.js?v=20261106-1"></script>
@@ -2388,7 +2388,7 @@
       x-cloak
       x-show="processingModal.open"
       x-transition.opacity.duration.150ms
-      class="dashboard-modal-overlay dashboard-modal-overlay-priority fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
+      class="dashboard-modal-overlay dashboard-modal-overlay-priority processing-modal-overlay fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6 backdrop-blur-sm"
       role="status"
       aria-live="polite"
       aria-modal="true"
@@ -2396,7 +2396,7 @@
       <div
         x-show="processingModal.open"
         x-transition.scale.origin.center
-        class="w-full max-w-sm rounded-[1.5rem] border border-white/10 bg-white p-6 text-center shadow-soft"
+        class="processing-modal-card w-full max-w-sm rounded-[1.5rem] border border-white/10 bg-white p-6 text-center shadow-soft"
       >
         <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-moss/10 text-moss">
           <i class="fa-solid fa-circle-notch fa-spin text-2xl"></i>

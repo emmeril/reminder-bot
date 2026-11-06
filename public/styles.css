@@ -307,6 +307,22 @@ span[class*="rounded-full"][class*="text-xs"] { border-radius: 3px !important; }
 /* Modals */
 .dashboard-modal-overlay { z-index: 1100; background: rgba(0,0,0,.5) !important; backdrop-filter: none !important; }
 .dashboard-modal-overlay-priority { z-index: 1110; }
+.processing-modal-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  display: grid;
+  place-items: center;
+  margin: 0 !important;
+  overflow: auto;
+  padding: 16px !important;
+}
+.processing-modal-card {
+  width: min(24rem, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  overflow-y: auto;
+}
 .dashboard-modal-overlay > div { border: 0 !important; border-radius: 4px !important; box-shadow: 0 10px 35px rgba(0,0,0,.3) !important; }
 .dashboard-modal-overlay:not(.dashboard-modal-overlay-priority) h3 { font-weight: 500 !important; }
 .dashboard-modal-overlay:not(.dashboard-modal-overlay-priority) > div > div:first-child { margin: -20px -20px 18px; padding: 14px 20px; border-bottom: 1px solid #e9ecef; }
