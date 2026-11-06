@@ -44,4 +44,12 @@ test("helper MikroTik menjaga kompatibilitas field API dan nama queue stabil", (
     buildIpBindingBandwidthQueueName("customer-1"),
     buildIpBindingBandwidthQueueName("customer-1")
   );
+  assert.equal(
+    buildIpBindingBandwidthQueueName("customer-1", "192.168.1.10"),
+    buildIpBindingBandwidthQueueName("customer-1", "192.168.1.10")
+  );
+  assert.notEqual(
+    buildIpBindingBandwidthQueueName("customer-1", "192.168.1.10"),
+    buildIpBindingBandwidthQueueName("customer-1", "192.168.1.11")
+  );
 });

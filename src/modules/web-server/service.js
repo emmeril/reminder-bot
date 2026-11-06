@@ -365,10 +365,11 @@ class WebServer {
     const persisted = await this.dataManager.updateContactIpBindingBandwidthStatus(current.id, result);
     if ([IP_BINDING_BANDWIDTH_STATUS.ACTIVE, IP_BINDING_BANDWIDTH_STATUS.PARTIAL].includes(result.status)
       && result.changed) {
-      this.activityLog.push("info", "mikrotik", `Bandwidth bersama IP Binding ${current.name || current.id} disinkronkan`, {
+      this.activityLog.push("info", "mikrotik", `Simple Queue per IP Binding ${current.name || current.id} disinkronkan`, {
         contactId: current.id,
         rateLimit: result.rateLimit,
         targets: result.targetAddresses,
+        queueNames: result.queueNames,
         pendingMacAddresses: result.pendingMacAddresses,
       });
     }

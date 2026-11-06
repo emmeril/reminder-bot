@@ -403,7 +403,13 @@ class CustomerDataManager extends DataManagerCore {
       contact.ipBindingBandwidthDevices = devices;
       contact.ipBindingBandwidthError = sanitizeInput(String(result.error || ""));
       contact.ipBindingBandwidthLastSyncedAt = this.normalizeOptionalDate(result.syncedAt || new Date());
-      contact.ipBindingBandwidthQueueName = sanitizeInput(String(result.queueName || ""));
+      const queueNames = [...new Set((Array.isArray(result.queueNames)
+        ? result.queueNames
+        : [result.queueName])
+        .map((name) => sanitizeInput(String(name || "")))
+        .filter(Boolean))];
+      contact.ipBindingBandwidthQueueNames = queueNames;
+      contact.ipBindingBandwidthQueueName = queueNames[0] || "";
       await this.saveContacts();
       return this.hydrateContact(contact);
     });

@@ -167,7 +167,7 @@ function createDashboardActions() {
               });
               const bandwidthStatus = String(result.ipBindingBandwidthStatus || "").toUpperCase();
               if (["PARTIAL", "PENDING_DHCP"].includes(bandwidthStatus)) {
-                this.notify("Akun hotspot tersimpan. Bandwidth bersama akan melengkapi target saat perangkat mendapat IP.");
+                this.notify("Akun hotspot tersimpan. Simple Queue per IP akan dibuat saat perangkat mendapat IP.");
               } else if (bandwidthStatus === "NO_RATE_LIMIT") {
                 this.notify("Akun hotspot tersimpan. Atur rate limit profile agar IP Binding memiliki batas bandwidth.");
               } else if (bandwidthStatus === "FAILED") {

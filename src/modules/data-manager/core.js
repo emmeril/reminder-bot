@@ -935,7 +935,12 @@ class DataManagerCore {
         .filter(Boolean);
       contact.ipBindingBandwidthError = sanitizeInput(String(contact.ipBindingBandwidthError || ""));
       contact.ipBindingBandwidthLastSyncedAt = this.normalizeOptionalDate(contact.ipBindingBandwidthLastSyncedAt);
-      contact.ipBindingBandwidthQueueName = sanitizeInput(String(contact.ipBindingBandwidthQueueName || ""));
+      contact.ipBindingBandwidthQueueNames = [...new Set((Array.isArray(contact.ipBindingBandwidthQueueNames)
+        ? contact.ipBindingBandwidthQueueNames
+        : [contact.ipBindingBandwidthQueueName])
+        .map((name) => sanitizeInput(String(name || "")))
+        .filter(Boolean))];
+      contact.ipBindingBandwidthQueueName = contact.ipBindingBandwidthQueueNames[0] || "";
       delete contact.mikrotikAccessMethod;
       delete contact.mikrotikMacAddress;
       contact.mikrotikUsername = sanitizeInput(String(contact.mikrotikUsername || ""));

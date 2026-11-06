@@ -1164,7 +1164,7 @@ function createBandwidthService({ profiles = [], leases = [], hosts = [], queues
   return { service, queues: rows };
 }
 
-test("bandwidth beberapa IP Binding memakai satu Simple Queue pelanggan", async () => {
+test("bandwidth beberapa IP Binding membuat satu Simple Queue untuk setiap IP", async () => {
   const { service, queues } = createBandwidthService({
     profiles: [{ name: "Keluarga", "rate-limit": "10M/30M 20M/40M 8M/24M 20/20 6 1M/2M" }],
     leases: [
@@ -1182,27 +1182,60 @@ test("bandwidth beberapa IP Binding memakai satu Simple Queue pelanggan", async 
   assert.equal(result.status, "ACTIVE");
   assert.equal(result.rateLimit, "10M/30M 20M/40M 8M/24M 20/20 6 1M/2M");
   assert.deepEqual(result.targetAddresses, ["10.20.0.10", "10.20.0.11"]);
-  assert.equal(queues.length, 1);
-  assert.equal(queues[0].target, "10.20.0.10/32,10.20.0.11/32");
-  assert.equal(queues[0]["max-limit"], "10M/30M");
-  assert.equal(queues[0]["burst-limit"], "20M/40M");
-  assert.equal(queues[0]["burst-threshold"], "8M/24M");
-  assert.equal(queues[0]["burst-time"], "20s/20s");
-  assert.equal(queues[0].priority, "6/6");
-  assert.equal(queues[0]["limit-at"], "1M/2M");
-  assert.equal(queues[0].comment, "reminder-bot-bandwidth:pelanggan-keluarga");
-
-  queues[0]["max-limit"] = "10000000/30000000";
-  queues[0]["burst-limit"] = "20000000/40000000";
-  queues[0]["burst-threshold"] = "8000000/24000000";
-  queues[0]["limit-at"] = "1000000/2000000";
+  assert.equal(queues.length, 2);
+  assert.deepEqual(queues.map((queue) => queue.target).sort(), ["10.20.0.10/32", "10.20.0.11/32"]);
+  assert.equal(new Set(queues.map((queue) => queue.name)).size, 2);
+  assert.deepEqual(result.queueNames.sort(), queues.map((queue) => queue.name).sort());
+  for (const queue of queues) {
+    assert.equal(queue["max-limit"], "10M/30M");
+    assert.equal(queue["burst-limit"], "20M/40M");
+    assert.equal(queue["burst-threshold"], "8M/24M");
+    assert.equal(queue["burst-time"], "20s/20s");
+    assert.equal(queue.priority, "6/6");
+    assert.equal(queue["limit-at"], "1M/2M");
+    assert.equal(queue.comment, "reminder-bot-bandwidth:pelanggan-keluarga");
+    queue["max-limit"] = "10000000/30000000";
+    queue["burst-limit"] = "20000000/40000000";
+    queue["burst-threshold"] = "8000000/24000000";
+    queue["limit-at"] = "1000000/2000000";
+  }
   const repeated = await service.syncIpBindingBandwidthForCustomer({
     contactId: "pelanggan-keluarga",
     profile: "Keluarga",
     macAddresses: ["AA:BB:CC:DD:EE:10", "AA:BB:CC:DD:EE:11"],
   });
   assert.equal(repeated.changed, false);
-  assert.equal(queues.length, 1);
+  assert.equal(queues.length, 2);
+});
+
+test("queue gabungan lama dimigrasikan menjadi Simple Queue per IP", async () => {
+  const ownerComment = "reminder-bot-bandwidth:pelanggan-migrasi";
+  const { service, queues } = createBandwidthService({
+    profiles: [{ name: "Migrasi", "rate-limit": "8M/8M" }],
+    leases: [
+      { "mac-address": "AA:BB:CC:DD:EE:40", address: "10.50.0.10" },
+      { "mac-address": "AA:BB:CC:DD:EE:41", address: "10.50.0.11" },
+    ],
+    queues: [{
+      ".id": "*Q1",
+      name: "queue-gabungan-lama",
+      target: "10.50.0.10/32,10.50.0.11/32",
+      "max-limit": "8M/8M",
+      comment: ownerComment,
+    }],
+  });
+
+  const result = await service.syncIpBindingBandwidthForCustomer({
+    contactId: "pelanggan-migrasi",
+    profile: "Migrasi",
+    macAddresses: ["AA:BB:CC:DD:EE:40", "AA:BB:CC:DD:EE:41"],
+  });
+
+  assert.equal(result.changed, true);
+  assert.equal(queues.length, 2);
+  assert.deepEqual(queues.map((queue) => queue.target).sort(), ["10.50.0.10/32", "10.50.0.11/32"]);
+  assert.equal(queues.some((queue) => queue.name === "queue-gabungan-lama"), false);
+  assert.equal(queues.every((queue) => queue.comment === ownerComment), true);
 });
 
 test("bandwidth IP Binding menunggu IP dan melengkapi target dari Hotspot host", async () => {

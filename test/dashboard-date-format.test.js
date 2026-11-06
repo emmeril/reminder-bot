@@ -56,7 +56,7 @@ test("form hotspot dapat menampung beberapa MAC IP Binding tanpa alamat IP", () 
   assert.deepEqual(Array.from(app.forms.hotspotAccount.macAddresses), ["AA:BB:CC:DD:EE:06"]);
 });
 
-test("form hotspot menjelaskan bandwidth bersama dan status IP setiap perangkat", () => {
+test("form hotspot menjelaskan Simple Queue per IP dan status setiap perangkat", () => {
   const app = createDashboardApp();
   app.contacts = [{
     id: "contact-bandwidth",
@@ -85,7 +85,7 @@ test("form hotspot menjelaskan bandwidth bersama dan status IP setiap perangkat"
     Object.fromEntries(Object.entries(app.getIpBindingBandwidthSummary())),
     {
       status: "PARTIAL",
-      text: "Bandwidth bersama 10M/30M aktif; 1 perangkat masih menunggu IP.",
+      text: "Rate limit 10M/30M aktif pada 1 perangkat; 1 perangkat masih menunggu IP.",
     }
   );
 });
@@ -101,7 +101,7 @@ test("tabel hotspot memisahkan profile dan ringkasan IP Binding", () => {
   assert.equal(app.getIpBindingCountLabel(contact), "2 perangkat");
   assert.equal(app.getIpBindingTableStatus(contact), "1 menunggu IP");
   assert.equal(app.getIpBindingCountLabel({ mikrotikMacAddresses: [] }), "Belum ada");
-  assert.equal(app.getIpBindingTableStatus({ ipBindingBandwidthStatus: "ACTIVE" }), "Bandwidth aktif");
+  assert.equal(app.getIpBindingTableStatus({ ipBindingBandwidthStatus: "ACTIVE" }), "Queue per IP aktif");
 });
 
 test("mode akses membedakan status akun hotspot dan IP Binding", () => {

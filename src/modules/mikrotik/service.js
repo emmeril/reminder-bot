@@ -1214,23 +1214,7 @@ class MikrotikService {
       };
     }
 
-    if (ownedQueues.length > 1) {
-      throw new Error("Ditemukan lebih dari satu Simple Queue bandwidth untuk pelanggan ini.");
-    }
-    const target = targetAddresses.map((address) => `${address}/32`).join(",");
     const disabled = Boolean(customer.disabled);
-    const payload = {
-      name: buildIpBindingBandwidthQueueName(contactId),
-      target,
-      "max-limit": queueLimits.maxLimit,
-      "burst-limit": queueLimits.burstLimit,
-      "burst-threshold": queueLimits.burstThreshold,
-      "burst-time": queueLimits.burstTime,
-      priority: queueLimits.priority,
-      "limit-at": queueLimits.limitAt,
-      disabled: disabled ? "yes" : "no",
-      comment: ownerComment,
-    };
     const queueLimitsMatch = (row) => (
       normalizeSimpleQueueLimitForComparison(readRouterValue(row, "max-limit", "maxLimit", ""))
         === normalizeSimpleQueueLimitForComparison(queueLimits.maxLimit)
@@ -1243,33 +1227,95 @@ class MikrotikService {
       && normalizeSimpleQueueLimitForComparison(readRouterValue(row, "limit-at", "limitAt", ""))
         === normalizeSimpleQueueLimitForComparison(queueLimits.limitAt)
     );
-    const existing = ownedQueues[0] || null;
+    const desiredQueues = targetAddresses.map((address) => ({
+      address,
+      payload: {
+        name: buildIpBindingBandwidthQueueName(contactId, address),
+        target: `${address}/32`,
+        "max-limit": queueLimits.maxLimit,
+        "burst-limit": queueLimits.burstLimit,
+        "burst-threshold": queueLimits.burstThreshold,
+        "burst-time": queueLimits.burstTime,
+        priority: queueLimits.priority,
+        "limit-at": queueLimits.limitAt,
+        disabled: disabled ? "yes" : "no",
+        comment: ownerComment,
+      },
+    }));
+    const desiredByAddress = new Map(desiredQueues.map((entry) => [entry.address, entry]));
+    const foreignQueueNames = new Set((queueRows || [])
+      .filter((row) => sanitizeInput(String(row.comment || "")) !== ownerComment)
+      .map((row) => String(row.name || "")));
+    for (const entry of desiredQueues) {
+      if (foreignQueueNames.has(entry.payload.name)) {
+        throw new Error(`Nama Simple Queue "${entry.payload.name}" sudah digunakan oleh konfigurasi lain.`);
+      }
+    }
+
+    const retainedByAddress = new Map();
     let changed = false;
-    if (existing) {
-      const currentTargets = normalizeQueueTarget(readRouterValue(existing, "target", "target", ""));
+    for (const row of ownedQueues) {
+      const currentTargets = normalizeQueueTarget(readRouterValue(row, "target", "target", ""));
+      const address = currentTargets.length === 1 ? currentTargets[0] : "";
+      const desired = desiredByAddress.get(address);
+      const canRetain = desired
+        && !retainedByAddress.has(address)
+        && String(row.name || "") === desired.payload.name;
+      if (canRetain) {
+        retainedByAddress.set(address, row);
+        continue;
+      }
+
+      const id = row[".id"] || row.id || row.numbers || row.number;
+      if (!id) throw new Error("ID Simple Queue bandwidth pelanggan tidak ditemukan.");
+      await queueMenu.remove(String(id));
+      changed = true;
+    }
+
+    for (const entry of desiredQueues) {
+      const existing = retainedByAddress.get(entry.address);
+      if (!existing) {
+        await queueMenu.add(entry.payload);
+        changed = true;
+        continue;
+      }
+
       const currentDisabled = existing.disabled === true
         || ["true", "yes"].includes(String(existing.disabled || "").toLowerCase());
-      changed = currentTargets.join(",") !== targetAddresses.join(",")
+      const currentTargets = normalizeQueueTarget(readRouterValue(existing, "target", "target", ""));
+      const targetMatches = currentTargets.length === 1 && currentTargets[0] === entry.address;
+      const needsUpdate = !targetMatches
         || !queueLimitsMatch(existing)
-        || currentDisabled !== disabled
-        || String(existing.name || "") !== payload.name;
-      if (changed) {
-        const id = existing[".id"] || existing.id || existing.numbers || existing.number;
-        if (!id) throw new Error("ID Simple Queue bandwidth pelanggan tidak ditemukan.");
-        await queueMenu.update(payload, String(id));
-      }
-    } else {
-      const nameConflict = (queueRows || []).some((row) => String(row.name || "") === payload.name);
-      if (nameConflict) throw new Error(`Nama Simple Queue "${payload.name}" sudah digunakan oleh konfigurasi lain.`);
-      await queueMenu.add(payload);
+        || currentDisabled !== disabled;
+      if (!needsUpdate) continue;
+      const id = existing[".id"] || existing.id || existing.numbers || existing.number;
+      if (!id) throw new Error("ID Simple Queue bandwidth pelanggan tidak ditemukan.");
+      await queueMenu.update(entry.payload, String(id));
       changed = true;
     }
 
     const verifiedQueues = await queueMenu.print();
-    const verified = (verifiedQueues || []).find((row) => sanitizeInput(String(row.comment || "")) === ownerComment);
-    if (!verified
-      || normalizeQueueTarget(readRouterValue(verified, "target", "target", "")).join(",") !== targetAddresses.join(",")
-      || !queueLimitsMatch(verified)) {
+    const verifiedOwned = (verifiedQueues || [])
+      .filter((row) => sanitizeInput(String(row.comment || "")) === ownerComment);
+    const verifiedByAddress = new Map();
+    let verificationFailed = verifiedOwned.length !== desiredQueues.length;
+    for (const row of verifiedOwned) {
+      const targets = normalizeQueueTarget(readRouterValue(row, "target", "target", ""));
+      const address = targets.length === 1 ? targets[0] : "";
+      const desired = desiredByAddress.get(address);
+      const verifiedDisabled = row.disabled === true
+        || ["true", "yes"].includes(String(row.disabled || "").toLowerCase());
+      if (!desired
+        || verifiedByAddress.has(address)
+        || String(row.name || "") !== desired.payload.name
+        || !queueLimitsMatch(row)
+        || verifiedDisabled !== disabled) {
+        verificationFailed = true;
+        break;
+      }
+      verifiedByAddress.set(address, row);
+    }
+    if (verificationFailed || verifiedByAddress.size !== desiredQueues.length) {
       throw new Error("Simple Queue bandwidth IP Binding gagal diverifikasi setelah disimpan.");
     }
 
@@ -1282,7 +1328,8 @@ class MikrotikService {
       targetAddresses,
       pendingMacAddresses,
       devices,
-      queueName: payload.name,
+      queueNames: desiredQueues.map((entry) => entry.payload.name),
+      queueName: desiredQueues[0]?.payload.name || "",
       changed,
       disabled,
     };

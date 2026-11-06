@@ -122,7 +122,7 @@ function createDashboardSelectors() {
           const pendingCount = Array.isArray(contact?.ipBindingBandwidthPendingMacAddresses)
             ? contact.ipBindingBandwidthPendingMacAddresses.length
             : 0;
-          if (status === "ACTIVE") return "Bandwidth aktif";
+          if (status === "ACTIVE") return "Queue per IP aktif";
           if (status === "PARTIAL") return pendingCount > 0
             ? `${pendingCount} menunggu IP`
             : "Sebagian tersinkron";
@@ -198,17 +198,17 @@ function createDashboardSelectors() {
           const savedMacs = [...(contact?.mikrotikMacAddresses || [])].sort().join(",");
           const formMacs = [...form.macAddresses].sort().join(",");
           if (!contact || savedMacs !== formMacs || String(contact.mikrotikProfile || "") !== String(form.profile || "")) {
-            return { status: "PENDING_SAVE", text: "Bandwidth bersama akan disinkronkan setelah perubahan disimpan." };
+            return { status: "PENDING_SAVE", text: "Simple Queue per IP akan disinkronkan setelah perubahan disimpan." };
           }
           const status = String(contact.ipBindingBandwidthStatus || "PENDING_DHCP").toUpperCase();
           const rateLimit = contact.ipBindingBandwidthRateLimit || "";
           const targetCount = (contact.ipBindingBandwidthTargetAddresses || []).length;
           const pendingCount = (contact.ipBindingBandwidthPendingMacAddresses || []).length;
           if (status === "ACTIVE") {
-            return { status, text: `Bandwidth bersama ${rateLimit} aktif untuk ${targetCount} perangkat.` };
+            return { status, text: `Rate limit ${rateLimit} aktif pada ${targetCount} Simple Queue perangkat.` };
           }
           if (status === "PARTIAL") {
-            return { status, text: `Bandwidth bersama ${rateLimit} aktif; ${pendingCount} perangkat masih menunggu IP.` };
+            return { status, text: `Rate limit ${rateLimit} aktif pada ${targetCount} perangkat; ${pendingCount} perangkat masih menunggu IP.` };
           }
           if (status === "NO_RATE_LIMIT") {
             return { status, text: `Profile ${form.profile || "ini"} belum memiliki rate limit.` };

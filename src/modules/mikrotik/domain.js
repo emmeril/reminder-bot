@@ -43,11 +43,17 @@ function buildIpBindingBandwidthOwnerComment(contactId) {
   return `reminder-bot-bandwidth:${String(contactId || "").trim()}`;
 }
 
-function buildIpBindingBandwidthQueueName(contactId) {
+function buildIpBindingBandwidthQueueName(contactId, targetAddress = "") {
   const rawId = String(contactId || "").trim();
   const readable = rawId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 16) || "customer";
-  const suffix = crypto.createHash("sha256").update(rawId).digest("hex").slice(0, 8);
-  return `RB-${readable}-${suffix}`;
+  const address = String(targetAddress || "").trim();
+  if (!address) {
+    const suffix = crypto.createHash("sha256").update(rawId).digest("hex").slice(0, 8);
+    return `RB-${readable}-${suffix}`;
+  }
+  const readableAddress = address.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 20);
+  const suffix = crypto.createHash("sha256").update(`${rawId}\0${address}`).digest("hex").slice(0, 6);
+  return `RB-${readable}-${readableAddress}-${suffix}`;
 }
 
 function normalizeIpBindingBandwidthStatus(value, fallback = IP_BINDING_BANDWIDTH_STATUS.NONE) {
