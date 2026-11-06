@@ -519,7 +519,8 @@ function isAutomaticBillingReminder(reminder) {
 }
 
 function isGracePeriodReminder(reminder) {
-  return String(reminder?.reminderKind || "").trim().toUpperCase() === "GRACE_PERIOD";
+  return String(reminder?.reminderKind || "").trim().toUpperCase() === "GRACE_PERIOD"
+    || Boolean(reminder?.gracePeriodCreatedAt);
 }
 
 function getReminderDeliveryDate(reminder, graceDays = 0, timeZone = "Asia/Jakarta") {

@@ -248,7 +248,11 @@ class ReminderScheduler {
     const isWithinGracePeriod = graceDays > 0
       && Number.isFinite(currentTime)
       && currentTime < gracePeriodEndsAt;
-    const sourceMessage = isWithinGracePeriod && isGracePeriodReminder(reminder) && gracePeriodTemplate
+    const prepaidReminder = isPrepaidContact(billing.contact);
+    const sourceMessage = isWithinGracePeriod
+      && isGracePeriodReminder(reminder)
+      && !prepaidReminder
+      && gracePeriodTemplate
       ? gracePeriodTemplate
       : reminder.messageSource || reminder.message || "";
     let message = String(sourceMessage);
@@ -270,7 +274,7 @@ class ReminderScheduler {
       message = message.replace(pattern, () => value);
     }
 
-    if (usedBillingDetailsPlaceholder || usedDetailedAmountPlaceholder
+    if (prepaidReminder || usedBillingDetailsPlaceholder || usedDetailedAmountPlaceholder
       || billing.monthlyAmount <= 0 || billing.totalPeriods <= 0) return message;
 
     const amountPattern = /(?:sebesar\s*)?Rp\s*[0-9][0-9.]*(?:,[0-9]{1,2})?/i;
@@ -295,11 +299,11 @@ class ReminderScheduler {
 
   shouldQueueGracePeriodReminder(reminder) {
     if (isGracePeriodReminder(reminder)
-      || reminder.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY
       || typeof this.dataManager.moveToGracePeriod !== "function") return false;
 
     const contact = this.dataManager.getResolvedReminderContact?.(reminder);
-    if (isPrepaidContact(contact)) return false;
+    const activePeriodExpiry = reminder.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY;
+    if (isPrepaidContact(contact) && !activePeriodExpiry) return false;
 
     const settings = typeof this.dataManager.getSettings === "function"
       ? this.dataManager.getSettings()
@@ -310,7 +314,7 @@ class ReminderScheduler {
       0,
       30
     );
-    return graceDays > 0 && isAutomaticBillingReminder(reminder);
+    return graceDays > 0 && (activePeriodExpiry || isAutomaticBillingReminder(reminder));
   }
 
   async finalizeReminderDelivery(reminder, extras, sourceStatus) {

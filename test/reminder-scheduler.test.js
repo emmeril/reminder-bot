@@ -135,6 +135,36 @@ test("pengingat masa tenggang memakai template yang disimpan di pengaturan", () 
   assert.doesNotMatch(message, /{{|}}/);
 });
 
+test("pengingat masa tenggang prabayar tetap memakai template paket", () => {
+  const scheduler = new ReminderScheduler({}, {
+    getSettings: () => ({
+      gracePeriodReminderMessageTemplate: "Template tagihan tidak boleh dipakai.",
+      hotspotIsolationGraceDays: 3,
+    }),
+    getTimezone: () => "Asia/Jakarta",
+    getResolvedReminderContact: () => ({
+      name: "Pelanggan Paket",
+      billingCycle: "PREPAID",
+      paymentStatus: "UNPAID",
+      currentPaymentStatus: "UNPAID",
+      monthlyPaymentAmount: 75_000,
+    }),
+  }, { push() {} });
+
+  const message = scheduler.buildReminderMessage({
+    reminderDateTime: "2026-11-10T12:08:22.960Z",
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    gracePeriodCreatedAt: "2026-11-10T12:08:22.960Z",
+    activePeriodUntil: "2026-11-10T12:08:22.960Z",
+    message: DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate,
+    messageSource: DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate,
+  }, new Date("2026-11-11T12:08:22.960Z"));
+
+  assert.match(message, /Masa aktif paket WiFi Anda berakhir pada 10 November 2026 pukul 19\.08/);
+  assert.match(message, /Layanan dijadwalkan nonaktif pada 2026-11-13/);
+  assert.doesNotMatch(message, /Template tagihan tidak boleh dipakai/);
+});
+
 test("template masa tenggang tidak mengganti reminder biasa saat jeda isolir nol", () => {
   const scheduler = new ReminderScheduler({}, {
     getSettings: () => ({
@@ -378,7 +408,7 @@ test("rincian reminder memakai sisa tagihan setelah pembayaran sebagian", () => 
 test("reminder masa aktif menampilkan batas aktif dan tunggakan yang masih tersimpan", () => {
   const reminder = {
     contactId: "contact-active-period-reminder",
-    reminderDateTime: "2026-11-25T01:00:00.000Z",
+    reminderDateTime: "2026-11-28T01:00:00.000Z",
     reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
     activePeriodUntil: "2026-11-28T01:00:00.000Z",
     message: DEFAULT_SETTINGS.activePeriodReminderMessageTemplate,
@@ -408,11 +438,12 @@ test("reminder masa aktif menampilkan batas aktif dan tunggakan yang masih tersi
 
   const message = new ReminderScheduler({}, dataManager, { push() {} }).buildReminderMessage(reminder);
 
-  assert.match(message, /Masa aktif sementara WiFi Anda berlaku sampai 28 November 2026 pukul 08\.00/);
+  assert.match(message, /Masa aktif sementara WiFi Anda berakhir pada 28 November 2026 pukul 08\.00/);
   assert.match(message, /Tunggakan: 2 bulan/);
   assert.match(message, /Total: Rp\s?200\.000/);
   assert.match(message, /September 2026, Oktober 2026/);
   assert.match(message, /Silakan lunasi tunggakan atau beli masa aktif sementara/);
+  assert.match(message, /Layanan dijadwalkan nonaktif pada 2026-12-01/);
   assert.doesNotMatch(message, /{{|}}/);
 });
 
@@ -605,14 +636,14 @@ test("reminder pelanggan sekali berlangganan tidak dijadwalkan ulang", async () 
   assert.equal(created, 0);
 });
 
-test("reminder pelanggan prabayar tidak masuk masa tenggang atau dijadwalkan ulang bulanan", async () => {
+test("reminder jatuh tempo prabayar masuk masa tenggang tanpa dijadwalkan ulang bulanan", async () => {
   let created = 0;
   const reminder = {
     id: "reminder-prepaid-legacy",
     contactId: "prepaid",
     reminderDateTime: "2026-11-28T01:00:00.000Z",
-    reminderKind: REMINDER_KINDS.BILLING,
-    templateName: "Penagihan.txt",
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    templateName: "PaketPrabayar",
   };
   const scheduler = new ReminderScheduler({}, {
     getSettings: () => ({ autoRescheduleMonthly: true, hotspotIsolationGraceDays: 3 }),
@@ -622,13 +653,11 @@ test("reminder pelanggan prabayar tidak masuk masa tenggang atau dijadwalkan ula
       subscriptionType: "RECURRING",
       billingCycle: "PREPAID",
     }),
-    moveToGracePeriod: async () => {
-      throw new Error("Reminder prabayar tidak boleh masuk masa tenggang.");
-    },
+    moveToGracePeriod: async () => ({}),
     addReminder: async () => { created += 1; },
   }, { push() {} });
 
-  assert.equal(scheduler.shouldQueueGracePeriodReminder(reminder), false);
+  assert.equal(scheduler.shouldQueueGracePeriodReminder(reminder), true);
   assert.equal(await scheduler.rescheduleMonthlyReminder(reminder), null);
   assert.equal(created, 0);
 });

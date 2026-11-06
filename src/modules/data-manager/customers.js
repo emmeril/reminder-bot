@@ -10,9 +10,11 @@ const {
   DEFAULT_SETTINGS,
   LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE,
   LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3,
+  LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V5,
   LEGACY_DEFAULT_REMINDER_MESSAGE_TEMPLATE_V3,
   LEGACY_DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE_V4,
   LEGACY_NOTIFICATION_TEMPLATES_V3,
+  LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5,
   LEGACY_PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD,
   PAYMENT_STATUS,
   PAYMENT_TYPES,
@@ -1171,8 +1173,8 @@ class CustomerDataManager extends DataManagerCore {
     return this.withDataMutation(async () => {
       const settings = this.getSettings();
       const currentVersion = Number(settings.notificationTemplateCopyMigrationVersion) || 0;
-      if (currentVersion >= 5) {
-        return { migrated: false, remindersUpdated: 0, version: 5 };
+      if (currentVersion >= 6) {
+        return { migrated: false, remindersUpdated: 0, version: 6 };
       }
 
       const templateKeys = [
@@ -1215,7 +1217,17 @@ class CustomerDataManager extends DataManagerCore {
         this.settings.billingReminderMessageTemplate =
           DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE;
       }
-      this.settings.notificationTemplateCopyMigrationVersion = 5;
+      if (this.settings.activePeriodReminderMessageTemplate
+        === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V5) {
+        this.settings.activePeriodReminderMessageTemplate =
+          DEFAULT_SETTINGS.activePeriodReminderMessageTemplate;
+      }
+      if (this.settings.prepaidPackageReminderMessageTemplate
+        === LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5) {
+        this.settings.prepaidPackageReminderMessageTemplate =
+          DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate;
+      }
+      this.settings.notificationTemplateCopyMigrationVersion = 6;
 
       let remindersUpdated = 0;
       for (const reminder of this.reminders.values()) {
@@ -1239,11 +1251,15 @@ class CustomerDataManager extends DataManagerCore {
             === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE
             || reminder.message === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE
             || reminder.messageSource === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3
-            || reminder.message === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3;
+            || reminder.message === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3
+            || reminder.messageSource === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V5
+            || reminder.message === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V5;
           const usesLegacyPrepaidCopy = reminder.messageSource
             === LEGACY_NOTIFICATION_TEMPLATES_V3.prepaidPackageReminderMessageTemplate
             || reminder.message
-              === LEGACY_NOTIFICATION_TEMPLATES_V3.prepaidPackageReminderMessageTemplate;
+              === LEGACY_NOTIFICATION_TEMPLATES_V3.prepaidPackageReminderMessageTemplate
+            || reminder.messageSource === LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5
+            || reminder.message === LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5;
           if (currentVersion < 2
             || (!prepaidPackage && usesLegacyTemporaryCopy)
             || (prepaidPackage && usesLegacyPrepaidCopy)) {
@@ -1267,10 +1283,10 @@ class CustomerDataManager extends DataManagerCore {
         if (remindersUpdated > 0) await this.saveReminders(options);
       }));
       this.activityLog.push("info", "storage", "Template notifikasi diselaraskan dengan siklus pembayaran", {
-        migration: "billing-cycle-notification-copy-v5",
+        migration: "billing-cycle-notification-copy-v6",
         remindersUpdated,
       });
-      return { migrated: true, remindersUpdated, version: 5 };
+      return { migrated: true, remindersUpdated, version: 6 };
     });
   }
 
@@ -1675,14 +1691,7 @@ class CustomerDataManager extends DataManagerCore {
       throw new Error("Jadwal reminder masa aktif tidak valid.");
     }
 
-    const graceDays = sanitizePositiveInteger(
-      this.getSettings().hotspotIsolationGraceDays,
-      DEFAULT_SETTINGS.hotspotIsolationGraceDays,
-      0,
-      30
-    );
-    const warningAt = addDaysSafely(activeUntil, -graceDays, this.getTimezone());
-    const reminderDate = warningAt.getTime() < purchasedAt.getTime() ? purchasedAt : warningAt;
+    const reminderDate = activeUntil;
     const existing = Array.from(this.reminders.values()).find((reminder) => {
       const resolvedContact = this.getResolvedReminderContact(reminder);
       return String(resolvedContact?.id || reminder.contactId || "") === String(contact.id)
@@ -1690,6 +1699,12 @@ class CustomerDataManager extends DataManagerCore {
     });
     const created = !existing;
     const previousState = existing ? JSON.stringify(existing) : null;
+    const preserveGracePeriod = Boolean(
+      existing
+      && existing.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY
+      && isGracePeriodReminder(existing)
+      && this.normalizeOptionalDate(existing.activePeriodUntil) === activeUntil.toISOString()
+    );
     const reminder = existing || {
       id: generateId(),
       contactId: String(contact.id),
@@ -1720,7 +1735,7 @@ class CustomerDataManager extends DataManagerCore {
     delete reminder.lastDeliveryAttemptAt;
     delete reminder.lastDeliveryError;
     delete reminder.deliveryAttempts;
-    delete reminder.gracePeriodCreatedAt;
+    if (!preserveGracePeriod) delete reminder.gracePeriodCreatedAt;
     this.rewriteReminderPaymentMessage(reminder, contact);
     this.reminders.set(String(reminder.id), reminder);
     const changed = created || previousState !== JSON.stringify(reminder);
@@ -2408,7 +2423,10 @@ class CustomerDataManager extends DataManagerCore {
         && Boolean(contact.hotspotReactivationEnabled)
         && (Boolean(contact.hasDebt)
           || String(contact.currentPaymentStatus || contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase() !== PAYMENT_STATUS.PAID);
-      const dueDate = blockedByArrears
+      const hasPrepaidGracePeriod = isPrepaidPackage(contact)
+        && Boolean(contact.hotspotReactivationEnabled)
+        && isolationGraceDays > 0;
+      const dueDate = blockedByArrears || hasPrepaidGracePeriod
         ? addDaysSafely(contact.hotspotReactivationAt, isolationGraceDays, this.getTimezone())
         : new Date(contact.hotspotReactivationAt);
       const dueTime = dueDate.getTime();
@@ -3048,7 +3066,9 @@ class CustomerDataManager extends DataManagerCore {
       delete sentReminder.processingAt;
       delete sentReminder.nextDeliveryAttemptAt;
 
-      reminder.reminderKind = REMINDER_KINDS.GRACE_PERIOD;
+      if (reminder.reminderKind !== REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY) {
+        reminder.reminderKind = REMINDER_KINDS.GRACE_PERIOD;
+      }
       reminder.gracePeriodCreatedAt = new Date().toISOString();
       for (const field of [
         "processingAt",

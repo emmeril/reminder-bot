@@ -224,6 +224,10 @@ const LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE = "*Masa Aktif Akan Berakhi
 const PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD = "*Masa Aktif Sementara Ditambahkan*\n\nYth. Bapak/Ibu {{name}},\nMasa aktif sementara WiFi selama satu bulan sudah ditambahkan.\n\nID transaksi: {{transactionId}}\nTanggal: {{paymentDate}}\nNominal: {{paymentAmount}}\nAktif sampai: {{activeUntil}}\nSisa tunggakan: {{remainingDebtAmount}}\nStatus: {{statusText}}\n\nTunggakan tetap tercatat. Perpanjangan bulanan aktif kembali setelah semua tunggakan lunas.\n\n{{hotspotAccountDetails}}\n\nTerima kasih,\n{{supportSignature}}";
 const LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3 = "*Masa Aktif Sementara Akan Berakhir*\n\nYth. Bapak/Ibu {{name}},\nMasa aktif sementara WiFi Anda akan berakhir pada {{activeUntil}}.\n\nTunggakan: {{debtCount}} bulan\nPeriode: {{debtPeriods}}\nTotal: {{debtAmount}}\n\nLunasi tunggakan atau beli masa aktif sementara agar WiFi tetap dapat digunakan.\n\nTerima kasih,\n{{supportSignature}}";
 const ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE = "*Masa Aktif Sementara Segera Berakhir*\n\nYth. Bapak/Ibu {{name}},\nMasa aktif sementara WiFi Anda berlaku sampai {{activeUntil}}.\n\nTunggakan: {{debtCount}} bulan\nPeriode: {{debtPeriods}}\nTotal: {{debtAmount}}\n\nSilakan lunasi tunggakan atau beli masa aktif sementara sebelum tanggal tersebut agar layanan tetap aktif.\n\nTerima kasih,\n{{supportSignature}}";
+const LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V5 = ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE;
+const LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5 = "*Masa Aktif Paket Segera Berakhir*\n\nYth. Bapak/Ibu {{name}},\nPaket WiFi Anda berlaku sampai {{activeUntil}}.\n\nSilakan beli paket berikutnya sebelum masa aktif berakhir agar layanan tetap tersambung.\n\nTerima kasih,\n{{supportSignature}}";
+const ACTIVE_PERIOD_GRACE_REMINDER_MESSAGE_TEMPLATE = "*Pengingat Masa Aktif WiFi*\n\nYth. Bapak/Ibu {{name}},\nMasa aktif sementara WiFi Anda berakhir pada {{activeUntil}}.\n\nTunggakan: {{debtCount}} bulan\nPeriode: {{debtPeriods}}\nTotal: {{debtAmount}}\n\nMasa tenggang: {{graceDays}} hari\nLayanan dijadwalkan nonaktif pada {{isolationDate}}.\n\nSilakan lunasi tunggakan atau beli masa aktif sementara sebelum masa tenggang berakhir.\n\nTerima kasih,\n{{supportSignature}}";
+const PREPAID_PACKAGE_GRACE_REMINDER_MESSAGE_TEMPLATE = "*Pengingat Paket WiFi*\n\nYth. Bapak/Ibu {{name}},\nMasa aktif paket WiFi Anda berakhir pada {{activeUntil}}.\n\nMasa tenggang: {{graceDays}} hari\nLayanan dijadwalkan nonaktif pada {{isolationDate}}.\n\nSilakan beli paket berikutnya sebelum masa tenggang berakhir agar layanan tetap tersambung.\n\nTerima kasih,\n{{supportSignature}}";
 
 const LEGACY_NOTIFICATION_TEMPLATES_V3 = {
   activePeriodReminderMessageTemplate: LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3,
@@ -248,8 +252,8 @@ const DEFAULT_SETTINGS = {
   paymentMessageTemplateActivePeriod: PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD,
   prepaidPackagePaymentMessageTemplate: "*Pembelian Paket WiFi*\n\nYth. Bapak/Ibu {{name}},\nPembelian paket WiFi selama satu bulan sudah berhasil.\n\nID transaksi: {{transactionId}}\nTanggal: {{paymentDate}}\nNominal: {{paymentAmount}}\nAktif sampai: {{activeUntil}}\nStatus: {{statusText}}\n\n{{hotspotAccountDetails}}\n\nTerima kasih,\n{{supportSignature}}",
   paymentHotspotAccountMessageTemplate: "*Akun WiFi*\nUsername: {{hotspotUsername}}\nPassword: {{hotspotPassword}}\nAktif sampai: {{activeUntil}}\n\nSimpan username dan password ini. Jangan bagikan kepada orang lain.",
-  activePeriodReminderMessageTemplate: ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE,
-  prepaidPackageReminderMessageTemplate: "*Masa Aktif Paket Segera Berakhir*\n\nYth. Bapak/Ibu {{name}},\nPaket WiFi Anda berlaku sampai {{activeUntil}}.\n\nSilakan beli paket berikutnya sebelum masa aktif berakhir agar layanan tetap tersambung.\n\nTerima kasih,\n{{supportSignature}}",
+  activePeriodReminderMessageTemplate: ACTIVE_PERIOD_GRACE_REMINDER_MESSAGE_TEMPLATE,
+  prepaidPackageReminderMessageTemplate: PREPAID_PACKAGE_GRACE_REMINDER_MESSAGE_TEMPLATE,
   gracePeriodReminderMessageTemplate: "*Pengingat Sebelum Penonaktifan*\n\nYth. Bapak/Ibu {{name}},\nPembayaran layanan WiFi Anda belum kami terima dan telah melewati batas pembayaran.\n\n{{billingDetails}}\n\nBatas pembayaran: {{date}}\nMasa tenggang: {{graceDays}} hari\nLayanan dijadwalkan nonaktif pada {{isolationDate}}{{renewalStatusInfo}}\n\nMohon selesaikan pembayaran sebelum masa tenggang berakhir. Abaikan pesan ini jika pembayaran sudah dilakukan.\n\nTerima kasih,\n{{supportSignature}}",
   billingReminderMessageTemplate: "*Pengingat Pembayaran WiFi*\n\nYth. Bapak/Ibu {{name}},\nKami belum menerima pembayaran layanan WiFi Anda.\n\n{{billingDetails}}\n\nBatas pembayaran: {{dueDate}}\n\nMohon lakukan pembayaran sesuai total tagihan. Abaikan pesan ini jika pembayaran sudah dilakukan.\n\nTerima kasih,\n{{supportSignature}}",
   timezone: "Asia/Jakarta",
@@ -280,9 +284,11 @@ module.exports = {
   DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   DEFAULT_SETTINGS,
   LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3,
+  LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V5,
   LEGACY_DEFAULT_REMINDER_MESSAGE_TEMPLATE_V3,
   LEGACY_DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE_V4,
   LEGACY_NOTIFICATION_TEMPLATES_V3,
+  LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5,
   LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE,
   LEGACY_PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD,
   MONTH_NAMES,
