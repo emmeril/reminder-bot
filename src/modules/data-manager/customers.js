@@ -31,7 +31,6 @@ const {
   getContactBillingStartPeriod,
   getContactHotspotAccessMode,
   isOneTimeSubscriptionEnded,
-  isPostpaidBilling,
   isPrepaidPackage,
   isRecurringSubscription,
   listBillingPeriods,
@@ -724,7 +723,6 @@ class CustomerDataManager extends DataManagerCore {
     const billingStarted = compareBillingPeriods(startPeriod, { year, month }) <= 0;
     const effectivePaymentStatus = subscriptionEnded
       || billingPausedForArrears
-      || (isPostpaidBilling(contact) && !billingStarted)
       ? PAYMENT_STATUS.PAID
       : (currentPayment?.status || (isActivePeriod
         ? String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase()
@@ -1519,22 +1517,7 @@ class CustomerDataManager extends DataManagerCore {
     }
 
     const activeFrom = paidAt;
-    const savedSchedule = new Date(options.previousSchedule || 0);
-    const graceDays = sanitizePositiveInteger(
-      this.getSettings().hotspotIsolationGraceDays,
-      DEFAULT_SETTINGS.hotspotIsolationGraceDays,
-      0,
-      30
-    );
-    const savedScheduleGraceEnd = Number.isFinite(savedSchedule.getTime())
-      ? addDaysSafely(savedSchedule, graceDays, this.getTimezone())
-      : null;
-    const scheduleAnchor = isPostpaidBilling(contact)
-      && Number.isFinite(savedSchedule.getTime())
-      && savedScheduleGraceEnd.getTime() >= paidAt.getTime()
-      ? savedSchedule
-      : activeFrom;
-    const activeUntil = addMonthsSafely(scheduleAnchor, 1, this.getTimezone());
+    const activeUntil = addMonthsSafely(activeFrom, 1, this.getTimezone());
     const nextSchedule = activeUntil.toISOString();
     const changed = contact.hotspotReactivationAt !== nextSchedule
       || !parseBoolean(contact.hotspotReactivationEnabled, false);
@@ -1841,7 +1824,7 @@ class CustomerDataManager extends DataManagerCore {
       const phoneNumber = normalizePhoneNumber(payload.phoneNumber);
       const linkedApHost = sanitizeInput(String(payload.linkedApHost || ""));
       const subscriptionType = SUBSCRIPTION_TYPES.RECURRING;
-      const billingCycle = normalizeBillingCycle(payload.billingCycle);
+      const billingCycle = BILLING_CYCLES.PREPAID;
       const hotspotFields = this.normalizeContactHotspotFields({ ...payload, subscriptionType });
 
       if (!name) throw new Error("Nama kontak wajib diisi.");
@@ -1852,7 +1835,7 @@ class CustomerDataManager extends DataManagerCore {
       const initialServiceSchedule = addMonthsSafely(now, 1, this.getTimezone()).toISOString();
       const { year: initialYear, month: initialMonth } = getBillingPeriodParts(new Date(now), this.getTimezone());
       const initialPeriod = makeBillingPeriodKey(initialYear, initialMonth);
-      const prepaidPackage = billingCycle === BILLING_CYCLES.PREPAID;
+      const prepaidPackage = true;
       const monthlyPaymentAmount = sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000);
       const contact = {
         id: generateId(),
@@ -1878,16 +1861,11 @@ class CustomerDataManager extends DataManagerCore {
           activeUntil: initialServiceSchedule,
           paymentProvider: "manual",
         }] : [],
-        // Prabayar melunasi periode awal; pascabayar menagihnya pada jatuh tempo berikutnya.
         paymentStatus: PAYMENT_STATUS.PAID,
-        paymentDate: billingCycle === BILLING_CYCLES.POSTPAID ? null : now,
-        paymentType: billingCycle === BILLING_CYCLES.POSTPAID
-          ? null
-          : (prepaidPackage ? PAYMENT_TYPES.ACTIVE_PERIOD : PAYMENT_TYPES.CURRENT_ONLY),
+        paymentDate: now,
+        paymentType: PAYMENT_TYPES.ACTIVE_PERIOD,
         paymentMonths: {
-          [initialPeriod]: billingCycle === BILLING_CYCLES.POSTPAID
-            ? { status: PAYMENT_STATUS.UNPAID, paidDate: null, paymentType: null, paidAmount: 0 }
-            : { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: prepaidPackage ? PAYMENT_TYPES.ACTIVE_PERIOD : PAYMENT_TYPES.CURRENT_ONLY },
+          [initialPeriod]: { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: PAYMENT_TYPES.ACTIVE_PERIOD },
         },
         linkedApHost,
         ...hotspotFields,
@@ -1974,8 +1952,8 @@ class CustomerDataManager extends DataManagerCore {
 
       if (!contact) {
         const subscriptionType = SUBSCRIPTION_TYPES.RECURRING;
-        const billingCycle = normalizeBillingCycle(payload.billingCycle);
-        const prepaidPackage = billingCycle === BILLING_CYCLES.PREPAID;
+        const billingCycle = BILLING_CYCLES.PREPAID;
+        const prepaidPackage = true;
         contact = {
           id: String(generateId()),
           name,
@@ -1992,14 +1970,10 @@ class CustomerDataManager extends DataManagerCore {
           hotspotManualActivationWithArrears: false,
           activePeriodPurchases: [],
           paymentStatus: PAYMENT_STATUS.PAID,
-          paymentDate: billingCycle === BILLING_CYCLES.POSTPAID ? null : now,
-          paymentType: billingCycle === BILLING_CYCLES.POSTPAID
-            ? null
-            : (prepaidPackage ? PAYMENT_TYPES.ACTIVE_PERIOD : PAYMENT_TYPES.CURRENT_ONLY),
+          paymentDate: now,
+          paymentType: PAYMENT_TYPES.ACTIVE_PERIOD,
           paymentMonths: {
-            [initialPeriod]: billingCycle === BILLING_CYCLES.POSTPAID
-              ? { status: PAYMENT_STATUS.UNPAID, paidDate: null, paymentType: null, paidAmount: 0 }
-              : { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: prepaidPackage ? PAYMENT_TYPES.ACTIVE_PERIOD : PAYMENT_TYPES.CURRENT_ONLY },
+            [initialPeriod]: { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: PAYMENT_TYPES.ACTIVE_PERIOD },
           },
           linkedApHost,
           ...hotspotFields,
@@ -2035,7 +2009,7 @@ class CustomerDataManager extends DataManagerCore {
         contact.name = name;
         const previousSubscriptionType = contact.subscriptionType;
         contact.subscriptionType = SUBSCRIPTION_TYPES.RECURRING;
-        contact.billingCycle = normalizeBillingCycle(payload.billingCycle, contact.billingCycle);
+        contact.billingCycle = BILLING_CYCLES.PREPAID;
         contact.linkedApHost = linkedApHost;
         if (payload.monthlyPaymentAmount !== undefined) {
           contact.monthlyPaymentAmount = sanitizePositiveInteger(
@@ -2223,7 +2197,7 @@ class CustomerDataManager extends DataManagerCore {
         ? sanitizeInput(String(payload.linkedApHost || ""))
         : sanitizeInput(String(contact.linkedApHost || ""));
       const nextSubscriptionType = SUBSCRIPTION_TYPES.RECURRING;
-      const nextBillingCycle = normalizeBillingCycle(payload.billingCycle, contact.billingCycle);
+      const nextBillingCycle = BILLING_CYCLES.PREPAID;
       const nextUsername = payload.mikrotikUsername !== undefined
         ? sanitizeInput(String(payload.mikrotikUsername || ""))
         : previousHotspot.username;
@@ -2309,8 +2283,7 @@ class CustomerDataManager extends DataManagerCore {
             billingPeriod
           ) <= 0;
           const payment = contact.paymentMonths?.[billingKey] || null;
-          const paid = (isPostpaidBilling(contact) && !billingStarted)
-            || payment?.status === PAYMENT_STATUS.PAID;
+          const paid = payment?.status === PAYMENT_STATUS.PAID;
           contact.paymentStatus = paid ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.UNPAID;
           contact.paymentDate = paid && billingStarted ? payment?.paidDate || null : null;
           contact.paymentType = paid && billingStarted ? payment?.paymentType || null : null;
