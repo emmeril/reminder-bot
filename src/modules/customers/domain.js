@@ -5,7 +5,6 @@ const {
 } = require("../../config");
 const {
   getBillingPeriodParts,
-  getPreviousBillingPeriod,
   sanitizeInput,
 } = require("../../utils");
 const { normalizeMacAddresses } = require("../mikrotik/domain");
@@ -143,25 +142,16 @@ function normalizeSubscriptionType(value, fallback = SUBSCRIPTION_TYPES.RECURRIN
   return Object.values(SUBSCRIPTION_TYPES).includes(normalized) ? normalized : fallback;
 }
 
-function normalizeBillingCycle(value, fallback = BILLING_CYCLES.PREPAID) {
-  const normalized = String(value || "").trim().toUpperCase().replace(/-/g, "_");
-  return Object.values(BILLING_CYCLES).includes(normalized) ? normalized : fallback;
-}
-
-function isPostpaidBilling(contact) {
-  return isRecurringSubscription(contact)
-    && normalizeBillingCycle(contact?.billingCycle) === BILLING_CYCLES.POSTPAID;
+function normalizeBillingCycle() {
+  return BILLING_CYCLES.PREPAID;
 }
 
 function isPrepaidPackage(contact) {
-  return isRecurringSubscription(contact)
-    && String(contact?.billingCycle || "").trim().toUpperCase() === BILLING_CYCLES.PREPAID;
+  return isRecurringSubscription(contact);
 }
 
 function getContactBillingPeriod(contact, referencePeriod) {
-  return isPostpaidBilling(contact)
-    ? getPreviousBillingPeriod(referencePeriod.year, referencePeriod.month)
-    : referencePeriod;
+  return referencePeriod;
 }
 
 function isRecurringSubscription(contact) {
@@ -245,7 +235,6 @@ module.exports = {
   getHotspotUnavailableMessage,
   isHotspotAccountUnavailable,
   isOneTimeSubscriptionEnded,
-  isPostpaidBilling,
   isPrepaidPackage,
   isRecurringSubscription,
   listBillingPeriods,
