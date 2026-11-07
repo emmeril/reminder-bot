@@ -1,5 +1,4 @@
 const {
-  BILLING_CYCLES,
   BILLING_REMINDER_STOP_DEBT_COUNT,
   DEFAULT_SETTINGS,
   PAYMENT_STATUS,
@@ -9,8 +8,6 @@ const TelegramManager = require("../../telegram-manager");
 const WhatsAppProviderManager = require("../../whatsapp/provider-manager");
 const {
   HOTSPOT_PROVISIONING_STATUS,
-  isPrepaidPackage,
-  normalizeBillingCycle,
   normalizeHotspotProvisioningStatus,
 } = require("../customers/domain");
 const {
@@ -260,13 +257,8 @@ class NotificationBot {
       statusText = "Lunas";
       noteText = "Semua tagihan sudah lunas.";
     } else if (paymentType === PAYMENT_TYPES.ACTIVE_PERIOD) {
-      if (isPrepaidPackage(contact)) {
-        statusText = "Paket aktif";
-        noteText = `Paket WiFi aktif sampai ${formattedActiveUntil}.`;
-      } else {
-        statusText = "Masa aktif ditambahkan";
-        noteText = `WiFi aktif sampai ${formattedActiveUntil}. Tunggakan tetap tercatat dan perpanjangan otomatis masih dijeda.`;
-      }
+      statusText = "Paket aktif";
+      noteText = `Paket WiFi aktif sampai ${formattedActiveUntil}.`;
     }
     const settings = this.dataManager.getSettings();
     let messageTemplate = sanitizeMultilineText(settings.paymentMessageTemplateCurrentOnly)
@@ -278,15 +270,8 @@ class NotificationBot {
       messageTemplate = sanitizeMultilineText(settings.paymentMessageTemplateFullPaid)
         || DEFAULT_SETTINGS.paymentMessageTemplateFullPaid;
     } else if (paymentType === PAYMENT_TYPES.ACTIVE_PERIOD) {
-      messageTemplate = isPrepaidPackage(contact)
-        ? (sanitizeMultilineText(settings.prepaidPackagePaymentMessageTemplate)
-          || DEFAULT_SETTINGS.prepaidPackagePaymentMessageTemplate)
-        : (sanitizeMultilineText(settings.paymentMessageTemplateActivePeriod)
-          || DEFAULT_SETTINGS.paymentMessageTemplateActivePeriod);
-    }
-    if (paymentType === PAYMENT_TYPES.CURRENT_ONLY
-      && normalizeBillingCycle(contact.billingCycle) === BILLING_CYCLES.POSTPAID) {
-      messageTemplate = messageTemplate.replace(/bulan ini/gi, billingPeriodLabel);
+      messageTemplate = sanitizeMultilineText(settings.prepaidPackagePaymentMessageTemplate)
+        || DEFAULT_SETTINGS.prepaidPackagePaymentMessageTemplate;
     }
     const companyName = sanitizeInput(settings.companyName) || "Emmeril Hotspot";
     const supportSignature = sanitizeInput(settings.supportSignature) || "CS Emmeril Hotspot";
