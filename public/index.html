@@ -1735,10 +1735,18 @@
                       <td class="px-5 py-4" data-label="Status">
                         <span
                           class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold uppercase"
-                          :class="String(item.deliveryStatus || 'SENT').toUpperCase() === 'FAILED' ? 'bg-red-50 text-red-600 ring-1 ring-red-100' : 'bg-moss/10 text-moss ring-1 ring-moss/10'"
+                          :class="String(item.deliveryStatus || 'SENT').toUpperCase() === 'UNCONFIRMED'
+                            ? 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'
+                            : (String(item.deliveryStatus || 'SENT').toUpperCase() === 'FAILED'
+                              ? 'bg-red-50 text-red-600 ring-1 ring-red-100'
+                              : 'bg-moss/10 text-moss ring-1 ring-moss/10')"
                         >
-                          <i :class="String(item.deliveryStatus || 'SENT').toUpperCase() === 'FAILED' ? 'fa-solid fa-circle-xmark' : 'fa-solid fa-circle-check'"></i>
-                          <span x-text="item.deliveryStatus || 'SENT'"></span>
+                          <i :class="String(item.deliveryStatus || 'SENT').toUpperCase() === 'UNCONFIRMED'
+                            ? 'fa-solid fa-circle-question'
+                            : (String(item.deliveryStatus || 'SENT').toUpperCase() === 'FAILED'
+                              ? 'fa-solid fa-circle-xmark'
+                              : 'fa-solid fa-circle-check')"></i>
+                          <span x-text="String(item.deliveryStatus || 'SENT').toUpperCase() === 'UNCONFIRMED' ? 'BELUM TERKONFIRMASI' : (item.deliveryStatus || 'SENT')"></span>
                         </span>
                       </td>
                       <td class="px-5 py-4 text-ink/65" data-label="Pesan">
@@ -2391,7 +2399,7 @@
           <button type="button" @click="closeAccountDeliveryModal()" :disabled="accountDeliveryModal.loading" class="rounded-full border border-ink/10 px-3 py-1 text-sm font-semibold text-ink hover:bg-haze disabled:opacity-50"><i class="fa-solid fa-xmark"></i></button>
         </div>
 
-        <p class="mt-5 text-sm leading-6 text-ink/65">Pilih kredensial yang akan dikirim melalui WhatsApp. Password tidak ditampilkan di layar admin dan hanya dimasukkan oleh server ke pesan tujuan.</p>
+        <p class="mt-5 text-sm leading-6 text-ink/65">Pilih akun yang akan dikirim melalui WhatsApp. Mengirim akun portal membuat password baru dan mengakhiri sesi login pelanggan yang masih aktif. Password hanya dikirim ke nomor WhatsApp terdaftar.</p>
         <div class="mt-4 grid gap-3">
           <label class="flex cursor-pointer items-start gap-3 rounded-2xl border border-ink/10 bg-haze/50 p-4">
             <input type="checkbox" x-model="accountDeliveryModal.includePortal" class="mt-1 h-4 w-4 accent-moss">

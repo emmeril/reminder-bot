@@ -1988,6 +1988,7 @@ test("akun hotspot dipulihkan ketika penghapusan data lokal gagal", async () => 
 
 test("admin dapat mengirim akun portal dan hotspot pelanggan lewat WhatsApp", async () => {
   const sentMessages = [];
+  const rotatedPasswords = [];
   const accountMessageTemplate = [
     "PESAN AKUN CUSTOM {{companyNameUpper}}",
     "Pelanggan: {{name}}",
@@ -2010,6 +2011,10 @@ test("admin dapat mengirim akun portal dan hotspot pelanggan lewat WhatsApp", as
     getCustomerPortalData: (id) => id === contact.id ? {
       hotspot: { username: "akun_hotspot", password: "hotspot-123", profile: "50M" },
     } : null,
+    resetCustomerPortalPassword: async (_id, password) => {
+      rotatedPasswords.push(password);
+      return { previousHash: "old", currentHash: "new" };
+    },
     getSettings: () => ({
       dashboardTitle: "Test",
       companyName: "Test ISP",
@@ -2041,7 +2046,10 @@ test("admin dapat mengirim akun portal dan hotspot pelanggan lewat WhatsApp", as
   assert.match(sentMessages[0].message, /Pelanggan: Pelanggan Kirim Akun/);
   assert.match(sentMessages[0].message, /Akun Portal Pelanggan/);
   assert.match(sentMessages[0].message, /Username: akun_portal/);
-  assert.match(sentMessages[0].message, /Password: portal-123/);
+  assert.equal(rotatedPasswords.length, 1);
+  assert.match(rotatedPasswords[0], /^[A-Za-z0-9_-]{24}$/);
+  assert.ok(sentMessages[0].message.includes(`Password: ${rotatedPasswords[0]}`));
+  assert.doesNotMatch(sentMessages[0].message, /Password: portal-123/);
   assert.match(sentMessages[0].message, /Akun WiFi/);
   assert.match(sentMessages[0].message, /Username: akun_hotspot/);
   assert.match(sentMessages[0].message, /Password: hotspot-123/);
@@ -2846,4 +2854,66 @@ test("endpoint pengingat tagihan menolak pelanggan lunas atau tagihan yang belum
     assert.equal(response.status, 400);
     assert.match(payload.error, item.error);
   }
+});
+
+test("gagal mengirim akun portal memulihkan hash sebelumnya", async () => {
+  const contact = { id: "portal-send-failed", name: "Portal", phoneNumber: "6281234567896" };
+  const events = [];
+  const baseUrl = await startServer({
+    getContact: () => contact,
+    getCustomerPortalAccountByContactId: () => ({
+      account: { username: "portal", password: "legacy-password" }, contact,
+    }),
+    getCustomerPortalData: () => ({ hotspot: null }),
+    resetCustomerPortalPassword: async (_id, password) => {
+      events.push("reset");
+      assert.match(password, /^[A-Za-z0-9_-]{24}$/);
+      return { previousHash: "old", currentHash: "new" };
+    },
+    restoreCustomerPortalPassword: async (_id, previous, current) => {
+      assert.equal(previous, "old");
+      assert.equal(current, "new");
+      events.push("restore");
+      return true;
+    },
+  }, {
+    sendMessage: async () => {
+      events.push("send");
+      throw new Error("WA tidak tersedia");
+    },
+  });
+  const cookie = await login(baseUrl);
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}/account-credentials`, {
+    method: "POST", headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ includePortal: true }),
+  });
+  assert.equal(response.status, 400);
+  assert.deepEqual(events, ["reset", "send", "restore"]);
+});
+
+test("penghapusan pelanggan dengan transaksi aktif tidak menyentuh MikroTik", async () => {
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const contact = {
+    id: "pending-delete", phoneNumber: "6281234567895",
+    mikrotikUsername: "pending_delete", mikrotikProfile: "50M",
+  };
+  let deletedFromRouter = 0;
+  let deletedFromDb = 0;
+  const baseUrl = await startServer({
+    getContact: () => contact,
+    assertContactDeletionAllowed: () => {
+      const error = new Error("Masih ada transaksi Midtrans aktif");
+      error.statusCode = 409;
+      throw error;
+    },
+    deleteContact: async () => { deletedFromDb += 1; },
+  }, {}, {
+    deleteHotspotUser: async () => { deletedFromRouter += 1; },
+  });
+  const response = await fetch(`${baseUrl}/api/contacts/${contact.id}`, {
+    method: "DELETE", headers: { "x-api-key": CONFIG.WEB_API_KEY },
+  });
+  assert.equal(response.status, 409);
+  assert.equal(deletedFromRouter, 0);
+  assert.equal(deletedFromDb, 0);
 });

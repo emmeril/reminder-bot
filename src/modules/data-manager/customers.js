@@ -2896,7 +2896,7 @@ class CustomerDataManager extends DataManagerCore {
   async markReminderDeliveryAttempt(id, provider = null) {
     return this.withDataMutation(async () => {
       const reminder = this.getReminder(id);
-      if (!reminder) return null;
+      if (!reminder || reminder.deliveryAttemptedAt) return null;
 
       const now = new Date().toISOString();
       reminder.deliveryAttempts = Math.max(0, Number(reminder.deliveryAttempts) || 0) + 1;
@@ -2943,10 +2943,20 @@ class CustomerDataManager extends DataManagerCore {
     });
   }
 
+  assertContactDeletionAllowed(id) {
+    const pending = this.getPendingPaymentGatewayTransactions(id);
+    if (pending.length > 0) {
+      const error = new Error("Pelanggan masih memiliki transaksi Midtrans aktif. Selesaikan atau batalkan transaksi sebelum menghapus pelanggan.");
+      error.statusCode = 409;
+      throw error;
+    }
+  }
+
   async deleteContact(id) {
     return this.withDataMutation(async () => {
       const contact = this.getContact(id);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
+      this.assertContactDeletionAllowed(id);
 
       this.contacts.delete(String(id));
       this.customerAccounts.delete(String(id));

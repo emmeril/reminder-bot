@@ -12,6 +12,7 @@ const {
   SUBSCRIPTION_TYPES,
 } = require("../../config");
 const AsyncLock = require("../../async-lock");
+const { verifyPortalPassword } = require("../../portal-password");
 const {
   MidtransService,
   PAYMENT_GATEWAY_STATUS,
@@ -78,6 +79,7 @@ class WebServer {
     this.backgroundOperationLock = new AsyncLock();
     this.activePeriodPurchaseLock = new AsyncLock();
     this.paymentGatewayLock = new AsyncLock();
+    this.accountCredentialsLock = new AsyncLock();
     this.server = null;
     this.ready = true;
     this.setupRoutes();
@@ -844,9 +846,11 @@ class WebServer {
   }
 
   async deleteContactWithHotspot(contactId) {
-    return this.hotspotProvisioningLock.runExclusive(String(contactId), async () => {
+    return this.paymentGatewayLock.runExclusive(`create:${contactId}`, () => (
+      this.hotspotProvisioningLock.runExclusive(String(contactId), async () => {
       const contact = this.dataManager.getContact(contactId);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
+      this.dataManager.assertContactDeletionAllowed?.(contact.id);
 
       const username = sanitizeInput(contact.mikrotikUsername || "");
       const macAddresses = normalizeMacAddresses(contact.mikrotikMacAddresses);
@@ -988,7 +992,8 @@ class WebServer {
             },
         hotspot: hotspotDeletion,
       };
-    });
+      })
+    ));
   }
 
   async recoverHotspotAfterPayment(contact) {
@@ -1562,7 +1567,7 @@ class WebServer {
       }
 
       const account = this.dataManager.findCustomerPortalAccount?.(username) || null;
-      const passwordMatches = safeCompareString(password, account?.account?.password || "invalid-customer-password");
+      const passwordMatches = await verifyPortalPassword(password, account?.account?.password || "");
       if (!account || !passwordMatches) {
         attemptKeys.forEach((key) => this.authManager.recordLoginFailure(key));
         this.activityLog.push("warn", "customer-auth", `Login portal pelanggan gagal untuk ${username || "(kosong)"}`);
@@ -2076,6 +2081,8 @@ class WebServer {
       activityLog: this.activityLog,
       hotspotReactivationScheduler: this.hotspotReactivationScheduler,
       backgroundOperationLock: this.backgroundOperationLock,
+      accountCredentialsLock: this.accountCredentialsLock,
+      invalidateCustomerSessions: (contactId) => this.authManager.destroyCustomerSessionsForContact(contactId),
       hotspotProvisioningStatus: HOTSPOT_PROVISIONING_STATUS,
       hotspotProvisioningOperation: HOTSPOT_PROVISIONING_OPERATION,
       hotspotAccessModes: HOTSPOT_ACCESS_MODES,

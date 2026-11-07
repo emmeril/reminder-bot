@@ -414,17 +414,21 @@ class ReminderScheduler {
             continue;
           }
 
-          if (reminder.deliveryAttemptedAt && !reminder.providerStatus) {
-            const errorMessage = reminder.lastDeliveryError || "Pengiriman sebelumnya gagal";
+          if (reminder.deliveryAttemptedAt) {
+            const wasInFlight = reminder.providerStatus === "processing";
+            const errorMessage = reminder.lastDeliveryError || (wasInFlight
+              ? "Proses sebelumnya terputus; status pengiriman WhatsApp tidak dapat dipastikan."
+              : "Pengiriman sebelumnya gagal");
+            const recoveryStatus = wasInFlight ? "UNCONFIRMED" : "FAILED";
             const finalized = await this.finalizeReminderDelivery(reminder, {
               sentAt: reminder.lastDeliveryAttemptAt || new Date().toISOString(),
-              deliveryStatus: "FAILED",
+              deliveryStatus: recoveryStatus,
               deliveryError: errorMessage,
-              providerStatus: "failed",
+              providerStatus: wasInFlight ? "unconfirmed" : "failed",
               providerError: errorMessage,
-            }, "FAILED");
+            }, recoveryStatus);
             claimedReminderId = null;
-            this.activityLog.push("warn", "delivery", `Reminder ${reminder.id} tidak dikirim ulang setelah kegagalan sebelumnya`, {
+            this.activityLog.push("warn", "delivery", `Reminder ${reminder.id} tidak dikirim ulang setelah percobaan pengiriman sebelumnya`, {
               reminderId: reminder.id,
               error: errorMessage,
               phoneNumber: reminder.phoneNumber,

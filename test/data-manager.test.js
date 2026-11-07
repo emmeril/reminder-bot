@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const { DataManager } = require("../src/app");
+const { verifyPortalPassword } = require("../src/portal-password");
 const {
   BILLING_CYCLES,
   CONFIG,
@@ -3159,7 +3160,7 @@ test("persiapan akun hotspot menyimpan pelanggan sebagai PENDING", async () => {
   assert.equal(result.pelanggan.hotspotProvisioningStatus, "PENDING");
 });
 
-test("akun portal dibuat otomatis dari kredensial hotspot pelanggan lama", async () => {
+test("akun portal otomatis memakai password acak terpisah dari hotspot", async () => {
   const manager = new DataManager({ push() {} });
   manager.contacts.set("contact-portal", {
     id: "contact-portal",
@@ -3180,7 +3181,8 @@ test("akun portal dibuat otomatis dari kredensial hotspot pelanggan lama", async
   const portal = manager.getCustomerPortalData("contact-portal");
 
   assert.equal(count, 1);
-  assert.equal(account.account.password, "67810");
+  assert.match(account.account.password, /^scrypt:v1:/);
+  assert.equal(await verifyPortalPassword("67810", account.account.password), false);
   assert.equal(account.contact.id, "contact-portal");
   assert.equal(portal.customer.name, "Pelanggan Portal");
   assert.equal(portal.hotspot.username, "pelanggan_portal");
@@ -3207,7 +3209,8 @@ test("kontak baru dengan akun hotspot langsung mendapat akun portal", async () =
 
   const account = manager.findCustomerPortalAccount("pelanggan_langsung");
   assert.equal(account.contact.id, contact.id);
-  assert.equal(account.account.password, "67811");
+  assert.match(account.account.password, /^scrypt:v1:/);
+  assert.equal(await verifyPortalPassword("67811", account.account.password), false);
 });
 
 test("portal menyembunyikan kredensial hotspot yang tidak ada lagi di MikroTik", () => {
@@ -3328,7 +3331,8 @@ test("perubahan password akun pelanggan tidak mengubah kredensial hotspot", asyn
 
   const portal = await manager.updateCustomerPortalPassword(contact.id, "portal-lama", "portal-baru");
 
-  assert.equal(manager.customerAccounts.get(contact.id).password, "portal-baru");
+  assert.match(manager.customerAccounts.get(contact.id).password, /^scrypt:v1:/);
+  assert.equal(await verifyPortalPassword("portal-baru", manager.customerAccounts.get(contact.id).password), true);
   assert.equal(contact.mikrotikPassword, "hotspot-67821");
   assert.equal(manager.pelanggan.get(contact.mikrotikUsername).password, "hotspot-67821");
   assert.equal(portal.account.username, "akun_portal_password");
@@ -3651,7 +3655,8 @@ test("edit akun hotspot menyimpan snapshot lama sebagai PENDING UPDATE", async (
   assert.equal(manager.pelanggan.has("pelanggan_lama"), false);
   assert.equal(manager.pelanggan.get("pelanggan_baru").status, "pending");
   assert.equal(manager.customerAccounts.get(contact.id).username, "akun_pelanggan_lama");
-  assert.equal(manager.customerAccounts.get(contact.id).password, "portal-67805");
+  assert.match(manager.customerAccounts.get(contact.id).password, /^scrypt:v1:/);
+  assert.equal(await verifyPortalPassword("portal-67805", manager.customerAccounts.get(contact.id).password), true);
 
   const failed = await manager.updateHotspotProvisioningStatus(
     contact.id,
@@ -3690,13 +3695,12 @@ test("edit kontak yang baru diberi hotspot membuat akun pelanggan terpisah", asy
     mikrotikPassword: "67820",
   });
 
-  assert.deepEqual(manager.customerAccounts.get(contact.id), {
-    contactId: contact.id,
-    username: "pelanggan_baru_hotspot",
-    password: "67820",
-    createdAt: contact.createdAt,
-    updatedAt: contact.updatedAt,
-  });
+  const portalAccount = manager.customerAccounts.get(contact.id);
+  assert.equal(portalAccount.contactId, contact.id);
+  assert.equal(portalAccount.username, "pelanggan_baru_hotspot");
+  assert.match(portalAccount.password, /^scrypt:v1:/);
+  assert.equal(await verifyPortalPassword("67820", portalAccount.password), false);
+  assert.equal(portalAccount.createdAt, contact.createdAt);
   assert.equal(manager.pelanggan.get("pelanggan_baru_hotspot").password, "67820");
 });
 
@@ -3904,4 +3908,56 @@ test("response publik tidak membocorkan password hotspot atau isi antrean kreden
   assert.equal("hotspotProvisioningPrevious" in result, false);
   assert.equal(result.hotspotNotificationPending.message, undefined);
   assert.equal(result.hotspotNotificationPending.attempts, 1);
+});
+
+test("hapus pelanggan ditolak saat transaksi Midtrans masih pending", async () => {
+  const manager = createManager({ id: "delete-pending", name: "Pending", phoneNumber: "6281234567999", paymentMonths: {} });
+  manager.paymentGatewayTransactions.set("RB-PENDING", {
+    orderId: "RB-PENDING", contactId: "delete-pending", provider: "midtrans",
+    status: "PENDING", createdAt: new Date().toISOString(),
+  });
+  await assert.rejects(() => manager.deleteContact("delete-pending"), (error) => (
+    error.statusCode === 409 && /transaksi Midtrans aktif/.test(error.message)
+  ));
+  assert.ok(manager.getContact("delete-pending"));
+  assert.ok(manager.getPaymentGatewayTransaction("RB-PENDING"));
+});
+
+test("transaksi Midtrans not_found yang baru tetap memblokir hapus", async () => {
+  const manager = createManager({ id: "delete-notfound", name: "Pending", phoneNumber: "6281234567998", paymentMonths: {} });
+  manager.paymentGatewayTransactions.set("RB-RETRY", {
+    orderId: "RB-RETRY", contactId: "delete-notfound", provider: "midtrans",
+    status: "FAILED", gatewayStatus: "not_found", createdAt: new Date().toISOString(),
+  });
+  await assert.rejects(() => manager.deleteContact("delete-notfound"), (error) => error.statusCode === 409);
+  assert.ok(manager.getContact("delete-notfound"));
+});
+
+test("reset portal menggunakan hash dan rollback mempertahankan password lama", async () => {
+  const manager = createManager({
+    id: "portal-rollback", name: "Portal", phoneNumber: "6281234567997",
+    mikrotikUsername: "portal-rollback", mikrotikPassword: "wifi-unchanged", paymentMonths: {},
+  });
+  manager.customerAccounts.set("portal-rollback", {
+    contactId: "portal-rollback", username: "portal-rollback", password: "legacy-secret",
+  });
+  await manager.synchronizeCustomerPortalAccounts({ save: false });
+  const previous = manager.customerAccounts.get("portal-rollback").password;
+  assert.match(previous, /^scrypt:v1:/);
+  const rotated = await manager.resetCustomerPortalPassword("portal-rollback", "temporary-password-123");
+  assert.equal(await verifyPortalPassword("temporary-password-123", rotated.currentHash), true);
+  assert.equal(await verifyPortalPassword("legacy-secret", rotated.currentHash), false);
+  assert.equal(await manager.restoreCustomerPortalPassword("portal-rollback", rotated.previousHash, rotated.currentHash), true);
+  assert.equal(await verifyPortalPassword("legacy-secret", manager.customerAccounts.get("portal-rollback").password), true);
+  assert.equal(manager.getContact("portal-rollback").mikrotikPassword, "wifi-unchanged");
+});
+
+test("reminder yang sudah dicoba tidak mencatat percobaan kedua", async () => {
+  const manager = createManager({ id: "claim-1", phoneNumber: "6281234567996", paymentMonths: {} });
+  manager.reminders.set("rem-1", {
+    id: "rem-1", contactId: "claim-1", reminderDateTime: new Date(Date.now() - 60000).toISOString(),
+    deliveryAttemptedAt: new Date().toISOString(), providerStatus: "processing",
+  });
+  assert.equal(await manager.markReminderDeliveryAttempt("rem-1", "baileys"), null);
+  assert.equal(manager.getReminder("rem-1").deliveryAttempts, undefined);
 });
