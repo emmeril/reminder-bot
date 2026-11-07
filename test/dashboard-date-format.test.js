@@ -545,12 +545,14 @@ test("pengaturan memiliki tab masa tenggang isolir", () => {
   assert.match(html, /Jeda setelah jatuh tempo \(hari\)/);
 });
 
-test("form template reminder menampilkan variabel masa tenggang dan tanggal isolir", () => {
+test("form notifikasi prabayar hanya menampilkan variabel masa aktif yang relevan", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
-
-  assert.match(html, /\{\{graceDays\}\}/);
-  assert.match(html, /\{\{isolationDate\}\}/);
-  assert.match(html, /\{\{renewalStatusInfo\}\}/);
+  const panel = html.match(/<section id="settings-messages-panel"[\s\S]*?<\/section>/)?.[0];
+  assert.ok(panel);
+  assert.match(panel, /\{\{activeUntil\}\}/);
+  assert.match(panel, /\{\{paymentAmount\}\}/);
+  assert.match(panel, /\{\{hotspotAccountDetails\}\}/);
+  assert.doesNotMatch(panel, /\{\{graceDays\}\}|\{\{isolationDate\}\}|\{\{renewalStatusInfo\}\}/);
 });
 
 test("filter jatuh tempo hanya menampilkan jadwal pelanggan bulanan", () => {
