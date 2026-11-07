@@ -1287,6 +1287,9 @@ test("pembayaran Midtrans memulihkan akun hotspot yang disabled di MikroTik", as
   const contact = {
     id: "contact-midtrans-recover",
     name: "Pelanggan Pulih",
+    subscriptionType: "RECURRING",
+    billingCycle: "PREPAID",
+    packageActive: true,
     phoneNumber: "6281234567891",
     mikrotikUsername: "pelanggan_pulih",
     mikrotikProfile: "50M",
