@@ -213,7 +213,6 @@ const SUBSCRIPTION_TYPES = {
 
 const BILLING_CYCLES = {
   PREPAID: "PREPAID",
-  POSTPAID: "POSTPAID",
 };
 
 const LEGACY_DEFAULT_REMINDER_MESSAGE_TEMPLATE_V3 = "*Pengingat Tagihan*\n\nYth. Bapak/Ibu {{name}},\nTagihan WiFi Anda belum lunas.\n\n{{billingDetails}}\n\nJatuh tempo: {{date}}\nMasa tenggang: {{graceDays}} hari\nLayanan aktif sampai: {{isolationDate}}{{renewalStatusInfo}}\n\nMohon lakukan pembayaran sebelum layanan dinonaktifkan. Abaikan pesan ini jika Anda sudah membayar.\n\nPembayaran:\nBCA 134-266-9497 a.n. Hafriyanto\nDANA 087728972090\n\nTerima kasih,\n{{supportSignature}}";
