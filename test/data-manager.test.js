@@ -371,114 +371,59 @@ test("pembayaran bulan berjalan menambah masa aktif dan memindahkan jatuh tempo"
   assert.equal(manager.buildDueDateInfo(contact).dueDate, expectedDueDate.toISOString());
 });
 
-test("pascabayar menagih bulan sebelumnya dan menjaga tanggal jatuh tempo", async () => {
-  const now = new Date();
-  const reference = getBillingPeriodParts(now, "Asia/Jakarta");
-  const billed = getPreviousBillingPeriod(reference.year, reference.month);
-  const billedKey = makeBillingPeriodKey(billed.year, billed.month);
-  const referenceKey = makeBillingPeriodKey(reference.year, reference.month);
-  const dueDate = addDaysSafely(now, 2, "Asia/Jakarta");
-  const expectedNextDueDate = addMonthsSafely(dueDate, 1, "Asia/Jakarta");
+test("prabayar menggunakan periode kalender berjalan untuk tampilan tanpa membuat tunggakan", () => {
+  const reference = getBillingPeriodParts(new Date(), "Asia/Jakarta");
+  const previous = getPreviousBillingPeriod(reference.year, reference.month);
+  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
+  const currentKey = makeBillingPeriodKey(reference.year, reference.month);
   const contact = {
-    id: "contact-postpaid",
-    name: "Pelanggan Pascabayar",
-    phoneNumber: "6281234567888",
-    createdAt: `${billedKey}-01T00:00:00.000Z`,
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    billingCycle: BILLING_CYCLES.POSTPAID,
+    id: "prepaid-cycle-period", subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID,
+    createdAt: `${previousKey}-01T00:00:00.000Z`,
     monthlyPaymentAmount: 100_000,
-    paymentStatus: PAYMENT_STATUS.UNPAID,
     paymentMonths: {
-      [billedKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
-      [referenceKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
+      [previousKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
+      [currentKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
     },
-    hotspotReactivationEnabled: true,
-    hotspotReactivationAt: dueDate.toISOString(),
   };
-  const manager = createManager(contact);
-  manager.settings.hotspotIsolationGraceDays = 3;
-
-  const beforePayment = manager.buildDebtInfo(contact);
-  assert.equal(beforePayment.billingPeriodKey, billedKey);
-  assert.equal(beforePayment.billingPeriodLabel, new Intl.DateTimeFormat("id-ID", {
-    month: "long",
-    year: "numeric",
-    timeZone: "Asia/Jakarta",
-  }).format(new Date(`${billedKey}-15T12:00:00.000Z`)));
-  assert.equal(beforePayment.currentPaymentStatus, PAYMENT_STATUS.UNPAID);
-  assert.equal(beforePayment.debtCount, 0);
-
-  const updated = await manager.updatePaymentStatus(
-    contact.id,
-    PAYMENT_STATUS.PAID,
-    PAYMENT_TYPES.CURRENT_ONLY
-  );
-
-  assert.equal(updated.paymentMonths[billedKey].status, PAYMENT_STATUS.PAID);
-  assert.equal(updated.paymentMonths[referenceKey].status, PAYMENT_STATUS.UNPAID);
-  assert.equal(updated.hotspotReactivationAt, expectedNextDueDate.toISOString());
-  assert.equal(updated.billingPeriodKey, billedKey);
+  const info = createManager(contact).buildDebtInfo(contact);
+  assert.equal(info.billingPeriodKey, currentKey);
+  assert.equal(info.debtCount, 0);
+  assert.equal(info.hasDebt, false);
+  assert.equal(info.debtAmount, 0);
 });
 
-test("isolir pascabayar berhenti pada periode yang sedang ditagih", () => {
-  const now = new Date();
-  const reference = getBillingPeriodParts(now, "Asia/Jakarta");
-  const billed = getPreviousBillingPeriod(reference.year, reference.month);
-  const billedKey = makeBillingPeriodKey(billed.year, billed.month);
+test("prabayar tidak memasuki jeda penagihan tunggakan bulanan", () => {
   const contact = {
-    id: "contact-postpaid-pause",
-    name: "Pelanggan Pascabayar Terlambat",
-    phoneNumber: "6281234567887",
-    createdAt: `${billedKey}-01T00:00:00.000Z`,
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    billingCycle: BILLING_CYCLES.POSTPAID,
-    paymentStatus: PAYMENT_STATUS.UNPAID,
-    paymentMonths: {
-      [billedKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
-    },
+    id: "prepaid-no-arrears-pause", subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID, monthlyPaymentAmount: 100_000,
   };
   const manager = createManager(contact);
-
-  assert.equal(manager.pauseBillingForArrears(contact, { at: now }), true);
-  assert.equal(contact.billingPausedAfterPeriod, billedKey);
-  assert.equal(contact.paymentMonths[billedKey].status, PAYMENT_STATUS.UNPAID);
+  assert.equal(manager.pauseBillingForArrears(contact, { at: new Date() }), false);
+  assert.notEqual(contact.billingPausedForArrears, true);
+  assert.equal(contact.billingPausedAfterPeriod || null, null);
 });
 
-test("portal pascabayar tidak memasukkan periode yang belum jatuh tempo", () => {
-  const now = new Date();
-  const reference = getBillingPeriodParts(now, "Asia/Jakarta");
-  const billed = getPreviousBillingPeriod(reference.year, reference.month);
-  const billedKey = makeBillingPeriodKey(billed.year, billed.month);
-  const futureKey = makeBillingPeriodKey(reference.year, reference.month);
+test("portal prabayar hanya menagihkan harga paket dan bukan hutang kalender", () => {
+  const reference = getBillingPeriodParts(new Date(), "Asia/Jakarta");
+  const previous = getPreviousBillingPeriod(reference.year, reference.month);
+  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
+  const currentKey = makeBillingPeriodKey(reference.year, reference.month);
   const contact = {
-    id: "contact-postpaid-portal",
-    name: "Pelanggan Portal Pascabayar",
-    phoneNumber: "6281234567886",
-    createdAt: `${billedKey}-01T00:00:00.000Z`,
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    billingCycle: BILLING_CYCLES.POSTPAID,
-    monthlyPaymentAmount: 100_000,
-    paymentStatus: PAYMENT_STATUS.UNPAID,
+    id: "prepaid-portal-no-calendar-debt", name: "Pelanggan Portal Prabayar",
+    phoneNumber: "6281234567886", subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID, monthlyPaymentAmount: 100_000,
     paymentMonths: {
-      [billedKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
-      [futureKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
+      [previousKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
+      [currentKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
     },
   };
   const manager = createManager(contact);
-  manager.customerAccounts.set(contact.id, {
-    contactId: contact.id,
-    username: "pelanggan_postpaid",
-    password: "rahasia",
-  });
-
+  manager.customerAccounts.set(contact.id, { contactId: contact.id, username: "pelanggan_prepaid", password: "rahasia" });
   const portal = manager.getCustomerPortalData(contact.id);
-
-  assert.equal(portal.billing.period, billedKey);
-  assert.equal(portal.billing.totalAmount, 100_000);
-  assert.deepEqual(
-    portal.billing.history.filter((payment) => payment.status !== PAYMENT_STATUS.PAID).map((payment) => payment.period),
-    [billedKey]
-  );
+  assert.equal(portal.billing.period, currentKey);
+  assert.equal(portal.billing.billingCycle, BILLING_CYCLES.PREPAID);
+  assert.equal(portal.billing.monthlyAmount, 100_000);
 });
 
 test("paket prabayar tidak membuat tunggakan dan pembelian awal memperpanjang masa aktif", async () => {
@@ -1222,23 +1167,17 @@ test("data sekali berlangganan lama otomatis menjadi prabayar tanpa menghidupkan
   assert.deepEqual(repeated, { migrated: 0, purchasesMigrated: 0 });
 });
 
-test("pelanggan berlangganan tetap menghitung periode berjalan dan tunggakan bulanan", () => {
+test("pelanggan prabayar tidak menghasilkan tunggakan dari bulan lampau", () => {
   const contact = {
-    id: "contact-recurring",
-    name: "Pelanggan Bulanan",
-    phoneNumber: "6281234567897",
+    id: "contact-recurring", name: "Pelanggan Bulanan",
     createdAt: "2026-07-10T00:00:00.000Z",
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    paymentStatus: PAYMENT_STATUS.UNPAID,
-    paymentMonths: {},
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING, billingCycle: BILLING_CYCLES.PREPAID,
+    paymentStatus: PAYMENT_STATUS.UNPAID, paymentMonths: {},
   };
-  const manager = createManager(contact);
-
-  const debtInfo = manager.buildDebtInfo(contact, { year: 2026, month: 8 });
-
-  assert.equal(debtInfo.currentPaymentStatus, PAYMENT_STATUS.UNPAID);
-  assert.equal(debtInfo.debtCount, 1);
-  assert.equal(debtInfo.debtPeriods[0].key, "2026-07");
+  const info = createManager(contact).buildDebtInfo(contact, { year: 2026, month: 8 });
+  assert.equal(info.debtCount, 0);
+  assert.equal(info.debtAmount, 0);
+  assert.deepEqual(info.debtPeriods, []);
 });
 
 test("pelanggan bulanan yang menunggak tetap bulanan dan reminder tetap aktif", async () => {
