@@ -3655,7 +3655,8 @@ test("edit akun hotspot menyimpan snapshot lama sebagai PENDING UPDATE", async (
   assert.equal(manager.pelanggan.has("pelanggan_lama"), false);
   assert.equal(manager.pelanggan.get("pelanggan_baru").status, "pending");
   assert.equal(manager.customerAccounts.get(contact.id).username, "akun_pelanggan_lama");
-  assert.equal(manager.customerAccounts.get(contact.id).password, "portal-67805");
+  assert.match(manager.customerAccounts.get(contact.id).password, /^scrypt:v1:/);
+  assert.equal(await verifyPortalPassword("portal-67805", manager.customerAccounts.get(contact.id).password), true);
 
   const failed = await manager.updateHotspotProvisioningStatus(
     contact.id,
@@ -3694,13 +3695,12 @@ test("edit kontak yang baru diberi hotspot membuat akun pelanggan terpisah", asy
     mikrotikPassword: "67820",
   });
 
-  assert.deepEqual(manager.customerAccounts.get(contact.id), {
-    contactId: contact.id,
-    username: "pelanggan_baru_hotspot",
-    password: "67820",
-    createdAt: contact.createdAt,
-    updatedAt: contact.updatedAt,
-  });
+  const portalAccount = manager.customerAccounts.get(contact.id);
+  assert.equal(portalAccount.contactId, contact.id);
+  assert.equal(portalAccount.username, "pelanggan_baru_hotspot");
+  assert.match(portalAccount.password, /^scrypt:v1:/);
+  assert.equal(await verifyPortalPassword("67820", portalAccount.password), false);
+  assert.equal(portalAccount.createdAt, contact.createdAt);
   assert.equal(manager.pelanggan.get("pelanggan_baru_hotspot").password, "67820");
 });
 
