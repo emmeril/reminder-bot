@@ -9,7 +9,8 @@
     "build:css": "tailwindcss -c tailwind.config.js -i src/tailwind.css -o public/tailwind.css --minify",
     "build": "npm run build:css",
     "test": "node --test test/*.test.js",
-    "check": "npm run build && npm test"
+    "check": "npm run build && npm test",
+    "test:prepaid": "node --test test/prepaid-only-regression.test.js test/customer-domain.test.js test/billing-reminder.test.js test/midtrans-service.test.js test/mikrotik-provisioning.test.js test/hotspot-status-sync.test.js test/portal-password.test.js test/whatsapp-queue.test.js"
   },
   "keywords": [],
   "author": "",

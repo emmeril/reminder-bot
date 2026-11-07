@@ -139,31 +139,17 @@ test("modal mode akses menyediakan empat pilihan dan tombol tabel", () => {
   assert.match(html, /Tambahkan MAC address melalui Atur akses/);
 });
 
-test("jadwal layanan membedakan aktif otomatis, penonaktifan, dan tanpa jadwal", () => {
+test("label pelanggan prabayar mengikuti status paket aktif", () => {
   const app = createDashboardApp();
-
-  assert.equal(app.getReactivationLabel({
-    hotspotReactivationEnabled: true,
-    hotspotReactivationAt: "2026-10-20T01:00:00.000Z",
-  }), "Aktif otomatis");
-  assert.equal(app.getReactivationLabel({
-    hotspotReactivationEnabled: false,
-    hotspotReactivationAt: "2026-10-20T01:00:00.000Z",
-  }), "Penonaktifan terjadwal");
-  assert.equal(app.getReactivationLabel({
-    hotspotReactivationEnabled: false,
-    hotspotReactivationAt: null,
-  }), "Tanpa jadwal");
+  assert.equal(app.getReactivationLabel({ packageActive: true }), "Paket aktif");
+  assert.equal(app.getReactivationLabel({ packageActive: false }), "Paket tidak aktif");
 });
-
-test("aksi aktifkan sekarang hanya tersedia untuk akun yang nonaktif terjadwal", () => {
+test("prabayar tidak menyediakan aktivasi manual tanpa pembelian paket", () => {
   const app = createDashboardApp();
-
-  assert.equal(app.canReactivateHotspot({ hotspotProvisioningStatus: "DEACTIVATED" }), true);
-  assert.equal(app.canReactivateHotspot({ hotspotProvisioningStatus: "ACTIVE" }), false);
-  assert.equal(app.canReactivateHotspot({ hotspotProvisioningStatus: "DISABLED" }), false);
+  for (const status of ["DEACTIVATED", "ACTIVE", "DISABLED"]) {
+    assert.equal(app.canReactivateHotspot({ hotspotProvisioningStatus: status }), false);
+  }
 });
-
 test("form jadwal memakai tanggal dan waktu dari modal khusus", () => {
   const app = createDashboardApp();
 
@@ -243,30 +229,27 @@ test("aksi tagihan memakai satu tombol dan menampilkan pilihan di modal", () => 
   assert.match(styles, /\.billing-action-quick-row \{[^}]*justify-content: flex-end;/);
 });
 
-test("tombol pengingat disembunyikan setelah tunggakan mencapai dua bulan", () => {
+test("tombol tagihan manual tidak ditawarkan pada pelanggan prabayar", () => {
   const app = createDashboardApp();
-
-  assert.equal(app.canSendBillingReminder({ hasDebt: true, debtCount: 1 }), true);
-  assert.equal(app.canSendBillingReminder({ hasDebt: true, debtCount: 2 }), false);
-  assert.equal(app.canSendBillingReminder({ hasDebt: true, debtCount: 3 }), false);
+  for (const debtCount of [0, 1, 2, 3]) {
+    assert.equal(app.canSendBillingReminder({ subscriptionType: "RECURRING", debtCount, hasDebt: debtCount > 0 }), false);
+  }
 });
-
-test("fallback tunggakan tetap membaca periode lama yang dikoreksi belum lunas", () => {
+test("riwayat bulan lama tidak menjadi tunggakan pada paket prabayar", () => {
   const app = createDashboardApp();
   app.billingPeriod = "2026-11";
   const periods = app.getDebtPeriods({
+    subscriptionType: "RECURRING",
+    billingCycle: "PREPAID",
     createdAt: "2026-10-01T00:00:00.000Z",
-    paymentType: "FULL-PAID",
     paymentMonths: {
       "2026-10": { status: "UNPAID", paidAmount: 0 },
       "2026-11": { status: "PAID", paidAmount: 100_000 },
     },
   });
-
-  assert.deepEqual(Array.from(periods, (period) => period.key), ["2026-10"]);
+  assert.deepEqual(Array.from(periods, period => period.key), []);
 });
-
-test("aksi beli masa aktif tersedia untuk akun menunggak dan memanggil endpoint khusus", async () => {
+test("aksi beli paket prabayar tersedia tanpa menuntut adanya tunggakan", async () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
   const app = createDashboardApp();
@@ -285,7 +268,7 @@ test("aksi beli masa aktif tersedia untuk akun menunggak dan memanggil endpoint 
   assert.match(html, /getActivePeriodPurchaseLabel\(billingActionModal\.contact\)/);
   assert.match(styles, /\.billing-action-active-period \.billing-action-option \{ width: 100%; \}/);
   assert.equal(app.canPurchaseActivePeriod(contact), true);
-  assert.equal(app.canPurchaseActivePeriod({ ...contact, hasDebt: false }), false);
+  assert.equal(app.canPurchaseActivePeriod({ ...contact, hasDebt: false }), true);
   assert.equal(app.canEnableHotspot(contact), false);
 
   let confirmation = null;
@@ -308,7 +291,7 @@ test("aksi beli masa aktif tersedia untuk akun menunggak dan memanggil endpoint 
 
   app.purchaseActivePeriod(contact);
   assert.equal(confirmation.title, "Beli masa aktif satu bulan?");
-  assert.match(confirmation.description, /Tunggakan tetap tersimpan/);
+  assert.match(confirmation.description, /tanpa membuat tunggakan/);
   assert.equal(confirmation.processingMessage, "Mencatat pembelian masa aktif...");
 
   await confirmation.action();
@@ -351,18 +334,15 @@ test("pelanggan prabayar membeli paket tanpa tunggakan kalender", () => {
   assert.match(html, /x-model="forms\.settings\.prepaidPackageReminderMessageTemplate"/);
 });
 
-test("pengaturan membedakan template masa aktif sementara dan paket prabayar", () => {
+test("pengaturan hanya menampilkan template masa aktif paket prabayar", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const app = createDashboardApp();
-
-  assert.match(html, /Masa aktif sementara/);
-  assert.match(html, /pelanggan pascabayar yang masih menunggak/);
   assert.match(html, /Paket prabayar akan berakhir/);
-  assert.match(html, /x-model="forms\.settings\.activePeriodReminderMessageTemplate"/);
-  assert.match(html, /<code>{{activeUntil}}<\/code>/);
-  assert.equal(app.forms.settings.activePeriodReminderMessageTemplate, "");
+  assert.match(html, /x-model="forms\.settings\.prepaidPackageReminderMessageTemplate"/);
+  assert.doesNotMatch(html, /pelanggan pascabayar yang masih menunggak/);
+  assert.doesNotMatch(html, /x-model="forms\.settings\.activePeriodReminderMessageTemplate"/);
+  assert.equal(app.forms.settings.prepaidPackageReminderMessageTemplate, "");
 });
-
 test("pengaturan menyediakan template pengingat masa tenggang", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const app = createDashboardApp();
@@ -502,84 +482,35 @@ test("file template tidak memakai variabel lama yang tidak dapat dirender", () =
   assert.doesNotMatch(contents, /{{\s*(?:nama|bulan|tanggal)\s*}}/i);
 });
 
-test("tombol tagihan bulan ini tetap tampil dengan status tindakan yang sesuai", () => {
+test("aksi pelanggan prabayar selalu membeli paket satu bulan", () => {
   const app = createDashboardApp();
-  app.billingPeriod = "2026-11";
-
-  assert.equal(app.canPayCurrentBilling({ subscriptionActive: true, currentPaymentStatus: "UNPAID" }), true);
-  assert.equal(app.getCurrentBillingActionLabel({ subscriptionActive: true, currentPaymentStatus: "UNPAID", monthlyPaymentAmount: 75000 }), "Bayar November 2026 · Rp\u00a075.000");
-  assert.equal(app.canPayCurrentBilling({ subscriptionActive: true, currentPaymentStatus: "PAID" }), false);
-  assert.equal(app.getCurrentBillingActionLabel({ subscriptionActive: true, currentPaymentStatus: "PAID" }), "November 2026 sudah lunas");
-  assert.equal(app.canPayCurrentBilling({ subscriptionActive: false, currentPaymentStatus: "PAID" }), false);
-  assert.equal(app.getCurrentBillingActionLabel({ subscriptionActive: false, currentPaymentStatus: "PAID" }), "Tidak ada tagihan November 2026");
+  const contact = { subscriptionType: "RECURRING", monthlyPaymentAmount: 75000, packageActive: false };
+  assert.equal(app.canPayCurrentBilling(contact), false);
+  assert.equal(app.getCurrentBillingActionLabel(contact), "Beli paket 1 bulan · Rp\u00a075.000");
+  assert.equal(app.getActivePeriodPurchaseLabel({ ...contact, packageActive: true }), "Tambah paket 1 bulan");
 });
-
-test("mode pascabayar memakai periode tagihan dari server dan tersedia di form pelanggan", () => {
+test("form pelanggan menampilkan prabayar saja dan label siklus selalu prabayar", () => {
   const app = createDashboardApp();
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
-  const contact = {
-    subscriptionType: "RECURRING",
-    billingCycle: "POSTPAID",
-    billingPeriodLabel: "Oktober 2026",
-    subscriptionActive: true,
-    currentPaymentStatus: "UNPAID",
-    monthlyPaymentAmount: 100_000,
-  };
-
-  assert.equal(app.getBillingCycleLabel(contact), "Bulanan pascabayar");
-  assert.equal(app.getBillingCycleBadgeClass(contact), "border-amber-200 bg-amber-50 text-amber-800");
   assert.equal(app.getBillingCycleLabel({ billingCycle: "PREPAID" }), "Bulanan prabayar");
   assert.equal(app.getBillingCycleLabel({}), "Bulanan prabayar");
-  assert.equal(
-    app.getBillingCycleBadgeClass({ billingCycle: "PREPAID" }),
-    "border-moss/15 bg-moss/10 text-moss"
-  );
-  assert.equal(app.getCurrentBillingActionLabel(contact), "Bayar Oktober 2026 · Rp\u00a0100.000");
+  assert.equal(app.getBillingCycleBadgeClass({ billingCycle: "PREPAID" }), "border-moss/15 bg-moss/10 text-moss");
   assert.equal(app.blankContactForm().billingCycle, "PREPAID");
-  assert.equal(Object.hasOwn(app.blankContactForm(), "subscriptionType"), false);
-  app.forms.contact = {
-    name: "Pelanggan Baru",
-    phoneNumber: "6281234567000",
-    linkedApHost: "",
-    billingCycle: "POSTPAID",
-  };
-  const createPayload = app.getContactCreatePayload();
-  assert.equal(createPayload.name, "Pelanggan Baru");
-  assert.equal(createPayload.phoneNumber, "6281234567000");
-  assert.equal(createPayload.linkedApHost, "");
-  assert.equal(createPayload.billingCycle, "POSTPAID");
-  assert.equal(Object.hasOwn(createPayload, "subscriptionType"), false);
-  assert.match(html, /x-model="forms\.contact\.billingCycle"/);
-  assert.match(html, /x-model="forms\.contactEdit\.billingCycle"/);
-  assert.match(html, /Pascabayar, bayar bulan sebelumnya/);
-  assert.equal((html.match(/:class="getBillingCycleBadgeClass\(/g) || []).length, 3);
-  assert.doesNotMatch(html, /getBillingCycleIcon/);
+  app.forms.contact = { name: "Pelanggan Baru", phoneNumber: "6281234567000", linkedApHost: "", billingCycle: "PREPAID" };
+  assert.equal(app.getContactCreatePayload().billingCycle, "PREPAID");
+  assert.doesNotMatch(html, /Pascabayar, bayar bulan sebelumnya/);
+  assert.doesNotMatch(html, /x-model="forms\.contact\.billingCycle"/);
+  assert.doesNotMatch(html, /x-model="forms\.contactEdit\.billingCycle"/);
 });
-
-test("aksi tagihan menyebut periode dan nominal agar pilihan pembayaran tidak tertukar", () => {
+test("tombol pembayaran prabayar menyebut paket dan harga", () => {
   const app = createDashboardApp();
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
-  app.billingPeriod = "2026-11";
-  const contact = {
-    subscriptionActive: true,
-    currentPaymentStatus: "UNPAID",
-    monthlyPaymentAmount: 75000,
-    debtAmount: 75000,
-    debtPeriods: [{ key: "2026-10", label: "Oktober 2026", remainingAmount: 75000 }],
-  };
-
-  assert.equal(app.getCurrentBillingActionLabel(contact), "Bayar November 2026 · Rp\u00a075.000");
-  assert.equal(app.getArrearsPaymentLabel(contact), "Bayar tunggakan Oktober 2026");
-  assert.equal(app.getArrearsPaymentHelp(contact), "Sisa Oktober 2026 Rp\u00a075.000.");
-  assert.equal(app.getArrearsPaymentSubmitLabel(contact), "Catat ke Oktober 2026");
-  assert.equal(app.getFullPaymentActionLabel(contact), "Lunasi semua · Rp\u00a0150.000");
-  assert.match(html, /x-text="getArrearsPaymentLabel\(billingActionModal\.contact\)"/);
-  assert.match(html, /x-text="getFullPaymentActionLabel\(billingActionModal\.contact\)"/);
+  const contact = { subscriptionType: "RECURRING", monthlyPaymentAmount: 75000, packageActive: false };
+  assert.equal(app.getCurrentBillingActionLabel(contact), "Beli paket 1 bulan · Rp\u00a075.000");
+  assert.match(html, /getActivePeriodPurchaseLabel/);
   assert.match(styles, /\.billing-action-option \{[^}]*white-space: normal;/);
-  assert.match(styles, /\.billing-action-submit \{[^}]*white-space: normal;/);
 });
-
 test("pengaturan memiliki tab masa tenggang isolir", () => {
   const app = createDashboardApp();
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
@@ -1062,47 +993,22 @@ test("rentang tanggal laporan divalidasi sebelum laporan voucher dimuat", async 
   assert.equal(apiCalls, 1);
 });
 
-test("modal aksi tagihan hanya aktif ketika pelanggan memiliki tindakan", () => {
+test("modal aksi prabayar hanya aktif untuk akun dengan paket yang bisa dibeli", () => {
   const app = createDashboardApp();
-
-  assert.equal(app.hasBillingActions({
-    subscriptionActive: false,
-    currentPaymentStatus: "PAID",
-    hasDebt: false,
-    dueStatus: "PAID",
-  }), false);
-  assert.equal(app.hasBillingActions({
-    subscriptionActive: true,
-    currentPaymentStatus: "UNPAID",
-    hasDebt: false,
-    dueStatus: "UPCOMING",
-  }), true);
-  assert.equal(app.hasBillingActions({
-    subscriptionActive: false,
-    currentPaymentStatus: "PAID",
-    hasDebt: true,
-    dueStatus: "PAID",
-  }), true);
+  const contact = {
+    id: "paket", subscriptionType: "RECURRING", mikrotikUsername: "paket",
+    mikrotikProfile: "50M", monthlyPaymentAmount: 75000,
+    hotspotProvisioningStatus: "ACTIVE",
+  };
+  assert.equal(app.hasBillingActions({ ...contact, mikrotikProfile: "" }), false);
+  assert.equal(app.hasBillingActions(contact), true);
+  assert.equal(app.hasBillingActions({ ...contact, monthlyPaymentAmount: 0 }), false);
 });
-
-test("status bulan ini tidak memakai jenis pembayaran periode sebelumnya", () => {
+test("label pembayaran prabayar berasal dari status paket, bukan jenis tagihan lama", () => {
   const app = createDashboardApp();
-
-  assert.equal(app.getCurrentPaymentLabel({
-    currentPaymentStatus: "UNPAID",
-    paymentType: "ARREARS-ONLY",
-  }), "Belum Bayar");
-  assert.equal(app.getCurrentPaymentLabel({
-    currentPaymentStatus: "PAID",
-    currentPaymentType: "CURRENT-ONLY",
-    paymentType: "ARREARS-ONLY",
-  }), "Periode Tagihan");
-  assert.equal(app.getCurrentPaymentLabel({
-    currentPaymentStatus: "PAID",
-    currentPaymentType: null,
-  }), "Lunas");
+  assert.equal(app.getCurrentPaymentLabel({ packageActive: false, paymentType: "ARREARS-ONLY" }), "Paket tidak aktif");
+  assert.equal(app.getCurrentPaymentLabel({ packageActive: true, paymentType: "ARREARS-ONLY" }), "Paket aktif");
 });
-
 test("modal aksi tagihan memindahkan fokus lalu mengembalikannya saat ditutup", () => {
   let bodyLocked = false;
   let closeFocused = false;
@@ -1126,10 +1032,12 @@ test("modal aksi tagihan memindahkan fokus lalu mengembalikannya saat ditutup", 
   app.$nextTick = (callback) => callback();
   const contact = {
     id: "contact-billing-modal",
-    subscriptionActive: true,
-    currentPaymentStatus: "UNPAID",
-    hasDebt: false,
-    dueStatus: "UPCOMING",
+    subscriptionType: "RECURRING",
+    mikrotikUsername: "modal",
+    mikrotikProfile: "50M",
+    monthlyPaymentAmount: 75000,
+    hotspotProvisioningStatus: "ACTIVE",
+    packageActive: false,
   };
 
   app.openBillingActionModal(contact, trigger);
@@ -1366,7 +1274,7 @@ test("filter operasional memakai seluruh nilai yang tampil pada tabel", () => {
     },
   ];
 
-  app.filters.contacts.search = "bulanan pascabayar";
+  app.filters.contacts.search = "pelanggan kantor";
   assert.deepEqual(app.filteredContacts.map((contact) => contact.id), ["filter-postpaid"]);
   app.filters.contacts.search = "";
   app.filters.contacts.apStatus = "NOT_LINKED";
@@ -1375,9 +1283,9 @@ test("filter operasional memakai seluruh nilai yang tampil pada tabel", () => {
   app.filters.contactBilling.search = "mengikuti tarif profile";
   assert.deepEqual(app.filteredBillingContacts.map((contact) => contact.id), ["filter-postpaid"]);
   app.filters.contactBilling.search = "";
-  app.filters.contactBilling.status = "PAYMENT|Lunas Semua";
+  app.filters.contactBilling.search = "pelanggan kantor";
   assert.deepEqual(app.filteredBillingContacts.map((contact) => contact.id), ["filter-postpaid"]);
-  app.filters.contactBilling.status = "ALL";
+  app.filters.contactBilling.search = "";
   app.filters.contactBilling.dueStatus = "NOT_SCHEDULED";
   assert.deepEqual(app.filteredBillingContacts.map((contact) => contact.id), ["filter-prepaid"]);
 
@@ -1425,8 +1333,8 @@ test("filter operasional memakai seluruh nilai yang tampil pada tabel", () => {
   app.filters.sent.status = "DELIVERED";
   assert.deepEqual(app.filteredSent.map((item) => item.id), ["sent-delivered"]);
 
-  assert.match(html, /x-model="filters\.contacts\.billingCycle"/);
-  assert.match(html, /x-model="filters\.contactBilling\.billingCycle"/);
+  assert.doesNotMatch(html, /x-model="filters\.contacts\.billingCycle"/);
+  assert.doesNotMatch(html, /x-model="filters\.contactBilling\.billingCycle"/);
   assert.match(html, /hotspotTableStatusOptions/);
   assert.match(html, /reminderDeliveryTypeOptions/);
   assert.match(html, /sentDeliveryStatuses/);

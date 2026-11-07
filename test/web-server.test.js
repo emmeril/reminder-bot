@@ -165,13 +165,12 @@ test("API reminder menampilkan template terbaru setelah simpan tanpa mengubah sn
   let settings = { hotspotIsolationGraceDays: 3 };
   const dueAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const reminders = [
-    { id: "active", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "MasaAktifSementara" },
+    { id: "active", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "PaketPrabayar" },
     { id: "prepaid", contactId: "prepaid", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "PaketPrabayar" },
-    { id: "grace", contactId: "regular", reminderKind: "GRACE_PERIOD", templateName: "Penagihan.txt" },
     { id: "paid", contactId: "paid", reminderKind: "BILLING", templateName: "Penagihan.txt", message: "*Status pembayaran: LUNAS*" },
     { id: "custom", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "Khusus.txt", messageSource: "Khusus {{name}}" },
-    { id: "processing", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "MasaAktifSementara", processingAt: dueAt },
-    { id: "attempted", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "MasaAktifSementara", deliveryAttemptedAt: dueAt },
+    { id: "processing", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "PaketPrabayar", processingAt: dueAt },
+    { id: "attempted", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "PaketPrabayar", deliveryAttemptedAt: dueAt },
   ].map((reminder) => ({
     reminderDateTime: dueAt,
     message: "Salinan lama",
@@ -188,7 +187,8 @@ test("API reminder menampilkan template terbaru setelah simpan tanpa mengubah sn
     getSentReminders: () => history,
     getResolvedReminderContact: (reminder) => ({
       name: "Pelanggan",
-      billingCycle: reminder.contactId === "prepaid" ? "PREPAID" : "POSTPAID",
+      billingCycle: "PREPAID",
+      subscriptionType: "RECURRING",
       currentPaymentStatus: reminder.contactId === "paid" ? "PAID" : "UNPAID",
       monthlyPaymentAmount: 0,
     }),
@@ -200,7 +200,6 @@ test("API reminder menampilkan template terbaru setelah simpan tanpa mengubah sn
     method: "PUT",
     headers: { cookie, "content-type": "application/json" },
     body: JSON.stringify({
-      activePeriodReminderMessageTemplate: "Masa aktif baru {{name}}",
       prepaidPackageReminderMessageTemplate: "Prabayar baru {{name}}",
       gracePeriodReminderMessageTemplate: "Masa tenggang baru {{name}}",
     }),
@@ -211,9 +210,8 @@ test("API reminder menampilkan template terbaru setelah simpan tanpa mengubah sn
   assert.equal(response.status, 200);
   const { data } = await response.json();
   const messages = Object.fromEntries(data.map((reminder) => [reminder.id, reminder.message]));
-  assert.equal(messages.active, "Masa aktif baru Pelanggan");
+  assert.equal(messages.active, "Prabayar baru Pelanggan");
   assert.equal(messages.prepaid, "Prabayar baru Pelanggan");
-  assert.equal(messages.grace, "Masa tenggang baru Pelanggan");
   assert.equal(messages.custom, "Khusus Pelanggan");
   assert.equal(messages.paid, "*Status pembayaran: LUNAS*");
   assert.equal(messages.processing, "Salinan lama");
@@ -1287,6 +1285,9 @@ test("pembayaran Midtrans memulihkan akun hotspot yang disabled di MikroTik", as
   const contact = {
     id: "contact-midtrans-recover",
     name: "Pelanggan Pulih",
+    subscriptionType: "RECURRING",
+    billingCycle: "PREPAID",
+    packageActive: true,
     phoneNumber: "6281234567891",
     mikrotikUsername: "pelanggan_pulih",
     mikrotikProfile: "50M",
@@ -1311,8 +1312,9 @@ test("pembayaran Midtrans memulihkan akun hotspot yang disabled di MikroTik", as
     getContact: (id) => id === contact.id ? contact : null,
     getPaymentGatewayTransaction: (orderId) => orderId === transaction.orderId ? transaction : null,
     completeMidtransPayment: async () => {
+      const alreadyProcessed = transaction.status === "PAID";
       transaction.status = "PAID";
-      return { transaction, contact, alreadyProcessed: false };
+      return { transaction, contact, alreadyProcessed };
     },
     prepareHotspotLifecycleOperation: async (_id, operation) => {
       calls.push(`prepare:${operation}`);
@@ -1780,7 +1782,7 @@ test("aktivasi biasa ditolak ketika akun masih memiliki tunggakan", async () => 
   const payload = await response.json();
 
   assert.equal(response.status, 409);
-  assert.match(payload.error, /Beli masa aktif 1 bulan/);
+  assert.match(payload.error, /Beli paket satu bulan sebelum mengaktifkan akun prabayar/);
   assert.equal(routerCalls, 0);
 });
 
@@ -2691,7 +2693,7 @@ test("admin dapat memilih IP Binding saja tanpa menonaktifkan layanan pelanggan"
   ]);
 });
 
-test("endpoint pembayaran meneruskan nominal tunggakan custom", async () => {
+test("endpoint pembayaran tunggakan lama tidak memproses transaksi ketika sistem hanya prabayar", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   let updateArguments = null;
   let notificationArguments = null;
@@ -2728,21 +2730,10 @@ test("endpoint pembayaran meneruskan nominal tunggakan custom", async () => {
   });
   const payload = await response.json();
 
-  assert.equal(response.status, 200);
-  assert.deepEqual(updateArguments, [
-    contact.id,
-    PAYMENT_STATUS.UNPAID,
-    PAYMENT_TYPES.ARREARS_ONLY,
-    100_000,
-  ]);
-  assert.equal(notificationArguments[2], PAYMENT_TYPES.ARREARS_ONLY);
-  assert.deepEqual(notificationArguments[3], {
-    paymentAmount: 100_000,
-    remainingDebtAmount: 100_000,
-  });
-  assert.equal(payload.data.paymentAmount, 100_000);
-  assert.equal(payload.data.remainingDebtAmount, 100_000);
-  assert.equal(payload.data.notificationSent, true);
+  assert.equal(response.status, 400);
+  assert.equal(updateArguments, null);
+  assert.equal(notificationArguments, null);
+  assert.ok(payload.error);
 });
 
 test("endpoint pengingat tagihan mengirim untuk pelanggan dengan satu tunggakan", async () => {
