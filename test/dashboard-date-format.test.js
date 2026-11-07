@@ -343,14 +343,37 @@ test("pengaturan hanya menampilkan template masa aktif paket prabayar", () => {
   assert.doesNotMatch(html, /x-model="forms\.settings\.activePeriodReminderMessageTemplate"/);
   assert.equal(app.forms.settings.prepaidPackageReminderMessageTemplate, "");
 });
-test("pengaturan menyediakan template pengingat masa tenggang", () => {
+test("pengaturan notifikasi menampilkan lima template aktif tanpa field pascabayar", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const app = createDashboardApp();
-
-  assert.match(html, /Pengingat masa tenggang/);
-  assert.match(html, /x-model="forms\.settings\.gracePeriodReminderMessageTemplate"/);
-  assert.match(html, /<code>{{isolationDate}}<\/code>/);
-  assert.equal(app.forms.settings.gracePeriodReminderMessageTemplate, "");
+  const panel = html.match(/<section id="settings-messages-panel"[\s\S]*?<\/section>/)?.[0];
+  assert.ok(panel);
+  const activeTemplates = [
+    "prepaidPackagePaymentMessageTemplate",
+    "prepaidPackageReminderMessageTemplate",
+    "paymentHotspotAccountMessageTemplate",
+    "customerAccountMessageTemplate",
+    "apDownMessageTemplate",
+  ];
+  const obsoleteTemplates = [
+    "billingReminderMessageTemplate",
+    "gracePeriodReminderMessageTemplate",
+    "paymentMessageTemplateArrearsOnly",
+    "paymentMessageTemplateCurrentOnly",
+    "paymentMessageTemplateFullPaid",
+    "activePeriodReminderMessageTemplate",
+    "paymentMessageTemplateActivePeriod",
+  ];
+  assert.equal((panel.match(/notification-template-card tone-/g) || []).length, activeTemplates.length);
+  for (const key of activeTemplates) {
+    assert.match(panel, new RegExp('x-model="forms\\.settings\\.' + key + '"'));
+    assert.equal(app.forms.settings[key], "");
+  }
+  for (const key of obsoleteTemplates) {
+    assert.doesNotMatch(panel, new RegExp(key));
+    assert.equal(Object.hasOwn(app.forms.settings, key), false);
+  }
+  assert.doesNotMatch(panel, /tunggakan|pascabayar|periode tagihan|tagihan tertunggak/i);
 });
 
 test("simpan pengaturan memperbarui pesan reminder sebelum menampilkan sukses", async () => {
@@ -368,7 +391,7 @@ test("simpan pengaturan memperbarui pesan reminder sebelum menampilkan sukses", 
   let statusReloaded = false;
   app.settingsDirty = true;
   app.reminders = [{ id: "reminder-1", contactName: "Budi", message: "Pesan lama" }];
-  app.forms.settings.gracePeriodReminderMessageTemplate = template;
+  app.forms.settings.prepaidPackageReminderMessageTemplate = template;
   app.clearFormError = () => {};
   app.setFormError = (_key, error) => { throw error; };
   app.withProcessing = async (_message, action) => action();
@@ -408,7 +431,7 @@ test("simpan pengaturan memperbarui pesan reminder sebelum menampilkan sukses", 
 
   assert.equal(request.url, "/api/settings");
   assert.equal(request.method, "PUT");
-  assert.equal(request.payload.gracePeriodReminderMessageTemplate, template);
+  assert.equal(request.payload.prepaidPackageReminderMessageTemplate, template);
   assert.equal(app.paginatedReminders[0].message, message);
   assert.equal(app.settingsDirty, false);
   assert.deepEqual(notifications, ["Settings diperbarui."]);
@@ -420,7 +443,7 @@ test("simpan pengaturan yang gagal mempertahankan form dan pesan reminder", asyn
   const requests = [];
   const notifications = [];
   app.settingsDirty = true;
-  app.forms.settings.gracePeriodReminderMessageTemplate = template;
+  app.forms.settings.prepaidPackageReminderMessageTemplate = template;
   app.reminders = [{ id: "reminder-1", contactName: "Budi", message: "Pesan lama" }];
   app.withProcessing = async (_message, action) => action();
   app.api = async (url) => {
@@ -434,7 +457,7 @@ test("simpan pengaturan yang gagal mempertahankan form dan pesan reminder", asyn
   assert.deepEqual(requests, ["/api/settings"]);
   assert.deepEqual(notifications, []);
   assert.equal(app.settingsDirty, true);
-  assert.equal(app.forms.settings.gracePeriodReminderMessageTemplate, template);
+  assert.equal(app.forms.settings.prepaidPackageReminderMessageTemplate, template);
   assert.equal(app.paginatedReminders[0].message, "Pesan lama");
   assert.match(app.formErrors.settings, /Pengaturan gagal disimpan\./);
 });
@@ -522,12 +545,14 @@ test("pengaturan memiliki tab masa tenggang isolir", () => {
   assert.match(html, /Jeda setelah jatuh tempo \(hari\)/);
 });
 
-test("form template reminder menampilkan variabel masa tenggang dan tanggal isolir", () => {
+test("form notifikasi prabayar hanya menampilkan variabel masa aktif yang relevan", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
-
-  assert.match(html, /\{\{graceDays\}\}/);
-  assert.match(html, /\{\{isolationDate\}\}/);
-  assert.match(html, /\{\{renewalStatusInfo\}\}/);
+  const panel = html.match(/<section id="settings-messages-panel"[\s\S]*?<\/section>/)?.[0];
+  assert.ok(panel);
+  assert.match(panel, /\{\{activeUntil\}\}/);
+  assert.match(panel, /\{\{paymentAmount\}\}/);
+  assert.match(panel, /\{\{hotspotAccountDetails\}\}/);
+  assert.doesNotMatch(panel, /\{\{graceDays\}\}|\{\{isolationDate\}\}|\{\{renewalStatusInfo\}\}/);
 });
 
 test("filter jatuh tempo hanya menampilkan jadwal pelanggan bulanan", () => {
