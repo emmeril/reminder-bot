@@ -1314,8 +1314,9 @@ test("pembayaran Midtrans memulihkan akun hotspot yang disabled di MikroTik", as
     getContact: (id) => id === contact.id ? contact : null,
     getPaymentGatewayTransaction: (orderId) => orderId === transaction.orderId ? transaction : null,
     completeMidtransPayment: async () => {
+      const alreadyProcessed = transaction.status === "PAID";
       transaction.status = "PAID";
-      return { transaction, contact, alreadyProcessed: false };
+      return { transaction, contact, alreadyProcessed };
     },
     prepareHotspotLifecycleOperation: async (_id, operation) => {
       calls.push(`prepare:${operation}`);
