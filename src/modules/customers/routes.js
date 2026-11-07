@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { generatePortalPassword } = require("../../portal-password");
 const {
   BILLING_REMINDER_STOP_DEBT_COUNT,
   DEFAULT_SETTINGS,
@@ -21,6 +22,8 @@ function registerCustomerRoutes({
   activityLog,
   hotspotReactivationScheduler,
   backgroundOperationLock,
+  accountCredentialsLock,
+  invalidateCustomerSessions,
   hotspotProvisioningStatus,
   hotspotProvisioningOperation,
   hotspotAccessModes,
@@ -141,7 +144,9 @@ function registerCustomerRoutes({
     deleteContactWithHotspot(req.params.id)
   )));
 
-  app.post("/api/contacts/:id/account-credentials", requireApiAuth, handleApi(async (req) => {
+  app.post("/api/contacts/:id/account-credentials", requireApiAuth, handleApi(async (req) => accountCredentialsLock.runExclusive(
+    String(req.params.id),
+    async () => {
     const contact = dataManager.getContact(req.params.id);
     if (!contact) throw new Error("Kontak tidak ditemukan.");
 
@@ -168,6 +173,7 @@ function registerCustomerRoutes({
     const phone = await requireRegisteredWhatsAppNumber(contact.phoneNumber);
     const sentAccounts = [];
     const portalLoginUrl = `${req.protocol}://${req.get("host")}/pelanggan/login`;
+    const portalPassword = includePortal ? generatePortalPassword() : "";
     let portalAccountDetails = "";
     let hotspotAccountDetails = "";
     if (includePortal) {
@@ -175,7 +181,7 @@ function registerCustomerRoutes({
         "*Akun Portal Pelanggan*",
         `Alamat portal: ${portalLoginUrl}`,
         `Username: ${customerAccount.account.username}`,
-        `Password: ${customerAccount.account.password}`,
+        `Password: ${portalPassword}`,
       ].join("\n");
       sentAccounts.push("portal");
     }
@@ -208,16 +214,38 @@ function registerCustomerRoutes({
       .replace(/{{\s*portalAccessGuide\s*}}/gi, portalAccessGuide)
       .replace(/{{\s*portalLoginUrl\s*}}/gi, includePortal ? portalLoginUrl : "-")
       .replace(/{{\s*portalUsername\s*}}/gi, includePortal ? customerAccount.account.username : "-")
-      .replace(/{{\s*portalPassword\s*}}/gi, includePortal ? customerAccount.account.password : "-")
+      .replace(/{{\s*portalPassword\s*}}/gi, includePortal ? portalPassword : "-")
       .replace(/{{\s*hotspotUsername\s*}}/gi, includeHotspot ? portalData.hotspot.username : "-")
       .replace(/{{\s*hotspotPassword\s*}}/gi, includeHotspot ? portalData.hotspot.password : "-")
       .replace(/{{\s*hotspotProfile\s*}}/gi, includeHotspot ? portalData.hotspot.profile || "-" : "-")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
-    const delivery = await notificationBot.sendMessage(phone.phoneNumber, message, {
-      maxAttempts: 1,
-      context: { type: "customer-account-credentials", contactId: String(contact.id) },
-    });
+    const rotation = includePortal
+      ? await dataManager.resetCustomerPortalPassword(contact.id, portalPassword)
+      : null;
+    let delivery;
+    try {
+      delivery = await notificationBot.sendMessage(phone.phoneNumber, message, {
+        maxAttempts: 1,
+        context: { type: "customer-account-credentials", contactId: String(contact.id) },
+      });
+      if (delivery?.unconfirmed === true || delivery?.confirmed === false) {
+        throw new Error("WhatsApp belum mengonfirmasi penerimaan kredensial akun.");
+      }
+    } catch (error) {
+      if (rotation) {
+        try {
+          const restored = await dataManager.restoreCustomerPortalPassword(
+            contact.id, rotation.previousHash, rotation.currentHash
+          );
+          if (!restored) activityLog.push("warn", "customer-account", "Password portal berubah sebelum rollback pengiriman akun", { contactId: String(contact.id) });
+        } catch (rollbackError) {
+          activityLog.push("error", "customer-account", `Rollback password portal gagal: ${rollbackError.message}`, { contactId: String(contact.id) });
+        }
+      }
+      throw error;
+    }
+    if (includePortal) invalidateCustomerSessions(contact.id);
     activityLog.push("info", "customer-account", `Akun pelanggan dikirim ke ${contact.phoneNumber}`, {
       contactId: String(contact.id),
       accounts: sentAccounts,
@@ -230,7 +258,8 @@ function registerCustomerRoutes({
       messageId: delivery.messageId || null,
       deliveryStatus: delivery.deliveryStatus || "accepted",
     };
-  }));
+    }
+  )));
 
   app.post("/api/contacts/:id/hotspot/provision", requireApiAuth, handleApi(async (req) => {
     const contact = dataManager.getContact(req.params.id);

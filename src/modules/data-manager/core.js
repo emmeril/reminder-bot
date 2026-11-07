@@ -11,6 +11,12 @@ const {
   SUBSCRIPTION_TYPES,
 } = require("../../config");
 const AsyncLock = require("../../async-lock");
+const {
+  generatePortalPassword,
+  hashPortalPassword,
+  isPortalPasswordHash,
+  verifyPortalPassword,
+} = require("../../portal-password");
 const { PAYMENT_GATEWAY_STATUS } = require("../../midtrans-service");
 const { migrateWhatsAppProviderMetadata } = require("../../migrations/whatsapp-provider-metadata");
 const { buildVoucherRevenueReport } = require("../vouchers/domain");
@@ -1198,7 +1204,7 @@ class DataManagerCore {
   }
 
   async synchronizeCustomerPortalAccounts(options = {}) {
-    let created = 0;
+    let updated = 0;
     const now = new Date().toISOString();
 
     for (const contact of this.contacts.values()) {
@@ -1206,34 +1212,37 @@ class DataManagerCore {
         (item) => String(item.contactId || "") === String(contact.id)
       );
       const hotspotUsername = sanitizeInput(String(contact.mikrotikUsername || hotspotRecord?.username || ""));
-      const hotspotPassword = sanitizeInput(String(contact.mikrotikPassword || hotspotRecord?.password || ""));
       const existing = this.customerAccounts.get(String(contact.id)) || null;
-      if (!existing && (!hotspotUsername || !hotspotPassword)) continue;
+      if (!existing && !hotspotUsername) continue;
 
       const preferredPortalUsername = sanitizeInput(String(existing?.username || hotspotUsername));
       const portalUsername = this.getUniqueCustomerPortalUsername(preferredPortalUsername, contact.id);
-      const portalPassword = sanitizeInput(String(existing?.password || hotspotPassword));
-      if (!portalUsername || !portalPassword) continue;
+      const originalPassword = String(existing?.password || "") || generatePortalPassword();
+      const passwordHash = isPortalPasswordHash(originalPassword)
+        ? originalPassword
+        : await hashPortalPassword(originalPassword);
+      if (!portalUsername) continue;
 
       const customerAccount = {
         ...(existing || {}),
         contactId: String(contact.id),
         username: portalUsername,
-        password: portalPassword,
+        password: passwordHash,
         createdAt: existing?.createdAt || contact.createdAt || now,
         updatedAt: existing?.updatedAt || contact.updatedAt || now,
       };
       const changed = !existing || JSON.stringify(existing) !== JSON.stringify(customerAccount);
+      if (changed) customerAccount.updatedAt = now;
       this.customerAccounts.set(String(contact.id), customerAccount);
-      if (changed) created += 1;
+      if (changed) updated += 1;
     }
 
-    if (created > 0 && this.sequelize && options.save !== false) {
+    if (updated > 0 && this.sequelize && options.save !== false) {
       await this.saveCustomerAccounts();
-      this.activityLog.push("info", "storage", `${created} akun portal pelanggan disinkronkan dari data pelanggan lama`);
+      this.activityLog.push("info", "storage", `${updated} akun portal pelanggan dibuat atau dimigrasikan ke hash scrypt`);
     }
 
-    return created;
+    return updated;
   }
 
   getUniqueCustomerPortalUsername(preferred, contactId) {
@@ -1501,7 +1510,7 @@ class DataManagerCore {
     return this.withDataMutation(async () => {
       const account = this.getCustomerPortalAccountByContactId(contactId);
       if (!account) throw new Error("Akun pelanggan tidak ditemukan.");
-      if (!safeCompareString(currentPassword, account.account.password)) {
+      if (!(await verifyPortalPassword(currentPassword, account.account.password))) {
         const error = new Error("Password akun pelanggan saat ini tidak sesuai.");
         error.statusCode = 403;
         throw error;
@@ -1515,14 +1524,41 @@ class DataManagerCore {
       if (newPassword !== rawNewPassword || !/^[\x21-\x7E]+$/.test(newPassword)) {
         throw new Error("Password baru tidak boleh mengandung spasi atau karakter khusus non-ASCII.");
       }
-      if (safeCompareString(newPassword, account.account.password)) {
+      if (await verifyPortalPassword(newPassword, account.account.password)) {
         throw new Error("Password baru harus berbeda dari password saat ini.");
       }
 
-      account.account.password = newPassword;
+      account.account.password = await hashPortalPassword(newPassword);
       account.account.updatedAt = new Date().toISOString();
       await this.saveCustomerAccounts();
       return this.getCustomerPortalData(contactId);
+    });
+  }
+
+  async resetCustomerPortalPassword(contactId, newPassword) {
+    return this.withDataMutation(async () => {
+      const account = this.getCustomerPortalAccountByContactId(contactId);
+      if (!account) throw new Error("Akun pelanggan tidak ditemukan.");
+      if (!/^[\x21-\x7E]{16,64}$/.test(String(newPassword || ""))) {
+        throw new Error("Password portal sementara harus memiliki 16 sampai 64 karakter ASCII.");
+      }
+      const previousHash = account.account.password;
+      const currentHash = await hashPortalPassword(newPassword);
+      account.account.password = currentHash;
+      account.account.updatedAt = new Date().toISOString();
+      await this.saveCustomerAccounts();
+      return { previousHash, currentHash };
+    });
+  }
+
+  async restoreCustomerPortalPassword(contactId, previousHash, expectedHash) {
+    return this.withDataMutation(async () => {
+      const account = this.getCustomerPortalAccountByContactId(contactId);
+      if (!account || account.account.password !== expectedHash) return false;
+      account.account.password = previousHash;
+      account.account.updatedAt = new Date().toISOString();
+      await this.saveCustomerAccounts();
+      return true;
     });
   }
 
