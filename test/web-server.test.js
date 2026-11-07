@@ -1780,7 +1780,7 @@ test("aktivasi biasa ditolak ketika akun masih memiliki tunggakan", async () => 
   const payload = await response.json();
 
   assert.equal(response.status, 409);
-  assert.match(payload.error, /Beli masa aktif 1 bulan/);
+  assert.match(payload.error, /Beli paket satu bulan sebelum mengaktifkan akun prabayar/);
   assert.equal(routerCalls, 0);
 });
 
@@ -2691,7 +2691,7 @@ test("admin dapat memilih IP Binding saja tanpa menonaktifkan layanan pelanggan"
   ]);
 });
 
-test("endpoint pembayaran meneruskan nominal tunggakan custom", async () => {
+test("endpoint pembayaran tunggakan lama tidak memproses transaksi ketika sistem hanya prabayar", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   let updateArguments = null;
   let notificationArguments = null;
@@ -2728,21 +2728,10 @@ test("endpoint pembayaran meneruskan nominal tunggakan custom", async () => {
   });
   const payload = await response.json();
 
-  assert.equal(response.status, 200);
-  assert.deepEqual(updateArguments, [
-    contact.id,
-    PAYMENT_STATUS.UNPAID,
-    PAYMENT_TYPES.ARREARS_ONLY,
-    100_000,
-  ]);
-  assert.equal(notificationArguments[2], PAYMENT_TYPES.ARREARS_ONLY);
-  assert.deepEqual(notificationArguments[3], {
-    paymentAmount: 100_000,
-    remainingDebtAmount: 100_000,
-  });
-  assert.equal(payload.data.paymentAmount, 100_000);
-  assert.equal(payload.data.remainingDebtAmount, 100_000);
-  assert.equal(payload.data.notificationSent, true);
+  assert.equal(response.status, 400);
+  assert.equal(updateArguments, null);
+  assert.equal(notificationArguments, null);
+  assert.ok(payload.error);
 });
 
 test("endpoint pengingat tagihan mengirim untuk pelanggan dengan satu tunggakan", async () => {
