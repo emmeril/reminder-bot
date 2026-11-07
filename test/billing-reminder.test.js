@@ -172,38 +172,35 @@ test("notifikasi pembayaran sebagian menyebut nominal dan sisa tunggakan", async
   assert.doesNotMatch(sent[0].message, /{{|}}/);
 });
 
-test("notifikasi pascabayar menyebut periode yang benar pada template lama", async () => {
+test("notifikasi periode historis tidak menimpa teks khusus admin", async () => {
   const { bot, sent } = createBot({
-    paymentMessageTemplateCurrentOnly: "Pembayaran tagihan bulan ini diterima. Status: {{statusText}}.",
+    paymentMessageTemplateCurrentOnly: "Pembayaran tagihan {{billingPeriod}} diterima. Status: {{statusText}}.",
   });
 
   await bot.sendPaymentNotification(
-    createContact({
-      billingCycle: "POSTPAID",
-      billingPeriodLabel: "Oktober 2026",
-    }),
-    "TRX-POSTPAID-1",
+    createContact({ billingCycle: "PREPAID", billingPeriodLabel: "Oktober 2026" }),
+    "TRX-PREPAID-LEGACY-1",
     "CURRENT-ONLY",
     { paymentDate: "2026-11-06T09:41:00.000Z" }
   );
 
+  assert.equal(sent.length, 1);
   assert.match(sent[0].message, /tagihan Oktober 2026 diterima/);
   assert.match(sent[0].message, /Status: Lunas Oktober 2026/);
-  assert.doesNotMatch(sent[0].message, /bulan ini/i);
+  assert.doesNotMatch(sent[0].message, /{{|}}/);
 });
 
-test("notifikasi pembelian masa aktif menyebut nominal dan batas aktif", async () => {
+test("notifikasi pembelian prabayar menyebut nominal dan masa aktif tanpa tunggakan", async () => {
   const { bot, sent } = createBot({
-    paymentMessageTemplateActivePeriod: "{{name}}\n{{paymentAmount}}\n{{activeUntil}}\n{{remainingDebtAmount}}\n{{statusText}}\n{{noteText}}",
+    prepaidPackagePaymentMessageTemplate: "{{name}}\n{{paymentAmount}}\n{{activeUntil}}\n{{statusText}}\n{{noteText}}",
   });
 
   await bot.sendPaymentNotification(
-    createContact(),
-    "ACT-TEST-1",
+    createContact({ billingCycle: "PREPAID", subscriptionType: "RECURRING" }),
+    "ACT-PREPAID-1",
     "ACTIVE-PERIOD",
     {
       paymentAmount: 100_000,
-      remainingDebtAmount: 200_000,
       paymentDate: "2026-10-28T03:00:00.000Z",
       activeUntil: "2026-11-28T03:00:00.000Z",
     }
@@ -212,8 +209,8 @@ test("notifikasi pembelian masa aktif menyebut nominal dan batas aktif", async (
   assert.equal(sent.length, 1);
   assert.match(sent[0].message, /Rp 100\.000/);
   assert.match(sent[0].message, /28\/11\/2026/);
-  assert.match(sent[0].message, /Masa aktif ditambahkan/);
-  assert.match(sent[0].message, /Tunggakan tetap tercatat/);
+  assert.match(sent[0].message, /Paket aktif/);
+  assert.doesNotMatch(sent[0].message, /Tunggakan tetap tercatat/);
   assert.doesNotMatch(sent[0].message, /{{|}}/);
 });
 
