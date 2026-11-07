@@ -846,7 +846,8 @@ class WebServer {
   }
 
   async deleteContactWithHotspot(contactId) {
-    return this.hotspotProvisioningLock.runExclusive(String(contactId), async () => {
+    return this.paymentGatewayLock.runExclusive(`create:${contactId}`, () => (
+      this.hotspotProvisioningLock.runExclusive(String(contactId), async () => {
       const contact = this.dataManager.getContact(contactId);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
       this.dataManager.assertContactDeletionAllowed?.(contact.id);
@@ -991,7 +992,8 @@ class WebServer {
             },
         hotspot: hotspotDeletion,
       };
-    });
+      })
+    ));
   }
 
   async recoverHotspotAfterPayment(contact) {
