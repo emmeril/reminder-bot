@@ -582,27 +582,20 @@ function createDashboardSelectors() {
             : `Bayar ${period}`;
         },
 
-        getBillingCycleLabel(contact) {
-          return String(contact?.billingCycle || "PREPAID").toUpperCase() === "POSTPAID"
-            ? "Bulanan pascabayar"
-            : "Bulanan prabayar";
+        getBillingCycleLabel() {
+          return "Bulanan prabayar";
         },
 
-        getBillingCycleValue(contact) {
-          return String(contact?.billingCycle || "PREPAID").toUpperCase() === "POSTPAID"
-            ? "POSTPAID"
-            : "PREPAID";
+        getBillingCycleValue() {
+          return "PREPAID";
         },
 
-        getBillingCycleBadgeClass(contact) {
-          return String(contact?.billingCycle || "PREPAID").toUpperCase() === "POSTPAID"
-            ? "border-amber-200 bg-amber-50 text-amber-800"
-            : "border-moss/15 bg-moss/10 text-moss";
+        getBillingCycleBadgeClass() {
+          return "border-moss/15 bg-moss/10 text-moss";
         },
 
         isPrepaidPackage(contact) {
-          return String(contact?.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "RECURRING"
-            && String(contact?.billingCycle || "").toUpperCase() === "PREPAID";
+          return String(contact?.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "RECURRING";
         },
 
         getCurrentPaymentLabel(contact) {
