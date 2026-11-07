@@ -444,7 +444,8 @@ class DataManagerCore {
       });
     }
 
-    this.normalizeLoadedContacts();
+    const migratedBillingCycles = this.normalizeLoadedContacts();
+    if (migratedBillingCycles > 0) await this.saveContacts();
     await this.migrateOneTimeSubscriptionsToPrepaid();
     await this.migrateServiceSchedulesFromRegistration();
     const portalAccountsCreated = await this.synchronizeCustomerPortalAccounts();
@@ -831,6 +832,7 @@ class DataManagerCore {
   }
 
   normalizeLoadedContacts() {
+    let migratedBillingCycles = 0;
     for (const contact of this.contacts.values()) {
       contact.paymentStatus = String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase();
       const normalizedType = String(contact.paymentType || "").toUpperCase();
@@ -847,6 +849,9 @@ class DataManagerCore {
         false
       );
       contact.subscriptionType = normalizeSubscriptionType(contact.subscriptionType);
+      if (String(contact.billingCycle || "PREPAID").trim().toUpperCase() !== BILLING_CYCLES.PREPAID) {
+        migratedBillingCycles += 1;
+      }
       contact.billingCycle = normalizeBillingCycle(contact.billingCycle);
       delete contact.recurringBillingStartedAt;
       contact.subscriptionChangedByArrears = parseBoolean(
