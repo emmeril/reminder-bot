@@ -258,6 +258,7 @@ test("scheduler prabayar mengirim pengingat kedaluwarsa dan masa tenggang tanpa 
     }),
     getTimezone: () => "Asia/Jakarta",
     getSortedReminders: () => Array.from(reminders.values()),
+    getReminderDeliveryDate: (value) => new Date(value.deliveryDateTime || value.reminderDateTime),
     getResolvedReminderContact: () => contact,
     claimDueReminder: async (id) => reminders.get(id) || null,
     markReminderDeliveryAttempt: async (id) => {
@@ -270,7 +271,8 @@ test("scheduler prabayar mengirim pengingat kedaluwarsa dan masa tenggang tanpa 
     moveToGracePeriod: async (id, extras) => {
       const current = reminders.get(id);
       histories.push({ ...current, ...extras });
-      current.reminderKind = REMINDER_KINDS.GRACE_PERIOD;
+      current.gracePeriodCreatedAt = new Date(Date.now() - 86_400_000).toISOString();
+      current.deliveryDateTime = new Date(Date.now() - 1000).toISOString();
       delete current.deliveryAttempts;
       delete current.deliveryAttemptedAt;
       delete current.providerStatus;
@@ -691,36 +693,25 @@ test("reminder jatuh tempo prabayar masuk masa tenggang tanpa dijadwalkan ulang 
   assert.equal(created, 0);
 });
 
-test("reschedule reminder memakai jadwal masa aktif terbaru setelah pembayaran bersamaan", async () => {
-  const nextServiceDate = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000);
-  let createdPayload = null;
-  const dataManager = {
+test("pelanggan prabayar tidak dijadwalkan ulang sebagai tagihan setelah pembayaran bersamaan", async () => {
+  let added = 0;
+  const contact = {
+    id: "concurrent-payment", subscriptionType: "RECURRING", billingCycle: "PREPAID",
+    hotspotReactivationAt: new Date(Date.now() + 20 * 86_400_000).toISOString(),
+  };
+  const scheduler = new ReminderScheduler({}, {
     getSettings: () => ({ autoRescheduleMonthly: true }),
     getTimezone: () => "Asia/Jakarta",
-    getResolvedReminderContact: () => ({
-      id: "concurrent-payment",
-      subscriptionType: "RECURRING",
-      billingPausedForArrears: false,
-      hotspotReactivationAt: nextServiceDate.toISOString(),
-    }),
-    addReminder: async (payload) => {
-      createdPayload = payload;
-      return { id: "next-reminder", reminderDateTime: new Date(payload.reminderDateTime).toISOString() };
-    },
-  };
-  const reminder = {
-    id: "processing-reminder",
-    contactId: "concurrent-payment",
+    getResolvedReminderContact: () => contact,
+    addReminder: async () => { added += 1; },
+  }, { push() {} });
+  const result = await scheduler.rescheduleMonthlyReminder({
+    id: "processing-reminder", contactId: contact.id,
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
     reminderDateTime: new Date(Date.now() - 60_000).toISOString(),
-    message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
-    messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
-    templateName: "Penagihan.txt",
-  };
-
-  await new ReminderScheduler({}, dataManager, { push() {} })
-    .rescheduleMonthlyReminder(reminder, "SKIPPED_PAID");
-
-  assert.equal(new Date(createdPayload.reminderDateTime).toISOString(), nextServiceDate.toISOString());
+  }, "SKIPPED_PAID");
+  assert.equal(result, null);
+  assert.equal(added, 0);
 });
 
 test("reminder jatuh tempo pelanggan sekali berlangganan dilewati tanpa mengirim WA", async () => {
