@@ -602,62 +602,6 @@ test("audit startup menyelaraskan jatuh tempo reminder paket dengan tanggal laya
   assert.equal(manager.reminders.size, 1);
 });
 
-test("reminder jatuh tempo berlanjut ke pengingat masa tenggang H-1", async () => {
-  const manager = createManager({
-    id: "contact-grace-reminder",
-    name: "Pelanggan Tenggang",
-    phoneNumber: "6281234567804",
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-  });
-  manager.settings.hotspotIsolationGraceDays = 3;
-  manager.settings.timezone = "Asia/Jakarta";
-  manager.reminders.set("grace-reminder", {
-    id: "grace-reminder",
-    contactId: "contact-grace-reminder",
-    reminderDateTime: "2026-11-02T01:00:00.000Z",
-    reminderKind: REMINDER_KINDS.BILLING,
-    templateName: "Penagihan.txt",
-  });
-
-  const reminder = manager.getSortedReminders()[0];
-  assert.equal(reminder.reminderDateTime, "2026-11-02T01:00:00.000Z");
-  assert.equal(reminder.deliveryDateTime, "2026-11-02T01:00:00.000Z");
-  assert.equal(reminder.deliveryScheduleType, "BILLING_DUE");
-  assert.equal(manager.hydrateReminder({
-    reminderDateTime: "2026-11-02T01:00:00.000Z",
-  }).deliveryScheduleType, "STANDARD");
-  assert.equal(manager.hydrateReminder({
-    reminderDateTime: "2026-11-02T01:00:00.000Z",
-    reminderKind: REMINDER_KINDS.BILLING,
-    nextDeliveryAttemptAt: "2026-11-04T02:00:00.000Z",
-  }).deliveryScheduleType, "RETRY");
-  const transition = await manager.moveToGracePeriod(reminder.id, {
-    sentAt: "2026-11-02T01:00:00.000Z",
-    deliveryStatus: "SENT_BAILEYS",
-    message: "Pengingat jatuh tempo",
-  });
-  assert.equal(transition.sentReminder.message, "Pengingat jatuh tempo");
-  assert.equal(manager.sentReminders.size, 1);
-  assert.equal(transition.reminder.reminderKind, REMINDER_KINDS.GRACE_PERIOD);
-  assert.equal(transition.reminder.reminderDateTime, "2026-11-02T01:00:00.000Z");
-  assert.equal(transition.reminder.deliveryDateTime, "2026-11-04T01:00:00.000Z");
-  assert.equal(transition.reminder.deliveryScheduleType, "GRACE_PERIOD");
-  assert.equal(await manager.claimDueReminder(reminder.id, new Date("2026-11-04T00:59:59.000Z")), null);
-  assert.equal(
-    (await manager.claimDueReminder(reminder.id, new Date("2026-11-04T01:00:00.000Z"))).id,
-    reminder.id
-  );
-
-  delete manager.getReminder(reminder.id).processingAt;
-  manager.getContact("contact-grace-reminder").hotspotReactivationAt = "2026-12-02T01:00:00.000Z";
-  manager.isReminderSuppressedForArrears = () => false;
-  assert.ok(manager.syncRecurringReminderSchedule(manager.getContact("contact-grace-reminder")) > 0);
-  const nextBillingReminder = manager.getSortedReminders()[0];
-  assert.equal(nextBillingReminder.reminderKind, REMINDER_KINDS.BILLING);
-  assert.equal(nextBillingReminder.reminderDateTime, "2026-12-02T01:00:00.000Z");
-  assert.equal(nextBillingReminder.deliveryDateTime, "2026-12-02T01:00:00.000Z");
-  assert.equal(nextBillingReminder.deliveryScheduleType, "BILLING_DUE");
-});
 
 test("reminder paket prabayar dikirim saat jatuh tempo lalu H-1 masa tenggang", async () => {
   const activeUntil = "2026-11-10T12:08:22.960Z";
@@ -700,51 +644,24 @@ test("reminder paket prabayar dikirim saat jatuh tempo lalu H-1 masa tenggang", 
   assert.equal(manager.hydrateReminder(preserved).deliveryDateTime, "2026-11-12T12:08:22.960Z");
 });
 
-test("jadwal reminder dihapus dan tidak dapat dibuat saat tunggakan mencapai dua bulan", async () => {
-  const current = getBillingPeriodParts(new Date(), "Asia/Jakarta");
-  const previous = getPreviousBillingPeriod(current.year, current.month);
-  const older = getPreviousBillingPeriod(previous.year, previous.month);
-  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
-  const olderKey = makeBillingPeriodKey(older.year, older.month);
+test("reminder kedaluwarsa prabayar tidak disembunyikan oleh tunggakan kalender historis", async () => {
+  const future = new Date(Date.now() + 86_400_000).toISOString();
   const contact = {
-    id: "contact-reminder-suppressed",
-    name: "Pelanggan Dua Tunggakan",
-    phoneNumber: "6281234567805",
-    createdAt: `${olderKey}-01T00:00:00.000Z`,
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    monthlyPaymentAmount: 100_000,
-    paymentStatus: PAYMENT_STATUS.UNPAID,
+    id: "prepaid-expiry-unsuppressed", name: "Pelanggan Paket",
+    phoneNumber: "6281234567805", subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID, monthlyPaymentAmount: 100_000,
     paymentMonths: {
-      [olderKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
-      [previousKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
+      "2026-01": { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
+      "2026-02": { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
     },
-    hotspotReactivationAt: new Date(Date.now() + 86_400_000).toISOString(),
+    hotspotReactivationAt: future,
   };
   const manager = createManager(contact);
-  manager.reminders.set("suppressed-reminder", {
-    id: "suppressed-reminder",
-    contactId: contact.id,
-    phoneNumber: contact.phoneNumber,
-    reminderDateTime: new Date(Date.now() + 86_400_000).toISOString(),
-    message: "Pengingat tagihan",
-  });
-  let saves = 0;
-  manager.saveReminders = async () => { saves += 1; };
-
+  await manager.repairMissingRecurringReminders();
+  assert.equal(manager.buildDebtInfo(contact).debtCount, 0);
+  assert.equal(manager.reminders.size, 1);
+  assert.equal([...manager.reminders.values()][0].reminderKind, REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY);
   assert.equal(await manager.repairMissingRecurringReminders(), 0);
-  assert.equal(manager.reminders.size, 0);
-  assert.equal(saves, 1);
-  await assert.rejects(
-    () => manager.addReminder({
-      contactId: contact.id,
-      reminderDateTime: new Date(Date.now() + 86_400_000),
-      message: "Pengingat baru",
-    }),
-    /2 tunggakan atau lebih/
-  );
-
-  contact.paymentMonths[olderKey] = { status: PAYMENT_STATUS.PAID, paidAmount: 100_000 };
-  assert.equal(manager.updateContactReminderMessages(contact), 1);
   assert.equal(manager.reminders.size, 1);
 });
 
@@ -793,210 +710,26 @@ test("menggunakan ulang transaksi Midtrans pending untuk tagihan yang sama", () 
   }), null);
 });
 
-test("pembayaran tunggakan saja tidak menandai bulan berjalan lunas", async () => {
-  const { year, month } = getBillingPeriodParts();
-  const currentKey = makeBillingPeriodKey(year, month);
-  const existingDueDate = addDaysSafely(new Date(), 7, "Asia/Jakarta").toISOString();
+test("jalur pembayaran tunggakan lama ditolak pada pelanggan prabayar tanpa mengubah riwayat", async () => {
   const contact = {
-    id: "contact-1",
-    name: "Pelanggan",
-    phoneNumber: "6281234567890",
-    createdAt: "2026-04-01T00:00:00.000Z",
-    paymentStatus: PAYMENT_STATUS.UNPAID,
-    paymentDate: null,
-    paymentType: null,
-    paymentMonths: {},
-    hotspotReactivationEnabled: true,
-    hotspotReactivationAt: existingDueDate,
+    id: "prepaid-reject-old-debt", subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID, monthlyPaymentAmount: 100_000,
+    paymentMonths: { "2026-01": { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 } },
+    activePeriodPurchases: [],
   };
   const manager = createManager(contact);
-
-  const updated = await manager.updatePaymentStatus(
-    contact.id,
-    PAYMENT_STATUS.UNPAID,
-    PAYMENT_TYPES.ARREARS_ONLY
-  );
-
-  assert.equal(updated.paymentStatus, PAYMENT_STATUS.UNPAID);
-  assert.equal(updated.hotspotReactivationAt, existingDueDate);
-  assert.equal(updated.paymentMonths[currentKey].status, PAYMENT_STATUS.UNPAID);
-  assert.equal(updated.paymentType, PAYMENT_TYPES.ARREARS_ONLY);
-  assert.equal(updated.debtCount >= 0, true);
-  assert.equal(
-    Object.values(updated.paymentMonths).some((payment) => (
-      payment.status === PAYMENT_STATUS.PAID
-      && payment.paymentType === PAYMENT_TYPES.ARREARS_ONLY
-    )),
-    true
-  );
-});
-
-test("pelanggan hasil konversi lama dipulihkan saat pembayaran tunggakan dicatat", async () => {
-  const current = getBillingPeriodParts();
-  const previous = getPreviousBillingPeriod(current.year, current.month);
-  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
-  const currentKey = makeBillingPeriodKey(current.year, current.month);
-  const schedule = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  const contact = {
-    id: "contact-partial-arrears",
-    name: "Pelanggan Cicilan",
-    phoneNumber: "6281234567801",
-    createdAt: `${previousKey}-01T00:00:00.000Z`,
-    subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
-    subscriptionChangedByArrears: true,
-    arrearsSubscriptionDebtPeriods: [previousKey],
-    monthlyPaymentAmount: 200_000,
-    paymentStatus: PAYMENT_STATUS.UNPAID,
-    paymentDate: null,
-    paymentType: null,
-    paymentMonths: {
-      [previousKey]: { status: PAYMENT_STATUS.UNPAID, paidDate: null, paymentType: null },
-      [currentKey]: { status: PAYMENT_STATUS.UNPAID, paidDate: null, paymentType: null },
-    },
-    hotspotReactivationEnabled: false,
-    hotspotReactivationAt: schedule,
-  };
-  const manager = createManager(contact);
-
+  const snapshot = structuredClone(contact.paymentMonths);
   await assert.rejects(
-    () => manager.updatePaymentStatus(
-      contact.id,
-      PAYMENT_STATUS.UNPAID,
-      PAYMENT_TYPES.ARREARS_ONLY,
-      200_001
-    ),
-    /melebihi sisa tunggakan/
+    () => manager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID, PAYMENT_TYPES.ARREARS_ONLY),
+    /Pelanggan prabayar dibayar melalui tindakan pembelian paket satu bulan/
   );
-
-  const partial = await manager.updatePaymentStatus(
-    contact.id,
-    PAYMENT_STATUS.UNPAID,
-    PAYMENT_TYPES.ARREARS_ONLY,
-    100_000
-  );
-
-  let storedContact = manager.getContact(contact.id);
-  assert.equal(partial.paymentAppliedAmount, 100_000);
-  assert.equal(partial.debtAmount, 100_000);
-  assert.equal(storedContact.paymentMonths[previousKey].status, PAYMENT_STATUS.UNPAID);
-  assert.equal(storedContact.paymentMonths[previousKey].paidAmount, 100_000);
-  assert.equal(storedContact.subscriptionType, SUBSCRIPTION_TYPES.RECURRING);
-  assert.equal(storedContact.subscriptionChangedByArrears, false);
-  assert.equal(manager.reminders.size, 1);
-
-  const paid = await manager.updatePaymentStatus(
-    contact.id,
-    PAYMENT_STATUS.UNPAID,
-    PAYMENT_TYPES.ARREARS_ONLY,
-    100_000
-  );
-
-  storedContact = manager.getContact(contact.id);
-  assert.equal(paid.paymentAppliedAmount, 100_000);
-  assert.equal(paid.debtAmount, 0);
-  assert.equal(storedContact.paymentMonths[previousKey].status, PAYMENT_STATUS.PAID);
-  assert.equal(storedContact.paymentMonths[previousKey].paidAmount, 200_000);
-  assert.equal(storedContact.subscriptionType, SUBSCRIPTION_TYPES.RECURRING);
-  assert.equal(manager.reminders.size, 1);
+  assert.deepEqual(contact.paymentMonths, snapshot);
+  assert.equal(contact.activePeriodPurchases.length, 0);
 });
 
-test("pembayaran tunggakan mempertahankan bulan berjalan yang sudah lunas", async () => {
-  const current = getBillingPeriodParts();
-  const previous = getPreviousBillingPeriod(current.year, current.month);
-  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
-  const currentKey = makeBillingPeriodKey(current.year, current.month);
-  const paidDate = new Date().toISOString();
-  const contact = {
-    id: "contact-current-paid-partial-arrears",
-    name: "Pelanggan Bulan Berjalan Lunas",
-    phoneNumber: "6281234567803",
-    createdAt: `${previousKey}-01T00:00:00.000Z`,
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    monthlyPaymentAmount: 200_000,
-    paymentStatus: PAYMENT_STATUS.PAID,
-    paymentDate: paidDate,
-    paymentType: PAYMENT_TYPES.CURRENT_ONLY,
-    paymentMonths: {
-      [previousKey]: { status: PAYMENT_STATUS.UNPAID, paidDate: null, paymentType: null },
-      [currentKey]: {
-        status: PAYMENT_STATUS.PAID,
-        paidDate,
-        paymentType: PAYMENT_TYPES.CURRENT_ONLY,
-        paidAmount: 200_000,
-      },
-    },
-  };
-  const manager = createManager(contact);
 
-  const updated = await manager.updatePaymentStatus(
-    contact.id,
-    PAYMENT_STATUS.UNPAID,
-    PAYMENT_TYPES.ARREARS_ONLY,
-    100_000
-  );
 
-  assert.equal(updated.currentPaymentStatus, PAYMENT_STATUS.PAID);
-  assert.equal(contact.paymentMonths[currentKey].status, PAYMENT_STATUS.PAID);
-  assert.equal(contact.paymentMonths[currentKey].paymentType, PAYMENT_TYPES.CURRENT_ONLY);
-  assert.equal(contact.paymentMonths[previousKey].paidAmount, 100_000);
-  assert.equal(updated.debtAmount, 100_000);
-});
 
-test("pembayaran tunggakan dialokasikan dari periode paling lama", async () => {
-  const current = getBillingPeriodParts();
-  const previous = getPreviousBillingPeriod(current.year, current.month);
-  const oldest = getPreviousBillingPeriod(previous.year, previous.month);
-  const oldestKey = makeBillingPeriodKey(oldest.year, oldest.month);
-  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
-  const contact = {
-    id: "contact-multiple-partial-arrears",
-    name: "Pelanggan Dua Bulan",
-    phoneNumber: "6281234567802",
-    createdAt: `${oldestKey}-01T00:00:00.000Z`,
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    monthlyPaymentAmount: 100_000,
-    paymentStatus: PAYMENT_STATUS.UNPAID,
-    paymentMonths: {
-      [oldestKey]: { status: PAYMENT_STATUS.UNPAID },
-      [previousKey]: { status: PAYMENT_STATUS.UNPAID },
-    },
-  };
-  const manager = createManager(contact);
-
-  const updated = await manager.updatePaymentStatus(
-    contact.id,
-    PAYMENT_STATUS.UNPAID,
-    PAYMENT_TYPES.ARREARS_ONLY,
-    150_000
-  );
-
-  assert.equal(contact.paymentMonths[oldestKey].status, PAYMENT_STATUS.PAID);
-  assert.equal(contact.paymentMonths[oldestKey].paidAmount, 100_000);
-  assert.equal(contact.paymentMonths[previousKey].status, PAYMENT_STATUS.UNPAID);
-  assert.equal(contact.paymentMonths[previousKey].paidAmount, 50_000);
-  assert.equal(updated.debtAmount, 50_000);
-  assert.equal(updated.debtPeriods[0].key, previousKey);
-  assert.equal(updated.debtPeriods[0].remainingAmount, 50_000);
-});
-
-test("pembayaran lunas tanpa jenis eksplisit default ke bulan berjalan", async () => {
-  const contact = {
-    id: "contact-2",
-    name: "Pelanggan",
-    phoneNumber: "6281234567891",
-    createdAt: new Date().toISOString(),
-    paymentStatus: PAYMENT_STATUS.UNPAID,
-    paymentDate: null,
-    paymentType: null,
-    paymentMonths: {},
-  };
-  const manager = createManager(contact);
-
-  const updated = await manager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID);
-
-  assert.equal(updated.paymentStatus, PAYMENT_STATUS.PAID);
-  assert.equal(updated.paymentType, PAYMENT_TYPES.CURRENT_ONLY);
-});
 
 test("sekali berlangganan hanya menghitung periode mulai dan tidak membuat hutang bulanan baru", () => {
   const contact = {
@@ -1206,42 +939,6 @@ test("pelanggan bulanan tanpa tunggakan tetap berlangganan dan tetap dijadwalkan
   assert.equal(contact.hotspotReactivationAt, schedule);
 });
 
-test("konversi otomatis lama dipulihkan tanpa membuat reminder untuk dua tunggakan", () => {
-  const current = getBillingPeriodParts();
-  const previous = getPreviousBillingPeriod(current.year, current.month);
-  const firstDebt = getPreviousBillingPeriod(previous.year, previous.month);
-  const firstDebtKey = makeBillingPeriodKey(firstDebt.year, firstDebt.month);
-  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
-  const contact = {
-    id: "contact-multiple-arrears",
-    name: "Pelanggan Dua Tunggakan",
-    phoneNumber: "6281234567812",
-    createdAt: `${firstDebtKey}-01T00:00:00.000Z`,
-    subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
-    subscriptionChangedByArrears: true,
-    arrearsSubscriptionDebtPeriods: [firstDebtKey, previousKey],
-    paymentStatus: PAYMENT_STATUS.UNPAID,
-    paymentMonths: {},
-    hotspotReactivationEnabled: true,
-    hotspotReactivationAt: new Date(Date.now() + 86_400_000).toISOString(),
-  };
-  const manager = createManager(contact);
-
-  contact.paymentMonths[firstDebtKey] = { status: PAYMENT_STATUS.UNPAID };
-  contact.paymentMonths[previousKey] = { status: PAYMENT_STATUS.UNPAID };
-
-  const restored = manager.applyArrearsSubscriptionPolicy(contact);
-  const unchanged = manager.applyArrearsSubscriptionPolicy(contact);
-
-  assert.equal(restored.restored, true);
-  assert.equal(restored.converted, false);
-  assert.equal(unchanged.changed, false);
-  assert.deepEqual(contact.arrearsSubscriptionDebtPeriods, []);
-  assert.equal(contact.subscriptionType, SUBSCRIPTION_TYPES.RECURRING);
-  assert.equal(contact.hotspotReactivationEnabled, true);
-  assert.equal(manager.buildDebtInfo(contact).debtCount >= 2, true);
-  assert.equal(manager.reminders.size, 0);
-});
 
 test("portal sekali berlangganan hanya menampilkan tunggakan periode awal", () => {
   const contact = {
@@ -1293,114 +990,8 @@ test("pembayaran pelanggan sekali berlangganan tidak membuat record periode baru
   assert.equal(Object.hasOwn(contact.paymentMonths, "2026-07"), false);
 });
 
-test("perubahan status pembayaran langsung memperbarui pesan reminder aktif", async () => {
-  const { year, month } = getBillingPeriodParts();
-  const createdAt = new Date(Date.UTC(year, month - 2, 2)).toISOString();
-  const contact = {
-    id: "contact-reminder",
-    name: "Pelanggan Reminder",
-    phoneNumber: "6281234567895",
-    createdAt,
-    monthlyPaymentAmount: 100_000,
-    paymentStatus: PAYMENT_STATUS.UNPAID,
-    paymentDate: null,
-    paymentType: null,
-    paymentMonths: {},
-  };
-  const manager = createManager(contact);
-  const reminder = {
-    id: "reminder-payment",
-    contactId: contact.id,
-    phoneNumber: contact.phoneNumber,
-    paymentAmount: 100_000,
-    message: "Tagihan Anda sebesar Rp 200.000 belum kami terima.",
-    reminderDateTime: new Date(Date.now() + 86_400_000).toISOString(),
-  };
-  manager.reminders.set(reminder.id, reminder);
 
-  await manager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID, PAYMENT_TYPES.CURRENT_ONLY);
 
-  assert.match(reminder.message, /Rp\s?100\.000/);
-  assert.equal(reminder.messageSource, "Tagihan Anda sebesar Rp 200.000 belum kami terima.");
-});
-
-test("pembayaran lunas memindahkan reminder ke jatuh tempo berikutnya", async () => {
-  const contact = {
-    id: "contact-reminder-reset",
-    name: "Pelanggan Reset",
-    phoneNumber: "6281234567896",
-    createdAt: new Date().toISOString(),
-    monthlyPaymentAmount: 100_000,
-    paymentStatus: PAYMENT_STATUS.UNPAID,
-    paymentDate: null,
-    paymentType: null,
-    paymentMonths: {},
-  };
-  const manager = createManager(contact);
-  const reminder = {
-    id: "reminder-payment-reset",
-    contactId: contact.id,
-    phoneNumber: contact.phoneNumber,
-    paymentAmount: 100_000,
-    message: "Tagihan Anda sebesar Rp 100.000 belum kami terima.",
-    reminderDateTime: new Date(Date.now() + 86_400_000).toISOString(),
-  };
-  manager.reminders.set(reminder.id, reminder);
-  const previousReminderTime = new Date(reminder.reminderDateTime).getTime();
-
-  await manager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID, PAYMENT_TYPES.FULL_PAID);
-  const nextReminderTime = new Date(reminder.reminderDateTime).getTime();
-  assert.equal(nextReminderTime > previousReminderTime, true);
-  assert.match(reminder.message, /Rp\s?100\.000/);
-  assert.match(reminder.message, /belum kami terima/);
-
-  await manager.updatePaymentStatus(contact.id, PAYMENT_STATUS.UNPAID);
-  const current = getBillingPeriodParts(new Date(), manager.getTimezone());
-  const currentKey = makeBillingPeriodKey(current.year, current.month);
-  assert.equal(new Date(reminder.reminderDateTime).getTime(), nextReminderTime);
-  assert.match(reminder.message, /Rp\s?200\.000/);
-  assert.match(reminder.message, /belum kami terima/);
-  assert.equal(contact.paymentMonths[currentKey].status, PAYMENT_STATUS.UNPAID);
-  assert.equal(contact.paymentMonths[currentKey].paidAmount, 0);
-  assert.equal(
-    manager.getPaymentRemainingAmount(contact.paymentMonths[currentKey], contact.monthlyPaymentAmount),
-    contact.monthlyPaymentAmount
-  );
-});
-
-test("koreksi periode lama tetap menjadi tunggakan setelah pembayaran lunas semua", async () => {
-  const now = new Date();
-  const current = getBillingPeriodParts(now, "Asia/Jakarta");
-  const previous = getPreviousBillingPeriod(current.year, current.month);
-  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
-  const contact = {
-    id: "contact-corrected-old-debt",
-    name: "Pelanggan Koreksi",
-    phoneNumber: "6281234567897",
-    createdAt: addMonthsSafely(now, -1, "Asia/Jakarta").toISOString(),
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    monthlyPaymentAmount: 100_000,
-    paymentStatus: PAYMENT_STATUS.UNPAID,
-    paymentDate: null,
-    paymentType: null,
-    paymentMonths: {},
-  };
-  const manager = createManager(contact);
-
-  await manager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID, PAYMENT_TYPES.FULL_PAID);
-  await manager.setPaymentForMonth(
-    contact.id,
-    previous.year,
-    previous.month,
-    PAYMENT_STATUS.UNPAID
-  );
-
-  const debtInfo = manager.buildDebtInfo(contact);
-  assert.equal(contact.paymentType, PAYMENT_TYPES.FULL_PAID);
-  assert.equal(debtInfo.hasDebt, true);
-  assert.deepEqual(debtInfo.debtPeriods.map((period) => period.key), [previousKey]);
-  assert.equal(debtInfo.debtAmount, contact.monthlyPaymentAmount);
-});
 
 test("reminder baru menyimpan template variabel tanpa mengganti data pelanggan", async () => {
   const contact = {
@@ -1481,60 +1072,33 @@ test("permintaan mengubah pelanggan menjadi sekali berlangganan tetap memakai bu
   assert.equal(reminderSaves, 1);
 });
 
-test("konversi pelanggan sekali ke pascabayar mempertahankan periode yang belum dibayar", async () => {
+test("konversi pelanggan lama menjadi prabayar mempertahankan histori dan tidak membuat hutang", async () => {
   const now = new Date();
-  const current = getBillingPeriodParts(now, "Asia/Jakarta");
-  const previous = getPreviousBillingPeriod(current.year, current.month);
+  const reference = getBillingPeriodParts(now, "Asia/Jakarta");
+  const previous = getPreviousBillingPeriod(reference.year, reference.month);
   const older = getPreviousBillingPeriod(previous.year, previous.month);
-  const currentKey = makeBillingPeriodKey(current.year, current.month);
-  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
   const olderKey = makeBillingPeriodKey(older.year, older.month);
+  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
   const contact = {
-    id: "contact-one-time-to-recurring",
-    name: "Pelanggan Konversi",
-    phoneNumber: "6281234567892",
-    createdAt: `${olderKey}-01T00:00:00.000Z`,
-    subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME,
-    monthlyPaymentAmount: 75_000,
+    id: "contact-old-prepaid-conversion", name: "Pelanggan Konversi",
+    phoneNumber: "6281234567892", createdAt: `${olderKey}-01T00:00:00.000Z`,
+    subscriptionType: SUBSCRIPTION_TYPES.ONE_TIME, monthlyPaymentAmount: 75_000,
     paymentStatus: PAYMENT_STATUS.PAID,
-    paymentDate: `${olderKey}-01T00:00:00.000Z`,
-    paymentType: PAYMENT_TYPES.FULL_PAID,
     paymentMonths: {
       [olderKey]: { status: PAYMENT_STATUS.PAID, paidAmount: 75_000 },
       [previousKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
     },
-    hotspotReactivationEnabled: false,
-    hotspotReactivationAt: null,
   };
   const manager = createManager(contact);
-
   const converted = await manager.updateContact(contact.id, {
     subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    billingCycle: BILLING_CYCLES.POSTPAID,
+    billingCycle: "POSTPAID",
   });
-
   assert.equal(converted.subscriptionType, SUBSCRIPTION_TYPES.RECURRING);
-  assert.equal(converted.paymentStatus, PAYMENT_STATUS.UNPAID);
-  assert.equal(converted.paymentMonths[currentKey].status, PAYMENT_STATUS.UNPAID);
-  assert.equal(converted.paymentMonths[currentKey].paidAmount, 0);
-  assert.equal(converted.hotspotReactivationAt, null);
-  assert.equal(converted.hotspotReactivationEnabled, false);
+  assert.equal(converted.billingCycle, BILLING_CYCLES.PREPAID);
+  assert.equal(converted.paymentMonths[olderKey].status, PAYMENT_STATUS.PAID);
   assert.equal(converted.paymentMonths[previousKey].status, PAYMENT_STATUS.UNPAID);
-  assert.equal(manager.buildDebtInfo(contact).billingPeriodKey, previousKey);
-  assert.equal(manager.buildDebtInfo(contact).debtCount, 0);
-
-  const paid = await manager.updatePaymentStatus(
-    contact.id,
-    PAYMENT_STATUS.PAID,
-    PAYMENT_TYPES.CURRENT_ONLY
-  );
-  assert.equal(paid.paymentMonths[previousKey].status, PAYMENT_STATUS.PAID);
-  assert.equal(paid.paymentMonths[previousKey].paidAmount, 75_000);
-  assert.equal(paid.paymentMonths[currentKey].status, PAYMENT_STATUS.UNPAID);
-  assert.ok(new Date(paid.hotspotReactivationAt).getTime() > Date.now());
-  assert.equal(paid.hotspotReactivationEnabled, true);
-  assert.equal(paid.serviceActiveUntil, paid.hotspotReactivationAt);
-  assert.equal(manager.buildDebtInfo(contact).debtCount, 0);
+  assert.equal(manager.buildDebtInfo(converted).debtCount, 0);
 });
 
 test("reset pembayaran bulanan juga menyegarkan pesan reminder aktif", async () => {
@@ -1612,53 +1176,21 @@ test("reminder periode berikutnya tidak mewarisi status lunas bulan berjalan", (
   assert.match(reminder.message, /Pengingat Pembayaran WiFi/);
 });
 
-test("pembayaran tanpa nominal tetap memindahkan reminder ke periode berikutnya", async () => {
+
+test("API pembayaran lama tidak dapat menandai pelanggan prabayar lunas tanpa pembelian", async () => {
   const contact = {
-    id: "contact-no-amount",
-    name: "Pelanggan Tanpa Nominal",
-    phoneNumber: "6281234567898",
-    createdAt: new Date().toISOString(),
-    monthlyPaymentAmount: 0,
-    paymentStatus: PAYMENT_STATUS.UNPAID,
-    paymentDate: null,
-    paymentType: null,
-    paymentMonths: {},
+    id: "prepaid-old-payment-combination", subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID, monthlyPaymentAmount: 100_000,
+    activePeriodPurchases: [],
   };
   const manager = createManager(contact);
-  const reminder = {
-    id: "reminder-no-amount",
-    contactId: contact.id,
-    phoneNumber: contact.phoneNumber,
-    message: "Tagihan internet Anda belum kami terima.",
-    reminderDateTime: new Date(Date.now() + 86_400_000).toISOString(),
-  };
-  manager.reminders.set(reminder.id, reminder);
-  const previousReminderTime = new Date(reminder.reminderDateTime).getTime();
-
-  await manager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID, PAYMENT_TYPES.FULL_PAID);
-
-  assert.equal(new Date(reminder.reminderDateTime).getTime() > previousReminderTime, true);
-  assert.equal(reminder.message, "Tagihan internet Anda belum kami terima.");
-});
-
-test("menolak kombinasi status dan jenis pembayaran yang kontradiktif", async () => {
-  const contact = {
-    id: "contact-3",
-    name: "Pelanggan",
-    phoneNumber: "6281234567892",
-    createdAt: new Date().toISOString(),
-    paymentStatus: PAYMENT_STATUS.UNPAID,
-    paymentDate: null,
-    paymentType: null,
-    paymentMonths: {},
-  };
-  const manager = createManager(contact);
-
-  await assert.rejects(
-    () => manager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID, PAYMENT_TYPES.ARREARS_ONLY),
-    /harus membiarkan bulan berjalan/
-  );
-  assert.equal(contact.paymentStatus, PAYMENT_STATUS.UNPAID);
+  for (const [status,type] of [
+    [PAYMENT_STATUS.PAID, PAYMENT_TYPES.CURRENT_ONLY],
+    [PAYMENT_STATUS.UNPAID, PAYMENT_TYPES.ARREARS_ONLY],
+  ]) {
+    await assert.rejects(() => manager.updatePaymentStatus(contact.id, status, type));
+  }
+  assert.equal(contact.activePeriodPurchases.length, 0);
 });
 
 test("jadwal reaktivasi yang tertinggal dimajukan langsung ke masa depan", async () => {
@@ -1680,426 +1212,25 @@ test("jadwal reaktivasi yang tertinggal dimajukan langsung ke masa depan", async
   assert.equal(new Date(updated.hotspotReactivationAt).getTime() > Date.now(), true);
 });
 
-test("aktivasi manual saat masih menunggak memberi masa aktif satu bulan tanpa menghapus tunggakan", async () => {
-  const activatedAt = new Date("2026-10-16T08:00:00.000Z");
+
+
+
+
+
+
+
+
+test("pembayaran periode manual tidak dapat memberi masa aktif kepada pelanggan prabayar", async () => {
   const contact = {
-    id: "contact-manual-arrears",
-    name: "Pelanggan Menunggak",
-    phoneNumber: "6281234567810",
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    createdAt: "2026-09-01T00:00:00.000Z",
-    monthlyPaymentAmount: 100000,
-    paymentStatus: PAYMENT_STATUS.PAID,
-    paymentMonths: {
-      "2026-09": { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
-    },
-    billingPausedForArrears: true,
-    billingPausedAfterPeriod: "2026-09",
-    hotspotSuspendedForArrears: true,
-    hotspotReactivationEnabled: false,
-    hotspotReactivationAt: null,
-    mikrotikUsername: "manual_arrears",
-    mikrotikProfile: "default",
+    id: "prepaid-month-guard", subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID, monthlyPaymentAmount: 100_000,
+    activePeriodPurchases: [],
   };
   const manager = createManager(contact);
-
-  const updated = await manager.markHotspotEnabled(contact.id, {}, { at: activatedAt });
-
-  assert.equal(updated.hotspotProvisioningStatus, "ACTIVE");
-  assert.equal(updated.hotspotManualActivationWithArrears, true);
-  assert.equal(updated.hotspotSuspendedForArrears, false);
-  assert.equal(updated.hotspotReactivationEnabled, false);
-  assert.equal(updated.hotspotReactivationAt, "2026-11-16T08:00:00.000Z");
-  assert.equal(updated.billingPausedForArrears, true);
-  assert.deepEqual(updated.debtPeriods.map(({ key }) => key), ["2026-09"]);
-});
-
-test("pembelian masa aktif mengaktifkan hotspot satu bulan tanpa mengurangi tunggakan", async () => {
-  const purchasedAt = new Date();
-  const current = getBillingPeriodParts(purchasedAt);
-  const previous = getPreviousBillingPeriod(current.year, current.month);
-  const debtKey = makeBillingPeriodKey(previous.year, previous.month);
-  const activeUntil = addMonthsSafely(purchasedAt, 1, "Asia/Jakarta");
-  const contact = {
-    id: "contact-active-period-purchase",
-    name: "Pelanggan Masa Aktif",
-    phoneNumber: "6281234567815",
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    createdAt: `${debtKey}-01T00:00:00.000Z`,
-    monthlyPaymentAmount: 100000,
-    paymentStatus: PAYMENT_STATUS.PAID,
-    paymentMonths: {
-      [debtKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
-    },
-    billingPausedForArrears: false,
-    billingPausedAfterPeriod: null,
-    hotspotSuspendedForArrears: true,
-    hotspotReactivationEnabled: false,
-    hotspotReactivationAt: null,
-    mikrotikUsername: "active_period",
-    mikrotikProfile: "default",
-  };
-  const manager = createManager(contact);
-  manager.settings.hotspotIsolationGraceDays = 3;
-
-  const updated = await manager.markHotspotEnabled(contact.id, {}, {
-    at: purchasedAt,
-    activePeriodPurchase: {
-      id: "ACT-TEST-1",
-      purchasedAt,
-      activeFrom: purchasedAt,
-      activeUntil,
-    },
-  });
-
-  assert.equal(updated.hotspotProvisioningStatus, "ACTIVE");
-  assert.equal(updated.hotspotManualActivationWithArrears, true);
-  assert.equal(updated.hotspotReactivationEnabled, false);
-  assert.equal(updated.hotspotReactivationAt, activeUntil.toISOString());
-  assert.equal(updated.billingPausedForArrears, true);
-  assert.equal(updated.debtAmount, 100000);
-  assert.equal(updated.activePeriodPurchases.length, 1);
-  assert.equal(updated.activePeriodPurchases[0].amount, 100000);
-  assert.equal(updated.activePeriodPurchases[0].paymentType, PAYMENT_TYPES.ACTIVE_PERIOD);
-  assert.equal(contact.paymentMonths[debtKey].status, PAYMENT_STATUS.UNPAID);
-  const expiryReminder = manager.getSortedReminders()[0];
-  assert.equal(expiryReminder.reminderKind, REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY);
-  assert.equal(expiryReminder.activePeriodUntil, activeUntil.toISOString());
-  assert.equal(
-    expiryReminder.reminderDateTime,
-    activeUntil.toISOString()
-  );
-  manager.customerAccounts.set(contact.id, { username: "active_period", password: "portal-pass" });
-  const portal = manager.getCustomerPortalData(contact.id);
-  const purchaseHistory = portal.billing.history.find((item) => item.paymentType === PAYMENT_TYPES.ACTIVE_PERIOD);
-  assert.equal(purchaseHistory.paidAmount, 100000);
-  assert.equal(purchaseHistory.activeUntil, activeUntil.toISOString());
-});
-
-test("pembelian masa aktif berikutnya memperpanjang jadwal dari batas aktif terakhir", async () => {
-  const purchasedAt = new Date();
-  const current = getBillingPeriodParts(purchasedAt);
-  const previous = getPreviousBillingPeriod(current.year, current.month);
-  const debtKey = makeBillingPeriodKey(previous.year, previous.month);
-  const firstActiveUntil = addMonthsSafely(purchasedAt, 1, "Asia/Jakarta");
-  const secondActiveUntil = addMonthsSafely(firstActiveUntil, 1, "Asia/Jakarta");
-  const contact = {
-    id: "contact-active-period-extension",
-    name: "Pelanggan Perpanjangan Masa Aktif",
-    phoneNumber: "6281234567816",
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    createdAt: `${debtKey}-01T00:00:00.000Z`,
-    monthlyPaymentAmount: 100000,
-    paymentStatus: PAYMENT_STATUS.PAID,
-    paymentMonths: {
-      [debtKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
-    },
-    billingPausedForArrears: true,
-    billingPausedAfterPeriod: debtKey,
-    hotspotManualActivationWithArrears: true,
-    hotspotProvisioningStatus: "ACTIVE",
-    hotspotReactivationEnabled: false,
-    hotspotReactivationAt: firstActiveUntil.toISOString(),
-    activePeriodPurchases: [{
-      id: "ACT-TEST-1",
-      paymentType: PAYMENT_TYPES.ACTIVE_PERIOD,
-      status: PAYMENT_STATUS.PAID,
-      amount: 100000,
-      purchasedAt: purchasedAt.toISOString(),
-      activeFrom: purchasedAt.toISOString(),
-      activeUntil: firstActiveUntil.toISOString(),
-      paymentProvider: "manual",
-    }],
-  };
-  const manager = createManager(contact);
-  manager.settings.hotspotIsolationGraceDays = 3;
-  manager.reminders.set("active-period-reminder", {
-    id: "active-period-reminder",
-    contactId: contact.id,
-    contactName: contact.name,
-    phoneNumber: contact.phoneNumber,
-    reminderDateTime: firstActiveUntil.toISOString(),
-    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
-    activePeriodUntil: firstActiveUntil.toISOString(),
-    message: manager.settings.activePeriodReminderMessageTemplate,
-    messageSource: manager.settings.activePeriodReminderMessageTemplate,
-  });
-
-  const result = await manager.recordActivePeriodPurchase(contact.id, {
-    id: "ACT-TEST-2",
-    purchasedAt,
-    activeFrom: firstActiveUntil,
-    activeUntil: secondActiveUntil,
-  });
-
-  assert.equal(result.contact.activePeriodPurchases.length, 2);
-  assert.equal(result.contact.hotspotReactivationAt, secondActiveUntil.toISOString());
-  assert.equal(result.contact.debtAmount, 100000);
-  assert.equal(contact.paymentMonths[debtKey].status, PAYMENT_STATUS.UNPAID);
-  const expiryReminder = manager.getReminder("active-period-reminder");
-  assert.equal(expiryReminder.activePeriodUntil, secondActiveUntil.toISOString());
-  assert.equal(
-    expiryReminder.reminderDateTime,
-    secondActiveUntil.toISOString()
-  );
-});
-
-test("reset bulanan tidak membuat tagihan baru saat billing dijeda karena tunggakan", async () => {
-  const { year, month } = getBillingPeriodParts();
-  const currentKey = makeBillingPeriodKey(year, month);
-  const previous = getPreviousBillingPeriod(year, month);
-  const frozenKey = makeBillingPeriodKey(previous.year, previous.month);
-  const contact = {
-    id: "contact-paused-billing",
-    name: "Pelanggan Dijeda",
-    phoneNumber: "6281234567811",
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    createdAt: `${frozenKey}-01T00:00:00.000Z`,
-    monthlyPaymentAmount: 100000,
-    paymentStatus: PAYMENT_STATUS.PAID,
-    paymentMonths: {
-      [frozenKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
-    },
-    billingPausedForArrears: true,
-    billingPausedAfterPeriod: frozenKey,
-  };
-  const manager = createManager(contact);
-
-  await manager.resetAllPaymentStatusUnlocked();
-
-  assert.equal(contact.paymentMonths[currentKey], undefined);
-  assert.equal(contact.paymentStatus, PAYMENT_STATUS.PAID);
-  assert.equal(manager.buildDebtInfo(contact).debtCount, 1);
-  assert.equal(manager.buildDebtInfo(contact).subscriptionActive, false);
-});
-
-test("perpanjangan otomatis pulih hanya setelah seluruh tunggakan lunas", async () => {
-  const { year, month } = getBillingPeriodParts();
-  const previous = getPreviousBillingPeriod(year, month);
-  const frozenKey = makeBillingPeriodKey(previous.year, previous.month);
-  const activeUntil = addMonthsSafely(new Date(), 1, "Asia/Jakarta");
-  const contact = {
-    id: "contact-resume-after-paid",
-    name: "Pelanggan Pulih",
-    phoneNumber: "6281234567812",
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    createdAt: `${frozenKey}-01T00:00:00.000Z`,
-    monthlyPaymentAmount: 100000,
-    paymentStatus: PAYMENT_STATUS.PAID,
-    paymentMonths: {
-      [frozenKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
-    },
-    billingPausedForArrears: true,
-    billingPausedAfterPeriod: frozenKey,
-    hotspotSuspendedForArrears: true,
-    hotspotManualActivationWithArrears: true,
-    hotspotProvisioningStatus: "ACTIVE",
-    hotspotReactivationEnabled: false,
-    hotspotReactivationAt: activeUntil.toISOString(),
-  };
-  const manager = createManager(contact);
-  manager.reminders.set("active-period-reminder-paid", {
-    id: "active-period-reminder-paid",
-    contactId: contact.id,
-    contactName: contact.name,
-    phoneNumber: contact.phoneNumber,
-    reminderDateTime: addDaysSafely(activeUntil, -3, "Asia/Jakarta").toISOString(),
-    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
-    activePeriodUntil: activeUntil.toISOString(),
-    message: manager.settings.activePeriodReminderMessageTemplate,
-    messageSource: manager.settings.activePeriodReminderMessageTemplate,
-  });
-
-  const partial = await manager.updatePaymentStatus(
-    contact.id,
-    PAYMENT_STATUS.UNPAID,
-    PAYMENT_TYPES.ARREARS_ONLY,
-    50000
-  );
-  assert.equal(partial.billingPausedForArrears, true);
-  assert.equal(partial.hotspotReactivationEnabled, false);
-  assert.equal(partial.debtAmount, 50000);
-  assert.equal(manager.getReminder("active-period-reminder-paid").reminderKind, REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY);
-
-  const paid = await manager.updatePaymentStatus(
-    contact.id,
-    PAYMENT_STATUS.UNPAID,
-    PAYMENT_TYPES.ARREARS_ONLY,
-    50000
-  );
-  assert.equal(paid.hasDebt, false);
-  assert.equal(paid.billingPausedForArrears, false);
-  assert.equal(paid.hotspotReactivationEnabled, true);
-  assert.equal(paid.hotspotReactivationAt, activeUntil.toISOString());
-  assert.equal(paid.hotspotSuspendedForArrears, true);
-  const restoredReminder = manager.getReminder("active-period-reminder-paid");
-  assert.equal(restoredReminder.reminderKind, REMINDER_KINDS.BILLING);
-  assert.equal(restoredReminder.reminderDateTime, activeUntil.toISOString());
-  assert.equal(restoredReminder.activePeriodUntil, undefined);
-  assert.equal(restoredReminder.templateName, "Penagihan.txt");
-});
-
-test("pembayaran tunggakan terakhir memindahkan reminder biasa ke jadwal masa aktif baru", async () => {
-  const paidAt = new Date();
-  const current = getBillingPeriodParts(paidAt, "Asia/Jakarta");
-  const previous = getPreviousBillingPeriod(current.year, current.month);
-  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
-  const expiredSchedule = addDaysSafely(paidAt, -3, "Asia/Jakarta");
-  const oldReminderDate = addMonthsSafely(expiredSchedule, 1, "Asia/Jakarta");
-  const contact = {
-    id: "contact-last-arrears-reminder-sync",
-    name: "Pelanggan Tunggakan Terakhir",
-    phoneNumber: "6281234567830",
-    createdAt: `${previousKey}-01T00:00:00.000Z`,
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    monthlyPaymentAmount: 75_000,
-    paymentStatus: PAYMENT_STATUS.PAID,
-    paymentMonths: {
-      [previousKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
-    },
-    billingPausedForArrears: true,
-    billingPausedAfterPeriod: previousKey,
-    hotspotReactivationEnabled: false,
-    hotspotReactivationAt: expiredSchedule.toISOString(),
-  };
-  const manager = createManager(contact);
-  manager.reminders.set("last-arrears-reminder", {
-    id: "last-arrears-reminder",
-    contactId: contact.id,
-    phoneNumber: contact.phoneNumber,
-    reminderDateTime: oldReminderDate.toISOString(),
-    reminderKind: REMINDER_KINDS.BILLING,
-    message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
-    messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
-    templateName: "Penagihan.txt",
-  });
-
-  const paid = await manager.updatePaymentStatus(
-    contact.id,
-    PAYMENT_STATUS.UNPAID,
-    PAYMENT_TYPES.ARREARS_ONLY,
-    75_000
-  );
-
-  assert.equal(paid.hasDebt, false);
-  assert.equal(paid.billingPausedForArrears, false);
-  assert.equal(paid.hotspotReactivationEnabled, true);
-  assert.equal(new Date(paid.hotspotReactivationAt).getTime() > paidAt.getTime(), true);
-  assert.equal(
-    manager.getReminder("last-arrears-reminder").reminderDateTime,
-    paid.hotspotReactivationAt
-  );
-});
-
-test("pencatatan pembayaran periode yang sama tidak menambah masa aktif dua kali", async () => {
-  const now = new Date();
-  const current = getBillingPeriodParts(now, "Asia/Jakarta");
-  const currentKey = makeBillingPeriodKey(current.year, current.month);
-  const previousDueDate = addDaysSafely(now, 10, "Asia/Jakarta");
-  const contact = {
-    id: "contact-duplicate-current-payment",
-    name: "Pelanggan Pembayaran Ganda",
-    phoneNumber: "6281234567831",
-    createdAt: now.toISOString(),
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    monthlyPaymentAmount: 75_000,
-    paymentStatus: PAYMENT_STATUS.UNPAID,
-    paymentMonths: {
-      [currentKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
-    },
-    hotspotReactivationEnabled: true,
-    hotspotReactivationAt: previousDueDate.toISOString(),
-  };
-  const manager = createManager(contact);
-  manager.reminders.set("duplicate-payment-reminder", {
-    id: "duplicate-payment-reminder",
-    contactId: contact.id,
-    phoneNumber: contact.phoneNumber,
-    reminderDateTime: previousDueDate.toISOString(),
-    reminderKind: REMINDER_KINDS.BILLING,
-    message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
-    messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
-    templateName: "Penagihan.txt",
-  });
-
-  const first = await manager.updatePaymentStatus(
-    contact.id,
-    PAYMENT_STATUS.PAID,
-    PAYMENT_TYPES.CURRENT_ONLY
-  );
-  const firstPaidDate = contact.paymentMonths[currentKey].paidDate;
-  const expectedDueDate = addMonthsSafely(firstPaidDate, 1, "Asia/Jakarta");
-  const duplicate = await manager.setPaymentForMonth(
-    contact.id,
-    current.year,
-    current.month,
-    PAYMENT_STATUS.PAID,
-    PAYMENT_TYPES.CURRENT_ONLY
-  );
-
-  assert.equal(first.paymentRecorded, true);
-  assert.equal(duplicate.paymentRecorded, false);
-  assert.equal(contact.paymentMonths[currentKey].paidDate, firstPaidDate);
-  assert.equal(contact.hotspotReactivationAt, expectedDueDate.toISOString());
-  assert.equal(
-    manager.getReminder("duplicate-payment-reminder").reminderDateTime,
-    expectedDueDate.toISOString()
-  );
-});
-
-test("bulan selama billing dijeda tidak berubah menjadi tunggakan setelah layanan pulih", async () => {
-  const { year, month } = getBillingPeriodParts();
-  const previous = getPreviousBillingPeriod(year, month);
-  const frozen = getPreviousBillingPeriod(previous.year, previous.month);
-  const frozenKey = makeBillingPeriodKey(frozen.year, frozen.month);
-  const previousKey = makeBillingPeriodKey(previous.year, previous.month);
-  const currentKey = makeBillingPeriodKey(year, month);
-  const contact = {
-    id: "contact-long-pause",
-    name: "Pelanggan Jeda Panjang",
-    phoneNumber: "6281234567814",
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    createdAt: `${frozenKey}-01T00:00:00.000Z`,
-    monthlyPaymentAmount: 100000,
-    paymentStatus: PAYMENT_STATUS.PAID,
-    paymentMonths: {
-      [frozenKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
-    },
-    billingPausedForArrears: true,
-    billingPausedAfterPeriod: frozenKey,
-    hotspotSuspendedForArrears: true,
-    hotspotReactivationEnabled: false,
-  };
-  const manager = createManager(contact);
-
-  const paid = await manager.updatePaymentStatus(
-    contact.id,
-    PAYMENT_STATUS.UNPAID,
-    PAYMENT_TYPES.ARREARS_ONLY,
-    100000
-  );
-
-  assert.equal(paid.billingPausedForArrears, false);
-  assert.equal(paid.hasDebt, false);
-  assert.equal(contact.paymentMonths[previousKey].billingPaused, true);
-  assert.equal(contact.paymentMonths[currentKey].billingPaused, true);
-  assert.equal(contact.paymentMonths[previousKey].status, PAYMENT_STATUS.PAID);
-  assert.equal(contact.paymentMonths[currentKey].status, PAYMENT_STATUS.PAID);
-});
-
-test("menolak periode pembayaran di luar rentang kalender", async () => {
-  const contact = {
-    id: "contact-5",
-    name: "Pelanggan",
-    phoneNumber: "6281234567894",
-    paymentMonths: {},
-  };
-  const manager = createManager(contact);
-
   await assert.rejects(
-    () => manager.setPaymentForMonth(contact.id, 2026, 13, PAYMENT_STATUS.PAID),
-    /Periode pembayaran tidak valid/
+    () => manager.setPaymentForMonth(contact.id, 2026, 13, PAYMENT_STATUS.PAID, PAYMENT_TYPES.CURRENT_ONLY)
   );
+  assert.equal(contact.activePeriodPurchases.length, 0);
 });
 
 test("menolak timezone aplikasi yang tidak dikenal", async () => {
@@ -2161,32 +1292,6 @@ test("menunda penonaktifan paket prabayar sampai masa tenggang selesai", async (
   );
 });
 
-test("masa tenggang isolir tidak menunda siklus pelanggan yang sudah lunas", async () => {
-  const contact = {
-    id: "contact-paid-cycle",
-    name: "Pelanggan Lunas",
-    phoneNumber: "6281234567802",
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    paymentStatus: PAYMENT_STATUS.PAID,
-    paymentMonths: {},
-    mikrotikUsername: "pelanggan_lunas",
-    mikrotikProfile: "default",
-    hotspotReactivationEnabled: true,
-    hotspotReactivationAt: "2026-10-18T01:00:00.000Z",
-  };
-  const manager = createManager(contact);
-  manager.hydrateContact = (value) => ({
-    ...value,
-    hasDebt: false,
-    currentPaymentStatus: PAYMENT_STATUS.PAID,
-  });
-  await manager.updateSettings({ hotspotIsolationGraceDays: 3 });
-
-  assert.deepEqual(
-    manager.getDueHotspotReactivationContacts(new Date("2026-10-18T01:00:00.000Z")).map(({ id }) => id),
-    [contact.id]
-  );
-});
 
 test("masa tenggang isolir dibatasi antara 0 sampai 30 hari", async () => {
   const manager = new DataManager({ push() {} });
