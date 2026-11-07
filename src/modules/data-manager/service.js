@@ -104,18 +104,12 @@ class DataManager extends CustomerDataManager {
         paymentMessageTemplateFullPaid: payload.paymentMessageTemplateFullPaid !== undefined
           ? sanitizeMultilineText(payload.paymentMessageTemplateFullPaid) || current.paymentMessageTemplateFullPaid
           : current.paymentMessageTemplateFullPaid,
-        paymentMessageTemplateActivePeriod: payload.paymentMessageTemplateActivePeriod !== undefined
-          ? sanitizeMultilineText(payload.paymentMessageTemplateActivePeriod) || current.paymentMessageTemplateActivePeriod
-          : current.paymentMessageTemplateActivePeriod,
         prepaidPackagePaymentMessageTemplate: payload.prepaidPackagePaymentMessageTemplate !== undefined
           ? sanitizeMultilineText(payload.prepaidPackagePaymentMessageTemplate) || current.prepaidPackagePaymentMessageTemplate
           : current.prepaidPackagePaymentMessageTemplate,
         paymentHotspotAccountMessageTemplate: payload.paymentHotspotAccountMessageTemplate !== undefined
           ? sanitizeMultilineText(payload.paymentHotspotAccountMessageTemplate) || current.paymentHotspotAccountMessageTemplate
           : current.paymentHotspotAccountMessageTemplate,
-        activePeriodReminderMessageTemplate: payload.activePeriodReminderMessageTemplate !== undefined
-          ? sanitizeMultilineText(payload.activePeriodReminderMessageTemplate) || current.activePeriodReminderMessageTemplate
-          : current.activePeriodReminderMessageTemplate,
         prepaidPackageReminderMessageTemplate: payload.prepaidPackageReminderMessageTemplate !== undefined
           ? sanitizeMultilineText(payload.prepaidPackageReminderMessageTemplate) || current.prepaidPackageReminderMessageTemplate
           : current.prepaidPackageReminderMessageTemplate,
