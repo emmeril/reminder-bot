@@ -222,15 +222,15 @@ test("reminder biasa, tenggang nol, dan jadwal percobaan ulang tidak ikut digese
   }), new Date(retryAt).getTime());
 });
 
-test("scheduler mengirim saat jatuh tempo lalu H-1 dan hanya menjadwalkan bulan berikutnya sekali", async () => {
+test("scheduler prabayar mengirim pengingat kedaluwarsa dan masa tenggang tanpa membuat tagihan berikutnya", async () => {
   const reminder = {
     id: "two-stage-reminder",
     contactId: "two-stage-contact",
     contactName: "Pelanggan Dua Tahap",
     phoneNumber: "6281234567890",
     reminderDateTime: new Date(Date.now() - 1000).toISOString(),
-    reminderKind: REMINDER_KINDS.BILLING,
-    templateName: "Penagihan.txt",
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    templateName: "PaketPrabayar",
     message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
     messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   };
@@ -243,6 +243,7 @@ test("scheduler mengirim saat jatuh tempo lalu H-1 dan hanya menjadwalkan bulan 
   const contact = {
     id: "two-stage-contact",
     subscriptionType: "RECURRING",
+    billingCycle: "PREPAID",
     paymentStatus: "UNPAID",
     currentPaymentStatus: "UNPAID",
     debtCount: 0,
@@ -252,7 +253,7 @@ test("scheduler mengirim saat jatuh tempo lalu H-1 dan hanya menjadwalkan bulan 
     getSettings: () => ({
       autoRescheduleMonthly: true,
       hotspotIsolationGraceDays: 1,
-      gracePeriodReminderMessageTemplate: "*Pengingat Masa Tenggang*\n\nHalo {{name}}, bayar sebelum {{isolationDate}}.",
+      prepaidPackageReminderMessageTemplate: "*Pengingat Paket WiFi*\n\nHalo {{name}}, paket berakhir {{activeUntil}}.",
       notifyAdminsOnDelivery: false,
     }),
     getTimezone: () => "Asia/Jakarta",
@@ -306,12 +307,11 @@ test("scheduler mengirim saat jatuh tempo lalu H-1 dan hanya menjadwalkan bulan 
   await scheduler.processDueReminders();
 
   assert.equal(sentMessages.length, 2);
-  assert.match(sentMessages[0], /^\*Pengingat Pembayaran WiFi\*/);
-  assert.match(sentMessages[1], /^\*Pengingat Masa Tenggang\*/);
+  assert.match(sentMessages[0], /^\*Pengingat Paket WiFi\*/);
+  assert.match(sentMessages[1], /^\*Pengingat Paket WiFi\*/);
   assert.equal(graceTransitions, 1);
   assert.equal(histories.length, 2);
-  assert.equal(nextReminders.length, 1);
-  assert.equal(nextReminders[0].reminderKind, REMINDER_KINDS.BILLING);
+  assert.equal(nextReminders.length, 0);
 });
 
 test("reminder menampilkan nominal setiap periode pada tagihan akumulasi", () => {
@@ -811,7 +811,7 @@ test("reminder dengan dua tunggakan dihentikan tanpa WhatsApp dan tanpa jadwal b
   assert.equal(created.length, 0);
 });
 
-test("WA reminder yang gagal tetap diarsipkan dan dijadwalkan bulan berikutnya", async () => {
+test("WA reminder yang gagal tetap diarsipkan tanpa membuat tagihan otomatis berikutnya", async () => {
   const timeZone = "Asia/Jakarta";
   const scheduledAt = new Date(Date.now() - 60_000);
   const currentMonthName = scheduledAt.toLocaleString("id-ID", { month: "long", timeZone });
@@ -834,7 +834,7 @@ test("WA reminder yang gagal tetap diarsipkan dan dijadwalkan bulan berikutnya",
     getSettings: () => ({ autoRescheduleMonthly: true, notifyAdminsOnDelivery: false }),
     getTimezone: () => timeZone,
     getSortedReminders: () => Array.from(reminders.values()),
-    getResolvedReminderContact: () => ({ paymentStatus: "UNPAID" }),
+    getResolvedReminderContact: () => ({ id: "contact-1", subscriptionType: "RECURRING", billingCycle: "PREPAID", paymentStatus: "UNPAID" }),
     claimDueReminder: async (id) => reminders.get(id) || null,
     markReminderDeliveryAttempt: async (id) => {
       const current = reminders.get(id);
@@ -878,8 +878,8 @@ test("WA reminder yang gagal tetap diarsipkan dan dijadwalkan bulan berikutnya",
   assert.equal(archived.length, 1);
   assert.equal(archived[0].deliveryStatus, "FAILED");
   assert.match(archived[0].deliveryError, /WhatsApp tidak tersambung/);
-  assert.equal(created.length, 1);
-  assert.equal(created[0].contactId, reminder.contactId);
+  assert.equal(created.length, 0);
+  
 
   await scheduler.processDueReminders();
   assert.equal(sendCount, 1);
@@ -900,7 +900,7 @@ test("WA tidak siap tidak menahan pengarsipan dan jadwal reminder berikutnya", a
     getSettings: () => ({ autoRescheduleMonthly: true }),
     getTimezone: () => "Asia/Jakarta",
     getSortedReminders: () => Array.from(reminders.values()),
-    getResolvedReminderContact: () => ({ paymentStatus: "UNPAID" }),
+    getResolvedReminderContact: () => ({ id: "contact-1", subscriptionType: "RECURRING", billingCycle: "PREPAID", paymentStatus: "UNPAID" }),
     claimDueReminder: async (id) => reminders.get(id) || null,
     markReminderDeliveryAttempt: async () => ({ ...reminder, deliveryAttempts: 1 }),
     releaseReminderClaim: async () => null,
@@ -928,10 +928,10 @@ test("WA tidak siap tidak menahan pengarsipan dan jadwal reminder berikutnya", a
 
   assert.equal(archived.length, 1);
   assert.equal(archived[0].deliveryStatus, "FAILED");
-  assert.equal(created.length, 1);
+  assert.equal(created.length, 0);
 });
 
-test("provider WA yang dimatikan tetap memfinalkan reminder dan membuat jadwal berikutnya", async () => {
+test("provider WA yang dimatikan tetap memfinalkan reminder tanpa membuat tagihan otomatis berikutnya", async () => {
   const reminder = {
     id: "reminder-provider-disabled",
     contactId: "contact-1",
@@ -946,7 +946,7 @@ test("provider WA yang dimatikan tetap memfinalkan reminder dan membuat jadwal b
     getSettings: () => ({ autoRescheduleMonthly: true }),
     getTimezone: () => "Asia/Jakarta",
     getSortedReminders: () => Array.from(reminders.values()),
-    getResolvedReminderContact: () => ({ paymentStatus: "UNPAID" }),
+    getResolvedReminderContact: () => ({ id: "contact-1", subscriptionType: "RECURRING", billingCycle: "PREPAID", paymentStatus: "UNPAID" }),
     claimDueReminder: async (id) => reminders.get(id) || null,
     markReminderDeliveryAttempt: async () => ({ ...reminder, deliveryAttempts: 1 }),
     releaseReminderClaim: async () => null,
@@ -969,10 +969,10 @@ test("provider WA yang dimatikan tetap memfinalkan reminder dan membuat jadwal b
 
   assert.equal(archived.length, 1);
   assert.equal(archived[0].deliveryStatus, "FAILED");
-  assert.equal(created.length, 1);
+  assert.equal(created.length, 0);
 });
 
-test("kegagalan notifikasi admin tidak menahan reschedule reminder yang terkirim", async () => {
+test("kegagalan notifikasi admin tanpa membuat tagihan otomatis berikutnya", async () => {
   const reminder = {
     id: "reminder-admin-notification-failed",
     contactId: "contact-1",
@@ -986,7 +986,7 @@ test("kegagalan notifikasi admin tidak menahan reschedule reminder yang terkirim
     getSettings: () => ({ autoRescheduleMonthly: true, notifyAdminsOnDelivery: true }),
     getTimezone: () => "Asia/Jakarta",
     getSortedReminders: () => Array.from(reminders.values()),
-    getResolvedReminderContact: () => ({ paymentStatus: "UNPAID" }),
+    getResolvedReminderContact: () => ({ id: "contact-1", subscriptionType: "RECURRING", billingCycle: "PREPAID", paymentStatus: "UNPAID" }),
     claimDueReminder: async (id) => reminders.get(id) || null,
     markReminderDeliveryAttempt: async () => ({ ...reminder, deliveryAttempts: 1 }),
     releaseReminderClaim: async () => null,
@@ -1004,7 +1004,7 @@ test("kegagalan notifikasi admin tidak menahan reschedule reminder yang terkirim
 
   await new ReminderScheduler(notificationBot, dataManager, { push() {} }).processDueReminders();
 
-  assert.equal(created.length, 1);
+  assert.equal(created.length, 0);
 });
 
 test("reminder baru diarsipkan sent setelah provider memberi konfirmasi", async () => {
@@ -1054,7 +1054,7 @@ test("reminder baru diarsipkan sent setelah provider memberi konfirmasi", async 
   assert.equal(archived[0].providerMessageId, "bridge-confirmation-1");
 });
 
-test("reminder dengan penanda kegagalan lama tetap dijadwalkan bulan berikutnya", async () => {
+test("reminder dengan penanda kegagalan lama tanpa membuat tagihan otomatis berikutnya", async () => {
   const scheduledAt = new Date(Date.now() - 60_000);
   const reminder = {
     id: "reminder-lama",
@@ -1104,11 +1104,11 @@ test("reminder dengan penanda kegagalan lama tetap dijadwalkan bulan berikutnya"
   assert.equal(archived.length, 1);
   assert.equal(archived[0].deliveryStatus, "FAILED");
   assert.equal(archived[0].deliveryError, reminder.lastDeliveryError);
-  assert.equal(created.length, 1);
-  assert.equal(created[0].contactId, reminder.contactId);
+  assert.equal(created.length, 0);
+  
 });
 
-test("pengiriman WA yang dijeda tetap memfinalkan reminder dan membuat jadwal berikutnya", async () => {
+test("pengiriman WA yang dijeda tetap memfinalkan reminder tanpa membuat tagihan otomatis berikutnya", async () => {
   const reminder = {
     id: "reminder-outbound-paused",
     contactId: "contact-1",
@@ -1123,7 +1123,7 @@ test("pengiriman WA yang dijeda tetap memfinalkan reminder dan membuat jadwal be
     getSettings: () => ({ autoRescheduleMonthly: true }),
     getTimezone: () => "Asia/Jakarta",
     getSortedReminders: () => Array.from(reminders.values()),
-    getResolvedReminderContact: () => ({ paymentStatus: "UNPAID" }),
+    getResolvedReminderContact: () => ({ id: "contact-1", subscriptionType: "RECURRING", billingCycle: "PREPAID", paymentStatus: "UNPAID" }),
     claimDueReminder: async (id) => reminders.get(id) || null,
     markReminderDeliveryAttempt: async () => ({ ...reminder, deliveryAttempts: 1 }),
     releaseReminderClaim: async () => null,
@@ -1149,7 +1149,7 @@ test("pengiriman WA yang dijeda tetap memfinalkan reminder dan membuat jadwal be
 
   assert.equal(archived.length, 1);
   assert.equal(archived[0].deliveryStatus, "FAILED");
-  assert.equal(created.length, 1);
+  assert.equal(created.length, 0);
 });
 
 test("reminder processing yang terputus tidak dikirim ulang", async () => {
