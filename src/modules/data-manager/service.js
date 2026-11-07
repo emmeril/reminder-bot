@@ -14,7 +14,6 @@ const {
   getContactBillingPeriod,
   getContactBillingStartPeriod,
   isOneTimeSubscriptionEnded,
-  isPostpaidBilling,
   isPrepaidPackage,
   isRecurringSubscription,
   listBillingPeriods,
@@ -875,7 +874,6 @@ class DataManager extends CustomerDataManager {
         billingPeriod
       ) <= 0;
       const isPaid = billingPaused
-        || (isPostpaidBilling(contact) && !billingStarted)
         || currentPayment?.status === PAYMENT_STATUS.PAID;
       const nextStatus = isPaid ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.UNPAID;
       const nextPaymentDate = isPaid && !billingPaused ? currentPayment?.paidDate || null : null;
