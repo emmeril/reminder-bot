@@ -29,7 +29,6 @@ const {
   getContactHotspotAccessMode,
   getHotspotUnavailableMessage,
   isHotspotAccountUnavailable,
-  isPostpaidBilling,
   isPrepaidPackage,
   isRecurringSubscription,
   normalizeBillingCycle,
@@ -1317,12 +1316,11 @@ class DataManagerCore {
       ? monthlyAmount
       : (currentPaymentStatus === PAYMENT_STATUS.PAID ? 0 : monthlyAmount);
     const debtAmount = Math.max(0, Number(hydrated.debtAmount) || 0);
-    const includeHistoryPeriod = (period) => !isPostpaidBilling(contact) || period <= currentKey;
     const historyByPeriod = new Map(
       Object.entries(hydrated.paymentMonths || {})
         .filter(([period]) => !prepaidPackage
           && /^\d{4}-\d{2}$/.test(period)
-          && includeHistoryPeriod(period))
+          && period <= currentKey)
         .map(([period, payment]) => {
           const paidAmount = this.getPaymentPaidAmount(payment, monthlyAmount);
           return [period, {
