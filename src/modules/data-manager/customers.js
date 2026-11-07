@@ -831,16 +831,15 @@ class CustomerDataManager extends DataManagerCore {
     if (existing) return { purchase: existing, added: false };
 
     contact.activePeriodPurchases.push(purchase);
-    const prepaidPackage = isPrepaidPackage(contact);
-    contact.billingPausedForArrears = prepaidPackage ? false : true;
-    contact.billingPausedAfterPeriod = prepaidPackage ? null : contact.billingPausedAfterPeriod;
+    contact.billingPausedForArrears = false;
+    contact.billingPausedAfterPeriod = null;
     contact.hotspotSuspendedForArrears = false;
-    contact.hotspotManualActivationWithArrears = prepaidPackage ? false : true;
-    contact.hotspotReactivationEnabled = prepaidPackage;
+    contact.hotspotManualActivationWithArrears = false;
+    contact.hotspotReactivationEnabled = true;
     contact.hotspotReactivationAt = purchase.activeUntil;
     contact.paymentStatus = PAYMENT_STATUS.PAID;
-    contact.paymentDate = prepaidPackage ? purchase.purchasedAt : null;
-    contact.paymentType = prepaidPackage ? PAYMENT_TYPES.ACTIVE_PERIOD : null;
+    contact.paymentDate = purchase.purchasedAt;
+    contact.paymentType = PAYMENT_TYPES.ACTIVE_PERIOD;
     contact.updatedAt = purchase.purchasedAt;
     return { purchase, added: true };
   }
@@ -1205,27 +1204,14 @@ class CustomerDataManager extends DataManagerCore {
         "paymentMessageTemplateArrearsOnly",
         "paymentMessageTemplateCurrentOnly",
         "paymentMessageTemplateFullPaid",
-        "paymentMessageTemplateActivePeriod",
         "prepaidPackagePaymentMessageTemplate",
         "paymentHotspotAccountMessageTemplate",
-        "activePeriodReminderMessageTemplate",
         "prepaidPackageReminderMessageTemplate",
       ];
       this.settings = { ...settings };
       if (currentVersion < 2) {
         for (const key of templateKeys) {
           this.settings[key] = DEFAULT_SETTINGS[key];
-        }
-      } else {
-        if (settings.paymentMessageTemplateActivePeriod
-          === LEGACY_PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD) {
-          this.settings.paymentMessageTemplateActivePeriod =
-            DEFAULT_SETTINGS.paymentMessageTemplateActivePeriod;
-        }
-        if (settings.activePeriodReminderMessageTemplate
-          === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE) {
-          this.settings.activePeriodReminderMessageTemplate =
-            DEFAULT_SETTINGS.activePeriodReminderMessageTemplate;
         }
       }
       for (const [key, legacyTemplate] of Object.entries(LEGACY_NOTIFICATION_TEMPLATES_V3)) {
@@ -1237,11 +1223,6 @@ class CustomerDataManager extends DataManagerCore {
         === LEGACY_DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE_V4) {
         this.settings.billingReminderMessageTemplate =
           DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE;
-      }
-      if (this.settings.activePeriodReminderMessageTemplate
-        === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V5) {
-        this.settings.activePeriodReminderMessageTemplate =
-          DEFAULT_SETTINGS.activePeriodReminderMessageTemplate;
       }
       if (this.settings.prepaidPackageReminderMessageTemplate
         === LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5) {
@@ -1266,27 +1247,13 @@ class CustomerDataManager extends DataManagerCore {
             ? DEFAULT_SETTINGS.gracePeriodReminderMessageTemplate
             : DEFAULT_REMINDER_MESSAGE_TEMPLATE;
         } else if (reminder.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY) {
-          const contact = this.getResolvedReminderContact(reminder);
-          const prepaidPackage = isPrepaidPackage(contact);
-          const usesLegacyTemporaryCopy = reminder.messageSource
-            === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE
-            || reminder.message === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE
-            || reminder.messageSource === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3
-            || reminder.message === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3
-            || reminder.messageSource === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V5
-            || reminder.message === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V5;
-          const usesLegacyPrepaidCopy = reminder.messageSource
-            === LEGACY_NOTIFICATION_TEMPLATES_V3.prepaidPackageReminderMessageTemplate
-            || reminder.message
-              === LEGACY_NOTIFICATION_TEMPLATES_V3.prepaidPackageReminderMessageTemplate
-            || reminder.messageSource === LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5
-            || reminder.message === LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5;
-          if (currentVersion < 2
-            || (!prepaidPackage && usesLegacyTemporaryCopy)
-            || (prepaidPackage && usesLegacyPrepaidCopy)) {
-            messageTemplate = prepaidPackage
-              ? this.settings.prepaidPackageReminderMessageTemplate
-              : this.settings.activePeriodReminderMessageTemplate;
+          const legacyPrepaidCopy = [
+            LEGACY_NOTIFICATION_TEMPLATES_V3.prepaidPackageReminderMessageTemplate,
+            LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5,
+          ];
+          if (currentVersion < 2 || legacyPrepaidCopy.includes(reminder.messageSource)
+            || legacyPrepaidCopy.includes(reminder.message)) {
+            messageTemplate = this.settings.prepaidPackageReminderMessageTemplate;
           }
         }
         if (!messageTemplate) continue;
@@ -1733,11 +1700,8 @@ class CustomerDataManager extends DataManagerCore {
       phoneNumber: contact.phoneNumber,
       createdAt: new Date().toISOString(),
     };
-    const messageTemplate = isPrepaidPackage(contact)
-      ? (sanitizeMultilineText(this.getSettings().prepaidPackageReminderMessageTemplate)
-        || DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate)
-      : (sanitizeMultilineText(this.getSettings().activePeriodReminderMessageTemplate)
-        || DEFAULT_SETTINGS.activePeriodReminderMessageTemplate);
+    const messageTemplate = sanitizeMultilineText(this.getSettings().prepaidPackageReminderMessageTemplate)
+      || DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate;
 
     Object.assign(reminder, {
       contactId: String(contact.id),
@@ -1749,7 +1713,7 @@ class CustomerDataManager extends DataManagerCore {
       activePeriodUntil: activeUntil.toISOString(),
       message: messageTemplate,
       messageSource: messageTemplate,
-      templateName: isPrepaidPackage(contact) ? "PaketPrabayar" : "MasaAktifSementara",
+      templateName: "PaketPrabayar",
     });
     delete reminder.nextDeliveryAttemptAt;
     delete reminder.deliveryAttemptedAt;
