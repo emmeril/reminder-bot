@@ -226,39 +226,21 @@ test("menghapus voucher memperbarui jumlah batch dan menghapus batch yang sudah 
   assert.equal(saveCalls, 3);
 });
 
-test("jatuh tempo memakai reminder aktif berikutnya dan status pembayaran periodenya", () => {
+test("jatuh tempo prabayar mengikuti masa aktif layanan dan bukan pembayaran periode kalender", () => {
   const now = new Date();
-  const timeZone = "Asia/Jakarta";
-  const current = getBillingPeriodParts(now, timeZone);
-  const currentKey = makeBillingPeriodKey(current.year, current.month);
-  const nextDate = addMonthsSafely(now, 1, timeZone);
-  const next = getBillingPeriodParts(nextDate, timeZone);
-  const nextKey = makeBillingPeriodKey(next.year, next.month);
+  const nextDate = addMonthsSafely(now, 1, "Asia/Jakarta");
   const contact = {
-    id: "contact-next-due",
-    name: "Pelanggan Bulanan",
-    phoneNumber: "6281234567800",
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    paymentStatus: PAYMENT_STATUS.PAID,
-    paymentMonths: {
-      [currentKey]: { status: PAYMENT_STATUS.PAID },
-    },
+    id: "contact-next-due", subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID,
+    hotspotReactivationEnabled: true, hotspotReactivationAt: nextDate.toISOString(),
+    paymentMonths: {},
   };
   const manager = createManager(contact);
-  manager.reminders.set("next-reminder", {
-    id: "next-reminder",
-    contactId: contact.id,
-    phoneNumber: contact.phoneNumber,
-    reminderDateTime: nextDate.toISOString(),
-  });
-
-  assert.deepEqual(manager.buildDueDateInfo(contact), {
-    dueDate: nextDate.toISOString(),
-    dueStatus: "UPCOMING",
-  });
-
-  contact.paymentMonths[nextKey] = { status: PAYMENT_STATUS.PAID };
-  assert.equal(manager.buildDueDateInfo(contact).dueStatus, "PAID");
+  const due = manager.buildDueDateInfo(contact);
+  assert.equal(due.dueDate, nextDate.toISOString());
+  assert.equal(due.dueStatus, "UPCOMING");
+  contact.paymentMonths["2026-01"] = { status: PAYMENT_STATUS.UNPAID };
+  assert.deepEqual(manager.buildDueDateInfo(contact), due);
 });
 
 test("riwayat reminder lama tidak mengalahkan reminder aktif berikutnya", () => {
@@ -326,49 +308,23 @@ test("jatuh tempo membedakan jadwal bulanan yang hilang dan pelanggan sekali ber
   });
 });
 
-test("pembayaran bulan berjalan menambah masa aktif dan memindahkan jatuh tempo", async () => {
+test("pembayaran kalender tidak boleh memperpanjang paket prabayar di luar jalur pembelian", async () => {
   const now = new Date();
-  const current = getBillingPeriodParts(now, "Asia/Jakarta");
-  const currentKey = makeBillingPeriodKey(current.year, current.month);
-  const previousDueDate = addDaysSafely(now, 5, "Asia/Jakarta");
+  const nextDate = addDaysSafely(now, 5, "Asia/Jakarta");
   const contact = {
-    id: "contact-prepaid-payment",
-    name: "Pelanggan Prabayar",
-    phoneNumber: "6281234567804",
-    createdAt: now.toISOString(),
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    monthlyPaymentAmount: 100_000,
-    paymentStatus: PAYMENT_STATUS.UNPAID,
-    paymentMonths: {
-      [currentKey]: { status: PAYMENT_STATUS.UNPAID, paidAmount: 0 },
-    },
-    hotspotReactivationEnabled: true,
-    hotspotReactivationAt: previousDueDate.toISOString(),
+    id: "contact-prepaid-payment", subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID, monthlyPaymentAmount: 100_000,
+    hotspotReactivationEnabled: true, hotspotReactivationAt: nextDate.toISOString(),
+    activePeriodPurchases: [],
   };
   const manager = createManager(contact);
-  manager.reminders.set("prepaid-reminder", {
-    id: "prepaid-reminder",
-    contactId: contact.id,
-    phoneNumber: contact.phoneNumber,
-    reminderDateTime: previousDueDate.toISOString(),
-    reminderKind: REMINDER_KINDS.BILLING,
-    message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
-    messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
-    templateName: "Penagihan.txt",
-  });
-
-  const updated = await manager.updatePaymentStatus(
-    contact.id,
-    PAYMENT_STATUS.PAID,
-    PAYMENT_TYPES.CURRENT_ONLY
+  await assert.rejects(
+    () => manager.updatePaymentStatus(contact.id, PAYMENT_STATUS.PAID, PAYMENT_TYPES.CURRENT_ONLY),
+    /Pelanggan prabayar dibayar melalui tindakan pembelian paket satu bulan/
   );
-  const expectedDueDate = addMonthsSafely(updated.serviceActiveFrom, 1, "Asia/Jakarta");
-
-  assert.equal(updated.hotspotReactivationAt, expectedDueDate.toISOString());
-  assert.equal(new Date(updated.serviceActiveFrom).getTime() >= now.getTime(), true);
-  assert.equal(updated.serviceActiveUntil, expectedDueDate.toISOString());
-  assert.equal(manager.getReminder("prepaid-reminder").reminderDateTime, expectedDueDate.toISOString());
-  assert.equal(manager.buildDueDateInfo(contact).dueDate, expectedDueDate.toISOString());
+  assert.equal(contact.hotspotReactivationAt, nextDate.toISOString());
+  assert.equal(contact.activePeriodPurchases.length, 0);
+  assert.equal(manager.reminders.size, 0);
 });
 
 test("prabayar menggunakan periode kalender berjalan untuk tampilan tanpa membuat tunggakan", () => {
@@ -545,36 +501,28 @@ test("reminder bulanan yang hilang dibuat ulang dari jadwal layanan", async () =
   assert.equal(saves, 1);
 });
 
-test("reminder lama diselaraskan dengan jadwal layanan saat startup", async () => {
-  const serviceSchedule = "2026-12-02T10:54:00.000Z";
+test("audit startup mengonversi reminder tagihan lama menjadi kedaluwarsa paket prabayar", async () => {
+  const expiry = "2026-12-02T10:54:00.000Z";
   const contact = {
-    id: "contact-stale-reminder",
-    name: "Pelanggan Jadwal Berubah",
-    phoneNumber: "6281234567803",
-    createdAt: new Date().toISOString(),
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    monthlyPaymentAmount: 75_000,
-    paymentStatus: PAYMENT_STATUS.UNPAID,
-    paymentMonths: {},
-    hotspotReactivationAt: serviceSchedule,
+    id: "contact-stale-reminder", name: "Pelanggan Jadwal Berubah",
+    phoneNumber: "6281234567803", subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID, monthlyPaymentAmount: 75_000,
+    hotspotReactivationAt: expiry,
   };
   const manager = createManager(contact);
   let saves = 0;
   manager.saveReminders = async () => { saves += 1; };
   manager.reminders.set("stale-reminder", {
-    id: "stale-reminder",
-    contactId: contact.id,
-    phoneNumber: contact.phoneNumber,
+    id: "stale-reminder", contactId: contact.id, phoneNumber: contact.phoneNumber,
     reminderDateTime: "2026-12-01T10:54:00.000Z",
-    reminderKind: REMINDER_KINDS.BILLING,
+    reminderKind: REMINDER_KINDS.BILLING, templateName: "Penagihan.txt",
     message: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
-    messageSource: DEFAULT_REMINDER_MESSAGE_TEMPLATE,
-    templateName: "Penagihan.txt",
   });
-
   await manager.repairMissingRecurringReminders();
-  assert.equal(manager.getReminder("stale-reminder").reminderDateTime, serviceSchedule);
-  assert.equal(manager.getReminder("stale-reminder").reminderKind, REMINDER_KINDS.BILLING);
+  const migrated = manager.getReminder("stale-reminder");
+  assert.equal(migrated.reminderDateTime, expiry);
+  assert.equal(migrated.reminderKind, REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY);
+  assert.equal(migrated.templateName, "PaketPrabayar");
   assert.equal(saves, 1);
   assert.equal(await manager.repairMissingRecurringReminders(), 0);
   assert.equal(saves, 1);
@@ -633,37 +581,25 @@ test("reminder tagihan lama pelanggan prabayar dimigrasikan menjadi pengingat pa
   assert.equal(saves, 1);
 });
 
-test("reminder masa aktif sementara tidak ditimpa saat audit startup", async () => {
+test("audit startup menyelaraskan jatuh tempo reminder paket dengan tanggal layanan", async () => {
+  const expiry = "2026-12-10T01:00:00.000Z";
   const contact = {
-    id: "contact-active-period-reminder",
-    name: "Pelanggan Masa Aktif",
-    phoneNumber: "6281234567804",
-    createdAt: new Date().toISOString(),
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    monthlyPaymentAmount: 75_000,
-    paymentStatus: PAYMENT_STATUS.PAID,
-    paymentMonths: {},
-    hotspotReactivationAt: "2026-12-10T01:00:00.000Z",
+    id: "contact-active-period-reminder", name: "Pelanggan Paket",
+    phoneNumber: "6281234567804", subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID, monthlyPaymentAmount: 75_000,
+    hotspotReactivationAt: expiry,
   };
   const manager = createManager(contact);
   manager.reminders.set("active-period-reminder", {
-    id: "active-period-reminder",
-    contactId: contact.id,
-    phoneNumber: contact.phoneNumber,
+    id: "active-period-reminder", contactId: contact.id, phoneNumber: contact.phoneNumber,
     reminderDateTime: "2026-12-07T01:00:00.000Z",
     reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
-    activePeriodUntil: contact.hotspotReactivationAt,
+    templateName: "PaketPrabayar", activePeriodUntil: expiry,
   });
-
-  assert.equal(await manager.repairMissingRecurringReminders(), 0);
-  assert.equal(
-    manager.getReminder("active-period-reminder").reminderDateTime,
-    "2026-12-07T01:00:00.000Z"
-  );
-  assert.equal(
-    manager.getReminder("active-period-reminder").reminderKind,
-    REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY
-  );
+  await manager.repairMissingRecurringReminders();
+  assert.equal(manager.getReminder("active-period-reminder").reminderDateTime, expiry);
+  assert.equal(manager.getReminder("active-period-reminder").reminderKind, REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY);
+  assert.equal(manager.reminders.size, 1);
 });
 
 test("reminder jatuh tempo berlanjut ke pengingat masa tenggang H-1", async () => {
