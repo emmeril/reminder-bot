@@ -249,7 +249,7 @@ test("riwayat bulan lama tidak menjadi tunggakan pada paket prabayar", () => {
   });
   assert.deepEqual(Array.from(periods, period => period.key), []);
 });
-test("aksi beli masa aktif tersedia untuk akun menunggak dan memanggil endpoint khusus", async () => {
+test("aksi beli paket prabayar tersedia tanpa menuntut adanya tunggakan", async () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
   const app = createDashboardApp();
@@ -268,7 +268,7 @@ test("aksi beli masa aktif tersedia untuk akun menunggak dan memanggil endpoint 
   assert.match(html, /getActivePeriodPurchaseLabel\(billingActionModal\.contact\)/);
   assert.match(styles, /\.billing-action-active-period \.billing-action-option \{ width: 100%; \}/);
   assert.equal(app.canPurchaseActivePeriod(contact), true);
-  assert.equal(app.canPurchaseActivePeriod({ ...contact, hasDebt: false }), false);
+  assert.equal(app.canPurchaseActivePeriod({ ...contact, hasDebt: false }), true);
   assert.equal(app.canEnableHotspot(contact), false);
 
   let confirmation = null;
@@ -291,7 +291,7 @@ test("aksi beli masa aktif tersedia untuk akun menunggak dan memanggil endpoint 
 
   app.purchaseActivePeriod(contact);
   assert.equal(confirmation.title, "Beli masa aktif satu bulan?");
-  assert.match(confirmation.description, /Tunggakan tetap tersimpan/);
+  assert.match(confirmation.description, /tanpa membuat tunggakan/);
   assert.equal(confirmation.processingMessage, "Mencatat pembelian masa aktif...");
 
   await confirmation.action();
@@ -487,7 +487,7 @@ test("aksi pelanggan prabayar selalu membeli paket satu bulan", () => {
   const contact = { subscriptionType: "RECURRING", monthlyPaymentAmount: 75000, packageActive: false };
   assert.equal(app.canPayCurrentBilling(contact), false);
   assert.equal(app.getCurrentBillingActionLabel(contact), "Beli paket 1 bulan · Rp\u00a075.000");
-  assert.equal(app.getCurrentBillingActionLabel({ ...contact, packageActive: true }), "Tambah paket 1 bulan · Rp\u00a075.000");
+  assert.equal(app.getActivePeriodPurchaseLabel({ ...contact, packageActive: true }), "Tambah paket 1 bulan");
 });
 test("form pelanggan menampilkan prabayar saja dan label siklus selalu prabayar", () => {
   const app = createDashboardApp();
@@ -1283,9 +1283,9 @@ test("filter operasional memakai seluruh nilai yang tampil pada tabel", () => {
   app.filters.contactBilling.search = "mengikuti tarif profile";
   assert.deepEqual(app.filteredBillingContacts.map((contact) => contact.id), ["filter-postpaid"]);
   app.filters.contactBilling.search = "";
-  app.filters.contactBilling.status = "PAYMENT|Lunas Semua";
+  app.filters.contactBilling.search = "pelanggan kantor";
   assert.deepEqual(app.filteredBillingContacts.map((contact) => contact.id), ["filter-postpaid"]);
-  app.filters.contactBilling.status = "ALL";
+  app.filters.contactBilling.search = "";
   app.filters.contactBilling.dueStatus = "NOT_SCHEDULED";
   assert.deepEqual(app.filteredBillingContacts.map((contact) => contact.id), ["filter-prepaid"]);
 
@@ -1333,8 +1333,8 @@ test("filter operasional memakai seluruh nilai yang tampil pada tabel", () => {
   app.filters.sent.status = "DELIVERED";
   assert.deepEqual(app.filteredSent.map((item) => item.id), ["sent-delivered"]);
 
-  assert.match(html, /x-model="filters\.contacts\.billingCycle"/);
-  assert.match(html, /x-model="filters\.contactBilling\.billingCycle"/);
+  assert.doesNotMatch(html, /x-model="filters\.contacts\.billingCycle"/);
+  assert.doesNotMatch(html, /x-model="filters\.contactBilling\.billingCycle"/);
   assert.match(html, /hotspotTableStatusOptions/);
   assert.match(html, /reminderDeliveryTypeOptions/);
   assert.match(html, /sentDeliveryStatuses/);
