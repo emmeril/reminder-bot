@@ -1532,16 +1532,34 @@
               </div>
             </section>
             <section id="settings-messages-panel" role="tabpanel" aria-labelledby="settings-messages-tab" x-cloak x-show="activeSettingsTab === 'messages'" x-transition.opacity class="settings-section notification-settings-section">
-              <div class="settings-section-heading"><span><i class="fa-solid fa-message"></i></span><div><strong>Template notifikasi</strong><small>Pesan otomatis untuk jaringan, hotspot, dan pembayaran</small></div></div>
+              <div class="settings-section-heading"><span><i class="fa-solid fa-message"></i></span><div><strong>Template notifikasi</strong><small>Pesan pembelian dan pengingat paket prabayar, akun pelanggan, serta gangguan AP</small></div></div>
               <div class="notification-template-grid">
-                <label class="notification-template-card tone-danger">
+                <label class="notification-template-card tone-success">
                   <span class="notification-template-header">
-                    <span class="notification-template-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
-                    <span class="notification-template-copy"><strong>AP terputus</strong><small>Dikirim saat perangkat pelanggan terdeteksi offline.</small></span>
-                    <span class="notification-template-badge">Jaringan</span>
+                    <span class="notification-template-icon"><i class="fa-solid fa-box-open"></i></span>
+                    <span class="notification-template-copy"><strong>Pembelian paket prabayar</strong><small>Dikirim setelah pembelian atau perpanjangan paket satu bulan berhasil.</small></span>
+                    <span class="notification-template-badge">Prabayar</span>
                   </span>
-                  <textarea x-model="forms.settings.apDownMessageTemplate" placeholder="Tulis pesan ketika AP pelanggan terputus..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{host}}</code><code>{{status}}</code><code>{{supportSignature}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code></span></span>
+                  <textarea x-model="forms.settings.prepaidPackagePaymentMessageTemplate" placeholder="Tulis konfirmasi pembelian paket prabayar..."></textarea>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{paymentAmount}}</code><code>{{activeUntil}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
+                </label>
+                <label class="notification-template-card tone-success">
+                  <span class="notification-template-header">
+                    <span class="notification-template-icon"><i class="fa-solid fa-clock"></i></span>
+                    <span class="notification-template-copy"><strong>Paket prabayar akan berakhir</strong><small>Pengingat ketika paket mendekati kedaluwarsa dan selama masa tenggang.</small></span>
+                    <span class="notification-template-badge">Pengingat prabayar</span>
+                  </span>
+                  <textarea x-model="forms.settings.prepaidPackageReminderMessageTemplate" placeholder="Tulis pengingat paket prabayar..."></textarea>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{activeUntil}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
+                </label>
+                <label class="notification-template-card tone-success">
+                  <span class="notification-template-header">
+                    <span class="notification-template-icon"><i class="fa-solid fa-key"></i></span>
+                    <span class="notification-template-copy"><strong>Akun WiFi setelah pembayaran</strong><small>Disertakan pada konfirmasi pembelian paket jika akun hotspot tersedia.</small></span>
+                    <span class="notification-template-badge">Akun WiFi</span>
+                  </span>
+                  <textarea x-model="forms.settings.paymentHotspotAccountMessageTemplate" placeholder="Tulis informasi akun WiFi setelah pembayaran..."></textarea>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{hotspotUsername}}</code><code>{{hotspotPassword}}</code><code>{{hotspotProfile}}</code><code>{{hotspotStatus}}</code><code>{{activeUntil}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-success">
                   <span class="notification-template-header">
@@ -1552,77 +1570,14 @@
                   <textarea x-model="forms.settings.customerAccountMessageTemplate" placeholder="Tulis pesan pengiriman akun pelanggan..."></textarea>
                   <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{phoneNumber}}</code><code>{{portalAccountDetails}}</code><code>{{hotspotAccountDetails}}</code><code>{{portalAccessGuide}}</code><code>{{portalLoginUrl}}</code><code>{{portalUsername}}</code><code>{{portalPassword}}</code><code>{{hotspotUsername}}</code><code>{{hotspotPassword}}</code><code>{{hotspotProfile}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
-                <label class="notification-template-card tone-success">
+                <label class="notification-template-card tone-danger">
                   <span class="notification-template-header">
-                    <span class="notification-template-icon"><i class="fa-solid fa-key"></i></span>
-                    <span class="notification-template-copy"><strong>Akun WiFi setelah pembayaran</strong><small>Ditambahkan otomatis ke setiap konfirmasi pembayaran jika akun hotspot tersedia.</small></span>
-                    <span class="notification-template-badge">Akun WiFi</span>
+                    <span class="notification-template-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                    <span class="notification-template-copy"><strong>AP terputus</strong><small>Dikirim saat perangkat pelanggan terdeteksi offline.</small></span>
+                    <span class="notification-template-badge">Jaringan</span>
                   </span>
-                  <textarea x-model="forms.settings.paymentHotspotAccountMessageTemplate" placeholder="Tulis informasi akun WiFi setelah pembayaran..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{hotspotUsername}}</code><code>{{hotspotPassword}}</code><code>{{hotspotProfile}}</code><code>{{hotspotStatus}}</code><code>{{activeUntil}}</code></span></span>
-                </label>
-                <label class="notification-template-card tone-amber">
-                  <span class="notification-template-header">
-                    <span class="notification-template-icon"><i class="fa-solid fa-file-invoice-dollar"></i></span>
-                    <span class="notification-template-copy"><strong>Pengingat tagihan tertunggak</strong><small>Dikirim manual dari tombol Kirim pengingat pada tab Tagihan.</small></span>
-                    <span class="notification-template-badge">Pengingat manual</span>
-                  </span>
-                  <textarea x-model="forms.settings.billingReminderMessageTemplate" placeholder="Tulis pesan pengingat tagihan dan tunggakan..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{phoneNumber}}</code><code>{{billingPeriod}}</code><code>{{billingDetails}}</code><code>{{monthlyAmount}}</code><code>{{currentAmount}}</code><code>{{debtCount}}</code><code>{{debtAmount}}</code><code>{{debtPeriods}}</code><code>{{totalAmount}}</code><code>{{dueDate}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
-                </label>
-                <label class="notification-template-card tone-amber">
-                  <span class="notification-template-header">
-                    <span class="notification-template-icon"><i class="fa-solid fa-hourglass-half"></i></span>
-                    <span class="notification-template-copy"><strong>Pengingat masa tenggang</strong><small>Dikirim otomatis H-1 sebelum masa tenggang berakhir.</small></span>
-                    <span class="notification-template-badge">Reminder otomatis</span>
-                  </span>
-                  <textarea x-model="forms.settings.gracePeriodReminderMessageTemplate" placeholder="Tulis pesan pengingat selama masa tenggang..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{phoneNumber}}</code><code>{{date}}</code><code>{{dateTime}}</code><code>{{graceDays}}</code><code>{{isolationDate}}</code><code>{{renewalStatusInfo}}</code><code>{{billingPeriod}}</code><code>{{billingDetails}}</code><code>{{monthlyAmount}}</code><code>{{currentAmount}}</code><code>{{debtCount}}</code><code>{{debtAmount}}</code><code>{{debtPeriods}}</code><code>{{totalAmount}}</code><code>{{totalPeriods}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
-                </label>
-                <label class="notification-template-card tone-amber">
-                  <span class="notification-template-header">
-                    <span class="notification-template-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
-                    <span class="notification-template-copy"><strong>Pembayaran tunggakan</strong><small>Konfirmasi pembayaran tunggakan penuh atau sebagian.</small></span>
-                    <span class="notification-template-badge">Tunggakan</span>
-                  </span>
-                  <textarea x-model="forms.settings.paymentMessageTemplateArrearsOnly" placeholder="Tulis konfirmasi pembayaran tunggakan..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{paymentAmount}}</code><code>{{remainingDebtAmount}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
-                </label>
-                <label class="notification-template-card tone-violet">
-                  <span class="notification-template-header">
-                    <span class="notification-template-icon"><i class="fa-solid fa-calendar-check"></i></span>
-                    <span class="notification-template-copy"><strong>Pembayaran periode tagihan</strong><small>Konfirmasi pembayaran periode yang sedang ditagih.</small></span>
-                    <span class="notification-template-badge">Periode tagihan</span>
-                  </span>
-                  <textarea x-model="forms.settings.paymentMessageTemplateCurrentOnly" placeholder="Tulis konfirmasi pembayaran periode tagihan..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{billingPeriod}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
-                </label>
-                <label class="notification-template-card tone-success">
-                  <span class="notification-template-header">
-                    <span class="notification-template-icon"><i class="fa-solid fa-box-open"></i></span>
-                    <span class="notification-template-copy"><strong>Pembelian paket prabayar</strong><small>Konfirmasi pembelian paket satu bulan tanpa tunggakan.</small></span>
-                    <span class="notification-template-badge">Prabayar</span>
-                  </span>
-                  <textarea x-model="forms.settings.prepaidPackagePaymentMessageTemplate" placeholder="Tulis konfirmasi pembelian paket prabayar..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{paymentAmount}}</code><code>{{activeUntil}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
-                </label>
-                <label class="notification-template-card tone-success">
-                  <span class="notification-template-header">
-                    <span class="notification-template-icon"><i class="fa-solid fa-clock"></i></span>
-                    <span class="notification-template-copy"><strong>Paket prabayar akan berakhir</strong><small>Dikirim sebelum masa aktif paket pelanggan habis.</small></span>
-                    <span class="notification-template-badge">Pengingat prabayar</span>
-                  </span>
-                  <textarea x-model="forms.settings.prepaidPackageReminderMessageTemplate" placeholder="Tulis pengingat paket prabayar..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{activeUntil}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
-                </label>
-                <label class="notification-template-card tone-success">
-                  <span class="notification-template-header">
-                    <span class="notification-template-icon"><i class="fa-solid fa-circle-check"></i></span>
-                    <span class="notification-template-copy"><strong>Pembayaran lunas</strong><small>Konfirmasi bahwa seluruh tagihan pelanggan telah lunas.</small></span>
-                    <span class="notification-template-badge">Lunas</span>
-                  </span>
-                  <textarea x-model="forms.settings.paymentMessageTemplateFullPaid" placeholder="Tulis konfirmasi pembayaran lunas..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
+                  <textarea x-model="forms.settings.apDownMessageTemplate" placeholder="Tulis pesan ketika AP pelanggan terputus..."></textarea>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{host}}</code><code>{{status}}</code><code>{{supportSignature}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code></span></span>
                 </label>
               </div>
             </section>
