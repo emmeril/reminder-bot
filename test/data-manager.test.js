@@ -3160,7 +3160,7 @@ test("persiapan akun hotspot menyimpan pelanggan sebagai PENDING", async () => {
   assert.equal(result.pelanggan.hotspotProvisioningStatus, "PENDING");
 });
 
-test("akun portal dibuat otomatis dari kredensial hotspot pelanggan lama", async () => {
+test("akun portal otomatis memakai password acak terpisah dari hotspot", async () => {
   const manager = new DataManager({ push() {} });
   manager.contacts.set("contact-portal", {
     id: "contact-portal",
@@ -3182,7 +3182,7 @@ test("akun portal dibuat otomatis dari kredensial hotspot pelanggan lama", async
 
   assert.equal(count, 1);
   assert.match(account.account.password, /^scrypt:v1:/);
-  assert.equal(await verifyPortalPassword("67810", account.account.password), true);
+  assert.equal(await verifyPortalPassword("67810", account.account.password), false);
   assert.equal(account.contact.id, "contact-portal");
   assert.equal(portal.customer.name, "Pelanggan Portal");
   assert.equal(portal.hotspot.username, "pelanggan_portal");
