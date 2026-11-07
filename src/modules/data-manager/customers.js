@@ -8,14 +8,10 @@ const {
   DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE,
   DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   DEFAULT_SETTINGS,
-  LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE,
-  LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3,
-  LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V5,
   LEGACY_DEFAULT_REMINDER_MESSAGE_TEMPLATE_V3,
   LEGACY_DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE_V4,
   LEGACY_NOTIFICATION_TEMPLATES_V3,
   LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5,
-  LEGACY_PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD,
   PAYMENT_STATUS,
   PAYMENT_TYPES,
   REMINDER_KINDS,
@@ -31,7 +27,6 @@ const {
   getContactBillingStartPeriod,
   getContactHotspotAccessMode,
   isOneTimeSubscriptionEnded,
-  isPostpaidBilling,
   isPrepaidPackage,
   isRecurringSubscription,
   listBillingPeriods,
@@ -724,7 +719,6 @@ class CustomerDataManager extends DataManagerCore {
     const billingStarted = compareBillingPeriods(startPeriod, { year, month }) <= 0;
     const effectivePaymentStatus = subscriptionEnded
       || billingPausedForArrears
-      || (isPostpaidBilling(contact) && !billingStarted)
       ? PAYMENT_STATUS.PAID
       : (currentPayment?.status || (isActivePeriod
         ? String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase()
@@ -833,16 +827,15 @@ class CustomerDataManager extends DataManagerCore {
     if (existing) return { purchase: existing, added: false };
 
     contact.activePeriodPurchases.push(purchase);
-    const prepaidPackage = isPrepaidPackage(contact);
-    contact.billingPausedForArrears = prepaidPackage ? false : true;
-    contact.billingPausedAfterPeriod = prepaidPackage ? null : contact.billingPausedAfterPeriod;
+    contact.billingPausedForArrears = false;
+    contact.billingPausedAfterPeriod = null;
     contact.hotspotSuspendedForArrears = false;
-    contact.hotspotManualActivationWithArrears = prepaidPackage ? false : true;
-    contact.hotspotReactivationEnabled = prepaidPackage;
+    contact.hotspotManualActivationWithArrears = false;
+    contact.hotspotReactivationEnabled = true;
     contact.hotspotReactivationAt = purchase.activeUntil;
     contact.paymentStatus = PAYMENT_STATUS.PAID;
-    contact.paymentDate = prepaidPackage ? purchase.purchasedAt : null;
-    contact.paymentType = prepaidPackage ? PAYMENT_TYPES.ACTIVE_PERIOD : null;
+    contact.paymentDate = purchase.purchasedAt;
+    contact.paymentType = PAYMENT_TYPES.ACTIVE_PERIOD;
     contact.updatedAt = purchase.purchasedAt;
     return { purchase, added: true };
   }
@@ -1207,27 +1200,14 @@ class CustomerDataManager extends DataManagerCore {
         "paymentMessageTemplateArrearsOnly",
         "paymentMessageTemplateCurrentOnly",
         "paymentMessageTemplateFullPaid",
-        "paymentMessageTemplateActivePeriod",
         "prepaidPackagePaymentMessageTemplate",
         "paymentHotspotAccountMessageTemplate",
-        "activePeriodReminderMessageTemplate",
         "prepaidPackageReminderMessageTemplate",
       ];
       this.settings = { ...settings };
       if (currentVersion < 2) {
         for (const key of templateKeys) {
           this.settings[key] = DEFAULT_SETTINGS[key];
-        }
-      } else {
-        if (settings.paymentMessageTemplateActivePeriod
-          === LEGACY_PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD) {
-          this.settings.paymentMessageTemplateActivePeriod =
-            DEFAULT_SETTINGS.paymentMessageTemplateActivePeriod;
-        }
-        if (settings.activePeriodReminderMessageTemplate
-          === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE) {
-          this.settings.activePeriodReminderMessageTemplate =
-            DEFAULT_SETTINGS.activePeriodReminderMessageTemplate;
         }
       }
       for (const [key, legacyTemplate] of Object.entries(LEGACY_NOTIFICATION_TEMPLATES_V3)) {
@@ -1239,11 +1219,6 @@ class CustomerDataManager extends DataManagerCore {
         === LEGACY_DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE_V4) {
         this.settings.billingReminderMessageTemplate =
           DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE;
-      }
-      if (this.settings.activePeriodReminderMessageTemplate
-        === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V5) {
-        this.settings.activePeriodReminderMessageTemplate =
-          DEFAULT_SETTINGS.activePeriodReminderMessageTemplate;
       }
       if (this.settings.prepaidPackageReminderMessageTemplate
         === LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5) {
@@ -1268,27 +1243,13 @@ class CustomerDataManager extends DataManagerCore {
             ? DEFAULT_SETTINGS.gracePeriodReminderMessageTemplate
             : DEFAULT_REMINDER_MESSAGE_TEMPLATE;
         } else if (reminder.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY) {
-          const contact = this.getResolvedReminderContact(reminder);
-          const prepaidPackage = isPrepaidPackage(contact);
-          const usesLegacyTemporaryCopy = reminder.messageSource
-            === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE
-            || reminder.message === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE
-            || reminder.messageSource === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3
-            || reminder.message === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V3
-            || reminder.messageSource === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V5
-            || reminder.message === LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V5;
-          const usesLegacyPrepaidCopy = reminder.messageSource
-            === LEGACY_NOTIFICATION_TEMPLATES_V3.prepaidPackageReminderMessageTemplate
-            || reminder.message
-              === LEGACY_NOTIFICATION_TEMPLATES_V3.prepaidPackageReminderMessageTemplate
-            || reminder.messageSource === LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5
-            || reminder.message === LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5;
-          if (currentVersion < 2
-            || (!prepaidPackage && usesLegacyTemporaryCopy)
-            || (prepaidPackage && usesLegacyPrepaidCopy)) {
-            messageTemplate = prepaidPackage
-              ? this.settings.prepaidPackageReminderMessageTemplate
-              : this.settings.activePeriodReminderMessageTemplate;
+          const legacyPrepaidCopy = [
+            LEGACY_NOTIFICATION_TEMPLATES_V3.prepaidPackageReminderMessageTemplate,
+            LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5,
+          ];
+          if (currentVersion < 2 || legacyPrepaidCopy.includes(reminder.messageSource)
+            || legacyPrepaidCopy.includes(reminder.message)) {
+            messageTemplate = this.settings.prepaidPackageReminderMessageTemplate;
           }
         }
         if (!messageTemplate) continue;
@@ -1519,22 +1480,7 @@ class CustomerDataManager extends DataManagerCore {
     }
 
     const activeFrom = paidAt;
-    const savedSchedule = new Date(options.previousSchedule || 0);
-    const graceDays = sanitizePositiveInteger(
-      this.getSettings().hotspotIsolationGraceDays,
-      DEFAULT_SETTINGS.hotspotIsolationGraceDays,
-      0,
-      30
-    );
-    const savedScheduleGraceEnd = Number.isFinite(savedSchedule.getTime())
-      ? addDaysSafely(savedSchedule, graceDays, this.getTimezone())
-      : null;
-    const scheduleAnchor = isPostpaidBilling(contact)
-      && Number.isFinite(savedSchedule.getTime())
-      && savedScheduleGraceEnd.getTime() >= paidAt.getTime()
-      ? savedSchedule
-      : activeFrom;
-    const activeUntil = addMonthsSafely(scheduleAnchor, 1, this.getTimezone());
+    const activeUntil = addMonthsSafely(activeFrom, 1, this.getTimezone());
     const nextSchedule = activeUntil.toISOString();
     const changed = contact.hotspotReactivationAt !== nextSchedule
       || !parseBoolean(contact.hotspotReactivationEnabled, false);
@@ -1750,11 +1696,8 @@ class CustomerDataManager extends DataManagerCore {
       phoneNumber: contact.phoneNumber,
       createdAt: new Date().toISOString(),
     };
-    const messageTemplate = isPrepaidPackage(contact)
-      ? (sanitizeMultilineText(this.getSettings().prepaidPackageReminderMessageTemplate)
-        || DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate)
-      : (sanitizeMultilineText(this.getSettings().activePeriodReminderMessageTemplate)
-        || DEFAULT_SETTINGS.activePeriodReminderMessageTemplate);
+    const messageTemplate = sanitizeMultilineText(this.getSettings().prepaidPackageReminderMessageTemplate)
+      || DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate;
 
     Object.assign(reminder, {
       contactId: String(contact.id),
@@ -1766,7 +1709,7 @@ class CustomerDataManager extends DataManagerCore {
       activePeriodUntil: activeUntil.toISOString(),
       message: messageTemplate,
       messageSource: messageTemplate,
-      templateName: isPrepaidPackage(contact) ? "PaketPrabayar" : "MasaAktifSementara",
+      templateName: "PaketPrabayar",
     });
     delete reminder.nextDeliveryAttemptAt;
     delete reminder.deliveryAttemptedAt;
@@ -1841,7 +1784,7 @@ class CustomerDataManager extends DataManagerCore {
       const phoneNumber = normalizePhoneNumber(payload.phoneNumber);
       const linkedApHost = sanitizeInput(String(payload.linkedApHost || ""));
       const subscriptionType = SUBSCRIPTION_TYPES.RECURRING;
-      const billingCycle = normalizeBillingCycle(payload.billingCycle);
+      const billingCycle = BILLING_CYCLES.PREPAID;
       const hotspotFields = this.normalizeContactHotspotFields({ ...payload, subscriptionType });
 
       if (!name) throw new Error("Nama kontak wajib diisi.");
@@ -1852,7 +1795,7 @@ class CustomerDataManager extends DataManagerCore {
       const initialServiceSchedule = addMonthsSafely(now, 1, this.getTimezone()).toISOString();
       const { year: initialYear, month: initialMonth } = getBillingPeriodParts(new Date(now), this.getTimezone());
       const initialPeriod = makeBillingPeriodKey(initialYear, initialMonth);
-      const prepaidPackage = billingCycle === BILLING_CYCLES.PREPAID;
+      const prepaidPackage = true;
       const monthlyPaymentAmount = sanitizePositiveInteger(payload.monthlyPaymentAmount, 0, 0, 1_000_000_000);
       const contact = {
         id: generateId(),
@@ -1878,16 +1821,11 @@ class CustomerDataManager extends DataManagerCore {
           activeUntil: initialServiceSchedule,
           paymentProvider: "manual",
         }] : [],
-        // Prabayar melunasi periode awal; pascabayar menagihnya pada jatuh tempo berikutnya.
         paymentStatus: PAYMENT_STATUS.PAID,
-        paymentDate: billingCycle === BILLING_CYCLES.POSTPAID ? null : now,
-        paymentType: billingCycle === BILLING_CYCLES.POSTPAID
-          ? null
-          : (prepaidPackage ? PAYMENT_TYPES.ACTIVE_PERIOD : PAYMENT_TYPES.CURRENT_ONLY),
+        paymentDate: now,
+        paymentType: PAYMENT_TYPES.ACTIVE_PERIOD,
         paymentMonths: {
-          [initialPeriod]: billingCycle === BILLING_CYCLES.POSTPAID
-            ? { status: PAYMENT_STATUS.UNPAID, paidDate: null, paymentType: null, paidAmount: 0 }
-            : { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: prepaidPackage ? PAYMENT_TYPES.ACTIVE_PERIOD : PAYMENT_TYPES.CURRENT_ONLY },
+          [initialPeriod]: { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: PAYMENT_TYPES.ACTIVE_PERIOD },
         },
         linkedApHost,
         ...hotspotFields,
@@ -1974,8 +1912,8 @@ class CustomerDataManager extends DataManagerCore {
 
       if (!contact) {
         const subscriptionType = SUBSCRIPTION_TYPES.RECURRING;
-        const billingCycle = normalizeBillingCycle(payload.billingCycle);
-        const prepaidPackage = billingCycle === BILLING_CYCLES.PREPAID;
+        const billingCycle = BILLING_CYCLES.PREPAID;
+        const prepaidPackage = true;
         contact = {
           id: String(generateId()),
           name,
@@ -1992,14 +1930,10 @@ class CustomerDataManager extends DataManagerCore {
           hotspotManualActivationWithArrears: false,
           activePeriodPurchases: [],
           paymentStatus: PAYMENT_STATUS.PAID,
-          paymentDate: billingCycle === BILLING_CYCLES.POSTPAID ? null : now,
-          paymentType: billingCycle === BILLING_CYCLES.POSTPAID
-            ? null
-            : (prepaidPackage ? PAYMENT_TYPES.ACTIVE_PERIOD : PAYMENT_TYPES.CURRENT_ONLY),
+          paymentDate: now,
+          paymentType: PAYMENT_TYPES.ACTIVE_PERIOD,
           paymentMonths: {
-            [initialPeriod]: billingCycle === BILLING_CYCLES.POSTPAID
-              ? { status: PAYMENT_STATUS.UNPAID, paidDate: null, paymentType: null, paidAmount: 0 }
-              : { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: prepaidPackage ? PAYMENT_TYPES.ACTIVE_PERIOD : PAYMENT_TYPES.CURRENT_ONLY },
+            [initialPeriod]: { status: PAYMENT_STATUS.PAID, paidDate: now, paymentType: PAYMENT_TYPES.ACTIVE_PERIOD },
           },
           linkedApHost,
           ...hotspotFields,
@@ -2035,7 +1969,7 @@ class CustomerDataManager extends DataManagerCore {
         contact.name = name;
         const previousSubscriptionType = contact.subscriptionType;
         contact.subscriptionType = SUBSCRIPTION_TYPES.RECURRING;
-        contact.billingCycle = normalizeBillingCycle(payload.billingCycle, contact.billingCycle);
+        contact.billingCycle = BILLING_CYCLES.PREPAID;
         contact.linkedApHost = linkedApHost;
         if (payload.monthlyPaymentAmount !== undefined) {
           contact.monthlyPaymentAmount = sanitizePositiveInteger(
@@ -2223,7 +2157,7 @@ class CustomerDataManager extends DataManagerCore {
         ? sanitizeInput(String(payload.linkedApHost || ""))
         : sanitizeInput(String(contact.linkedApHost || ""));
       const nextSubscriptionType = SUBSCRIPTION_TYPES.RECURRING;
-      const nextBillingCycle = normalizeBillingCycle(payload.billingCycle, contact.billingCycle);
+      const nextBillingCycle = BILLING_CYCLES.PREPAID;
       const nextUsername = payload.mikrotikUsername !== undefined
         ? sanitizeInput(String(payload.mikrotikUsername || ""))
         : previousHotspot.username;
@@ -2309,8 +2243,7 @@ class CustomerDataManager extends DataManagerCore {
             billingPeriod
           ) <= 0;
           const payment = contact.paymentMonths?.[billingKey] || null;
-          const paid = (isPostpaidBilling(contact) && !billingStarted)
-            || payment?.status === PAYMENT_STATUS.PAID;
+          const paid = payment?.status === PAYMENT_STATUS.PAID;
           contact.paymentStatus = paid ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.UNPAID;
           contact.paymentDate = paid && billingStarted ? payment?.paidDate || null : null;
           contact.paymentType = paid && billingStarted ? payment?.paymentType || null : null;

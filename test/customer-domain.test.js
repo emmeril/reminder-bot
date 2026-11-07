@@ -4,7 +4,7 @@ const {
   HOTSPOT_ACCESS_MODES,
   getContactBillingPeriod,
   getContactHotspotAccessMode,
-  isPostpaidBilling,
+  normalizeBillingCycle,
   isPrepaidPackage,
   normalizeProfileMonthlyAmounts,
   parsePaymentAmountFromMessage,
@@ -18,14 +18,15 @@ test("mode hotspot lama tetap diturunkan dari keberadaan MAC IP Binding", () => 
   );
 });
 
-test("periode pascabayar memakai bulan sebelumnya dan prabayar memakai bulan berjalan", () => {
+test("semua pelanggan berlangganan memakai prabayar dan periode bulan berjalan", () => {
   const period = { year: 2026, month: 12 };
-  const postpaid = { subscriptionType: "RECURRING", billingCycle: "POSTPAID" };
+  const legacy = { subscriptionType: "RECURRING", billingCycle: "POSTPAID" };
   const prepaid = { subscriptionType: "RECURRING", billingCycle: "PREPAID" };
 
-  assert.equal(isPostpaidBilling(postpaid), true);
+  assert.equal(normalizeBillingCycle("POSTPAID"), "PREPAID");
+  assert.equal(isPrepaidPackage(legacy), true);
   assert.equal(isPrepaidPackage(prepaid), true);
-  assert.deepEqual(getContactBillingPeriod(postpaid, period), { year: 2026, month: 11 });
+  assert.deepEqual(getContactBillingPeriod(legacy, period), period);
   assert.deepEqual(getContactBillingPeriod(prepaid, period), period);
 });
 

@@ -323,7 +323,6 @@
           <div id="customer-data-panel" role="tabpanel" aria-labelledby="customer-data-tab" x-cloak x-show="activeContactTab === 'data'" x-transition.opacity class="customer-tab-panel">
             <div class="filter-inline table-filter-bar">
               <label class="table-filter-field table-filter-search"><span>Pencarian</span><input x-model="filters.contacts.search" @input="resetPage('contacts')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari semua nilai tabel data pelanggan"></label>
-              <label class="table-filter-field"><span>Siklus pembayaran</span><select x-model="filters.contacts.billingCycle" @change="resetPage('contacts')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua siklus</option><template x-for="option in contactBillingCycleOptions" :key="'contact-cycle-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
               <label class="table-filter-field"><span>Status AP</span><select x-model="filters.contacts.apStatus" @change="resetPage('contacts')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status AP</option><template x-for="option in contactApStatusOptions" :key="'contact-ap-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
               <label class="table-filter-field"><span>Baris</span><select x-model.number="filters.contacts.pageSize" @change="resetPage('contacts')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'contacts-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
               <button type="button" @click="resetContactDataFilters()" :disabled="!hasContactDataFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
@@ -388,7 +387,6 @@
             </div>
             <div class="filter-inline customer-filter-bar table-filter-bar">
               <label class="table-filter-field table-filter-search"><span>Pencarian</span><input x-model="filters.contactBilling.search" @input="resetPage('contactBilling')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari semua nilai tabel tagihan"></label>
-              <label class="table-filter-field"><span>Langganan</span><select x-model="filters.contactBilling.billingCycle" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua langganan</option><template x-for="option in contactBillingCycleOptions" :key="'billing-cycle-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
               <label class="table-filter-field"><span>Status pembayaran</span><select x-model="filters.contactBilling.status" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status pembayaran</option><template x-for="option in billingStatusFilterOptions" :key="'billing-status-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
               <label class="table-filter-field"><span>Status jatuh tempo</span><select x-model="filters.contactBilling.dueStatus" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status jatuh tempo</option><template x-for="option in billingDueStatusOptions" :key="'due-status-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
               <label class="table-filter-field"><span>Baris</span><select x-model.number="filters.contactBilling.pageSize" @change="resetPage('contactBilling')" aria-label="Jumlah tagihan per halaman" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'contact-billing-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
@@ -1312,7 +1310,6 @@
           </div>
           <div class="filter-inline table-filter-bar mt-5">
             <label class="table-filter-field table-filter-search"><span>Pencarian</span><input x-model="filters.reminders.search" @input="resetPage('reminders')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari semua nilai tabel reminder"></label>
-            <label class="table-filter-field"><span>Siklus</span><select x-model="filters.reminders.billingCycle" @change="resetPage('reminders')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua siklus</option><template x-for="option in reminderBillingCycleOptions" :key="'reminder-cycle-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
             <label class="table-filter-field"><span>Jenis waktu</span><select x-model="filters.reminders.deliveryType" @change="resetPage('reminders')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua jenis waktu</option><template x-for="option in reminderDeliveryTypeOptions" :key="'reminder-delivery-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
             <label class="table-filter-field"><span>Rentang waktu</span><select x-model="filters.reminders.schedule" @change="resetPage('reminders')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua jadwal</option><option value="TODAY">Hari ini</option><option value="UPCOMING">Akan datang</option><option value="OVERDUE">Terlambat</option></select></label>
             <label class="table-filter-field"><span>Baris</span><select x-model.number="filters.reminders.pageSize" @change="resetPage('reminders')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'reminders-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
@@ -1600,15 +1597,6 @@
                   <textarea x-model="forms.settings.paymentMessageTemplateCurrentOnly" placeholder="Tulis konfirmasi pembayaran periode tagihan..."></textarea>
                   <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{billingPeriod}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
-                <label class="notification-template-card tone-violet">
-                  <span class="notification-template-header">
-                    <span class="notification-template-icon"><i class="fa-solid fa-wifi"></i></span>
-                    <span class="notification-template-copy"><strong>Masa aktif sementara</strong><small>Konfirmasi masa aktif satu bulan untuk pelanggan pascabayar yang masih menunggak.</small></span>
-                    <span class="notification-template-badge">Pascabayar menunggak</span>
-                  </span>
-                  <textarea x-model="forms.settings.paymentMessageTemplateActivePeriod" placeholder="Tulis konfirmasi pembelian masa aktif..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{paymentAmount}}</code><code>{{activeUntil}}</code><code>{{remainingDebtAmount}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
-                </label>
                 <label class="notification-template-card tone-success">
                   <span class="notification-template-header">
                     <span class="notification-template-icon"><i class="fa-solid fa-box-open"></i></span>
@@ -1617,15 +1605,6 @@
                   </span>
                   <textarea x-model="forms.settings.prepaidPackagePaymentMessageTemplate" placeholder="Tulis konfirmasi pembelian paket prabayar..."></textarea>
                   <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{paymentAmount}}</code><code>{{activeUntil}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
-                </label>
-                <label class="notification-template-card tone-amber">
-                  <span class="notification-template-header">
-                    <span class="notification-template-icon"><i class="fa-solid fa-hourglass-end"></i></span>
-                    <span class="notification-template-copy"><strong>Pengingat masa aktif sementara</strong><small>Dikirim sebelum masa aktif sementara pelanggan menunggak berakhir.</small></span>
-                    <span class="notification-template-badge">Pascabayar menunggak</span>
-                  </span>
-                  <textarea x-model="forms.settings.activePeriodReminderMessageTemplate" placeholder="Tulis pengingat berakhirnya masa aktif..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{activeUntil}}</code><code>{{debtCount}}</code><code>{{debtAmount}}</code><code>{{debtPeriods}}</code><code>{{totalAmount}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-success">
                   <span class="notification-template-header">
@@ -2082,14 +2061,6 @@
             <span class="mt-1 block text-xs text-ink/45">Nomor akan diperiksa langsung ke WhatsApp sebelum pelanggan disimpan.</span>
           </label>
           <label class="block text-sm text-ink/60">
-            Siklus pembayaran
-            <select x-model="forms.contact.billingCycle" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
-              <option value="PREPAID">Prabayar, bayar bulan berjalan</option>
-              <option value="POSTPAID">Pascabayar, bayar bulan sebelumnya</option>
-            </select>
-            <span class="mt-1 block text-xs text-ink/45">Prabayar membeli paket satu bulan. Pascabayar menagih periode sebelumnya saat jatuh tempo.</span>
-          </label>
-          <label class="block text-sm text-ink/60">
             AP tujuan (opsional)
             <select x-model="forms.contact.linkedApHost" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               <option value="">-- Tidak di-link ke AP --</option>
@@ -2337,14 +2308,6 @@
             Nomor WhatsApp
             <input x-model="forms.contactEdit.phoneNumber" inputmode="numeric" autocomplete="tel" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" placeholder="628xxx" required>
             <span class="mt-1 block text-xs text-ink/45">Jika nomor diubah, nomor baru akan diperiksa langsung ke WhatsApp.</span>
-          </label>
-          <label class="block text-sm text-ink/60">
-            Siklus pembayaran
-            <select x-model="forms.contactEdit.billingCycle" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay" required>
-              <option value="PREPAID">Prabayar, bayar bulan berjalan</option>
-              <option value="POSTPAID">Pascabayar, bayar bulan sebelumnya</option>
-            </select>
-            <span class="mt-1 block text-xs text-ink/45">Gunakan pascabayar jika tagihan November memang dibayar pada Desember.</span>
           </label>
           <label class="block text-sm text-ink/60">
             AP tujuan (opsional)

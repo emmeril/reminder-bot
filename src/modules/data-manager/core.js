@@ -29,7 +29,6 @@ const {
   getContactHotspotAccessMode,
   getHotspotUnavailableMessage,
   isHotspotAccountUnavailable,
-  isPostpaidBilling,
   isPrepaidPackage,
   isRecurringSubscription,
   normalizeBillingCycle,
@@ -445,7 +444,8 @@ class DataManagerCore {
       });
     }
 
-    this.normalizeLoadedContacts();
+    const migratedBillingCycles = this.normalizeLoadedContacts();
+    if (migratedBillingCycles > 0) await this.saveContacts();
     await this.migrateOneTimeSubscriptionsToPrepaid();
     await this.migrateServiceSchedulesFromRegistration();
     const portalAccountsCreated = await this.synchronizeCustomerPortalAccounts();
@@ -832,6 +832,7 @@ class DataManagerCore {
   }
 
   normalizeLoadedContacts() {
+    let migratedBillingCycles = 0;
     for (const contact of this.contacts.values()) {
       contact.paymentStatus = String(contact.paymentStatus || PAYMENT_STATUS.UNPAID).toUpperCase();
       const normalizedType = String(contact.paymentType || "").toUpperCase();
@@ -848,6 +849,9 @@ class DataManagerCore {
         false
       );
       contact.subscriptionType = normalizeSubscriptionType(contact.subscriptionType);
+      if (String(contact.billingCycle || "PREPAID").trim().toUpperCase() !== BILLING_CYCLES.PREPAID) {
+        migratedBillingCycles += 1;
+      }
       contact.billingCycle = normalizeBillingCycle(contact.billingCycle);
       delete contact.recurringBillingStartedAt;
       contact.subscriptionChangedByArrears = parseBoolean(
@@ -1044,6 +1048,7 @@ class DataManagerCore {
         pelanggan.hotspotLastSyncedAt || contact?.hotspotLastSyncedAt
       );
     }
+    return migratedBillingCycles;
   }
 
   async migrateOneTimeSubscriptionsToPrepaid(options = {}) {
@@ -1317,12 +1322,11 @@ class DataManagerCore {
       ? monthlyAmount
       : (currentPaymentStatus === PAYMENT_STATUS.PAID ? 0 : monthlyAmount);
     const debtAmount = Math.max(0, Number(hydrated.debtAmount) || 0);
-    const includeHistoryPeriod = (period) => !isPostpaidBilling(contact) || period <= currentKey;
     const historyByPeriod = new Map(
       Object.entries(hydrated.paymentMonths || {})
         .filter(([period]) => !prepaidPackage
           && /^\d{4}-\d{2}$/.test(period)
-          && includeHistoryPeriod(period))
+          && period <= currentKey)
         .map(([period, payment]) => {
           const paidAmount = this.getPaymentPaidAmount(payment, monthlyAmount);
           return [period, {

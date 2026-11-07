@@ -4,7 +4,6 @@ const express = require("express");
 const crypto = require("crypto");
 const QRCode = require("qrcode");
 const {
-  BILLING_CYCLES,
   CONFIG,
   DEFAULT_SETTINGS,
   PAYMENT_STATUS,
@@ -1648,8 +1647,7 @@ class WebServer {
         throw error;
       }
 
-      const prepaidPackage = req.customerPortalData.billing?.billingCycle === BILLING_CYCLES.PREPAID
-        && req.customerPortalData.billing?.subscriptionType === SUBSCRIPTION_TYPES.RECURRING;
+      const prepaidPackage = req.customerPortalData.billing?.subscriptionType === SUBSCRIPTION_TYPES.RECURRING;
       const amount = Math.floor(Number(prepaidPackage
         ? req.customerPortalData.billing?.monthlyAmount
         : req.customerPortalData.billing?.totalAmount) || 0);

@@ -411,51 +411,30 @@ function createDashboardActions() {
           if (String(contact.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") !== "RECURRING") return false;
           if (!contact.mikrotikUsername || !contact.mikrotikProfile || Number(contact.monthlyPaymentAmount) <= 0) return false;
           const status = this.getHotspotProvisioningStatus(contact);
-          if (this.isPrepaidPackage(contact)) return status === "ACTIVE" || status === "DISABLED";
-          if (!contact.hasDebt) return false;
-          return status === "DISABLED"
-            || (status === "ACTIVE" && Boolean(contact.hotspotManualActivationWithArrears));
+          return this.isPrepaidPackage(contact) && (status === "ACTIVE" || status === "DISABLED");
         },
 
         getActivePeriodPurchaseLabel(contact) {
-          if (this.isPrepaidPackage(contact)) {
-            return contact?.packageActive ? "Tambah paket 1 bulan" : "Beli paket 1 bulan";
-          }
-          return contact?.hotspotManualActivationWithArrears
-            ? "Tambah masa aktif 1 bulan"
-            : "Beli masa aktif 1 bulan";
+          return contact?.packageActive ? "Tambah paket 1 bulan" : "Beli paket 1 bulan";
         },
 
         getActivePeriodPurchaseHelp(contact) {
-          if (this.isPrepaidPackage(contact)) {
-            if (contact?.packageActive && contact?.hotspotReactivationAt) {
-              return `Masa aktif baru ditambahkan setelah ${this.formatDateTime(contact.hotspotReactivationAt)}.`;
-            }
-            return "Paket berlaku satu bulan sejak pembayaran dan tidak membuat tunggakan.";
+          if (contact?.packageActive && contact?.hotspotReactivationAt) {
+            return `Masa aktif baru ditambahkan setelah ${this.formatDateTime(contact.hotspotReactivationAt)}.`;
           }
-          if (contact?.hotspotManualActivationWithArrears && contact?.hotspotReactivationAt) {
-            return `Periode baru dimulai setelah ${this.formatDateTime(contact.hotspotReactivationAt)}. Tunggakan tidak berkurang.`;
-          }
-          return "Akun hotspot aktif selama satu bulan. Tunggakan tidak berkurang dan perpanjangan otomatis tetap dijeda.";
+          return "Paket berlaku satu bulan sejak pembayaran dan tidak membuat tunggakan.";
         },
 
         purchaseActivePeriod(contact) {
           if (!this.canPurchaseActivePeriod(contact)) return;
           const amount = this.formatRupiah(contact.monthlyPaymentAmount);
-          const prepaidPackage = this.isPrepaidPackage(contact);
-          const extending = prepaidPackage
-            ? Boolean(contact.packageActive && contact.hotspotReactivationAt)
-            : Boolean(contact.hotspotManualActivationWithArrears && contact.hotspotReactivationAt);
+          const extending = Boolean(contact.packageActive && contact.hotspotReactivationAt);
           this.closeBillingActionModal();
           this.openDeleteConfirm({
             title: extending ? "Tambah masa aktif satu bulan?" : "Beli masa aktif satu bulan?",
             description: extending
-              ? (prepaidPackage
-                ? `Pembayaran ${amount} akan menambah masa aktif satu bulan setelah paket yang sekarang.`
-                : `Pembayaran ${amount} akan menambah masa aktif satu bulan setelah jadwal yang sekarang. Tunggakan tetap tersimpan.`)
-              : (prepaidPackage
-                ? `Pembayaran ${amount} akan mengaktifkan paket hotspot selama satu bulan tanpa membuat tunggakan.`
-                : `Pembayaran ${amount} akan mengaktifkan akun hotspot selama satu bulan. Tunggakan tetap tersimpan.`),
+              ? `Pembayaran ${amount} akan menambah masa aktif satu bulan setelah paket yang sekarang.`
+              : `Pembayaran ${amount} akan mengaktifkan paket hotspot selama satu bulan tanpa membuat tunggakan.`,
             confirmLabel: extending ? "Tambah masa aktif" : "Beli dan aktifkan",
             processingMessage: extending ? "Menambah masa aktif..." : "Mencatat pembelian masa aktif...",
             action: async () => {

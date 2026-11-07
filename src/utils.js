@@ -528,9 +528,9 @@ function getSettingsReminderTemplate(reminder, settings = {}) {
     return null;
   }
   const templateName = String(reminder?.templateName || "").trim().toLowerCase();
-  const settingKey = templateName === "masaaktifsementara"
-    ? "activePeriodReminderMessageTemplate"
-    : (templateName === "paketprabayar" ? "prepaidPackageReminderMessageTemplate" : null);
+  const settingKey = ["masaaktifsementara", "paketprabayar"].includes(templateName)
+    ? "prepaidPackageReminderMessageTemplate"
+    : null;
   if (!settingKey) return null;
   return sanitizeMultilineText(settings?.[settingKey]) || DEFAULT_SETTINGS[settingKey];
 }
