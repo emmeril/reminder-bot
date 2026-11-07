@@ -1,5 +1,4 @@
 const {
-  BILLING_CYCLES,
   BILLING_REMINDER_STOP_DEBT_COUNT,
   CONFIG,
   DEFAULT_REMINDER_MESSAGE_TEMPLATE,
@@ -30,7 +29,7 @@ const {
 } = require("./utils");
 
 function isPrepaidContact(contact) {
-  return String(contact?.billingCycle || "").trim().toUpperCase() === BILLING_CYCLES.PREPAID;
+  return String(contact?.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "RECURRING";
 }
 
 class ReminderScheduler {
@@ -1011,8 +1010,7 @@ class HotspotReactivationScheduler {
       this.activityLog.push("info", "hotspot-reactivation", `Memproses ${dueContacts.length} jadwal hotspot`);
       for (const contact of dueContacts) {
         const recurring = String(contact.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "RECURRING";
-        const prepaidPackage = recurring
-          && String(contact.billingCycle || "").toUpperCase() === BILLING_CYCLES.PREPAID;
+        const prepaidPackage = recurring;
         const blockedByArrears = recurring
           && !prepaidPackage
           && Boolean(contact.hotspotReactivationEnabled)
