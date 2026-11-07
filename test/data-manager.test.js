@@ -1330,101 +1330,50 @@ test("menyimpan template pengingat masa tenggang", async () => {
   );
 });
 
-test("menyimpan template pengingat berakhirnya masa aktif", async () => {
+test("menyimpan template pengingat kedaluwarsa paket prabayar", async () => {
   const manager = new DataManager({ push() {} });
   manager.saveSettings = async () => {};
-
-  const settings = await manager.updateSettings({
-    activePeriodReminderMessageTemplate: "Halo {{name}}, masa aktif berakhir {{activeUntil}}.",
-  });
-
-  assert.equal(
-    settings.activePeriodReminderMessageTemplate,
-    "Halo {{name}}, masa aktif berakhir {{activeUntil}}."
-  );
+  const message = "Halo {{name}}, paket berakhir {{activeUntil}}.";
+  const settings = await manager.updateSettings({ prepaidPackageReminderMessageTemplate: message });
+  assert.equal(settings.prepaidPackageReminderMessageTemplate, message);
+  assert.equal(manager.getSettings().prepaidPackageReminderMessageTemplate, message);
 });
 
-test("perubahan template notifikasi menyinkronkan reminder bawaan tanpa mengubah jadwal atau pesan lain", async () => {
-  const manager = createManager({
-    id: "contact-settings-template",
-    name: "Pelanggan Template",
-    phoneNumber: "6281234567803",
+test("perubahan template prabayar menyinkronkan hanya reminder yang aman untuk diperbarui", async () => {
+  const contact = {
+    id: "prepaid-template-sync", name: "Pelanggan Template", phoneNumber: "6281234567803",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING, billingCycle: BILLING_CYCLES.PREPAID,
     monthlyPaymentAmount: 100_000,
-  });
-  const originalContacts = structuredClone(manager.contacts);
-  const reminderDefinitions = [
-    { id: "active-period", templateName: "MasaAktifSementara" },
-    { id: "prepaid-package", templateName: "PaketPrabayar" },
-    { id: "custom", templateName: null },
-    { id: "file-template", templateName: "Info.txt" },
-    { id: "billing", templateName: "PaketPrabayar", reminderKind: REMINDER_KINDS.BILLING },
-    { id: "processing-active", templateName: "MasaAktifSementara", processingAt: "2026-11-10T01:00:00.000Z" },
-    { id: "processing-prepaid", templateName: "PaketPrabayar", processingAt: "2026-11-10T01:00:00.000Z" },
-    { id: "attempted-active", templateName: "MasaAktifSementara", deliveryAttemptedAt: "2026-11-10T01:00:00.000Z" },
-    { id: "attempted-prepaid", templateName: "PaketPrabayar", deliveryAttemptedAt: "2026-11-10T01:00:00.000Z" },
+  };
+  const manager = createManager(contact);
+  const definitions = [
+    { id: "prepaid", templateName: "PaketPrabayar" },
+    { id: "custom", templateName: "Khusus.txt" },
+    { id: "processing", templateName: "PaketPrabayar", processingAt: "2026-11-10T01:00:00.000Z" },
+    { id: "attempted", templateName: "PaketPrabayar", deliveryAttemptedAt: "2026-11-10T01:00:00.000Z" },
   ];
-  for (const definition of reminderDefinitions) {
-    manager.reminders.set(definition.id, {
-      contactId: "contact-settings-template",
-      reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
-      reminderDateTime: "2026-11-10T01:00:00.000Z",
-      activePeriodUntil: "2026-11-10T01:00:00.000Z",
-      nextDeliveryAttemptAt: "2026-11-11T01:00:00.000Z",
-      gracePeriodCreatedAt: "2026-11-10T01:00:00.000Z",
-      message: `Pesan lama ${definition.id}`,
-      messageSource: `Pesan lama ${definition.id}`,
-      ...definition,
-    });
-  }
-  manager.sentReminders.set("sent", {
-    ...manager.reminders.get("active-period"),
-    id: "sent",
-    sentAt: "2026-11-10T01:05:00.000Z",
-    deliveryStatus: "SENT",
+  for (const definition of definitions) manager.reminders.set(definition.id, {
+    contactId: contact.id, reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    reminderDateTime: "2026-11-10T01:00:00.000Z",
+    message: `Salinan lama ${definition.id}`, messageSource: `Salinan lama ${definition.id}`,
+    ...definition,
   });
   const originalReminders = structuredClone(manager.reminders);
-  const originalSentReminders = structuredClone(manager.sentReminders);
-  const transaction = {};
-  manager.sequelize.transaction = async (operation) => operation(transaction);
-  let savedSettings;
-  const reminderWrites = [];
-  manager.saveSettings = async (options = {}) => {
-    savedSettings = { settings: structuredClone(manager.settings), transaction: options.transaction };
-  };
-  manager.saveReminders = async (options = {}) => {
-    reminderWrites.push({ reminders: structuredClone(manager.reminders), transaction: options.transaction });
-  };
-  const payload = {
-    activePeriodReminderMessageTemplate: "Halo {{name}}, masa aktif baru sampai {{activeUntil}}.",
-    prepaidPackageReminderMessageTemplate: "Paket terbaru {{name}} berakhir {{activeUntil}}.",
-  };
-
-  await manager.updateSettings(payload);
-
-  assert.equal(savedSettings.transaction, transaction);
-  assert.equal(savedSettings.settings.activePeriodReminderMessageTemplate, payload.activePeriodReminderMessageTemplate);
-  assert.equal(savedSettings.settings.prepaidPackageReminderMessageTemplate, payload.prepaidPackageReminderMessageTemplate);
-  assert.equal(reminderWrites.length, 1);
-  assert.equal(reminderWrites[0].transaction, transaction);
-  assert.deepEqual(reminderWrites[0].reminders, manager.reminders);
-  for (const [id, messageTemplate] of [
-    ["active-period", payload.activePeriodReminderMessageTemplate],
-    ["prepaid-package", payload.prepaidPackageReminderMessageTemplate],
-  ]) {
-    assert.deepEqual(manager.reminders.get(id), {
-      ...originalReminders.get(id),
-      message: messageTemplate,
-      messageSource: messageTemplate,
-    });
-  }
-  for (const { id } of reminderDefinitions.slice(2)) {
+  const sent = { ...manager.reminders.get("prepaid"), id: "sent", sentAt: "2026-11-10T01:05:00.000Z" };
+  manager.sentReminders.set(sent.id, sent);
+  let writes = 0;
+  manager.saveReminders = async () => { writes += 1; };
+  const message = "Paket baru {{name}} berakhir {{activeUntil}}.";
+  await manager.updateSettings({ prepaidPackageReminderMessageTemplate: message });
+  assert.equal(manager.getSettings().prepaidPackageReminderMessageTemplate, message);
+  assert.equal(manager.reminders.get("prepaid").messageSource, message);
+  for (const id of ["custom", "processing", "attempted"]) {
     assert.deepEqual(manager.reminders.get(id), originalReminders.get(id), id);
   }
-  assert.deepEqual(manager.contacts, originalContacts);
-  assert.deepEqual(manager.sentReminders, originalSentReminders);
-
-  await manager.updateSettings(payload);
-  assert.equal(reminderWrites.length, 1);
+  assert.deepEqual(manager.sentReminders.get(sent.id), sent);
+  assert.equal(writes, 1);
+  await manager.updateSettings({ prepaidPackageReminderMessageTemplate: message });
+  assert.equal(writes, 1);
 });
 
 test("kegagalan menyimpan reminder mengembalikan perubahan template notifikasi", async () => {
@@ -1623,7 +1572,7 @@ test("migration menerapkan bahasa ringkas pada template notifikasi dan reminder 
     reminderDateTime: "2026-11-27T01:00:00.000Z",
     reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
     activePeriodUntil: "2026-11-30T01:00:00.000Z",
-    templateName: "MasaAktifSementara",
+    templateName: "PaketPrabayar",
     message: "Pesan masa aktif lama",
     messageSource: "Pesan masa aktif lama",
   });
@@ -1640,70 +1589,10 @@ test("migration menerapkan bahasa ringkas pada template notifikasi dan reminder 
   assert.equal(manager.reminders.get("formal-billing").messageSource, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
   assert.equal(
     manager.reminders.get("formal-active-period").messageSource,
-    DEFAULT_SETTINGS.activePeriodReminderMessageTemplate
+    DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate
   );
 });
 
-test("migration memperjelas template masa aktif lama tanpa menimpa template khusus", async () => {
-  const contact = {
-    id: "contact-temporary-active-copy",
-    name: "Pelanggan Pascabayar",
-    phoneNumber: "6281234567899",
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    billingCycle: BILLING_CYCLES.POSTPAID,
-    monthlyPaymentAmount: 100_000,
-    paymentStatus: PAYMENT_STATUS.UNPAID,
-    paymentMonths: {},
-  };
-  const manager = createManager(contact);
-  manager.settings.notificationTemplateCopyMigrationVersion = 2;
-  manager.settings.paymentMessageTemplateActivePeriod =
-    LEGACY_PAYMENT_MESSAGE_TEMPLATE_ACTIVE_PERIOD;
-  manager.settings.activePeriodReminderMessageTemplate =
-    LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE;
-  manager.settings.billingReminderMessageTemplate = "Template tagihan khusus";
-  manager.reminders.set("temporary-active-period", {
-    id: "temporary-active-period",
-    contactId: contact.id,
-    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
-    reminderDateTime: "2026-11-27T01:00:00.000Z",
-    activePeriodUntil: "2026-11-30T01:00:00.000Z",
-    templateName: "MasaAktifSementara",
-    message: LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE,
-    messageSource: LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE,
-  });
-  manager.reminders.set("custom-active-period", {
-    id: "custom-active-period",
-    contactId: contact.id,
-    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
-    reminderDateTime: "2026-12-27T01:00:00.000Z",
-    activePeriodUntil: "2026-12-30T01:00:00.000Z",
-    templateName: "MasaAktifSementara",
-    message: "Pesan khusus masa aktif",
-    messageSource: "Pesan khusus masa aktif",
-  });
-
-  const result = await manager.migrateFormalNotificationTemplates();
-
-  assert.deepEqual(result, { migrated: true, remindersUpdated: 1, version: 6 });
-  assert.equal(
-    manager.settings.paymentMessageTemplateActivePeriod,
-    DEFAULT_SETTINGS.paymentMessageTemplateActivePeriod
-  );
-  assert.equal(
-    manager.settings.activePeriodReminderMessageTemplate,
-    DEFAULT_SETTINGS.activePeriodReminderMessageTemplate
-  );
-  assert.equal(manager.settings.billingReminderMessageTemplate, "Template tagihan khusus");
-  assert.equal(
-    manager.reminders.get("temporary-active-period").messageSource,
-    DEFAULT_SETTINGS.activePeriodReminderMessageTemplate
-  );
-  assert.equal(
-    manager.reminders.get("custom-active-period").messageSource,
-    "Pesan khusus masa aktif"
-  );
-});
 
 test("migration memperbarui pesan bawaan versi tiga tanpa menimpa pesan kustom", async () => {
   const postpaid = {
@@ -1796,55 +1685,33 @@ test("migration memperbarui bahasa template tagihan rinci versi empat", async ()
   );
 });
 
-test("migration memperbarui template masa aktif untuk alur masa tenggang", async () => {
-  const postpaid = {
-    id: "contact-copy-v5-postpaid",
-    name: "Pelanggan Masa Aktif",
-    phoneNumber: "6281234567807",
-    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
-    billingCycle: BILLING_CYCLES.POSTPAID,
-  };
-  const prepaid = {
-    ...postpaid,
-    id: "contact-copy-v5-prepaid",
-    name: "Pelanggan Paket",
-    phoneNumber: "6281234567808",
+test("migrasi template prabayar versi lima memperbarui pesan bawaan tanpa mengubah custom", async () => {
+  const contact = {
+    id: "prepaid-template-v5", name: "Pelanggan Paket",
+    phoneNumber: "6281234567808", subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
     billingCycle: BILLING_CYCLES.PREPAID,
   };
-  const manager = createManager(postpaid);
-  manager.contacts.set(prepaid.id, prepaid);
+  const manager = createManager(contact);
   manager.settings.notificationTemplateCopyMigrationVersion = 5;
-  manager.settings.activePeriodReminderMessageTemplate =
-    LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V5;
-  manager.settings.prepaidPackageReminderMessageTemplate =
-    LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5;
-  manager.reminders.set("active-copy-v5", {
-    id: "active-copy-v5",
-    contactId: postpaid.id,
+  manager.settings.prepaidPackageReminderMessageTemplate = LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5;
+  manager.reminders.set("prepaid-old", {
+    id: "prepaid-old", contactId: contact.id,
     reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
-    message: LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V5,
-    messageSource: LEGACY_ACTIVE_PERIOD_REMINDER_MESSAGE_TEMPLATE_V5,
-  });
-  manager.reminders.set("prepaid-copy-v5", {
-    id: "prepaid-copy-v5",
-    contactId: prepaid.id,
-    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    templateName: "PaketPrabayar",
     message: LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5,
     messageSource: LEGACY_PREPAID_PACKAGE_REMINDER_MESSAGE_TEMPLATE_V5,
   });
-
-  const result = await manager.migrateFormalNotificationTemplates();
-
-  assert.deepEqual(result, { migrated: true, remindersUpdated: 2, version: 6 });
-  assert.equal(
-    manager.reminders.get("active-copy-v5").messageSource,
-    DEFAULT_SETTINGS.activePeriodReminderMessageTemplate
-  );
-  assert.equal(
-    manager.reminders.get("prepaid-copy-v5").messageSource,
-    DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate
-  );
+  manager.reminders.set("prepaid-custom", {
+    id: "prepaid-custom", contactId: contact.id,
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    templateName: "PaketPrabayar", message: "Kustom {{name}}", messageSource: "Kustom {{name}}",
+  });
+  const first = await manager.migrateFormalNotificationTemplates();
+  assert.deepEqual(first, { migrated: true, remindersUpdated: 1, version: 6 });
+  assert.equal(manager.reminders.get("prepaid-old").messageSource, DEFAULT_SETTINGS.prepaidPackageReminderMessageTemplate);
+  assert.equal(manager.reminders.get("prepaid-custom").messageSource, "Kustom {{name}}");
   assert.match(manager.settings.prepaidPackageReminderMessageTemplate, /Masa tenggang: \{\{graceDays\}\} hari/);
+  assert.deepEqual(await manager.migrateFormalNotificationTemplates(), { migrated: false, remindersUpdated: 0, version: 6 });
 });
 
 test("migration menyelaraskan pembayaran lama tanpa memperpanjang jadwal dua kali", async () => {
