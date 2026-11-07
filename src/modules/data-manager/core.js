@@ -1048,6 +1048,7 @@ class DataManagerCore {
         pelanggan.hotspotLastSyncedAt || contact?.hotspotLastSyncedAt
       );
     }
+    return migratedBillingCycles;
   }
 
   async migrateOneTimeSubscriptionsToPrepaid(options = {}) {
