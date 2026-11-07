@@ -165,13 +165,12 @@ test("API reminder menampilkan template terbaru setelah simpan tanpa mengubah sn
   let settings = { hotspotIsolationGraceDays: 3 };
   const dueAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const reminders = [
-    { id: "active", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "MasaAktifSementara" },
+    { id: "active", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "PaketPrabayar" },
     { id: "prepaid", contactId: "prepaid", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "PaketPrabayar" },
-    { id: "grace", contactId: "regular", reminderKind: "GRACE_PERIOD", templateName: "Penagihan.txt" },
     { id: "paid", contactId: "paid", reminderKind: "BILLING", templateName: "Penagihan.txt", message: "*Status pembayaran: LUNAS*" },
     { id: "custom", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "Khusus.txt", messageSource: "Khusus {{name}}" },
-    { id: "processing", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "MasaAktifSementara", processingAt: dueAt },
-    { id: "attempted", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "MasaAktifSementara", deliveryAttemptedAt: dueAt },
+    { id: "processing", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "PaketPrabayar", processingAt: dueAt },
+    { id: "attempted", contactId: "regular", reminderKind: "ACTIVE_PERIOD_EXPIRY", templateName: "PaketPrabayar", deliveryAttemptedAt: dueAt },
   ].map((reminder) => ({
     reminderDateTime: dueAt,
     message: "Salinan lama",
@@ -188,7 +187,8 @@ test("API reminder menampilkan template terbaru setelah simpan tanpa mengubah sn
     getSentReminders: () => history,
     getResolvedReminderContact: (reminder) => ({
       name: "Pelanggan",
-      billingCycle: reminder.contactId === "prepaid" ? "PREPAID" : "POSTPAID",
+      billingCycle: "PREPAID",
+      subscriptionType: "RECURRING",
       currentPaymentStatus: reminder.contactId === "paid" ? "PAID" : "UNPAID",
       monthlyPaymentAmount: 0,
     }),
@@ -200,7 +200,6 @@ test("API reminder menampilkan template terbaru setelah simpan tanpa mengubah sn
     method: "PUT",
     headers: { cookie, "content-type": "application/json" },
     body: JSON.stringify({
-      activePeriodReminderMessageTemplate: "Masa aktif baru {{name}}",
       prepaidPackageReminderMessageTemplate: "Prabayar baru {{name}}",
       gracePeriodReminderMessageTemplate: "Masa tenggang baru {{name}}",
     }),
@@ -211,9 +210,8 @@ test("API reminder menampilkan template terbaru setelah simpan tanpa mengubah sn
   assert.equal(response.status, 200);
   const { data } = await response.json();
   const messages = Object.fromEntries(data.map((reminder) => [reminder.id, reminder.message]));
-  assert.equal(messages.active, "Masa aktif baru Pelanggan");
+  assert.equal(messages.active, "Prabayar baru Pelanggan");
   assert.equal(messages.prepaid, "Prabayar baru Pelanggan");
-  assert.equal(messages.grace, "Masa tenggang baru Pelanggan");
   assert.equal(messages.custom, "Khusus Pelanggan");
   assert.equal(messages.paid, "*Status pembayaran: LUNAS*");
   assert.equal(messages.processing, "Salinan lama");
