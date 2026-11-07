@@ -512,26 +512,29 @@ test("reminder berikutnya kembali menjadi reminder tagihan setelah masa aktif be
   assert.equal(next.activePeriodUntil, undefined);
 });
 
-test("informasi perpanjangan otomatis tidak ditampilkan tanpa tunggakan", () => {
+test("template pesan paket prabayar tidak menambahkan tunggakan atau informasi penagihan", () => {
   const scheduler = new ReminderScheduler({}, {
-    getSettings: () => ({ hotspotIsolationGraceDays: 3 }),
+    getSettings: () => ({
+      prepaidPackageReminderMessageTemplate: "Paket {{name}} berakhir {{activeUntil}}.",
+    }),
     getTimezone: () => "Asia/Jakarta",
     getResolvedReminderContact: () => ({
-      paymentStatus: "UNPAID",
-      currentPaymentStatus: "UNPAID",
-      debtCount: 0,
+      name: "Pelanggan",
+      subscriptionType: "RECURRING",
+      billingCycle: "PREPAID",
+      hotspotReactivationAt: "2026-08-15T01:00:00.000Z",
       monthlyPaymentAmount: 100_000,
     }),
   }, { push() {} });
-
   const message = scheduler.buildReminderMessage({
     reminderDateTime: "2026-08-15T01:00:00.000Z",
-    message: "Tagihan {{totalAmount}}{{renewalStatusInfo}}",
+    activePeriodUntil: "2026-08-15T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    templateName: "PaketPrabayar",
   });
-
-  assert.match(message, /^Tagihan Rp\s?100\.000/);
-  assert.match(message, /Rincian tagihan/);
-  assert.doesNotMatch(message, /Informasi layanan|tidak akan diperpanjang otomatis|{{|}}/);
+  assert.match(message, /^Paket Pelanggan berakhir/);
+  assert.match(message, /15 Agustus 2026/);
+  assert.doesNotMatch(message, /Rincian tagihan|tunggakan|perpanjangan otomatis|{{|}}/i);
 });
 
 test("variabel masa tenggang nol memakai tanggal jatuh tempo sebagai tanggal isolir", () => {
@@ -554,76 +557,60 @@ test("variabel masa tenggang nol memakai tanggal jatuh tempo sebagai tanggal iso
   assert.doesNotMatch(message, /{{|}}/);
 });
 
-test("nominal reminder otomatis bertambah sesuai jumlah tunggakan", () => {
+test("reminder prabayar tidak menaikkan harga berdasarkan bulan historis", () => {
   const reminder = {
     reminderDateTime: "2026-08-15T01:00:00.000Z",
-    message: "Halo, tagihan Anda sudah terbit.",
+    activePeriodUntil: "2026-08-15T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    templateName: "PaketPrabayar",
   };
-  const dataManager = {
-    getSettings: () => ({}),
-    getResolvedReminderContact: () => ({
-      paymentStatus: "UNPAID",
-      currentPaymentStatus: "UNPAID",
-      debtCount: 2,
-      monthlyPaymentAmount: 150_000,
-    }),
-  };
-  const scheduler = new ReminderScheduler({}, dataManager, { push() {} });
-
-  const message = scheduler.buildReminderMessage(reminder);
-
-  assert.match(message, /Tunggakan sebelumnya: Rp\s?300\.000/);
-  assert.match(message, /Agustus 2026: Rp\s?150\.000/);
-  assert.match(message, /Total: Rp\s?450\.000/);
-});
-
-test("reminder hutang tetap dikirim ketika bulan berjalan sudah dibayar", () => {
-  const dataManager = {
-    getSettings: () => ({}),
-    getResolvedReminderContact: () => ({
-      paymentStatus: "PAID",
-      currentPaymentStatus: "PAID",
-      debtCount: 1,
-      monthlyPaymentAmount: 150_000,
-    }),
-  };
-  const scheduler = new ReminderScheduler({}, dataManager, { push() {} });
-
-  assert.equal(scheduler.isPaidReminder({}), false);
-  assert.match(scheduler.buildReminderMessage({ message: "Tagihan" }), /Total: Rp\s?150\.000/);
-});
-
-test("reminder bulan depan membaca status periode jadwal, bukan status bulan ini", () => {
-  let requestedPeriod = null;
-  const contact = {
-    id: "contact-next-period",
-    paymentStatus: "PAID",
-    currentPaymentStatus: "PAID",
-    monthlyPaymentAmount: 100_000,
-  };
-  const dataManager = {
-    getSettings: () => ({}),
+  const scheduler = new ReminderScheduler({}, {
+    getSettings: () => ({ prepaidPackageReminderMessageTemplate: "Harga paket {{monthlyPaymentAmount}} untuk {{name}}." }),
     getTimezone: () => "Asia/Jakarta",
-    getResolvedReminderContact: () => contact,
-    buildDebtInfo: (_contact, period) => {
-      requestedPeriod = period;
-      return {
-        paymentStatus: "UNPAID",
-        currentPaymentStatus: "UNPAID",
-        debtCount: 0,
-        debtAmount: 0,
-      };
-    },
-  };
-  const scheduler = new ReminderScheduler({}, dataManager, { push() {} });
+    getResolvedReminderContact: () => ({
+      name: "Pelanggan", subscriptionType: "RECURRING", billingCycle: "PREPAID",
+      debtCount: 2, monthlyPaymentAmount: 150_000,
+    }),
+  }, { push() {} });
+  const message = scheduler.buildReminderMessage(reminder);
+  assert.match(message, /Pelanggan/);
+  assert.doesNotMatch(message, /450\.000|tunggakan sebelumnya/i);
+});
+
+test("reminder paket prabayar tidak menggunakan status tunggakan bulan berjalan", () => {
+  const scheduler = new ReminderScheduler({}, {
+    getSettings: () => ({ prepaidPackageReminderMessageTemplate: "Perpanjang paket {{name}}." }),
+    getTimezone: () => "Asia/Jakarta",
+    getResolvedReminderContact: () => ({
+      name: "Pelanggan", subscriptionType: "RECURRING", billingCycle: "PREPAID",
+      paymentStatus: "PAID", currentPaymentStatus: "PAID", debtCount: 1,
+    }),
+  }, { push() {} });
+  const message = scheduler.buildReminderMessage({
+    reminderDateTime: "2026-11-17T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    templateName: "PaketPrabayar",
+  });
+  assert.equal(message, "Perpanjang paket Pelanggan.");
+});
+
+test("reminder paket berikutnya tetap menggunakan batas masa aktif", () => {
   const reminder = {
     reminderDateTime: "2026-11-17T01:00:00.000Z",
-    message: "Tagihan November",
+    activePeriodUntil: "2026-11-17T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    templateName: "PaketPrabayar",
   };
-
-  assert.equal(scheduler.isPaidReminder(reminder), false);
-  assert.deepEqual(requestedPeriod, { year: 2026, month: 11 });
-  assert.match(scheduler.buildReminderMessage(reminder), /Rp\s?100\.000/);
+  const scheduler = new ReminderScheduler({}, {
+    getSettings: () => ({ prepaidPackageReminderMessageTemplate: "Paket berakhir {{activeUntil}}." }),
+    getTimezone: () => "Asia/Jakarta",
+    getResolvedReminderContact: () => ({
+      name: "Pelanggan", subscriptionType: "RECURRING", billingCycle: "PREPAID",
+      currentPaymentStatus: "PAID",
+      hotspotReactivationAt: "2026-11-17T01:00:00.000Z",
+    }),
+  }, { push() {} });
+  assert.match(scheduler.buildReminderMessage(reminder), /17 November 2026/);
 });
 
 test("placeholder nominal pada template diganti tanpa menambah blok rincian kedua", () => {
@@ -646,22 +633,21 @@ test("placeholder nominal pada template diganti tanpa menambah blok rincian kedu
   assert.doesNotMatch(message, /Rincian tagihan/);
 });
 
-test("nominal yang sudah ada di pesan reminder diperbarui menjadi total hutang", () => {
-  const dataManager = {
-    getSettings: () => ({}),
+test("reminder paket prabayar tidak menimpa nominal kustom dengan akumulasi hutang", () => {
+  const scheduler = new ReminderScheduler({}, {
+    getSettings: () => ({ prepaidPackageReminderMessageTemplate: "Beli paket seharga Rp 100.000, {{name}}." }),
+    getTimezone: () => "Asia/Jakarta",
     getResolvedReminderContact: () => ({
-      paymentStatus: "UNPAID",
-      currentPaymentStatus: "UNPAID",
-      debtCount: 1,
-      monthlyPaymentAmount: 100_000,
+      name: "Pelanggan", subscriptionType: "RECURRING", billingCycle: "PREPAID",
+      debtCount: 1, monthlyPaymentAmount: 100_000,
     }),
-  };
-  const scheduler = new ReminderScheduler({}, dataManager, { push() {} });
-  const message = scheduler.buildReminderMessage({ message: "Tagihan Emmeril Hotspot Anda sebesar Rp 100.000 belum kami terima." });
-
-  assert.match(message, /sebesar Rp\s?200\.000/);
-  assert.match(message, /Rincian tagihan/);
-  assert.match(message, /Total: Rp\s?200\.000/);
+  }, { push() {} });
+  const message = scheduler.buildReminderMessage({
+    reminderDateTime: "2026-11-17T01:00:00.000Z",
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    templateName: "PaketPrabayar",
+  });
+  assert.equal(message, "Beli paket seharga Rp 100.000, Pelanggan.");
 });
 
 test("reminder pelanggan sekali berlangganan tidak dijadwalkan ulang", async () => {
