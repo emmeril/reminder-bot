@@ -1735,10 +1735,18 @@
                       <td class="px-5 py-4" data-label="Status">
                         <span
                           class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold uppercase"
-                          :class="String(item.deliveryStatus || 'SENT').toUpperCase() === 'FAILED' ? 'bg-red-50 text-red-600 ring-1 ring-red-100' : 'bg-moss/10 text-moss ring-1 ring-moss/10'"
+                          :class="String(item.deliveryStatus || 'SENT').toUpperCase() === 'UNCONFIRMED'
+                            ? 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'
+                            : (String(item.deliveryStatus || 'SENT').toUpperCase() === 'FAILED'
+                              ? 'bg-red-50 text-red-600 ring-1 ring-red-100'
+                              : 'bg-moss/10 text-moss ring-1 ring-moss/10')"
                         >
-                          <i :class="String(item.deliveryStatus || 'SENT').toUpperCase() === 'FAILED' ? 'fa-solid fa-circle-xmark' : 'fa-solid fa-circle-check'"></i>
-                          <span x-text="item.deliveryStatus || 'SENT'"></span>
+                          <i :class="String(item.deliveryStatus || 'SENT').toUpperCase() === 'UNCONFIRMED'
+                            ? 'fa-solid fa-circle-question'
+                            : (String(item.deliveryStatus || 'SENT').toUpperCase() === 'FAILED'
+                              ? 'fa-solid fa-circle-xmark'
+                              : 'fa-solid fa-circle-check')"></i>
+                          <span x-text="String(item.deliveryStatus || 'SENT').toUpperCase() === 'UNCONFIRMED' ? 'BELUM TERKONFIRMASI' : (item.deliveryStatus || 'SENT')"></span>
                         </span>
                       </td>
                       <td class="px-5 py-4 text-ink/65" data-label="Pesan">
