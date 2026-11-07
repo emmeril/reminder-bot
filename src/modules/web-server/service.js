@@ -1232,20 +1232,28 @@ class WebServer {
         this.dataManager.completeMidtransPayment(orderId, gatewayData)
       ));
       let hotspotRecovery = { attempted: false, reason: "incomplete_account" };
-      try {
-        hotspotRecovery = await this.recoverHotspotAfterPayment(result.contact);
-        if (hotspotRecovery.attempted && hotspotRecovery.action !== "already_active") {
-          this.activityLog.push("info", "payment", `Hotspot pelanggan dipulihkan setelah pembayaran ${orderId}`, {
+      const currentHotspot = this.dataManager.getContact?.(result.contact.id) || result.contact;
+      const alreadyRecovered = result.alreadyProcessed
+        && normalizeHotspotProvisioningStatus(currentHotspot?.hotspotProvisioningStatus)
+          === HOTSPOT_PROVISIONING_STATUS.ACTIVE;
+      if (alreadyRecovered) {
+        hotspotRecovery = { attempted: false, reason: "already_processed_active" };
+      } else {
+        try {
+          hotspotRecovery = await this.recoverHotspotAfterPayment(result.contact);
+          if (hotspotRecovery.attempted && hotspotRecovery.action !== "already_active") {
+            this.activityLog.push("info", "payment", `Hotspot pelanggan dipulihkan setelah pembayaran ${orderId}`, {
+              contactId: result.contact.id,
+              action: hotspotRecovery.action,
+            });
+          }
+        } catch (error) {
+          hotspotRecovery = { attempted: true, action: "failed", error: error.message };
+          this.activityLog.push("error", "payment", `Pembayaran ${orderId} lunas tetapi pemulihan hotspot gagal`, {
             contactId: result.contact.id,
-            action: hotspotRecovery.action,
+            error: error.message,
           });
         }
-      } catch (error) {
-        hotspotRecovery = { attempted: true, action: "failed", error: error.message };
-        this.activityLog.push("error", "payment", `Pembayaran ${orderId} lunas tetapi pemulihan hotspot gagal`, {
-          contactId: result.contact.id,
-          error: error.message,
-        });
       }
       const notificationContact = hotspotRecovery.contact
         || (typeof this.dataManager.getContact === "function" ? this.dataManager.getContact(result.contact.id) : null)
