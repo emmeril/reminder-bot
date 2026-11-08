@@ -79,9 +79,46 @@ class WebServer {
     this.activePeriodPurchaseLock = new AsyncLock();
     this.paymentGatewayLock = new AsyncLock();
     this.accountCredentialsLock = new AsyncLock();
+    this.mikrotikReadCache = new Map();
     this.server = null;
     this.ready = true;
     this.setupRoutes();
+  }
+
+  async readMikrotikSnapshot(key, loader, fresh = false) {
+    const now = Date.now();
+    const current = this.mikrotikReadCache.get(key);
+    if (!fresh && current && current.expiresAt > now && current.data !== undefined) {
+      return { data: current.data, cached: true };
+    }
+    if (current?.promise) {
+      return { data: await current.promise, cached: false };
+    }
+
+    const promise = Promise.resolve().then(loader);
+    this.mikrotikReadCache.set(key, { promise, data: undefined, expiresAt: 0 });
+    try {
+      const data = await promise;
+      const ttl = Math.max(0, Number(CONFIG.MIKROTIK_READ_CACHE_MS) || 0);
+      this.mikrotikReadCache.set(key, { data, expiresAt: Date.now() + ttl });
+      return { data, cached: false };
+    } catch (error) {
+      this.mikrotikReadCache.delete(key);
+      throw error;
+    }
+  }
+
+  async respondWithMikrotikSnapshot(req, res, key, loader) {
+    const started = process.hrtime.bigint();
+    const result = await this.readMikrotikSnapshot(key, loader, req.query.fresh === "1");
+    const durationMs = Number(process.hrtime.bigint() - started) / 1e6;
+    res.setHeader("Server-Timing", `mikrotik;dur=${durationMs.toFixed(1)}`);
+    res.setHeader("X-Mikrotik-Cache", result.cached ? "HIT" : "MISS");
+    if (durationMs > 1500) {
+      this.activityLog.push("warn", "performance",
+        `MikroTik ${key} merespons dalam ${Math.round(durationMs)} ms`);
+    }
+    return result.data;
   }
 
   pruneBackgroundJobs() {
@@ -2108,9 +2145,15 @@ class WebServer {
       recoverHotspotAfterPayment: (contact) => this.recoverHotspotAfterPayment(contact),
     });
 
-    this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotProfiles()));
-    this.app.get("/api/mikrotik/hotspot-servers", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotServers()));
-    this.app.get("/api/mikrotik/hotspot-users", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotUsers()));
+    this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi((req, res) => (
+      this.respondWithMikrotikSnapshot(req, res, "profiles", () => this.mikrotikService.getHotspotProfiles())
+    )));
+    this.app.get("/api/mikrotik/hotspot-servers", requireApiAuth, handleApi((req, res) => (
+      this.respondWithMikrotikSnapshot(req, res, "hotspot-servers", () => this.mikrotikService.getHotspotServers())
+    )));
+    this.app.get("/api/mikrotik/hotspot-users", requireApiAuth, handleApi((req, res) => (
+      this.respondWithMikrotikSnapshot(req, res, "hotspot-users", () => this.mikrotikService.getHotspotUsers())
+    )));
     registerVoucherRoutes({
       app: this.app,
       requireApiAuth,
@@ -2127,8 +2170,10 @@ class WebServer {
     this.app.get("/api/jobs/:jobId", requireApiAuth, handleApi(async (req) => (
       this.getBackgroundJob(req.params.jobId)
     )));
-    this.app.get("/api/mikrotik/netwatch", requireApiAuth, handleApi(async () => (
-      this.buildNetworkMonitorView(await this.mikrotikService.getNetwatchStatus())
+    this.app.get("/api/mikrotik/netwatch", requireApiAuth, handleApi(async (req, res) => (
+      this.buildNetworkMonitorView(await this.respondWithMikrotikSnapshot(
+        req, res, "netwatch", () => this.mikrotikService.getNetwatchStatus()
+      ))
     )));
     this.app.post("/api/mikrotik/backup/send", requireApiAuth, handleApi(async (_req, res) => {
       if (!TelegramManager.isConfigured()) {
