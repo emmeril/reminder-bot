@@ -178,6 +178,33 @@ test("pembacaan MikroTik berulang memakai cache singkat dan tombol refresh memak
   assert.equal(reads, 2);
 });
 
+test("Server-Timing memisahkan antrean, koneksi, dan perintah MikroTik", async () => {
+  const baseUrl = await startServer({}, {}, {
+    getHotspotServers: async ({ metrics }) => {
+      metrics.queueMs = 120;
+      metrics.connectionMs = 80;
+      metrics.commandMs = 15;
+      return ["hotspot-1"];
+    },
+  });
+  const cookie = await login(baseUrl);
+  const response = await fetch(`${baseUrl}/api/mikrotik/hotspot-servers?fresh=1`, {
+    headers: { cookie },
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).data, ["hotspot-1"]);
+  assert.match(response.headers.get("server-timing"), /mikrotik;dur=/);
+  assert.match(response.headers.get("server-timing"), /queue;dur=120\.0/);
+  assert.match(response.headers.get("server-timing"), /connect;dur=80\.0/);
+  assert.match(response.headers.get("server-timing"), /command;dur=15\.0/);
+
+  const cached = await fetch(`${baseUrl}/api/mikrotik/hotspot-servers`, {
+    headers: { cookie },
+  });
+  assert.equal(cached.headers.get("x-mikrotik-cache"), "HIT");
+  assert.doesNotMatch(cached.headers.get("server-timing"), /queue;dur=/);
+});
+
 test("pembacaan MikroTik bersamaan digabung dan error tidak tersimpan di cache", async () => {
   let calls = 0;
   let fail = true;
