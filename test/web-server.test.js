@@ -147,6 +147,64 @@ test("aset dashboard menggunakan validasi cache agar perubahan tetap terambil", 
   }
 });
 
+test("pembacaan MikroTik berulang memakai cache singkat dan tombol refresh memaksa data terbaru", async () => {
+  let reads = 0;
+  const baseUrl = await startServer({}, {}, {
+    getHotspotProfiles: async () => {
+      reads++;
+      return [{ name: `Profile ${reads}` }];
+    },
+  });
+  const cookie = await login(baseUrl);
+  const request = (suffix = "") => fetch(`${baseUrl}/api/mikrotik/profiles${suffix}`, {
+    headers: { cookie },
+  });
+
+  const first = await request();
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get("x-mikrotik-cache"), "MISS");
+  assert.match(first.headers.get("server-timing"), /^mikrotik;dur=/);
+  assert.equal((await first.json()).data[0].name, "Profile 1");
+
+  const second = await request();
+  assert.equal(second.status, 200);
+  assert.equal(second.headers.get("x-mikrotik-cache"), "HIT");
+  assert.equal((await second.json()).data[0].name, "Profile 1");
+  assert.equal(reads, 1);
+
+  const refreshed = await request("?fresh=1");
+  assert.equal(refreshed.status, 200);
+  assert.equal((await refreshed.json()).data[0].name, "Profile 2");
+  assert.equal(reads, 2);
+});
+
+test("pembacaan MikroTik bersamaan digabung dan error tidak tersimpan di cache", async () => {
+  let calls = 0;
+  let fail = true;
+  const baseUrl = await startServer({}, {}, {
+    getHotspotServers: async () => {
+      calls++;
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      if (fail) throw new Error("router offline");
+      return ["hotspot-1"];
+    },
+  });
+  const cookie = await login(baseUrl);
+  const url = `${baseUrl}/api/mikrotik/hotspot-servers`;
+  const fetchServers = () => fetch(url, { headers: { cookie } });
+
+  const [a, b] = await Promise.all([fetchServers(), fetchServers()]);
+  assert.equal(a.status, 500);
+  assert.equal(b.status, 500);
+  assert.equal(calls, 1);
+
+  fail = false;
+  const recovered = await fetchServers();
+  assert.equal(recovered.status, 200);
+  assert.deepEqual((await recovered.json()).data, ["hotspot-1"]);
+  assert.equal(calls, 2);
+});
+
 test("API reminder hanya menyediakan akses baca untuk jadwal otomatis", async () => {
   const baseUrl = await startServer({ getSortedReminders: () => [] });
   const cookie = await login(baseUrl);
