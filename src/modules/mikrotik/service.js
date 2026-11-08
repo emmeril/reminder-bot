@@ -109,7 +109,8 @@ class MikrotikService {
     this.idleDisconnectTimer.unref?.();
   }
 
-  async withConnection(operation) {
+  async withConnection(operation, metrics = null) {
+    const started = process.hrtime.bigint();
     const limit = Math.max(1, Number(CONFIG.MIKROTIK_MAX_PENDING_OPERATIONS) || 40);
     if (this.pendingOperations >= limit) {
       const error = new Error("Antrean MikroTik sedang penuh. Coba beberapa saat lagi.");
@@ -120,9 +121,11 @@ class MikrotikService {
     this.pendingOperations += 1;
     try {
       return await this.connectionLock.runExclusive("routeros", async () => {
+        if (metrics) metrics.queueMs = Number(process.hrtime.bigint() - started) / 1e6;
         clearTimeout(this.idleDisconnectTimer);
         this.idleDisconnectTimer = null;
 
+        const connectionStarted = process.hrtime.bigint();
         try {
           if (this.liveConnection
             && typeof this.liveConnection.client.isConnected === "function"
@@ -145,8 +148,13 @@ class MikrotikService {
             throw new Error("Gagal terhubung ke MikroTik primary maupun backup.");
           }
 
-          // Never replay a failed operation: it may have changed state on the router.
-          return await operation(this.liveConnection.connection, this.liveConnection);
+          if (metrics) metrics.connectionMs = Number(process.hrtime.bigint() - connectionStarted) / 1e6;
+          const commandStarted = process.hrtime.bigint();
+          try {
+            return await operation(this.liveConnection.connection, this.liveConnection);
+          } finally {
+            if (metrics) metrics.commandMs = Number(process.hrtime.bigint() - commandStarted) / 1e6;
+          }
         } catch (error) {
           await this.disconnectCurrentConnection();
           throw error;
@@ -156,6 +164,7 @@ class MikrotikService {
       });
     } finally {
       this.pendingOperations -= 1;
+      if (metrics) metrics.totalMs = Number(process.hrtime.bigint() - started) / 1e6;
     }
   }
 
@@ -165,7 +174,7 @@ class MikrotikService {
     await this.connectionLock.runExclusive("routeros", () => this.disconnectCurrentConnection());
   }
 
-  async getHotspotProfiles() {
+  async getHotspotProfiles(options = {}) {
     return this.withConnection(async (conn) => {
       const profiles = await conn.menu("/ip/hotspot/user/profile").print();
       return (profiles || [])
@@ -175,7 +184,7 @@ class MikrotikService {
         }))
         .filter((profile) => profile.name)
         .sort((a, b) => a.name.localeCompare(b.name, "id-ID"));
-    });
+    }, options.metrics);
   }
 
   async getVoucherProfiles() {
@@ -499,14 +508,14 @@ class MikrotikService {
     });
   }
 
-  async getHotspotServers() {
+  async getHotspotServers(options = {}) {
     return this.withConnection(async (conn) => {
       const servers = await conn.menu("/ip/hotspot").print();
       return (servers || [])
         .map((server) => sanitizeInput(String(server.name || "")))
         .filter(Boolean)
         .sort((a, b) => a.localeCompare(b, "id-ID"));
-    });
+    }, options.metrics);
   }
 
   async getHotspotVoucherBatches(options = {}) {
@@ -962,7 +971,7 @@ class MikrotikService {
     });
   }
 
-  async getHotspotUsers() {
+  async getHotspotUsers(options = {}) {
     return this.withConnection(async (conn) => {
       const userMenu = conn.menu("/ip/hotspot/user")
         .select(["id", "name", "profile", "comment", "disabled", "email"]);
@@ -1019,7 +1028,7 @@ class MikrotikService {
 
       return Array.from(byUsername.values())
         .sort((a, b) => a.username.localeCompare(b.username, "id-ID"));
-    });
+    }, options.metrics);
   }
 
   async getHotspotUsersForStatusSync(usernames = []) {
@@ -1423,7 +1432,7 @@ class MikrotikService {
     });
   }
 
-  async getNetwatchStatus() {
+  async getNetwatchStatus(options = {}) {
     return this.withConnection(async (conn) => {
       const rows = await conn.menu("/tool/netwatch").print();
       return (rows || [])
@@ -1440,7 +1449,7 @@ class MikrotikService {
           downScript: row["down-script"] || "",
         }))
         .sort((a, b) => String(a.host || "").localeCompare(String(b.host || ""), "id-ID"));
-    });
+    }, options.metrics);
   }
 
   async removeHotspotUsersByName(conn, username) {

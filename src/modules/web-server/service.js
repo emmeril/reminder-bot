@@ -92,16 +92,17 @@ class WebServer {
       return { data: current.data, cached: true };
     }
     if (current?.promise) {
-      return { data: await current.promise, cached: false };
+      return { data: await current.promise, cached: false, metrics: current.metrics };
     }
 
-    const promise = Promise.resolve().then(loader);
-    this.mikrotikReadCache.set(key, { promise, data: undefined, expiresAt: 0 });
+    const metrics = {};
+    const promise = Promise.resolve().then(() => loader(metrics));
+    this.mikrotikReadCache.set(key, { promise, metrics, data: undefined, expiresAt: 0 });
     try {
       const data = await promise;
       const ttl = Math.max(0, Number(CONFIG.MIKROTIK_READ_CACHE_MS) || 0);
       this.mikrotikReadCache.set(key, { data, expiresAt: Date.now() + ttl });
-      return { data, cached: false };
+      return { data, cached: false, metrics };
     } catch (error) {
       this.mikrotikReadCache.delete(key);
       throw error;
@@ -118,11 +119,24 @@ class WebServer {
       throw error;
     }
     const durationMs = Number(process.hrtime.bigint() - started) / 1e6;
-    res.setHeader("Server-Timing", `mikrotik;dur=${durationMs.toFixed(1)}`);
+    const metrics = result.metrics || {};
+    const phases = [
+      ["queue", metrics.queueMs],
+      ["connect", metrics.connectionMs],
+      ["command", metrics.commandMs],
+    ].filter(([, value]) => Number.isFinite(value));
+    const timing = [
+      `mikrotik;dur=${durationMs.toFixed(1)}`,
+      ...phases.map(([name, value]) => `${name};dur=${value.toFixed(1)}`),
+    ];
+    res.setHeader("Server-Timing", timing.join(", "));
     res.setHeader("X-Mikrotik-Cache", result.cached ? "HIT" : "MISS");
     if (durationMs > 1500) {
+      const phaseDetails = phases.length
+        ? ` (${phases.map(([name, value]) => `${name}=${Math.round(value)} ms`).join(", ")})`
+        : "";
       this.activityLog.push("warn", "performance",
-        `MikroTik ${key} merespons dalam ${Math.round(durationMs)} ms`);
+        `MikroTik ${key} memerlukan ${Math.round(durationMs)} ms${phaseDetails}`);
     }
     return result.data;
   }
@@ -2152,13 +2166,13 @@ class WebServer {
     });
 
     this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi((req, res) => (
-      this.respondWithMikrotikSnapshot(req, res, "profiles", () => this.mikrotikService.getHotspotProfiles())
+      this.respondWithMikrotikSnapshot(req, res, "profiles", (metrics) => this.mikrotikService.getHotspotProfiles({ metrics }))
     )));
     this.app.get("/api/mikrotik/hotspot-servers", requireApiAuth, handleApi((req, res) => (
-      this.respondWithMikrotikSnapshot(req, res, "hotspot-servers", () => this.mikrotikService.getHotspotServers())
+      this.respondWithMikrotikSnapshot(req, res, "hotspot-servers", (metrics) => this.mikrotikService.getHotspotServers({ metrics }))
     )));
     this.app.get("/api/mikrotik/hotspot-users", requireApiAuth, handleApi((req, res) => (
-      this.respondWithMikrotikSnapshot(req, res, "hotspot-users", () => this.mikrotikService.getHotspotUsers())
+      this.respondWithMikrotikSnapshot(req, res, "hotspot-users", (metrics) => this.mikrotikService.getHotspotUsers({ metrics }))
     )));
     registerVoucherRoutes({
       app: this.app,
@@ -2178,7 +2192,7 @@ class WebServer {
     )));
     this.app.get("/api/mikrotik/netwatch", requireApiAuth, handleApi(async (req, res) => (
       this.buildNetworkMonitorView(await this.respondWithMikrotikSnapshot(
-        req, res, "netwatch", () => this.mikrotikService.getNetwatchStatus()
+        req, res, "netwatch", (metrics) => this.mikrotikService.getNetwatchStatus({ metrics })
       ))
     )));
     this.app.post("/api/mikrotik/backup/send", requireApiAuth, handleApi(async (_req, res) => {

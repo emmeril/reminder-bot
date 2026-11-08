@@ -103,3 +103,41 @@ test("RouterOS menolak antrean yang melebihi batas", async () => {
     CONFIG.MIKROTIK_MAX_PENDING_OPERATIONS = previous;
   }
 });
+
+test("pengukuran RouterOS memisahkan antrean, koneksi, dan perintah", async () => {
+  const { service } = makeService();
+  const metrics = {};
+  try {
+    const result = await service.withConnection(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return "hotspot-1";
+    }, metrics);
+    assert.equal(result, "hotspot-1");
+    for (const name of ["queueMs", "connectionMs", "commandMs", "totalMs"]) {
+      assert.equal(Number.isFinite(metrics[name]), true, name);
+      assert.equal(metrics[name] >= 0, true, name);
+    }
+    assert.ok(metrics.totalMs >= metrics.commandMs);
+  } finally {
+    await service.close();
+  }
+});
+
+test("pengukuran menunjukkan antrean ketika koneksi sedang digunakan", async () => {
+  const { service } = makeService();
+  let release;
+  const wait = new Promise((resolve) => { release = resolve; });
+  try {
+    const first = service.withConnection(() => wait);
+    const metrics = {};
+    const second = service.withConnection(() => "second", metrics);
+    await new Promise((resolve) => setTimeout(resolve, 8));
+    release();
+    await Promise.all([first, second]);
+    assert.ok(metrics.queueMs >= 1, `queueMs=${metrics.queueMs}`);
+    assert.equal(Number.isFinite(metrics.commandMs), true);
+  } finally {
+    release();
+    await service.close();
+  }
+});
