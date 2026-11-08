@@ -43,6 +43,7 @@ function createDashboardData() {
                 customerAccountMessageTemplate: data.settings.customerAccountMessageTemplate || "",
                 prepaidPackagePaymentMessageTemplate: data.settings.prepaidPackagePaymentMessageTemplate || "",
                 paymentHotspotAccountMessageTemplate: data.settings.paymentHotspotAccountMessageTemplate || "",
+                paymentIpBindingAccessMessageTemplate: data.settings.paymentIpBindingAccessMessageTemplate || "",
                 prepaidPackageReminderMessageTemplate: data.settings.prepaidPackageReminderMessageTemplate || "",
                 timezone: data.settings.timezone || "",
                 hotspotIsolationGraceDays: Number(data.settings.hotspotIsolationGraceDays ?? 0),
