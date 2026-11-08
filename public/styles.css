@@ -898,9 +898,6 @@ table tbody tr:hover { background: #fafaff; }
 .billing-action-submit > i, .billing-action-submit:hover > i { color: #fff; }
 .billing-action-footer { display: flex; justify-content: flex-end; margin-top: 14px; padding-top: 12px; border-top: 1px solid #d9dee7; }
 .billing-action-footer button { min-width: 96px; min-height: 44px; padding: 10px 16px; font-size: 12px; font-weight: 700; }
-.customer-debt-note { display: flex; max-width: 220px; flex-direction: column; gap: 3px; margin-top: 7px; padding: 7px 8px; color: #b42318; border: 1px solid #f4c7c3; border-radius: 8px; background: #fff7f6; }
-.customer-debt-note strong { display: flex; align-items: center; gap: 5px; font-size: 11px; }
-.customer-debt-note small { color: #c05a50; font-size: 10px; line-height: 1.4; }
 .customer-ap-host { display: block; margin-bottom: 0; color: #667085; font-size: 11px; font-weight: 650; white-space: nowrap; }
 .customer-ap-status { white-space: nowrap; }
 .customer-hotspot-account { display: block; color: #475467; font-weight: 650; }
@@ -1003,7 +1000,6 @@ table tbody tr:hover { background: #fafaff; }
   .billing-action-option, .billing-action-submit, .billing-action-footer button { min-height: 44px; }
   .billing-action-active-period { align-items: stretch; flex-direction: column; }
   .billing-action-active-period .billing-action-option { width: 100%; }
-  .customer-debt-note { width: 100%; max-width: none; }
   .customer-pagination { align-items: flex-start; }
   .customer-panel .table-scroll { max-height: none; overflow: visible; }
 }
