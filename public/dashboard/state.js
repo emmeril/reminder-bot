@@ -293,6 +293,7 @@ function createDashboardState() {
             customerAccountMessageTemplate: "",
             prepaidPackagePaymentMessageTemplate: "",
             paymentHotspotAccountMessageTemplate: "",
+            paymentIpBindingAccessMessageTemplate: "",
             prepaidPackageReminderMessageTemplate: "",
             timezone: "",
             hotspotIsolationGraceDays: 0,
