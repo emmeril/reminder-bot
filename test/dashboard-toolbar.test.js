@@ -32,7 +32,7 @@ test("semua tabel sortable menyediakan pilihan urut yang sama di mobile", () => 
   }
 
   for (const [tableKey, fields] of Object.entries(app.mobileSortFields)) {
-    const expected = fields.map(([key]) => key);
+    const expected = Array.from(fields, ([key]) => key);
     assert.deepEqual(expected, Array.from(desktop.get(tableKey) || []), tableKey);
     assert.ok(html.includes(`changeMobileSort('${tableKey}', $event.target.value)`), tableKey);
     assert.ok(html.includes(`getMobileSortOptions('${tableKey}')`), tableKey);
