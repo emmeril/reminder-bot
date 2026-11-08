@@ -9,6 +9,7 @@ function createDashboardData() {
               this.loadTemplates(),
             ]);
             await this.loadNonCriticalData();
+            await this.loadVisibleMikrotikData({ refresh: true });
           });
         },
 
@@ -113,13 +114,13 @@ function createDashboardData() {
         },
 
         async loadMikrotikProfiles(options = {}) {
-          this.mikrotikProfiles = await this.api("/api/mikrotik/profiles", { silent: Boolean(options.silent) });
+          this.mikrotikProfiles = await this.api(options.fresh || !options.silent ? "/api/mikrotik/profiles?fresh=1" : "/api/mikrotik/profiles", { silent: Boolean(options.silent) });
           this.syncProfileMonthlyAmountFields();
           if (!options.silent) this.notify(`${this.mikrotikProfiles.length} profile MikroTik dimuat.`);
         },
 
         async loadVoucherServers(options = {}) {
-          this.mikrotikServers = await this.api("/api/mikrotik/hotspot-servers", { silent: Boolean(options.silent) });
+          this.mikrotikServers = await this.api(options.fresh || !options.silent ? "/api/mikrotik/hotspot-servers?fresh=1" : "/api/mikrotik/hotspot-servers", { silent: Boolean(options.silent) });
           if (!options.silent) this.notify(`${this.mikrotikServers.length} server hotspot dimuat.`);
         },
 
@@ -711,7 +712,7 @@ function createDashboardData() {
         },
 
         async loadHotspotUsers(options = {}) {
-          this.hotspotUsers = await this.api("/api/mikrotik/hotspot-users", { silent: Boolean(options.silent) });
+          this.hotspotUsers = await this.api(options.fresh || !options.silent ? "/api/mikrotik/hotspot-users?fresh=1" : "/api/mikrotik/hotspot-users", { silent: Boolean(options.silent) });
           if (!options.silent) this.notify(`${this.hotspotUsers.length} user hotspot dimuat.`);
         },
 
@@ -741,7 +742,7 @@ function createDashboardData() {
         },
 
         async loadApMonitors(options = {}) {
-          this.apMonitors = await this.api("/api/mikrotik/netwatch", { silent: Boolean(options.silent) });
+          this.apMonitors = await this.api(options.fresh || !options.silent ? "/api/mikrotik/netwatch?fresh=1" : "/api/mikrotik/netwatch", { silent: Boolean(options.silent) });
           this.updateApSummaryMetrics();
           this.clampPage("monitorAp", this.filteredApMonitors.length);
         },
