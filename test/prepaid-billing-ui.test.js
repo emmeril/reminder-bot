@@ -15,7 +15,7 @@ test("tab Tagihan prabayar tidak menampilkan kolom dan form tunggakan", () => {
   assert.doesNotMatch(section, /'contactBilling', 'debt'/);
   assert.match(section, /colspan="9"/);
 
-  const modal = html.split('id="billing-action-title"')[1].split('id="billing-action-footer"')[0];
+  const modal = html.split('id="billing-action-title"')[1].split('class="billing-action-footer"')[0];
   assert.ok(modal);
   assert.doesNotMatch(modal, /Sisa tunggakan|payArrears\(|ARREARS-ONLY|FULL-PAID/);
   assert.match(modal, /purchaseActivePeriod\(/);
