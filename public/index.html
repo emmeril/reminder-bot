@@ -327,6 +327,26 @@
               <label class="table-filter-field"><span>Baris</span><select x-model.number="filters.contacts.pageSize" @change="resetPage('contacts')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'contacts-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
               <button type="button" @click="resetContactDataFilters()" :disabled="!hasContactDataFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
             </div>
+            <div class="customer-compact-sort" role="group" aria-label="Urutkan data pelanggan">
+              <span class="customer-compact-sort-label">Urutkan pelanggan</span>
+              <template x-for="column in [
+                { key: 'name', label: 'Nama' },
+                { key: 'phone', label: 'No. WA' },
+                { key: 'billingCycle', label: 'Siklus pembayaran' },
+                { key: 'linkedAp', label: 'AP terkait' },
+                { key: 'apStatus', label: 'Status AP' }
+              ]" :key="'compact-sort-' + column.key">
+                <button type="button"
+                  class="customer-compact-sort-button"
+                  :class="{ 'is-active': Boolean(getSortDirection('contacts', column.key)) }"
+                  :aria-pressed="Boolean(getSortDirection('contacts', column.key))"
+                  :aria-label="getSortLabel('contacts', column.key, column.label)"
+                  @click="toggleSort('contacts', column.key)">
+                  <span x-text="column.label"></span>
+                  <i :class="getSortIcon('contacts', column.key)" aria-hidden="true"></i>
+                </button>
+              </template>
+            </div>
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Data pelanggan">
                 <table class="customer-workspace-table customer-data-table contacts-table min-w-full text-sm">
