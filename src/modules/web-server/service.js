@@ -110,7 +110,13 @@ class WebServer {
 
   async respondWithMikrotikSnapshot(req, res, key, loader) {
     const started = process.hrtime.bigint();
-    const result = await this.readMikrotikSnapshot(key, loader, req.query.fresh === "1");
+    let result;
+    try {
+      result = await this.readMikrotikSnapshot(key, loader, req.query.fresh === "1");
+    } catch (error) {
+      error.statusCode ||= 503;
+      throw error;
+    }
     const durationMs = Number(process.hrtime.bigint() - started) / 1e6;
     res.setHeader("Server-Timing", `mikrotik;dur=${durationMs.toFixed(1)}`);
     res.setHeader("X-Mikrotik-Cache", result.cached ? "HIT" : "MISS");
