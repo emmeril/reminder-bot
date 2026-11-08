@@ -30,9 +30,8 @@ function createDashboardData() {
               { label: "Layanan perlu dicek", value: data.summary.serviceAttention || 0, icon: "fa-solid fa-screwdriver-wrench", tone: "amber", menu: "hotspot-accounts" },
               { label: "Reminder aktif", value: data.summary.reminders, icon: "fa-solid fa-calendar-check", tone: "violet", menu: "reminders" },
               { label: "Pesan hari ini", value: data.summary.sentToday || 0, icon: "fa-solid fa-paper-plane", tone: "cyan", menu: "history" },
-              { label: "Lunas / paket aktif", value: data.summary.paidContacts, icon: "fa-solid fa-circle-check", tone: "green", menu: "payment-amount" },
-              { label: "Perlu pembayaran", value: data.summary.unpaidContacts, icon: "fa-solid fa-clock", tone: "amber", menu: "payment-amount" },
-              { label: "Memiliki tunggakan", value: data.summary.debtContacts || 0, icon: "fa-solid fa-file-invoice-dollar", tone: "red", menu: "payment-amount" },
+              { label: "Paket aktif", value: data.summary.paidContacts, icon: "fa-solid fa-circle-check", tone: "green", menu: "payment-amount" },
+              { label: "Paket tidak aktif", value: data.summary.unpaidContacts, icon: "fa-solid fa-clock", tone: "amber", menu: "payment-amount" },
             ];
             this.updateApSummaryMetrics();
             if (!this.settingsDirty) {
