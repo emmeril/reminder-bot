@@ -343,7 +343,7 @@ test("pengaturan hanya menampilkan template masa aktif paket prabayar", () => {
   assert.doesNotMatch(html, /x-model="forms\.settings\.activePeriodReminderMessageTemplate"/);
   assert.equal(app.forms.settings.prepaidPackageReminderMessageTemplate, "");
 });
-test("pengaturan notifikasi menampilkan lima template aktif tanpa field pascabayar", () => {
+test("pengaturan notifikasi menampilkan enam template aktif tanpa field pascabayar", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const app = createDashboardApp();
   const panel = html.match(/<section id="settings-messages-panel"[\s\S]*?<\/section>/)?.[0];
@@ -352,6 +352,7 @@ test("pengaturan notifikasi menampilkan lima template aktif tanpa field pascabay
     "prepaidPackagePaymentMessageTemplate",
     "prepaidPackageReminderMessageTemplate",
     "paymentHotspotAccountMessageTemplate",
+    "paymentIpBindingAccessMessageTemplate",
     "customerAccountMessageTemplate",
     "apDownMessageTemplate",
   ];
@@ -462,15 +463,20 @@ test("simpan pengaturan yang gagal mempertahankan form dan pesan reminder", asyn
   assert.match(app.formErrors.settings, /Pengaturan gagal disimpan\./);
 });
 
-test("pengaturan menyediakan template akun WiFi setelah pembayaran", () => {
+test("pengaturan menyediakan template Hotspot dan IP Binding setelah pembayaran", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const app = createDashboardApp();
 
-  assert.match(html, /Akun WiFi setelah pembayaran/);
+  assert.match(html, /Akun Hotspot setelah pembayaran/);
+  assert.match(html, /Akses IP Binding setelah pembayaran/);
   assert.match(html, /x-model="forms\.settings\.paymentHotspotAccountMessageTemplate"/);
   assert.match(html, /<code>{{hotspotStatus}}<\/code>/);
+  assert.match(html, /<code>{{ipBindingStatus}}<\/code>/);
+  assert.match(html, /<code>{{ipBindingTitle}}<\/code>/);
+  assert.match(html, /x-model="forms\.settings\.paymentIpBindingAccessMessageTemplate"/);
   assert.match(html, /<code>{{hotspotAccountDetails}}<\/code>/);
   assert.equal(app.forms.settings.paymentHotspotAccountMessageTemplate, "");
+  assert.equal(app.forms.settings.paymentIpBindingAccessMessageTemplate, "");
 });
 
 test("menu template memakai variabel pengiriman personal dan broadcast", () => {

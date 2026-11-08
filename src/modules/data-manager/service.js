@@ -110,6 +110,9 @@ class DataManager extends CustomerDataManager {
         paymentHotspotAccountMessageTemplate: payload.paymentHotspotAccountMessageTemplate !== undefined
           ? sanitizeMultilineText(payload.paymentHotspotAccountMessageTemplate) || current.paymentHotspotAccountMessageTemplate
           : current.paymentHotspotAccountMessageTemplate,
+        paymentIpBindingAccessMessageTemplate: payload.paymentIpBindingAccessMessageTemplate !== undefined
+          ? sanitizeMultilineText(payload.paymentIpBindingAccessMessageTemplate) || current.paymentIpBindingAccessMessageTemplate
+          : current.paymentIpBindingAccessMessageTemplate,
         prepaidPackageReminderMessageTemplate: payload.prepaidPackageReminderMessageTemplate !== undefined
           ? sanitizeMultilineText(payload.prepaidPackageReminderMessageTemplate) || current.prepaidPackageReminderMessageTemplate
           : current.prepaidPackageReminderMessageTemplate,

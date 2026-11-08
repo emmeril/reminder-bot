@@ -1436,6 +1436,21 @@ test("menyimpan template akun WiFi setelah pembayaran dari menu pengaturan", asy
   assert.equal(settings.paymentHotspotAccountMessageTemplate, template);
 });
 
+test("template IP Binding dapat disimpan tanpa mengganti template akun Hotspot yang sudah ada", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.saveSettings = async () => {};
+  const existingHotspotTemplate = "Data Hotspot Kustom: {{hotspotUsername}}";
+  await manager.updateSettings({ paymentHotspotAccountMessageTemplate: existingHotspotTemplate });
+  const ipBindingTemplate = "Perangkat otomatis: {{ipBindingStatus}} - {{activeUntil}}";
+  const saved = await manager.updateSettings({ paymentIpBindingAccessMessageTemplate: ipBindingTemplate });
+
+  assert.equal(saved.paymentHotspotAccountMessageTemplate, existingHotspotTemplate);
+  assert.equal(saved.paymentIpBindingAccessMessageTemplate, ipBindingTemplate);
+  const unchanged = await manager.updateSettings({ supportSignature: "CS Jaringan" });
+  assert.equal(unchanged.paymentIpBindingAccessMessageTemplate, ipBindingTemplate);
+  assert.equal(unchanged.paymentHotspotAccountMessageTemplate, existingHotspotTemplate);
+});
+
 test("tarif profile MikroTik memperbarui nominal pelanggan dan reminder", async () => {
   const contact = {
     id: "contact-profile-tariff",

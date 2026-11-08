@@ -216,14 +216,16 @@ class NotificationBot {
       : "";
     if (accessMode === HOTSPOT_ACCESS_MODES.HOTSPOT_ONLY) return hotspotDetails;
 
-    const ipBindingDetails = [
-      accessMode === HOTSPOT_ACCESS_MODES.IP_BINDING_ONLY ? "*Akses WiFi*" : "*Akses IP Binding*",
-      "Metode akses: IP Binding",
-      `Status: ${status}`,
-      `Aktif sampai: ${activeUntil}`,
-      "",
-      "Perangkat yang terdaftar dapat terhubung ke internet secara otomatis tanpa memasukkan username dan password.",
-    ].join("\n");
+    const ipBindingTemplate = sanitizeMultilineText(settings.paymentIpBindingAccessMessageTemplate)
+      || DEFAULT_SETTINGS.paymentIpBindingAccessMessageTemplate;
+    const ipBindingTitle = accessMode === HOTSPOT_ACCESS_MODES.IP_BINDING_ONLY
+      ? "*Akses WiFi*" : "*Akses IP Binding*";
+    const ipBindingDetails = ipBindingTemplate
+      .replace(/{{\s*ipBindingTitle\s*}}/gi, () => ipBindingTitle)
+      .replace(/{{\s*ipBindingStatus\s*}}/gi, () => status)
+      .replace(/{{\s*activeUntil\s*}}/gi, () => activeUntil)
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
     return [hotspotDetails, ipBindingDetails].filter(Boolean).join("\n\n");
   }
 
