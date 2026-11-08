@@ -329,13 +329,7 @@ function createDashboardActions() {
         },
 
         hasBillingActions(contact) {
-          if (this.isPrepaidPackage(contact)) return this.canPurchaseActivePeriod(contact);
-          return Boolean(
-            (contact?.subscriptionActive !== false && contact?.currentPaymentStatus !== "PAID")
-            || this.hasDebt(contact)
-            || this.canSendBillingReminder(contact)
-            || (contact?.subscriptionActive !== false && contact?.currentPaymentStatus === "PAID")
-          );
+          return this.isPrepaidPackage(contact) && this.canPurchaseActivePeriod(contact);
         },
 
         openBillingActionModal(contact, trigger = null) {
