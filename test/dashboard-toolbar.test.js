@@ -48,10 +48,10 @@ test("pilihan urutan mobile sesuai tombol header dan dapat dikembalikan", () => 
   app.changeMobileSort("contacts", "name:asc");
   assert.equal(app.filters.contacts.page, 1);
   assert.equal(app.getSortAria("contacts", "name"), "ascending");
-  assert.deepEqual(app.sortTableItems(records, "contacts", { name: (row) => row.name }).map((row) => row.name), ["Alfa", "Zeta"]);
+  assert.deepEqual(Array.from(app.sortTableItems(records, "contacts", { name: (row) => row.name }), (row) => row.name), ["Alfa", "Zeta"]);
   app.changeMobileSort("contacts", "name:desc");
   assert.equal(app.getSortAria("contacts", "name"), "descending");
-  assert.deepEqual(app.sortTableItems(records, "contacts", { name: (row) => row.name }).map((row) => row.name), ["Zeta", "Alfa"]);
+  assert.deepEqual(Array.from(app.sortTableItems(records, "contacts", { name: (row) => row.name }), (row) => row.name), ["Zeta", "Alfa"]);
   app.changeMobileSort("contacts", "name:invalid");
   assert.equal(app.getMobileSortValue("contacts"), "name:desc");
   app.changeMobileSort("contacts", "");
