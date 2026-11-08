@@ -1955,7 +1955,7 @@ test("semua kolom tabel target dapat diurutkan kecuali kolom aksi", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
   const expectedControls = {
-    contacts: 5,
+    contacts: 6,
     contactBilling: 9,
     contactHotspot: 11,
     voucherProfiles: 4,
@@ -1973,6 +1973,13 @@ test("semua kolom tabel target dapat diurutkan kecuali kolom aksi", () => {
   }
   assert.doesNotMatch(html, /toggleSort\([^\n]*(?:Aksi|action)/i);
   assert.match(html, /:aria-sort="getSortAria\('contacts', 'name'\)"/);
+  const desktopContactSorts = html.match(/@click="toggleSort\('contacts', '(?:name|phone|billingCycle|linkedAp|apStatus)'\)"/g) || [];
+  assert.equal(desktopContactSorts.length, 5, "lima kolom header desktop punya tombol sort");
+  assert.match(html, /class="customer-compact-sort"/);
+  assert.match(html, /@click="toggleSort\('contacts', column\.key\)"/);
+  for (const key of ["name", "phone", "billingCycle", "linkedAp", "apStatus"]) {
+    assert.ok(html.includes(`{ key: '${key}', label:`), `sort mobile tersedia untuk ${key}`);
+  }
   assert.match(styles, /\.table-sort-button\s*\{[^}]*min-height:\s*44px/s);
   assert.match(styles, /\.table-sort-button:focus-visible/);
 });
