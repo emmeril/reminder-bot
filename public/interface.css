@@ -4014,3 +4014,183 @@ body.admin-body:not(.voucher-print-mode) .voucher-card > div:first-child strong 
     font-size: 13px !important;
   }
 }
+
+/* Customer data: readable sort controls across screen widths. */
+body.admin-body:not(.voucher-print-mode) .customer-compact-sort {
+  display: none;
+}
+
+body.admin-body:not(.voucher-print-mode) .customer-data-table {
+  min-width: 1100px;
+}
+
+body.admin-body:not(.voucher-print-mode) .customer-data-table thead th {
+  padding-inline: 10px !important;
+  vertical-align: middle;
+  white-space: normal !important;
+}
+
+body.admin-body:not(.voucher-print-mode) .customer-data-table .table-sort-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 6px;
+  white-space: normal;
+}
+
+body.admin-body:not(.voucher-print-mode) .customer-data-table .table-sort-leading-icon {
+  display: none !important;
+}
+
+body.admin-body:not(.voucher-print-mode) .customer-data-table .table-sort-button > span {
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+  white-space: normal;
+}
+
+body.admin-body:not(.voucher-print-mode) .customer-data-table .table-sort-indicator {
+  justify-self: end;
+  margin-left: 0;
+}
+
+@media (max-width: 1100px) {
+  body.admin-body:not(.voucher-print-mode) .customer-compact-sort {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 0 4px;
+    padding: 10px 12px;
+    border: 1px solid var(--ui-border);
+    border-radius: 10px;
+    background: var(--ui-surface-soft);
+  }
+
+  body.admin-body:not(.voucher-print-mode) .customer-compact-sort-label {
+    width: 100%;
+    color: var(--ui-ink-soft);
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  body.admin-body:not(.voucher-print-mode) .customer-compact-sort-button {
+    display: inline-flex;
+    min-width: 0;
+    min-height: 44px !important;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 9px 12px !important;
+    border: 1px solid var(--ui-border-strong) !important;
+    border-radius: 8px !important;
+    background: #fff !important;
+    color: var(--ui-ink-soft);
+    font: inherit;
+    font-size: 13px !important;
+    font-weight: 600;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    text-align: center;
+    cursor: pointer;
+  }
+
+  body.admin-body:not(.voucher-print-mode) .customer-compact-sort-button i {
+    flex: 0 0 auto;
+    color: var(--ui-muted);
+    font-size: 13px;
+  }
+
+  body.admin-body:not(.voucher-print-mode) .customer-compact-sort-button:hover {
+    border-color: var(--ui-primary) !important;
+    background: var(--ui-primary-soft) !important;
+  }
+
+  body.admin-body:not(.voucher-print-mode) .customer-compact-sort-button.is-active {
+    border-color: var(--ui-primary) !important;
+    background: var(--ui-primary-soft) !important;
+    color: var(--ui-primary-dark) !important;
+  }
+
+  body.admin-body:not(.voucher-print-mode) .customer-compact-sort-button.is-active i {
+    color: var(--ui-primary-dark);
+  }
+
+  body.admin-body:not(.voucher-print-mode) #customer-data-panel .customer-table-frame,
+  body.admin-body:not(.voucher-print-mode) #customer-data-panel .table-scroll {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  body.admin-body:not(.voucher-print-mode) .customer-data-table,
+  body.admin-body:not(.voucher-print-mode) .customer-data-table tbody,
+  body.admin-body:not(.voucher-print-mode) .customer-data-table tbody tr,
+  body.admin-body:not(.voucher-print-mode) .customer-data-table tbody td {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  body.admin-body:not(.voucher-print-mode) .customer-data-table {
+    table-layout: auto !important;
+  }
+
+  body.admin-body:not(.voucher-print-mode) .customer-data-table thead {
+    display: none !important;
+  }
+
+  body.admin-body:not(.voucher-print-mode) .customer-data-table tbody tr {
+    margin-bottom: 10px;
+    overflow: hidden;
+    border: 1px solid var(--ui-border) !important;
+    border-radius: 9px;
+    background: #fff !important;
+  }
+
+  body.admin-body:not(.voucher-print-mode) .customer-data-table tbody td {
+    display: flex !important;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 10px 12px !important;
+    border-bottom: 1px solid var(--ui-border) !important;
+    overflow-wrap: anywhere;
+  }
+
+  body.admin-body:not(.voucher-print-mode) .customer-data-table tbody td:last-child {
+    border-bottom: 0 !important;
+  }
+
+  body.admin-body:not(.voucher-print-mode) .customer-data-table tbody td[data-label]::before {
+    content: attr(data-label);
+    color: var(--ui-muted);
+    font-size: 13px !important;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+
+  body.admin-body:not(.voucher-print-mode) .customer-data-table tbody td[colspan]::before {
+    display: none;
+  }
+
+  body.admin-body:not(.voucher-print-mode) .customer-data-table .customer-data-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  body.admin-body:not(.voucher-print-mode) .customer-data-table .customer-data-actions button {
+    min-height: 44px !important;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 420px) {
+  body.admin-body:not(.voucher-print-mode) .customer-data-table .customer-data-actions {
+    grid-template-columns: 1fr;
+  }
+}
