@@ -251,9 +251,8 @@ class DataManager extends CustomerDataManager {
   async createPaymentRecapWorkbook() {
     const workbook = new ExcelJS.Workbook();
     const contacts = this.getSortedContacts();
-    const paidContacts = contacts.filter((contact) => contact.paymentStatus === PAYMENT_STATUS.PAID);
-    const unpaidContacts = contacts.filter((contact) => contact.paymentStatus !== PAYMENT_STATUS.PAID);
-    const debtContacts = contacts.filter((contact) => contact.hasDebt);
+    const activeContacts = contacts.filter((contact) => contact.packageActive === true);
+    const inactiveContacts = contacts.filter((contact) => contact.packageActive !== true);
     const now = new Date();
     const timeZone = this.getTimezone();
     const { year, month } = getBillingPeriodParts(now, timeZone);
@@ -271,9 +270,8 @@ class DataManager extends CustomerDataManager {
       { label: "Periode Rekap", value: formatBillingPeriodLabel(year, month) },
       { label: "Dibuat Pada", value: formatReportDate(now, true, timeZone) },
       { label: "Total Pelanggan", value: contacts.length },
-      { label: "Sudah Lunas Bulan Ini", value: paidContacts.length },
-      { label: "Belum Lunas Bulan Ini", value: unpaidContacts.length },
-      { label: "Pelanggan Memiliki Tunggakan", value: debtContacts.length },
+      { label: "Paket Aktif", value: activeContacts.length },
+      { label: "Paket Tidak Aktif", value: inactiveContacts.length },
     ]);
     styleReportSheet(summary);
 
@@ -281,14 +279,11 @@ class DataManager extends CustomerDataManager {
       { header: "No", key: "number" },
       { header: "Nama", key: "name" },
       { header: "Nomor WhatsApp", key: "phoneNumber" },
-      { header: "Status Bulan Ini", key: "status" },
+      { header: "Status Paket", key: "status" },
       { header: "Jenis Pembayaran", key: "paymentType" },
       { header: "Tanggal Pembayaran", key: "paymentDate" },
-      { header: "Jumlah Tunggakan (Bulan)", key: "debtCount" },
-      { header: "Sisa Tunggakan", key: "debtAmount" },
-      { header: "Periode Tunggakan", key: "debtPeriods" },
-      { header: "Jatuh Tempo", key: "dueDate" },
-      { header: "Status Jatuh Tempo", key: "dueStatus" },
+      { header: "Aktif Sampai", key: "dueDate" },
+      { header: "Masa Aktif", key: "dueStatus" },
       { header: "Username Hotspot", key: "mikrotikUsername" },
       { header: "Profile Hotspot", key: "mikrotikProfile" },
       { header: "AP", key: "linkedApHost" },
@@ -297,19 +292,16 @@ class DataManager extends CustomerDataManager {
       number: index + 1,
       name: contact.name || "-",
       phoneNumber: contact.phoneNumber || "-",
-      status: contact.paymentStatus === PAYMENT_STATUS.PAID ? "Lunas" : "Belum Lunas",
+      status: contact.packageActive === true ? "Paket aktif" : "Paket tidak aktif",
       paymentType: PAYMENT_TYPE_LABELS[contact.paymentType] || "-",
       paymentDate: formatReportDate(contact.paymentDate, true, timeZone),
-      debtCount: contact.debtCount || 0,
-      debtAmount: Math.max(0, Number(contact.debtAmount) || 0),
-      debtPeriods: (contact.debtPeriods || []).map((period) => period.label).join(", ") || "-",
       dueDate: formatReportDate(contact.dueDate, false, timeZone),
       dueStatus: {
-        PAID: "Lunas",
-        OVERDUE: "Jatuh Tempo",
-        UPCOMING: "Belum Jatuh Tempo",
-        NOT_SCHEDULED: "Perlu Dijadwalkan",
-        NOT_APPLICABLE: "Tidak Dijadwalkan",
+        PAID: "Paket aktif",
+        OVERDUE: "Perlu diperpanjang",
+        UPCOMING: "Masih aktif",
+        NOT_SCHEDULED: "Belum ada jadwal",
+        NOT_APPLICABLE: "Tidak dijadwalkan",
       }[contact.dueStatus] || contact.dueStatus || "-",
       mikrotikUsername: contact.mikrotikUsername || "-",
       mikrotikProfile: contact.mikrotikProfile || "-",
@@ -318,9 +310,8 @@ class DataManager extends CustomerDataManager {
 
     for (const [sheetName, rows] of [
       ["Semua Pelanggan", contacts],
-      ["Belum Lunas", unpaidContacts],
-      ["Sudah Lunas", paidContacts],
-      ["Memiliki Tunggakan", debtContacts],
+      ["Paket Tidak Aktif", inactiveContacts],
+      ["Paket Aktif", activeContacts],
     ]) {
       const sheet = workbook.addWorksheet(sheetName);
       sheet.columns = contactColumns;
