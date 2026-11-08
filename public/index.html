@@ -166,7 +166,7 @@
             </template>
           </div>
           <div class="payment-progress-card">
-            <div class="progress-copy"><span><i class="fa-solid fa-chart-pie"></i></span><div><strong>Status pembayaran pelanggan</strong><small><span x-text="summaryValue('Lunas / paket aktif')"></span> dari <span x-text="summaryValue('Pelanggan')"></span> pelanggan lunas atau memiliki paket aktif</small></div></div>
+            <div class="progress-copy"><span><i class="fa-solid fa-chart-pie"></i></span><div><strong>Status paket pelanggan</strong><small><span x-text="summaryValue('Paket aktif')"></span> dari <span x-text="summaryValue('Pelanggan')"></span> pelanggan memiliki paket aktif</small></div></div>
             <div class="progress-visual"><strong x-text="paymentProgress + '%'" ></strong><div><span :style="'width:' + paymentProgress + '%'" ></span></div></div>
           </div>
         </section>
@@ -174,12 +174,12 @@
         <section x-show="activeMenu === 'overview'" x-transition.opacity class="panel-shell attention-panel">
           <div class="mb-4 flex items-center justify-between">
             <div><h2>Perlu ditangani</h2><p class="card-description">Pekerjaan yang membutuhkan tindakan</p></div>
-            <span class="attention-count" x-text="summaryValue('Perlu pembayaran') + summaryValue('Layanan perlu dicek') + summaryValue('AP bermasalah')"></span>
+            <span class="attention-count" x-text="summaryValue('Paket tidak aktif') + summaryValue('Layanan perlu dicek') + summaryValue('AP bermasalah')"></span>
           </div>
           <div class="attention-list">
             <button type="button" @click="selectMenu('payment-amount')" class="attention-item warning">
               <span class="attention-icon"><i class="fa-solid fa-wallet"></i></span>
-              <span><strong><span x-text="summaryValue('Perlu pembayaran')"></span> pelanggan perlu pembayaran</strong><small>Cek tagihan atau masa aktif paket</small></span>
+              <span><strong><span x-text="summaryValue('Paket tidak aktif')"></span> pelanggan belum memiliki paket aktif</strong><small>Periksa paket yang perlu dibeli atau diperpanjang</small></span>
               <i class="fa-solid fa-arrow-right"></i>
             </button>
             <button type="button" @click="selectMenu('hotspot-accounts')" class="attention-item" :class="summaryValue('Layanan perlu dicek') ? 'warning' : 'success'">
@@ -312,7 +312,7 @@
             </button>
             <button id="customer-billing-tab" type="button" role="tab" aria-controls="customer-billing-panel" :aria-selected="activeContactTab === 'billing'" @click="selectContactTab('billing')" :class="activeContactTab === 'billing' ? 'active' : ''">
               <span class="customer-tab-icon"><i class="fa-solid fa-file-invoice-dollar"></i></span>
-              <span class="customer-tab-copy"><strong>Tagihan</strong><small>Nominal, jatuh tempo, pembayaran</small></span>
+              <span class="customer-tab-copy"><strong>Tagihan</strong><small>Harga paket, masa aktif, perpanjangan</small></span>
             </button>
             <button id="customer-hotspot-tab" type="button" role="tab" aria-controls="customer-hotspot-panel" :aria-selected="activeContactTab === 'hotspot'" @click="selectContactTab('hotspot')" :class="activeContactTab === 'hotspot' ? 'active' : ''">
               <span class="customer-tab-icon"><i class="fa-solid fa-wifi"></i></span>
@@ -382,13 +382,13 @@
 
           <div id="customer-billing-panel" role="tabpanel" aria-labelledby="customer-billing-tab" x-cloak x-show="activeContactTab === 'billing'" x-transition.opacity class="customer-tab-panel">
             <div class="customer-panel-toolbar">
-              <p>Atur nominal bulanan dan catat pembayaran tanpa bercampur dengan pengaturan hotspot.</p>
+              <p>Periksa masa aktif, atur harga paket, dan catat perpanjangan pelanggan.</p>
               <button type="button" @click="exportPaymentRecap()" class="ui-secondary-button border border-moss/20 bg-white px-4 py-2 text-sm font-semibold text-moss transition hover:bg-moss hover:text-white"><i class="fa-solid fa-file-excel mr-2"></i>Rekap Excel</button>
             </div>
             <div class="filter-inline customer-filter-bar table-filter-bar">
               <label class="table-filter-field table-filter-search"><span>Pencarian</span><input x-model="filters.contactBilling.search" @input="resetPage('contactBilling')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari semua nilai tabel tagihan"></label>
-              <label class="table-filter-field"><span>Status pembayaran</span><select x-model="filters.contactBilling.status" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status pembayaran</option><template x-for="option in billingStatusFilterOptions" :key="'billing-status-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
-              <label class="table-filter-field"><span>Status jatuh tempo</span><select x-model="filters.contactBilling.dueStatus" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status jatuh tempo</option><template x-for="option in billingDueStatusOptions" :key="'due-status-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+              <label class="table-filter-field"><span>Status paket</span><select x-model="filters.contactBilling.status" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status pembayaran</option><template x-for="option in billingStatusFilterOptions" :key="'billing-status-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+              <label class="table-filter-field"><span>Masa aktif</span><select x-model="filters.contactBilling.dueStatus" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status jatuh tempo</option><template x-for="option in billingDueStatusOptions" :key="'due-status-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
               <label class="table-filter-field"><span>Baris</span><select x-model.number="filters.contactBilling.pageSize" @change="resetPage('contactBilling')" aria-label="Jumlah tagihan per halaman" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'contact-billing-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
               <button type="button" @click="resetContactBillingFilters()" :disabled="!hasContactBillingFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
             </div>
@@ -400,18 +400,17 @@
                       <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'name')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'name')" :aria-label="getSortLabel('contactBilling', 'name', 'Pelanggan')"><span>Pelanggan</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'name')" aria-hidden="true"></i></button></th>
                       <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'phone')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'phone')" :aria-label="getSortLabel('contactBilling', 'phone', 'Nomor HP')"><span>Nomor HP</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'phone')" aria-hidden="true"></i></button></th>
                       <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'billingCycle')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'billingCycle')" :aria-label="getSortLabel('contactBilling', 'billingCycle', 'Langganan')"><span>Langganan</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'billingCycle')" aria-hidden="true"></i></button></th>
-                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'dueDate')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'dueDate')" :aria-label="getSortLabel('contactBilling', 'dueDate', 'Jatuh Tempo')"><span>Jatuh Tempo</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'dueDate')" aria-hidden="true"></i></button></th>
-                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'dueStatus')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'dueStatus')" :aria-label="getSortLabel('contactBilling', 'dueStatus', 'Status Jatuh Tempo')"><span>Status Jatuh Tempo</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'dueStatus')" aria-hidden="true"></i></button></th>
-                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'amount')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'amount')" :aria-label="getSortLabel('contactBilling', 'amount', 'Nominal Bulanan')"><span>Nominal Bulanan</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'amount')" aria-hidden="true"></i></button></th>
-                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'amountSource')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'amountSource')" :aria-label="getSortLabel('contactBilling', 'amountSource', 'Sumber Nominal')"><span>Sumber Nominal</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'amountSource')" aria-hidden="true"></i></button></th>
-                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'currentPayment')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'currentPayment')" :aria-label="getSortLabel('contactBilling', 'currentPayment', 'Bulan Ini')"><span>Bulan Ini</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'currentPayment')" aria-hidden="true"></i></button></th>
-                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'debt')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'debt')" :aria-label="getSortLabel('contactBilling', 'debt', 'Tunggakan')"><span>Tunggakan</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'debt')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'dueDate')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'dueDate')" :aria-label="getSortLabel('contactBilling', 'dueDate', 'Aktif Sampai')"><span>Aktif Sampai</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'dueDate')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'dueStatus')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'dueStatus')" :aria-label="getSortLabel('contactBilling', 'dueStatus', 'Masa Aktif')"><span>Masa Aktif</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'dueStatus')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'amount')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'amount')" :aria-label="getSortLabel('contactBilling', 'amount', 'Harga Paket')"><span>Harga Paket</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'amount')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'amountSource')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'amountSource')" :aria-label="getSortLabel('contactBilling', 'amountSource', 'Sumber Harga')"><span>Sumber Harga</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'amountSource')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'currentPayment')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'currentPayment')" :aria-label="getSortLabel('contactBilling', 'currentPayment', 'Status Paket')"><span>Status Paket</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'currentPayment')" aria-hidden="true"></i></button></th>
                       <th class="px-4 py-3">Aksi</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-ink/6 bg-white/70">
                     <template x-if="!filteredBillingContacts.length">
-                      <tr><td colspan="10" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada tagihan yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
+                      <tr><td colspan="9" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada tagihan yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
                     </template>
                     <template x-for="contact in paginatedBillingContacts" :key="'billing-' + contact.id">
                       <tr>
@@ -420,32 +419,24 @@
                         <td class="px-4 py-4" data-label="Langganan">
                           <span class="inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold" :class="getBillingCycleBadgeClass(contact)" x-text="getBillingCycleLabel(contact)"></span>
                         </td>
-                        <td class="px-4 py-4" data-label="Jatuh Tempo">
+                        <td class="px-4 py-4" data-label="Aktif Sampai">
                           <span class="customer-due-date" x-text="getDueDateLabel(contact)"></span>
                         </td>
-                        <td class="px-4 py-4" data-label="Status Jatuh Tempo">
+                        <td class="px-4 py-4" data-label="Masa Aktif">
                           <span class="customer-due-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getDueStatusClass(contact.dueStatus)" x-text="getDueStatusLabel(contact.dueStatus)"></span>
                         </td>
-                        <td class="px-4 py-4" data-label="Nominal Bulanan">
+                        <td class="px-4 py-4" data-label="Harga Paket">
                           <div class="customer-amount-editor">
-                            <div class="currency-input-group"><span class="currency-prefix">Rp</span><input x-model.number="contact.monthlyPaymentAmount" @input="contact.monthlyPaymentAmountCustomized = true" type="number" min="0" max="1000000000" step="1000" class="tabular-nums" aria-label="Nominal pembayaran per bulan"></div>
+                            <div class="currency-input-group"><span class="currency-prefix">Rp</span><input x-model.number="contact.monthlyPaymentAmount" @input="contact.monthlyPaymentAmountCustomized = true" type="number" min="0" max="1000000000" step="1000" class="tabular-nums" aria-label="Harga paket bulanan"></div>
                             <button type="button" @click="saveContactPaymentAmount(contact)" class="customer-amount-save bg-moss text-xs font-semibold text-white" title="Simpan nominal custom" aria-label="Simpan nominal custom"><i class="fa-solid fa-floppy-disk"></i></button>
                             <button x-show="contact.monthlyPaymentAmountCustomized && hasProfileMonthlyAmount(contact)" type="button" @click="resetContactPaymentAmount(contact)" class="customer-amount-save border border-moss/20 bg-white text-xs font-semibold text-moss" title="Kembalikan ke tarif profile" aria-label="Kembalikan ke tarif profile"><i class="fa-solid fa-rotate-left"></i></button>
                           </div>
                         </td>
-                        <td class="px-4 py-4" data-label="Sumber Nominal">
+                        <td class="px-4 py-4" data-label="Sumber Harga">
                           <small class="block text-xs" :class="hasProfileMonthlyAmount(contact) ? (contact.monthlyPaymentAmountCustomized ? 'text-clay' : 'text-moss') : 'text-ink/50'" x-text="getPaymentAmountSourceLabel(contact)"></small>
                         </td>
-                        <td class="px-4 py-4" data-label="Bulan Ini">
+                        <td class="px-4 py-4" data-label="Status Paket">
                           <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="contact.currentPaymentStatus === 'PAID' ? 'bg-moss/10 text-moss' : 'bg-clay/10 text-clay'" x-text="getCurrentPaymentLabel(contact)"></span>
-                        </td>
-                        <td class="px-4 py-4" data-label="Tunggakan">
-                          <template x-if="hasDebt(contact)">
-                            <div class="customer-debt-note"><strong><i class="fa-solid fa-triangle-exclamation"></i><span x-text="getDebtCountLabel(contact)"></span></strong><small x-text="getDebtNote(contact)"></small></div>
-                          </template>
-                          <template x-if="!hasDebt(contact)">
-                            <span class="text-xs font-semibold text-ink/50">Tidak ada tunggakan</span>
-                          </template>
                         </td>
                         <td class="px-4 py-4 align-top" data-label="Aksi">
                           <div class="customer-action-group customer-billing-actions customer-row-actions">
@@ -1921,7 +1912,6 @@
 
         <div class="billing-action-summary" aria-label="Ringkasan tagihan pelanggan">
           <div><span x-text="isPrepaidPackage(billingActionModal.contact) ? 'Status paket' : 'Status periode tagihan'"></span><strong x-text="getCurrentPaymentLabel(billingActionModal.contact)"></strong></div>
-          <div x-show="!isPrepaidPackage(billingActionModal.contact)"><span>Sisa tunggakan</span><strong x-text="formatRupiah(getDebtAmount(billingActionModal.contact))"></strong></div>
           <div><span x-text="isPrepaidPackage(billingActionModal.contact) ? 'Aktif sampai' : 'Jatuh tempo'"></span><strong x-text="getDueDateLabel(billingActionModal.contact)"></strong></div>
         </div>
 
@@ -1950,16 +1940,6 @@
             </button>
           </div>
 
-          <form x-show="hasDebt(billingActionModal.contact)" class="customer-arrears-payment-form billing-action-arrears" @submit.prevent="payArrears(billingActionModal.contact)">
-            <label :for="'arrears-payment-' + billingActionModal.contact?.id" x-text="getArrearsPaymentLabel(billingActionModal.contact)"></label>
-            <div class="currency-input-group">
-              <span class="currency-prefix">Rp</span>
-              <input :id="'arrears-payment-' + billingActionModal.contact?.id" x-model.number="arrearsPaymentAmounts[billingActionModal.contact?.id]" type="number" inputmode="numeric" min="1" :max="getDebtAmount(billingActionModal.contact)" step="1" :aria-describedby="'arrears-help-' + billingActionModal.contact?.id" placeholder="Masukkan nominal pembayaran" required>
-            </div>
-            <small :id="'arrears-help-' + billingActionModal.contact?.id" x-text="getArrearsPaymentHelp(billingActionModal.contact)"></small>
-            <button type="submit" class="billing-action-submit"><i class="fa-solid fa-money-bill-wave"></i><span x-text="getArrearsPaymentSubmitLabel(billingActionModal.contact)"></span></button>
-          </form>
-
           <div x-show="canPurchaseActivePeriod(billingActionModal.contact)" class="billing-action-active-period">
             <div>
               <strong x-text="getActivePeriodPurchaseLabel(billingActionModal.contact)"></strong>
@@ -1968,13 +1948,6 @@
             <button type="button" @click="purchaseActivePeriod(billingActionModal.contact)" class="billing-action-option" :aria-label="getActivePeriodPurchaseLabel(billingActionModal.contact)" :title="getActivePeriodPurchaseLabel(billingActionModal.contact)">
               <i class="fa-solid fa-wifi"></i>
               <span x-text="formatRupiah(billingActionModal.contact?.monthlyPaymentAmount)"></span>
-            </button>
-          </div>
-
-          <div class="billing-action-quick-row">
-            <button x-show="hasDebt(billingActionModal.contact)" type="button" @click="runBillingPayment('PAID', 'FULL-PAID')" class="billing-action-option" :aria-label="getFullPaymentActionLabel(billingActionModal.contact)" :title="getFullPaymentActionLabel(billingActionModal.contact)">
-              <i class="fa-solid fa-sack-dollar"></i>
-              <span x-text="getFullPaymentActionLabel(billingActionModal.contact)"></span>
             </button>
           </div>
 
