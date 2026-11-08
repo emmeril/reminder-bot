@@ -194,8 +194,8 @@ test("pembacaan MikroTik bersamaan digabung dan error tidak tersimpan di cache",
   const fetchServers = () => fetch(url, { headers: { cookie } });
 
   const [a, b] = await Promise.all([fetchServers(), fetchServers()]);
-  assert.equal(a.status, 500);
-  assert.equal(b.status, 500);
+  assert.equal(a.status, 503);
+  assert.equal(b.status, 503);
   assert.equal(calls, 1);
 
   fail = false;
