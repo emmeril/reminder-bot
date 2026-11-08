@@ -142,7 +142,7 @@ test("aset dashboard menggunakan validasi cache agar perubahan tetap terambil", 
     assert.ok(etag);
     await response.arrayBuffer();
 
-    const unchanged = await fetch(url, { headers: { "if-none-match": etag } });
+    const unchanged = await fetch(url, { headers: { "if-none-match": etag, "cache-control": "max-age=0" } });
     assert.equal(unchanged.status, 304);
   }
 });
