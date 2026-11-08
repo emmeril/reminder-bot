@@ -337,6 +337,53 @@ test("mode gabungan tanpa kredensial tetap menjelaskan IP Binding tanpa field ko
   assert.doesNotMatch(sent[0].message, /\*Akun WiFi\*|Username:|Password:|{{|}}/);
 });
 
+test("template IP Binding tersimpan dapat diubah dan tampil untuk mode IP Binding saja", async () => {
+  const { bot, sent } = createBot({
+    paymentIpBindingAccessMessageTemplate: "AKSES PERANGKAT\nJudul: {{ipBindingTitle}}\nStatus: {{ipBindingStatus}}\nBerlaku: {{activeUntil}}",
+  });
+  await bot.sendPaymentNotification(
+    createContact({
+      billingCycle: "PREPAID",
+      hotspotAccessMode: "IP_BINDING_ONLY",
+      mikrotikUsername: "pelanggan_ip",
+      mikrotikPassword: "rahasia",
+      mikrotikMacAddresses: ["AA:BB:CC:DD:EE:05"],
+      hotspotProvisioningStatus: "ACTIVE",
+    }),
+    "ACT-CUSTOM-IP",
+    "ACTIVE-PERIOD",
+    { activeUntil: "2026-12-08T02:30:00.000Z" }
+  );
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /AKSES PERANGKAT\nJudul: \*Akses WiFi\*\nStatus: Aktif\nBerlaku: 08\/12\/2026/);
+  assert.doesNotMatch(sent[0].message, /pelanggan_ip|rahasia|{{|}}/);
+});
+
+test("mode gabungan memakai template khusus masing-masing akses tanpa duplikasi", async () => {
+  const { bot, sent } = createBot({
+    paymentHotspotAccountMessageTemplate: "AKUN LOGIN\nUsername: {{hotspotUsername}}\nPassword: {{hotspotPassword}}",
+    paymentIpBindingAccessMessageTemplate: "PERANGKAT OTOMATIS\n{{ipBindingTitle}}\nStatus: {{ipBindingStatus}}",
+  });
+  await bot.sendPaymentNotification(
+    createContact({
+      billingCycle: "PREPAID",
+      hotspotAccessMode: "BOTH",
+      mikrotikUsername: "dua_metode",
+      mikrotikPassword: "123456",
+      hotspotProvisioningStatus: "ACTIVE",
+      mikrotikMacAddresses: ["AA:BB:CC:DD:EE:06"],
+    }),
+    "ACT-CUSTOM-BOTH", "ACTIVE-PERIOD",
+    { activeUntil: "2026-12-08T02:30:00.000Z" }
+  );
+  assert.equal(sent.length, 1);
+  assert.equal((sent[0].message.match(/AKUN LOGIN/g) || []).length, 1);
+  assert.equal((sent[0].message.match(/PERANGKAT OTOMATIS/g) || []).length, 1);
+  assert.match(sent[0].message, /\*Akses IP Binding\*/);
+  assert.match(sent[0].message, /Username: dua_metode/);
+  assert.doesNotMatch(sent[0].message, /{{|}}/);
+});
+
 test("template pembayaran bawaan menggunakan bahasa formal dan mudah dipahami", async () => {
   const { bot, sent } = createBot();
 
