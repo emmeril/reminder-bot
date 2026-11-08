@@ -50,9 +50,7 @@ function createDashboardUi() {
           ]);
 
           if (this.activeMenu === "vouchers") {
-            void this.loadVoucherOptions({ silent: true });
-            void this.loadVoucherBatches({ silent: true });
-            void this.loadVoucherStats({ silent: true });
+            void this.loadVisibleVoucherData();
           }
           if (this.activeMenu === "revenue" && this.activeRevenueTab === "vouchers") {
             void this.loadVoucherRevenue({ silent: true });
@@ -105,14 +103,8 @@ function createDashboardUi() {
           this.activeMenu = key;
           this.mobileSidebarOpen = false;
           void this.loadVisibleMikrotikData();
-          if (key === "vouchers" && (!this.voucherProfiles.length || !this.mikrotikServers.length)) {
-            void this.loadVoucherOptions({ silent: true });
-          }
-          if (key === "vouchers" && !this.voucherBatches.length) {
-            void this.loadVoucherBatches({ silent: true });
-          }
-          if (key === "vouchers" && !this.voucherStats.profiles.length) {
-            void this.loadVoucherStats({ silent: true });
+          if (key === "vouchers") {
+            void this.loadVisibleVoucherData();
           }
           if (key === "revenue" && this.activeRevenueTab === "vouchers") {
             void this.loadVoucherRevenue({ silent: true });
@@ -176,6 +168,21 @@ function createDashboardUi() {
         get paymentProgress() {
           const total = this.summaryValue("Pelanggan");
           return total ? Math.min(100, Math.round((this.summaryValue("Paket aktif") / total) * 100)) : 0;
+        },
+
+        async loadVisibleVoucherData() {
+          if (this.activeMenu !== "vouchers") return;
+          const options = { silent: true };
+          if (this.activeVoucherTab === "stats") {
+            await this.loadVoucherStats(options);
+          } else if (this.activeVoucherTab === "profiles") {
+            await this.loadVoucherOptions(options);
+          } else {
+            await this.loadVoucherOptions(options);
+            if (this.activeMenu === "vouchers" && this.activeVoucherTab === "create") {
+              await this.loadVoucherBatches(options);
+            }
+          }
         },
 
         async loadNonCriticalData() {

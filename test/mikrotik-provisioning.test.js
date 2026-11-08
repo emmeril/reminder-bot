@@ -634,7 +634,7 @@ test("sinkronisasi hotspot hanya meminta field RouterOS yang dipakai", async () 
     },
   };
   const service = new MikrotikService({ push() {} });
-  service.withConnection = async (operation) => operation(connection, {});
+  service.withReadConnection = async (operation) => operation(connection, {});
 
   const users = await service.getHotspotUsers();
 

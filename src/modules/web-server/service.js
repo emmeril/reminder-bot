@@ -135,8 +135,11 @@ class WebServer {
       const phaseDetails = phases.length
         ? ` (${phases.map(([name, value]) => `${name}=${Math.round(value)} ms`).join(", ")})`
         : "";
+      const queueDetails = metrics.lane
+        ? ` [lane=${metrics.lane}, waiting=${metrics.waiting || 0}, blockedBy=${metrics.blockedBy || "none"}]`
+        : "";
       this.activityLog.push("warn", "performance",
-        `MikroTik ${key} memerlukan ${Math.round(durationMs)} ms${phaseDetails}`);
+        `MikroTik ${key} memerlukan ${Math.round(durationMs)} ms${phaseDetails}${queueDetails}`);
     }
     return result.data;
   }

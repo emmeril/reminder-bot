@@ -51,6 +51,12 @@ class MikrotikService {
     this.liveConnection = null;
     this.pendingOperations = 0;
     this.idleDisconnectTimer = null;
+    this.activeOperation = null;
+    this.readConnectionLock = new AsyncLock();
+    this.readLiveConnection = null;
+    this.readPendingOperations = 0;
+    this.readIdleDisconnectTimer = null;
+    this.activeReadOperation = null;
   }
 
   getConnectionConfigs() {
@@ -109,8 +115,10 @@ class MikrotikService {
     this.idleDisconnectTimer.unref?.();
   }
 
-  async withConnection(operation, metrics = null) {
+  async withConnection(operation, metrics = null, label = "operation") {
     const started = process.hrtime.bigint();
+    const blockedBy = this.activeOperation;
+    const waiting = this.pendingOperations;
     const limit = Math.max(1, Number(CONFIG.MIKROTIK_MAX_PENDING_OPERATIONS) || 40);
     if (this.pendingOperations >= limit) {
       const error = new Error("Antrean MikroTik sedang penuh. Coba beberapa saat lagi.");
@@ -121,7 +129,13 @@ class MikrotikService {
     this.pendingOperations += 1;
     try {
       return await this.connectionLock.runExclusive("routeros", async () => {
-        if (metrics) metrics.queueMs = Number(process.hrtime.bigint() - started) / 1e6;
+        if (metrics) {
+          metrics.queueMs = Number(process.hrtime.bigint() - started) / 1e6;
+          metrics.lane = "write";
+          metrics.waiting = waiting;
+          if (blockedBy) metrics.blockedBy = blockedBy;
+        }
+        this.activeOperation = label;
         clearTimeout(this.idleDisconnectTimer);
         this.idleDisconnectTimer = null;
 
@@ -159,23 +173,132 @@ class MikrotikService {
           await this.disconnectCurrentConnection();
           throw error;
         } finally {
+          this.activeOperation = null;
           this.scheduleIdleDisconnect();
         }
       });
     } finally {
       this.pendingOperations -= 1;
-      if (metrics) metrics.totalMs = Number(process.hrtime.bigint() - started) / 1e6;
+      const durationMs = Number(process.hrtime.bigint() - started) / 1e6;
+      if (metrics) metrics.totalMs = durationMs;
+      if (durationMs > 1500) {
+        this.activityLog.push("warn", "performance",
+          `RouterOS write ${label} memerlukan ${Math.round(durationMs)} ms (waiting=${waiting}, blockedBy=${blockedBy || "none"})`);
+      }
+    }
+  }
+
+  async disconnectReadConnection() {
+    const active = this.readLiveConnection;
+    this.readLiveConnection = null;
+    if (!active) return;
+    try {
+      await active.client.close();
+    } catch (error) {
+      this.activityLog.push("warn", "mikrotik", `Gagal menutup koneksi pembacaan: ${error.message}`);
+    }
+  }
+
+  scheduleReadIdleDisconnect() {
+    clearTimeout(this.readIdleDisconnectTimer);
+    this.readIdleDisconnectTimer = null;
+    if (!this.readLiveConnection) return;
+    const idleMs = Math.max(0, Number(CONFIG.MIKROTIK_IDLE_TIMEOUT_MS) || 0);
+    if (idleMs === 0) return;
+    this.readIdleDisconnectTimer = setTimeout(() => {
+      this.readIdleDisconnectTimer = null;
+      void this.readConnectionLock.runExclusive("routeros-read", async () => {
+        if (this.readLiveConnection && this.readPendingOperations === 0) {
+          await this.disconnectReadConnection();
+        }
+      }).catch((error) => {
+        this.activityLog.push("warn", "mikrotik", `Pembersihan koneksi pembacaan gagal: ${error.message}`);
+      });
+    }, idleMs);
+    this.readIdleDisconnectTimer.unref?.();
+  }
+
+  async withReadConnection(operation, metrics = null, label = "read") {
+    const started = process.hrtime.bigint();
+    const blockedBy = this.activeReadOperation;
+    const waiting = this.readPendingOperations;
+    const limit = Math.max(1, Number(CONFIG.MIKROTIK_MAX_PENDING_OPERATIONS) || 40);
+    if (this.readPendingOperations >= limit) {
+      const error = new Error("Antrean pembacaan MikroTik sedang penuh. Coba beberapa saat lagi.");
+      error.statusCode = 503;
+      throw error;
+    }
+    this.readPendingOperations += 1;
+    try {
+      return await this.readConnectionLock.runExclusive("routeros-read", async () => {
+        this.activeReadOperation = label;
+        if (metrics) {
+          metrics.queueMs = Number(process.hrtime.bigint() - started) / 1e6;
+          metrics.lane = "read";
+          metrics.waiting = waiting;
+          if (blockedBy) metrics.blockedBy = blockedBy;
+        }
+        clearTimeout(this.readIdleDisconnectTimer);
+        this.readIdleDisconnectTimer = null;
+        const connectionStarted = process.hrtime.bigint();
+        try {
+          if (this.readLiveConnection
+            && typeof this.readLiveConnection.client.isConnected === "function"
+            && !this.readLiveConnection.client.isConnected()) {
+            await this.disconnectReadConnection();
+          }
+          if (!this.readLiveConnection) {
+            const configs = this.getConnectionConfigs();
+            if (configs.length === 0) {
+              throw new Error("Konfigurasi MikroTik belum lengkap. Isi IP_MIKROTIK, USER_MIKROTIK, dan PASSWORD_MIKROTIK di .env.");
+            }
+            for (const item of configs) {
+              this.readLiveConnection = await this.tryConnect(item);
+              if (this.readLiveConnection) break;
+            }
+          }
+          if (!this.readLiveConnection) {
+            throw new Error("Gagal terhubung ke MikroTik primary maupun backup.");
+          }
+          if (metrics) metrics.connectionMs = Number(process.hrtime.bigint() - connectionStarted) / 1e6;
+          const commandStarted = process.hrtime.bigint();
+          try {
+            return await operation(this.readLiveConnection.connection, this.readLiveConnection);
+          } finally {
+            if (metrics) metrics.commandMs = Number(process.hrtime.bigint() - commandStarted) / 1e6;
+          }
+        } catch (error) {
+          await this.disconnectReadConnection();
+          throw error;
+        } finally {
+          this.activeReadOperation = null;
+          this.scheduleReadIdleDisconnect();
+        }
+      });
+    } finally {
+      this.readPendingOperations -= 1;
+      const durationMs = Number(process.hrtime.bigint() - started) / 1e6;
+      if (metrics) metrics.totalMs = durationMs;
+      if (durationMs > 1500 && !metrics) {
+        this.activityLog.push("warn", "performance",
+          `RouterOS read ${label} memerlukan ${Math.round(durationMs)} ms (waiting=${waiting}, blockedBy=${blockedBy || "none"})`);
+      }
     }
   }
 
   async close() {
     clearTimeout(this.idleDisconnectTimer);
+    clearTimeout(this.readIdleDisconnectTimer);
     this.idleDisconnectTimer = null;
-    await this.connectionLock.runExclusive("routeros", () => this.disconnectCurrentConnection());
+    this.readIdleDisconnectTimer = null;
+    await Promise.all([
+      this.connectionLock.runExclusive("routeros", () => this.disconnectCurrentConnection()),
+      this.readConnectionLock.runExclusive("routeros-read", () => this.disconnectReadConnection()),
+    ]);
   }
 
   async getHotspotProfiles(options = {}) {
-    return this.withConnection(async (conn) => {
+    return this.withReadConnection(async (conn) => {
       const profiles = await conn.menu("/ip/hotspot/user/profile").print();
       return (profiles || [])
         .map((profile) => ({
@@ -184,7 +307,7 @@ class MikrotikService {
         }))
         .filter((profile) => profile.name)
         .sort((a, b) => a.name.localeCompare(b.name, "id-ID"));
-    }, options.metrics);
+    }, options.metrics, "getHotspotProfiles");
   }
 
   async getVoucherProfiles() {
@@ -233,7 +356,7 @@ class MikrotikService {
           label: mode.label,
         })),
       };
-    });
+    }, null, "getVoucherProfiles");
   }
 
   async getVoucherProfileStats(options = {}) {
@@ -319,7 +442,7 @@ class MikrotikService {
       }), { total: 0, used: 0, unused: 0 });
 
       return { summary, profiles: profileStats };
-    });
+    }, null, "getVoucherProfileStats");
   }
 
   async getVoucherRevenueReport(options = {}) {
@@ -353,7 +476,7 @@ class MikrotikService {
         entriesById.set(entry.id, entry);
       }
       return buildVoucherRevenueReport(Array.from(entriesById.values()), { ...range, timeZone });
-    });
+    }, null, "getVoucherRevenueReport");
   }
 
   async getVoucherUsageRecords(options = {}) {
@@ -377,7 +500,7 @@ class MikrotikService {
       return (reportScripts || [])
         .map((script) => parseVoucherUsageRecord(script, profileFinancials, timeZone))
         .filter(Boolean);
-    });
+    }, null, "getVoucherUsageRecords");
   }
 
   async deleteVoucherUsageRecords(records = []) {
@@ -412,7 +535,7 @@ class MikrotikService {
         }
       }
       return { removed, skipped, failed };
-    });
+    }, null, "deleteVoucherUsageRecords");
   }
 
   async saveVoucherProfile(payload) {
@@ -505,17 +628,17 @@ class MikrotikService {
         status: "READY",
         migratedVoucherComments,
       };
-    });
+    }, null, "saveVoucherProfile");
   }
 
   async getHotspotServers(options = {}) {
-    return this.withConnection(async (conn) => {
+    return this.withReadConnection(async (conn) => {
       const servers = await conn.menu("/ip/hotspot").print();
       return (servers || [])
         .map((server) => sanitizeInput(String(server.name || "")))
         .filter(Boolean)
         .sort((a, b) => a.localeCompare(b, "id-ID"));
-    }, options.metrics);
+    }, options.metrics, "getHotspotServers");
   }
 
   async getHotspotVoucherBatches(options = {}) {
@@ -723,7 +846,7 @@ class MikrotikService {
           return timeDifference || b.batchId.localeCompare(a.batchId, "id-ID");
         })
         .slice(0, limit);
-    });
+    }, null, "getHotspotVoucherBatches");
   }
 
   async createHotspotVouchers(payload, options = {}) {
@@ -864,7 +987,7 @@ class MikrotikService {
         comment: request.comment,
         vouchers,
       };
-    });
+    }, null, "createHotspotVouchers");
 
     this.activityLog.push("info", "voucher", `${result.quantity} voucher hotspot berhasil dibuat`, {
       batchId: result.batchId,
@@ -912,7 +1035,7 @@ class MikrotikService {
         removedUsers: removeResult.removed,
         alreadyAbsent: matches.length === 0,
       };
-    });
+    }, null, "deleteHotspotVoucher");
   }
 
   async resetHotspotVoucherMac(payload = {}) {
@@ -968,11 +1091,11 @@ class MikrotikService {
         activeSessionsKilled: activeResult.killed,
         alreadyReset: false,
       };
-    });
+    }, null, "resetHotspotVoucherMac");
   }
 
   async getHotspotUsers(options = {}) {
-    return this.withConnection(async (conn) => {
+    return this.withReadConnection(async (conn) => {
       const userMenu = conn.menu("/ip/hotspot/user")
         .select(["id", "name", "profile", "comment", "disabled", "email"]);
       const activeMenu = conn.menu("/ip/hotspot/active")
@@ -1028,7 +1151,7 @@ class MikrotikService {
 
       return Array.from(byUsername.values())
         .sort((a, b) => a.username.localeCompare(b.username, "id-ID"));
-    }, options.metrics);
+    }, options.metrics, "getHotspotUsers");
   }
 
   async getHotspotUsersForStatusSync(usernames = []) {
@@ -1053,7 +1176,7 @@ class MikrotikService {
         email: user.email || "",
         source: "user",
       })).filter((user) => user.username);
-    });
+    }, null, "getHotspotUsersForStatusSync");
   }
 
   async getIpBindingsForStatusSync(macAddresses = []) {
@@ -1067,7 +1190,7 @@ class MikrotikService {
         server: sanitizeInput(String(row.server || "all")) || "all",
         comment: sanitizeInput(String(row.comment || "")),
       })).filter((row) => row.macAddress && (managedMacs.size === 0 || managedMacs.has(row.macAddress)));
-    });
+    }, null, "getIpBindingsForStatusSync");
   }
 
   async upsertIpBinding({ macAddress, contactId, type = "bypassed" }) {
@@ -1131,7 +1254,7 @@ class MikrotikService {
         created,
         updated: !created,
       };
-    });
+    }, null, "upsertIpBinding");
   }
 
   async setIpBindingDisabled({ macAddress, contactId, disabled = true }) {
@@ -1164,11 +1287,11 @@ class MikrotikService {
         await menu.remove(String(id));
       }
       return { macAddress: normalizedMac, removedBindings: matches.length };
-    });
+    }, null, "deleteIpBinding");
   }
 
   async syncIpBindingBandwidthForCustomer(customer) {
-    return this.withConnection((conn) => this.syncIpBindingBandwidthWithConnection(conn, customer));
+    return this.withConnection((conn) => this.syncIpBindingBandwidthWithConnection(conn, customer), null, "syncIpBindingBandwidthForCustomer");
   }
 
   async syncIpBindingBandwidthForCustomers(customers = []) {
@@ -1191,7 +1314,7 @@ class MikrotikService {
         }
       }
       return results;
-    });
+    }, null, "syncIpBindingBandwidthForCustomers");
   }
 
   async syncIpBindingBandwidthWithConnection(conn, customer = {}) {
@@ -1429,11 +1552,11 @@ class MikrotikService {
         await menu.remove(String(id));
       }
       return { contactId: String(contactId), removedQueues: matches.length };
-    });
+    }, null, "deleteIpBindingBandwidthQueue");
   }
 
   async getNetwatchStatus(options = {}) {
-    return this.withConnection(async (conn) => {
+    return this.withReadConnection(async (conn) => {
       const rows = await conn.menu("/tool/netwatch").print();
       return (rows || [])
         .map((row) => ({
@@ -1449,7 +1572,7 @@ class MikrotikService {
           downScript: row["down-script"] || "",
         }))
         .sort((a, b) => String(a.host || "").localeCompare(String(b.host || ""), "id-ID"));
-    }, options.metrics);
+    }, options.metrics, "getNetwatchStatus");
   }
 
   async removeHotspotUsersByName(conn, username) {
@@ -1521,7 +1644,7 @@ class MikrotikService {
         activeSessionsKilled: activeResult.killed,
         removedUsers: removeResult.removed,
       };
-    });
+    }, null, "deleteHotspotUser");
   }
 
   async setHotspotUserDisabled(username, phoneNumber = "", disabled = true) {
@@ -1573,7 +1696,7 @@ class MikrotikService {
         disabled: Boolean(disabled),
         activeSessionsKilled,
       };
-    });
+    }, null, "setHotspotUserDisabled");
   }
 
   async reactivateHotspotUser({ username, password, profile, phoneNumber }) {
@@ -1656,7 +1779,7 @@ class MikrotikService {
         activeSessionsKilled: activeResult.killed,
         removedUsers: 0,
       };
-    });
+    }, null, "reactivateHotspotUser");
   }
 
   async createHotspotCustomer({
@@ -1745,7 +1868,7 @@ class MikrotikService {
         id: verified[".id"] || verified.id || verified.numbers || "",
         created: true,
       };
-    });
+    }, null, "createHotspotCustomer");
   }
 
   buildHotspotCustomerRegistration({ name, phoneNumber, profile, username, password }) {
@@ -1790,7 +1913,7 @@ class MikrotikService {
         email: match.email || "",
         disabled: String(match.disabled || "false").toLowerCase() === "true",
       };
-    });
+    }, null, "verifyHotspotCustomer");
 
     if (!user) throw new Error(`Akun "${hotspotUsername}" tidak ditemukan setelah provisioning.`);
     if (String(user.profile || "") !== profileName) {
@@ -1928,7 +2051,7 @@ class MikrotikService {
         id: verified[".id"] || verified.id || verified.numbers || previousId,
         updated: true,
       };
-    });
+    }, null, "updateHotspotCustomer");
   }
 
   async generateDailyBackupFile() {
@@ -1963,7 +2086,7 @@ class MikrotikService {
             });
           }
         }
-      });
+      }, null, "generateDailyBackupFile");
       await fs.chmod(filePath, 0o600);
     } catch (error) {
       await fs.rm(backupDir, { recursive: true, force: true });
