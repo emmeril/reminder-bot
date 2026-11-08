@@ -141,3 +141,81 @@ test("pengukuran menunjukkan antrean ketika koneksi sedang digunakan", async () 
     await service.close();
   }
 });
+
+test("dashboard read tidak menunggu operasi tulis yang sedang berjalan", async () => {
+  const { service, connections } = makeService();
+  let releaseWrite;
+  let markWriteStarted;
+  const writeStarted = new Promise((resolve) => { markWriteStarted = resolve; });
+  const writeGate = new Promise((resolve) => { releaseWrite = resolve; });
+  try {
+    const write = service.withConnection(async () => {
+      markWriteStarted();
+      await writeGate;
+      return "changed";
+    }, null, "updateHotspotCustomer");
+    await writeStarted;
+    const metrics = {};
+    const read = await service.withReadConnection(() => "dashboard", metrics, "getHotspotServers");
+    assert.equal(read, "dashboard");
+    assert.equal(metrics.lane, "read");
+    assert.equal(metrics.waiting, 0);
+    assert.equal(connections.length, 2);
+    assert.equal(connections[0].closed, false);
+    assert.equal(connections[1].closed, false);
+    releaseWrite();
+    assert.equal(await write, "changed");
+  } finally {
+    releaseWrite?.();
+    await service.close();
+  }
+  assert.equal(connections.every((item) => item.closed), true);
+});
+
+test("dashboard reads tetap serial dan melaporkan operasi penghambat", async () => {
+  const { service } = makeService();
+  let release;
+  let started;
+  const firstStarted = new Promise((resolve) => { started = resolve; });
+  const gate = new Promise((resolve) => { release = resolve; });
+  try {
+    const first = service.withReadConnection(async () => {
+      started();
+      await gate;
+      return "users";
+    }, null, "getHotspotUsers");
+    await firstStarted;
+    const metrics = {};
+    const second = service.withReadConnection(() => "hotspot-1", metrics, "getHotspotServers");
+    await new Promise((resolve) => setTimeout(resolve, 8));
+    release();
+    const [users, servers] = await Promise.all([first, second]);
+    assert.equal(users, "users");
+    assert.equal(servers, "hotspot-1");
+    assert.equal(metrics.blockedBy, "getHotspotUsers");
+    assert.equal(metrics.waiting, 1);
+    assert.ok(metrics.queueMs >= 1);
+  } finally {
+    release?.();
+    await service.close();
+  }
+});
+
+test("kegagalan pembacaan hanya menutup koneksi read dan tidak mengulang operasi", async () => {
+  const { service, connections } = makeService();
+  let calls = 0;
+  try {
+    const writer = await service.withConnection((conn) => conn.id);
+    await assert.rejects(() => service.withReadConnection(() => {
+      calls += 1;
+      throw new Error("read failed");
+    }), /read failed/);
+    assert.equal(calls, 1);
+    assert.equal(connections[0].closed, false);
+    assert.equal(connections[1].closed, true);
+    assert.equal(await service.withConnection((conn) => conn.id), writer);
+    assert.equal(await service.withReadConnection((conn) => conn.id), 3);
+  } finally {
+    await service.close();
+  }
+});
