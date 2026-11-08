@@ -1555,11 +1555,20 @@
                 <label class="notification-template-card tone-success">
                   <span class="notification-template-header">
                     <span class="notification-template-icon"><i class="fa-solid fa-key"></i></span>
-                    <span class="notification-template-copy"><strong>Akun WiFi setelah pembayaran</strong><small>Disertakan pada konfirmasi pembelian paket jika akun hotspot tersedia.</small></span>
-                    <span class="notification-template-badge">Akun WiFi</span>
+                    <span class="notification-template-copy"><strong>Akun Hotspot setelah pembayaran</strong><small>Digunakan untuk mode Hotspot saja dan mode gabungan. Template lama tetap tersimpan.</small></span>
+                    <span class="notification-template-badge">Hotspot</span>
                   </span>
-                  <textarea x-model="forms.settings.paymentHotspotAccountMessageTemplate" placeholder="Tulis informasi akun WiFi setelah pembayaran..."></textarea>
+                  <textarea x-model="forms.settings.paymentHotspotAccountMessageTemplate" placeholder="Tulis username dan password Hotspot setelah pembayaran..."></textarea>
                   <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{hotspotUsername}}</code><code>{{hotspotPassword}}</code><code>{{hotspotProfile}}</code><code>{{hotspotStatus}}</code><code>{{activeUntil}}</code></span></span>
+                </label>
+                <label class="notification-template-card tone-success">
+                  <span class="notification-template-header">
+                    <span class="notification-template-icon"><i class="fa-solid fa-network-wired"></i></span>
+                    <span class="notification-template-copy"><strong>Akses IP Binding setelah pembayaran</strong><small>Digunakan untuk mode IP Binding saja dan mode gabungan. Tidak mengirim username atau password Hotspot.</small></span>
+                    <span class="notification-template-badge">IP Binding</span>
+                  </span>
+                  <textarea x-model="forms.settings.paymentIpBindingAccessMessageTemplate" placeholder="Tulis informasi akses IP Binding setelah pembayaran..."></textarea>
+                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{ipBindingTitle}}</code><code>{{ipBindingStatus}}</code><code>{{activeUntil}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-success">
                   <span class="notification-template-header">
