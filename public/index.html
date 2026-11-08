@@ -325,7 +325,8 @@
               <label class="table-filter-field table-filter-search"><span>Pencarian</span><input x-model="filters.contacts.search" @input="resetPage('contacts')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari semua nilai tabel data pelanggan"></label>
               <label class="table-filter-field"><span>Status AP</span><select x-model="filters.contacts.apStatus" @change="resetPage('contacts')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status AP</option><template x-for="option in contactApStatusOptions" :key="'contact-ap-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
               <label class="table-filter-field"><span>Baris</span><select x-model.number="filters.contacts.pageSize" @change="resetPage('contacts')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'contacts-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
-              <button type="button" @click="resetContactDataFilters()" :disabled="!hasContactDataFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
+              <label class="table-filter-field toolbar-mobile-sort"><span>Urutkan</span><select :value="getMobileSortValue('contacts')" @change="changeMobileSort('contacts', $event.target.value)" aria-label="Urutkan tabel contacts"><template x-for="option in getMobileSortOptions('contacts')" :key="'contacts-mobile-sort-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+          <button type="button" @click="resetContactDataFilters()" :disabled="!hasContactDataFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
             </div>
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Data pelanggan">
@@ -390,7 +391,8 @@
               <label class="table-filter-field"><span>Status pembayaran</span><select x-model="filters.contactBilling.status" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status pembayaran</option><template x-for="option in billingStatusFilterOptions" :key="'billing-status-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
               <label class="table-filter-field"><span>Status jatuh tempo</span><select x-model="filters.contactBilling.dueStatus" @change="resetPage('contactBilling')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status jatuh tempo</option><template x-for="option in billingDueStatusOptions" :key="'due-status-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
               <label class="table-filter-field"><span>Baris</span><select x-model.number="filters.contactBilling.pageSize" @change="resetPage('contactBilling')" aria-label="Jumlah tagihan per halaman" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'contact-billing-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
-              <button type="button" @click="resetContactBillingFilters()" :disabled="!hasContactBillingFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
+              <label class="table-filter-field toolbar-mobile-sort"><span>Urutkan</span><select :value="getMobileSortValue('contactBilling')" @change="changeMobileSort('contactBilling', $event.target.value)" aria-label="Urutkan tabel contactBilling"><template x-for="option in getMobileSortOptions('contactBilling')" :key="'contactBilling-mobile-sort-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+          <button type="button" @click="resetContactBillingFilters()" :disabled="!hasContactBillingFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
             </div>
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Tagihan pelanggan">
@@ -483,7 +485,8 @@
               <label class="table-filter-field table-filter-search"><span>Pencarian</span><input x-model="filters.contactHotspot.search" @input="resetPage('contactHotspot')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari semua nilai tabel hotspot"></label>
               <label class="table-filter-field"><span>Nilai status tabel</span><select x-model="filters.contactHotspot.status" @change="resetPage('contactHotspot')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua nilai status</option><template x-for="option in hotspotTableStatusOptions" :key="'hotspot-status-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
               <label class="table-filter-field"><span>Baris</span><select x-model.number="filters.contactHotspot.pageSize" @change="resetPage('contactHotspot')" aria-label="Jumlah akun hotspot per halaman" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'contact-hotspot-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
-              <button type="button" @click="resetContactHotspotFilters()" :disabled="!hasContactHotspotFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
+              <label class="table-filter-field toolbar-mobile-sort"><span>Urutkan</span><select :value="getMobileSortValue('contactHotspot')" @change="changeMobileSort('contactHotspot', $event.target.value)" aria-label="Urutkan tabel contactHotspot"><template x-for="option in getMobileSortOptions('contactHotspot')" :key="'contactHotspot-mobile-sort-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+          <button type="button" @click="resetContactHotspotFilters()" :disabled="!hasContactHotspotFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
             </div>
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
               <div class="table-scroll" tabindex="0" role="region" aria-label="Hotspot pelanggan">
@@ -888,7 +891,8 @@
                 <div><h3>Profile di MikroTik</h3><p>Profile pelanggan bulanan tetap terlihat, tetapi tidak dapat dipakai membuat voucher sebelum masa berlaku diatur.</p></div>
                 <span><strong x-text="voucherProfiles.filter(profile => profile.voucherReady).length"></strong> siap voucher</span>
               </div>
-              <div class="voucher-profile-table-wrap">
+              <label class="table-filter-field toolbar-mobile-sort"><span>Urutkan</span><select :value="getMobileSortValue('voucherProfiles')" @change="changeMobileSort('voucherProfiles', $event.target.value)" aria-label="Urutkan profile voucher"><template x-for="option in getMobileSortOptions('voucherProfiles')" :key="'voucherProfiles-mobile-sort-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+          <div class="voucher-profile-table-wrap">
                 <table class="voucher-profile-table">
                   <thead><tr>
                     <th :aria-sort="getSortAria('voucherProfiles', 'name')"><button type="button" class="table-sort-button" @click="toggleSort('voucherProfiles', 'name')" :aria-label="getSortLabel('voucherProfiles', 'name', 'Profile')"><span>Profile</span><i class="table-sort-indicator" :class="getSortIcon('voucherProfiles', 'name')" aria-hidden="true"></i></button></th>
@@ -1014,7 +1018,8 @@
                 <button type="button" @click="loadVoucherStats()" :disabled="loading.voucherStats" class="ui-secondary-button"><i class="fa-solid" :class="loading.voucherStats ? 'fa-circle-notch fa-spin' : 'fa-rotate'"></i><span>Perbarui</span></button>
               </div>
               <p x-cloak x-show="voucherStatsError" class="voucher-history-error" role="alert" x-text="voucherStatsError"></p>
-              <div class="voucher-stats-table-wrap">
+              <label class="table-filter-field toolbar-mobile-sort"><span>Urutkan</span><select :value="getMobileSortValue('voucherStats')" @change="changeMobileSort('voucherStats', $event.target.value)" aria-label="Urutkan statistik voucher"><template x-for="option in getMobileSortOptions('voucherStats')" :key="'voucherStats-mobile-sort-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+          <div class="voucher-stats-table-wrap">
                 <table class="voucher-stats-table">
                   <thead><tr>
                     <th :aria-sort="getSortAria('voucherStats', 'profile')"><button type="button" class="table-sort-button" @click="toggleSort('voucherStats', 'profile')" :aria-label="getSortLabel('voucherStats', 'profile', 'Profile')"><span>Profile</span><i class="table-sort-indicator" :class="getSortIcon('voucherStats', 'profile')" aria-hidden="true"></i></button></th>
@@ -1103,7 +1108,10 @@
               <select x-model.number="filters.revenue.pageSize" @change="resetPage('revenue')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Jumlah laporan pelanggan per halaman">
                 <template x-for="size in pageSizes" :key="'revenue-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template>
               </select>
-            </div>
+            
+            <label class="table-filter-field toolbar-mobile-sort"><span>Urutkan</span><select :value="getMobileSortValue('revenue')" @change="changeMobileSort('revenue', $event.target.value)" aria-label="Urutkan laporan pelanggan"><template x-for="option in getMobileSortOptions('revenue')" :key="'revenue-mobile-sort-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+            <button type="button" @click="resetRevenueFilters()" :disabled="!hasRevenueFilters" class="customer-filter-reset toolbar-reset ui-secondary-button"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
+          </div>
             <p id="customer-revenue-range-error" x-cloak x-show="revenueRangeError" class="revenue-range-error" role="alert" x-text="revenueRangeError"></p>
 
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
@@ -1159,7 +1167,10 @@
               <input x-model="filters.voucherRevenue.search" @input="resetPage('voucherRevenue')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari voucher atau profile" aria-label="Cari laporan pendapatan voucher">
               <select x-model="filters.voucherRevenue.profile" @change="resetPage('voucherRevenue')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Filter profile voucher"><option value="ALL">Semua profile</option><template x-for="profile in voucherRevenueProfiles" :key="'voucher-revenue-profile-' + profile"><option :value="profile" x-text="profile"></option></template></select>
               <select x-model.number="filters.voucherRevenue.pageSize" @change="resetPage('voucherRevenue')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" aria-label="Jumlah voucher per halaman"><template x-for="size in pageSizes" :key="'voucher-revenue-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select>
-            </div>
+            
+            <label class="table-filter-field toolbar-mobile-sort"><span>Urutkan</span><select :value="getMobileSortValue('voucherRevenue')" @change="changeMobileSort('voucherRevenue', $event.target.value)" aria-label="Urutkan laporan voucher"><template x-for="option in getMobileSortOptions('voucherRevenue')" :key="'voucherRevenue-mobile-sort-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+            <button type="button" @click="resetVoucherRevenueFilters()" :disabled="!hasVoucherRevenueFilters" class="customer-filter-reset toolbar-reset ui-secondary-button"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
+          </div>
             <p id="voucher-revenue-range-error" x-cloak x-show="revenueRangeError" class="revenue-range-error" role="alert" x-text="revenueRangeError"></p>
 
             <div class="customer-table-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8">
@@ -1222,25 +1233,28 @@
             <div class="rounded-2xl border px-4 py-3" :class="networkMonitorSummary.missingReferences ? 'border-clay/20 bg-clay/5' : 'border-moss/20 bg-moss/5'"><strong class="block text-xl text-ink" x-text="networkMonitorSummary.missingReferences"></strong><span class="text-xs font-medium text-ink/75">Referensi AP hilang</span></div>
           </div>
           <div class="filter-inline mb-5">
-            <input x-model="filters.monitorAp.search" @input="resetPage('monitorAp')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari host atau pelanggan">
-            <select x-model="filters.monitorAp.status" @change="resetPage('monitorAp')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+            <input aria-label="Cari host AP atau pelanggan" x-model="filters.monitorAp.search" @input="resetPage('monitorAp')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari host atau pelanggan">
+            <select aria-label="Filter status jaringan" x-model="filters.monitorAp.status" @change="resetPage('monitorAp')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <option value="ALL">Semua status</option>
               <option value="UP">UP</option>
               <option value="DOWN">DOWN</option>
               <option value="UNKNOWN">UNKNOWN</option>
               <option value="MISSING">MISSING</option>
             </select>
-            <select x-model="filters.monitorAp.linkStatus" @change="resetPage('monitorAp')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+            <select aria-label="Filter keterkaitan pelanggan dengan AP" x-model="filters.monitorAp.linkStatus" @change="resetPage('monitorAp')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <option value="ALL">Semua hubungan</option>
               <option value="LINKED">Memiliki pelanggan</option>
               <option value="UNLINKED">Tanpa pelanggan</option>
               <option value="MISSING">Referensi AP hilang</option>
             </select>
-            <select x-model.number="filters.monitorAp.pageSize" @change="resetPage('monitorAp')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+            <select aria-label="Jumlah AP per halaman" x-model.number="filters.monitorAp.pageSize" @change="resetPage('monitorAp')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
               <template x-for="size in pageSizes" :key="'ap-size-' + size">
                 <option :value="size" x-text="size + ' per halaman'"></option>
               </template>
             </select>
+          
+            <label class="table-filter-field toolbar-mobile-sort"><span>Urutkan</span><select :value="getMobileSortValue('monitorAp')" @change="changeMobileSort('monitorAp', $event.target.value)" aria-label="Urutkan tabel jaringan"><template x-for="option in getMobileSortOptions('monitorAp')" :key="'monitorAp-mobile-sort-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+            <button type="button" @click="resetMonitorApFilters()" :disabled="!hasMonitorApFilters" class="customer-filter-reset toolbar-reset ui-secondary-button"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
           </div>
           <div class="overflow-hidden rounded-[1.5rem] border border-ink/8">
             <div class="table-scroll" tabindex="0" role="region" aria-label="Tabel status AP dan pelanggan terkait">
@@ -1313,7 +1327,8 @@
             <label class="table-filter-field"><span>Jenis waktu</span><select x-model="filters.reminders.deliveryType" @change="resetPage('reminders')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua jenis waktu</option><template x-for="option in reminderDeliveryTypeOptions" :key="'reminder-delivery-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
             <label class="table-filter-field"><span>Rentang waktu</span><select x-model="filters.reminders.schedule" @change="resetPage('reminders')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua jadwal</option><option value="TODAY">Hari ini</option><option value="UPCOMING">Akan datang</option><option value="OVERDUE">Terlambat</option></select></label>
             <label class="table-filter-field"><span>Baris</span><select x-model.number="filters.reminders.pageSize" @change="resetPage('reminders')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'reminders-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
-            <button type="button" @click="resetReminderFilters()" :disabled="!hasReminderFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
+            <label class="table-filter-field toolbar-mobile-sort"><span>Urutkan</span><select :value="getMobileSortValue('reminders')" @change="changeMobileSort('reminders', $event.target.value)" aria-label="Urutkan tabel reminders"><template x-for="option in getMobileSortOptions('reminders')" :key="'reminders-mobile-sort-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+          <button type="button" @click="resetReminderFilters()" :disabled="!hasReminderFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
           </div>
           <div class="sent-history-table mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8 bg-white/80 shadow-sm">
             <div class="table-scroll" tabindex="0" role="region" aria-label="Tabel reminder aktif">
@@ -1376,7 +1391,7 @@
                           x-show="isLongMessage(reminder.message)"
                           @click="toggleMessage(messageKey('reminder', reminder.id))"
                           class="read-more-button mt-2 text-xs font-bold text-moss transition hover:text-ink"
-                          x-text="isMessageExpanded(messageKey('reminder', reminder.id)) ? 'Tutup' : 'Read more'"
+                          x-text="isMessageExpanded(messageKey('reminder', reminder.id)) ? 'Tutup' : 'Selengkapnya'"
                         ></button>
                       </td>
                     </tr>
@@ -1639,7 +1654,8 @@
             <label class="table-filter-field table-filter-search"><span>Pencarian</span><input x-model="filters.sent.search" @input="resetPage('sent')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari semua nilai riwayat pengiriman"></label>
             <label class="table-filter-field"><span>Status</span><select x-model="filters.sent.status" @change="resetPage('sent')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua status</option><template x-for="status in sentDeliveryStatuses" :key="'sent-status-' + status"><option :value="status" x-text="status"></option></template></select></label>
             <label class="table-filter-field"><span>Baris</span><select x-model.number="filters.sent.pageSize" @change="resetPage('sent')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'sent-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
-            <button type="button" @click="resetSentFilters()" :disabled="!hasSentFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
+            <label class="table-filter-field toolbar-mobile-sort"><span>Urutkan</span><select :value="getMobileSortValue('sent')" @change="changeMobileSort('sent', $event.target.value)" aria-label="Urutkan tabel sent"><template x-for="option in getMobileSortOptions('sent')" :key="'sent-mobile-sort-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+          <button type="button" @click="resetSentFilters()" :disabled="!hasSentFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
           </div>
           <div class="sent-history-table overflow-hidden rounded-[1.5rem] border border-ink/8 bg-white/80 shadow-sm">
             <div class="table-scroll" tabindex="0" role="region" aria-label="Tabel riwayat pengiriman">
@@ -1703,7 +1719,7 @@
                           x-show="isLongMessage(item.message)"
                           @click="toggleMessage(messageKey('sent', item.id + '-' + (item.sentAt || item.reminderDateTime || '')))"
                           class="read-more-button mt-2 text-xs font-bold text-moss transition hover:text-ink"
-                          x-text="isMessageExpanded(messageKey('sent', item.id + '-' + (item.sentAt || item.reminderDateTime || ''))) ? 'Tutup' : 'Read more'"
+                          x-text="isMessageExpanded(messageKey('sent', item.id + '-' + (item.sentAt || item.reminderDateTime || ''))) ? 'Tutup' : 'Selengkapnya'"
                         ></button>
                       </td>
                     </tr>
@@ -1729,7 +1745,7 @@
               <!-- <p class="mt-1 text-sm text-ink/60">Monitoring internal untuk koneksi, scheduler, API, dan delivery.</p> -->
             </div>
             <div class="flex w-full items-center gap-2 sm:w-auto">
-              <select x-model.number="filters.logs.pageSize" @change="resetPage('logs')" class="min-w-[120px] flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-2 text-sm outline-none transition focus:border-clay sm:flex-none">
+              <select aria-label="Jumlah log per halaman" x-model.number="filters.logs.pageSize" @change="resetPage('logs')" class="min-w-[120px] flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-2 text-sm outline-none transition focus:border-clay sm:flex-none">
                 <template x-for="size in pageSizes" :key="'logs-size-' + size">
                   <option :value="size" x-text="size + ' per halaman'"></option>
                 </template>

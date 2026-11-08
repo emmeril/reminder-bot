@@ -4014,3 +4014,92 @@ body.admin-body:not(.voucher-print-mode) .voucher-card > div:first-child strong 
     font-size: 13px !important;
   }
 }
+
+
+/* Toolbars must fit their labels and keep sorting reachable on touch screens. */
+body.admin-body:not(.voucher-print-mode) .filter-inline {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)) !important;
+  align-items: end !important;
+  gap: 12px !important;
+  width: 100%;
+}
+body.admin-body:not(.voucher-print-mode) .filter-inline > * {
+  min-width: 0 !important;
+  width: 100% !important;
+}
+body.admin-body:not(.voucher-print-mode) .filter-inline :is(input, select, button) {
+  width: 100%;
+  min-width: 0 !important;
+  min-height: 44px;
+}
+body.admin-body:not(.voucher-print-mode) .filter-inline .table-filter-search {
+  grid-column: span 2;
+}
+body.admin-body:not(.voucher-print-mode) .toolbar-mobile-sort {
+  display: none !important;
+}
+body.admin-body:not(.voucher-print-mode) .filter-inline .toolbar-reset {
+  min-height: 44px !important;
+  white-space: normal;
+}
+body.admin-body:not(.voucher-print-mode) table th .table-sort-button {
+  min-width: 0;
+  gap: 6px;
+  text-align: left;
+  white-space: normal;
+}
+body.admin-body:not(.voucher-print-mode) table th .table-sort-button > span {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+body.admin-body:not(.voucher-print-mode) table th .table-sort-indicator {
+  margin-left: 0;
+  flex: 0 0 auto;
+}
+body.admin-body:not(.voucher-print-mode) table th[aria-sort="ascending"] .table-sort-button,
+body.admin-body:not(.voucher-print-mode) table th[aria-sort="descending"] .table-sort-button {
+  color: var(--ui-primary-dark);
+  border-color: var(--ui-border-strong);
+  background: var(--ui-primary-soft);
+}
+body.admin-body:not(.voucher-print-mode) .toolbar-mobile-sort select:focus-visible,
+body.admin-body:not(.voucher-print-mode) .toolbar-reset:focus-visible {
+  outline: 3px solid var(--ui-primary);
+  outline-offset: 2px;
+}
+@media (max-width: 767px) {
+  body.admin-body:not(.voucher-print-mode) .filter-inline {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  body.admin-body:not(.voucher-print-mode) .filter-inline .table-filter-search {
+    grid-column: auto;
+  }
+  body.admin-body:not(.voucher-print-mode) .toolbar-mobile-sort {
+    display: flex !important;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+    margin-bottom: 10px;
+  }
+  body.admin-body:not(.voucher-print-mode) .filter-inline .toolbar-mobile-sort {
+    margin-bottom: 0;
+  }
+  body.admin-body:not(.voucher-print-mode) .toolbar-mobile-sort > span {
+    color: var(--ui-ink-soft);
+    font-size: 14px;
+    font-weight: 700;
+  }
+  body.admin-body:not(.voucher-print-mode) .toolbar-mobile-sort select {
+    width: 100%;
+    min-width: 0 !important;
+    min-height: 44px;
+    font-size: 16px !important;
+  }
+  body.admin-body:not(.voucher-print-mode) .filter-inline .filter-inline-search {
+    min-width: 0 !important;
+  }
+}

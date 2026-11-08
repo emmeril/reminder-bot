@@ -1110,6 +1110,32 @@ function createDashboardSelectors() {
             .some((value) => value.includes(needle));
         },
 
+
+        getMobileSortOptions(tableKey) {
+          const fields = this.mobileSortFields[tableKey] || [];
+          return [
+            { value: "", label: "Urutan awal" },
+            ...fields.flatMap(([key, label]) => [
+              { value: `${key}:asc`, label: `${label} (menaik)` },
+              { value: `${key}:desc`, label: `${label} (menurun)` },
+            ]),
+          ];
+        },
+
+        getMobileSortValue(tableKey) {
+          const { key, direction } = this.sorts[tableKey] || {};
+          return key && direction ? `${key}:${direction}` : "";
+        },
+
+        changeMobileSort(tableKey, value) {
+          if (!this.sorts[tableKey]) return;
+          const selected = this.getMobileSortOptions(tableKey).find((option) => option.value === value);
+          if (!selected) return;
+          const [key = "", direction = ""] = String(value).split(":");
+          this.sorts[tableKey] = { key, direction };
+          if (this.filters[tableKey]) this.resetPage(tableKey);
+        },
+
         toggleSort(tableKey, columnKey) {
           const current = this.sorts[tableKey] || { key: "", direction: "" };
           if (current.key !== columnKey) {
@@ -1639,6 +1665,67 @@ function createDashboardSelectors() {
           this.filters.sent.search = "";
           this.filters.sent.status = "ALL";
           this.resetPage("sent");
+        },
+
+
+        getDefaultRevenueDateRange() {
+          const today = this.formatDateInput(new Date());
+          const period = /^\d{4}-\d{2}$/.test(String(this.billingPeriod || ""))
+            ? this.billingPeriod
+            : today.slice(0, 7);
+          return { from: `${period}-01`, to: today };
+        },
+
+        hasChangedRevenueDateRange() {
+          const defaults = this.getDefaultRevenueDateRange();
+          return this.revenueDateFrom !== defaults.from || this.revenueDateTo !== defaults.to;
+        },
+
+        restoreRevenueDateRange() {
+          if (!this.hasChangedRevenueDateRange()) return;
+          const defaults = this.getDefaultRevenueDateRange();
+          this.revenueDateFrom = defaults.from;
+          this.revenueDateTo = defaults.to;
+          this.handleRevenueDateRangeChange();
+        },
+
+        get hasRevenueFilters() {
+          return Boolean(String(this.filters.revenue.search || "").trim())
+            || String(this.filters.revenue.status || "ALL") !== "ALL"
+            || this.hasChangedRevenueDateRange();
+        },
+
+        resetRevenueFilters() {
+          this.filters.revenue.search = "";
+          this.filters.revenue.status = "ALL";
+          this.resetPage("revenue");
+          this.restoreRevenueDateRange();
+        },
+
+        get hasVoucherRevenueFilters() {
+          return Boolean(String(this.filters.voucherRevenue.search || "").trim())
+            || String(this.filters.voucherRevenue.profile || "ALL") !== "ALL"
+            || this.hasChangedRevenueDateRange();
+        },
+
+        resetVoucherRevenueFilters() {
+          this.filters.voucherRevenue.search = "";
+          this.filters.voucherRevenue.profile = "ALL";
+          this.resetPage("voucherRevenue");
+          this.restoreRevenueDateRange();
+        },
+
+        get hasMonitorApFilters() {
+          return Boolean(String(this.filters.monitorAp.search || "").trim())
+            || String(this.filters.monitorAp.status || "ALL") !== "ALL"
+            || String(this.filters.monitorAp.linkStatus || "ALL") !== "ALL";
+        },
+
+        resetMonitorApFilters() {
+          this.filters.monitorAp.search = "";
+          this.filters.monitorAp.status = "ALL";
+          this.filters.monitorAp.linkStatus = "ALL";
+          this.resetPage("monitorAp");
         },
 
         paginationLabel(key, total) {
