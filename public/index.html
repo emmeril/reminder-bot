@@ -1899,7 +1899,7 @@
       >
         <div class="mb-4 flex items-start justify-between gap-4">
           <div class="min-w-0">
-            <h3 id="billing-action-title" class="text-lg font-semibold text-ink" x-text="isPrepaidPackage(billingActionModal.contact) ? 'Kelola paket prabayar' : 'Kelola tagihan'"></h3>
+            <h3 id="billing-action-title" class="text-lg font-semibold text-ink">Kelola paket prabayar</h3>
             <p id="billing-action-description" class="mt-1 text-sm text-ink/55">
               <strong x-text="billingActionModal.contact?.name || ''"></strong>
               <span x-show="billingActionModal.contact?.phoneNumber" x-text="' · ' + billingActionModal.contact?.phoneNumber"></span>
@@ -1910,34 +1910,15 @@
           </button>
         </div>
 
-        <div class="billing-action-summary" aria-label="Ringkasan tagihan pelanggan">
-          <div><span x-text="isPrepaidPackage(billingActionModal.contact) ? 'Status paket' : 'Status periode tagihan'"></span><strong x-text="getCurrentPaymentLabel(billingActionModal.contact)"></strong></div>
-          <div><span x-text="isPrepaidPackage(billingActionModal.contact) ? 'Aktif sampai' : 'Jatuh tempo'"></span><strong x-text="getDueDateLabel(billingActionModal.contact)"></strong></div>
+        <div class="billing-action-summary" aria-label="Ringkasan paket pelanggan">
+          <div><span>Status paket</span><strong x-text="getCurrentPaymentLabel(billingActionModal.contact)"></strong></div>
+          <div><span>Aktif sampai</span><strong x-text="getDueDateLabel(billingActionModal.contact)"></strong></div>
         </div>
 
         <div class="billing-action-list">
           <div class="billing-action-section-heading">
             <strong>Pilih tindakan</strong>
             <small>Pilih satu tindakan untuk pelanggan ini.</small>
-          </div>
-
-          <div x-show="!isPrepaidPackage(billingActionModal.contact)" class="billing-action-quick-row billing-action-primary-row">
-            <button
-              type="button"
-              @click="runBillingPayment('PAID', 'CURRENT-ONLY')"
-              :disabled="!canPayCurrentBilling(billingActionModal.contact)"
-              :aria-label="getCurrentBillingActionLabel(billingActionModal.contact)"
-              :title="getCurrentBillingActionLabel(billingActionModal.contact)"
-              class="billing-action-option billing-action-option-primary"
-            >
-              <i class="fa-solid fa-calendar-check"></i>
-              <span x-text="getCurrentBillingActionLabel(billingActionModal.contact)"></span>
-            </button>
-
-            <button x-show="canSendBillingReminder(billingActionModal.contact)" type="button" @click="sendBillingActionReminder()" class="billing-action-option billing-action-option-reminder" aria-label="Kirim pengingat WhatsApp" title="Kirim pengingat WhatsApp">
-              <i class="fa-solid fa-paper-plane"></i>
-              <span>Kirim WhatsApp</span>
-            </button>
           </div>
 
           <div x-show="canPurchaseActivePeriod(billingActionModal.contact)" class="billing-action-active-period">
@@ -1951,15 +1932,6 @@
             </button>
           </div>
 
-          <button
-            x-show="!isPrepaidPackage(billingActionModal.contact) && billingActionModal.contact?.subscriptionActive !== false && billingActionModal.contact?.currentPaymentStatus === 'PAID'"
-            type="button"
-            @click="runBillingPayment('UNPAID')"
-            class="billing-action-option billing-action-option-reset"
-          >
-            <i class="fa-solid fa-rotate-left"></i>
-            <span>Tandai belum bayar</span>
-          </button>
         </div>
 
         <div class="billing-action-footer">
