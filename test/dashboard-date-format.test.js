@@ -1213,13 +1213,26 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 36px !important;[^}]*border-radius: 9px !important;[^}]*font-size: 10px !important;/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 44px !important;[^}]*font-size: 11px !important;/);
   assert.match(styles, /\.customer-due-status \{[^}]*white-space: nowrap;/);
-  assert.match(styles, /\.customer-billing-table th:nth-child\(3\) \{ width: 12%; \}/);
+  assert.match(styles, /\.customer-billing-table th:nth-child\(3\) \{ width: 10%; \}/);
   assert.match(styles, /\.customer-hotspot-status, \.customer-schedule-status \{[^}]*white-space: nowrap;/);
   assert.match(styles, /\.customer-hotspot-table \{ min-width: 1960px; \}/);
   assert.match(styles, /\.customer-hotspot-table th:nth-child\(6\) \{ width: 8%; \}/);
   assert.match(styles, /\.customer-hotspot-table th:nth-child\(7\) \{ width: 8%; \}/);
   assert.match(styles, /\.customer-hotspot-account-actions button \{[^}]*gap: 7px;[^}]*padding-inline: 12px !important;/);
   assert.match(styles, /\.customer-hotspot-table th:nth-child\(12\) \{ width: 8%; \}/);
+});
+
+test("status paket tetap inline dan tombol Kelola memiliki ruang di kedua sisi", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
+  const billingPanel = html.slice(html.indexOf('id="customer-billing-panel"'), html.indexOf('id="customer-hotspot-panel"'));
+
+  assert.match(billingPanel, /class="customer-package-status[^"]*whitespace-nowrap[^"]*"/);
+  assert.match(styles, /\.customer-package-status \{ white-space: nowrap; \}/);
+  assert.match(styles, /\.customer-billing-table th:nth-child\(8\) \{ width: 14%; \}/);
+  assert.match(styles, /\.customer-billing-table th:nth-child\(9\) \{ width: 12%; \}/);
+  assert.match(styles, /\.panel-shell \.customer-billing-actions > button\.billing-action-trigger \{ gap: 9px; padding-inline: 16px !important; \}/);
+  assert.match(billingPanel, /class="customer-action-group customer-billing-actions customer-row-actions"/);
 });
 
 test("filter tagihan dan hotspot dapat direset tanpa mengubah jumlah baris", () => {
