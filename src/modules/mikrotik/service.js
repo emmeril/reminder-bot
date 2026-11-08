@@ -279,7 +279,7 @@ class MikrotikService {
       this.readPendingOperations -= 1;
       const durationMs = Number(process.hrtime.bigint() - started) / 1e6;
       if (metrics) metrics.totalMs = durationMs;
-      if (durationMs > 1500) {
+      if (durationMs > 1500 && !metrics) {
         this.activityLog.push("warn", "performance",
           `RouterOS read ${label} memerlukan ${Math.round(durationMs)} ms (waiting=${waiting}, blockedBy=${blockedBy || "none"})`);
       }
