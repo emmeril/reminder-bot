@@ -479,7 +479,18 @@ function createDashboardData() {
           const usage = String(this.voucherBatchFilters.usage || "ALL").toUpperCase();
           return this.voucherBatchVouchers.filter((voucher) => {
             if (usage !== "ALL" && this.getVoucherUsageStatus(voucher) !== usage) return false;
-            return this.searchMatches(voucher, ["username", "password", "macAddress"], this.voucherBatchFilters.search);
+            return this.searchValuesMatch([
+              voucher.username,
+              voucher.password,
+              voucher.macAddress,
+              this.getVoucherDeviceLabel(voucher),
+              this.getVoucherUsageLabel(voucher),
+              voucher.batchProfile,
+              this.getVoucherCardBatchLabel(voucher),
+              this.getVoucherPriceLabel(this.getVoucherBatchForVoucher(voucher)),
+              voucher.usedAt,
+              voucher.usedAt ? this.formatDateTime(voucher.usedAt) : "",
+            ], this.voucherBatchFilters.search);
           });
         },
 

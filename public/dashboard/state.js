@@ -195,6 +195,284 @@ function createDashboardState() {
           sent: { search: "", status: "ALL", page: 1, pageSize: 10 },
           logs: { page: 1, pageSize: 10 },
         },
+        mobileSortFields: {
+          "contacts": [
+            [
+              "name",
+              "Nama"
+            ],
+            [
+              "phone",
+              "Nomor WhatsApp"
+            ],
+            [
+              "billingCycle",
+              "Siklus pembayaran"
+            ],
+            [
+              "linkedAp",
+              "AP terkait"
+            ],
+            [
+              "apStatus",
+              "Status AP"
+            ]
+          ],
+          "contactBilling": [
+            [
+              "name",
+              "Pelanggan"
+            ],
+            [
+              "phone",
+              "Nomor HP"
+            ],
+            [
+              "billingCycle",
+              "Langganan"
+            ],
+            [
+              "dueDate",
+              "Jatuh tempo"
+            ],
+            [
+              "dueStatus",
+              "Status jatuh tempo"
+            ],
+            [
+              "amount",
+              "Nominal bulanan"
+            ],
+            [
+              "amountSource",
+              "Sumber nominal"
+            ],
+            [
+              "currentPayment",
+              "Pembayaran bulan ini"
+            ],
+            [
+              "debt",
+              "Tunggakan"
+            ]
+          ],
+          "contactHotspot": [
+            [
+              "name",
+              "Pelanggan"
+            ],
+            [
+              "phone",
+              "Nomor HP"
+            ],
+            [
+              "username",
+              "Username"
+            ],
+            [
+              "profile",
+              "Profile"
+            ],
+            [
+              "ipBinding",
+              "IP Binding"
+            ],
+            [
+              "hotspotAccess",
+              "Akses Hotspot"
+            ],
+            [
+              "ipBindingAccess",
+              "Akses IP Binding"
+            ],
+            [
+              "scheduleStatus",
+              "Status jadwal"
+            ],
+            [
+              "scheduleAt",
+              "Waktu jadwal"
+            ],
+            [
+              "linkedAp",
+              "AP terkait"
+            ],
+            [
+              "apStatus",
+              "Status AP"
+            ]
+          ],
+          "voucherProfiles": [
+            [
+              "name",
+              "Profile"
+            ],
+            [
+              "validity",
+              "Masa berlaku"
+            ],
+            [
+              "expiredMode",
+              "Aturan expired"
+            ],
+            [
+              "status",
+              "Status"
+            ]
+          ],
+          "voucherStats": [
+            [
+              "profile",
+              "Profile"
+            ],
+            [
+              "validity",
+              "Masa berlaku"
+            ],
+            [
+              "total",
+              "Total voucher"
+            ],
+            [
+              "used",
+              "Terpakai"
+            ],
+            [
+              "unused",
+              "Belum terpakai"
+            ]
+          ],
+          "revenue": [
+            [
+              "name",
+              "Pelanggan"
+            ],
+            [
+              "period",
+              "Periode"
+            ],
+            [
+              "status",
+              "Status"
+            ],
+            [
+              "paymentType",
+              "Jenis pembayaran"
+            ],
+            [
+              "amount",
+              "Pendapatan"
+            ],
+            [
+              "paymentDate",
+              "Tanggal tercatat"
+            ]
+          ],
+          "voucherRevenue": [
+            [
+              "username",
+              "Voucher"
+            ],
+            [
+              "profile",
+              "Profile"
+            ],
+            [
+              "amount",
+              "Harga jual"
+            ],
+            [
+              "costPrice",
+              "HPP"
+            ],
+            [
+              "commission",
+              "Keuntungan"
+            ],
+            [
+              "validity",
+              "Masa berlaku"
+            ],
+            [
+              "usedAt",
+              "Tanggal digunakan"
+            ]
+          ],
+          "monitorAp": [
+            [
+              "host",
+              "Host AP"
+            ],
+            [
+              "status",
+              "Status"
+            ],
+            [
+              "customers",
+              "Pelanggan"
+            ],
+            [
+              "linkStatus",
+              "Sinkronisasi"
+            ],
+            [
+              "since",
+              "Since"
+            ],
+            [
+              "interval",
+              "Interval"
+            ],
+            [
+              "timeout",
+              "Timeout"
+            ],
+            [
+              "comment",
+              "Comment"
+            ]
+          ],
+          "reminders": [
+            [
+              "contact",
+              "Tujuan"
+            ],
+            [
+              "billingCycle",
+              "Siklus"
+            ],
+            [
+              "deliveryAt",
+              "Waktu kirim"
+            ],
+            [
+              "template",
+              "Template"
+            ],
+            [
+              "message",
+              "Pesan"
+            ]
+          ],
+          "sent": [
+            [
+              "contact",
+              "Tujuan"
+            ],
+            [
+              "sentAt",
+              "Terkirim"
+            ],
+            [
+              "status",
+              "Status"
+            ],
+            [
+              "message",
+              "Pesan"
+            ]
+          ]
+        },
         sorts: {
           contacts: { key: "", direction: "" },
           contactBilling: { key: "", direction: "" },
