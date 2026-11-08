@@ -74,3 +74,46 @@ test("refresh manual meminta data terbaru pada menu aktif saja", async () => {
   assert.equal(calls[0].method, "loadApMonitors");
   assert.equal(calls[0].options.fresh, true);
 });
+
+test("voucher memuat data berat berurutan sesuai tab aktif", async () => {
+  const { dashboard } = mockDashboard();
+  const calls = [];
+  for (const method of ["loadVoucherOptions", "loadVoucherBatches", "loadVoucherStats"]) {
+    dashboard[method] = async () => { calls.push(method); };
+  }
+  dashboard.activeMenu = "overview";
+  dashboard.activeVoucherTab = "create";
+  await dashboard.loadVisibleVoucherData();
+  assert.deepEqual(calls, []);
+
+  dashboard.activeMenu = "vouchers";
+  await dashboard.loadVisibleVoucherData();
+  assert.deepEqual(calls, ["loadVoucherOptions", "loadVoucherBatches"]);
+
+  calls.length = 0;
+  dashboard.activeVoucherTab = "profiles";
+  await dashboard.loadVisibleVoucherData();
+  assert.deepEqual(calls, ["loadVoucherOptions"]);
+
+  calls.length = 0;
+  dashboard.activeVoucherTab = "stats";
+  await dashboard.loadVisibleVoucherData();
+  assert.deepEqual(calls, ["loadVoucherStats"]);
+});
+
+test("pergantian tab tidak memuat batch voucher setelah pengguna keluar", async () => {
+  const { dashboard } = mockDashboard();
+  dashboard.activeMenu = "vouchers";
+  dashboard.activeVoucherTab = "create";
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const calls = [];
+  dashboard.loadVoucherOptions = async () => { await gate; calls.push("options"); };
+  dashboard.loadVoucherBatches = async () => { calls.push("batches"); };
+
+  const task = dashboard.loadVisibleVoucherData();
+  dashboard.activeMenu = "contacts";
+  release();
+  await task;
+  assert.deepEqual(calls, ["options"]);
+});
