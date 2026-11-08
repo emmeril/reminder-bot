@@ -98,3 +98,133 @@ test("toolbar jaringan dan log punya nama aksesibel serta pencarian tidak dipaks
   assert.match(html, /aria-label="Jumlah log per halaman"/);
   assert.match(css, /\.filter-inline \.filter-inline-search \{\s*min-width: 0 !important;/);
 });
+
+test("semua pencarian tabel memperbarui hasil dan mengembalikan halaman pertama", () => {
+  const app = createApp();
+  const tableKeys = ["contacts", "contactBilling", "contactHotspot", "revenue", "voucherRevenue", "monitorAp", "reminders", "sent"];
+  for (const tableKey of tableKeys) {
+    const input = new RegExp(`x-model="filters\\.${tableKey}\\.search"[^>]*@input="handleTableSearchInput\\('${tableKey}', \\$event\\.target\\.value\\)"`);
+    assert.match(html, input);
+    app.filters[tableKey].page = 3;
+    app.handleTableSearchInput(tableKey, "Alea");
+    assert.equal(app.filters[tableKey].search, "Alea");
+    assert.equal(app.filters[tableKey].page, 1);
+  }
+  app.handleTableSearchInput("logs", "ignored");
+  assert.equal(app.filters.logs.search, undefined);
+});
+
+test("Jadwal mencari gabungan nama, nomor WA, jenis waktu, tanggal, template, dan pesan", () => {
+  const app = createApp();
+  app.reminders = [
+    {
+      id: "r-alea", contactName: "Alea Putri", phoneNumber: "6281234567890",
+      deliveryScheduleType: "GRACE_PERIOD", billingCycle: "PREPAID",
+      deliveryDateTime: "2026-11-15T03:00:00.000Z",
+      reminderDateTime: "2026-11-16T03:00:00.000Z",
+      templateName: "PaketPrabayar.txt", message: "Paket WiFi akan segera berakhir",
+    },
+    {
+      id: "r-bima", contactName: "Bima", phoneNumber: "6287654321098",
+      deliveryScheduleType: "BILLING_DUE", billingCycle: "PREPAID",
+      deliveryDateTime: "2026-11-20T03:00:00.000Z",
+      reminderDateTime: "2026-11-20T03:00:00.000Z",
+      templateName: "Reminder.txt", message: "Tagihan prabayar",
+    },
+  ];
+  const find = (search) => {
+    app.handleTableSearchInput("reminders", search);
+    return Array.from(app.filteredReminders, (row) => row.id);
+  };
+  assert.deepEqual(find("alea"), ["r-alea"]);
+  assert.deepEqual(find("putri 081234567890"), ["r-alea"]);
+  assert.deepEqual(find("masa tenggang paket"), ["r-alea"]);
+  assert.deepEqual(find("16/11/2026 alea"), ["r-alea"]);
+  assert.deepEqual(find("PAKETPRABAYAR WIFI"), ["r-alea"]);
+  assert.deepEqual(find("BIMA jatuh tempo"), ["r-bima"]);
+  assert.deepEqual(find("nama tidak ada"), []);
+  assert.deepEqual(find(""), ["r-alea", "r-bima"]);
+  app.filters.reminders.schedule = "UPCOMING";
+  app.resetReminderFilters();
+  assert.equal(app.filters.reminders.search, "");
+  assert.equal(app.filters.reminders.schedule, "ALL");
+});
+
+test("pencarian cocok dengan label, angka, dan tanggal yang benar-benar terlihat di laporan", () => {
+  const app = createApp();
+  app.revenueDateFrom = "2026-11-01";
+  app.revenueDateTo = "2026-11-30";
+  app.contacts = [{
+    id: "p-1",
+    name: "Alea",
+    phoneNumber: "6281234567890",
+    monthlyPaymentAmount: 75000,
+    paymentMonths: {
+      "2026-11": {
+        status: "PAID",
+        paidAmount: 75000,
+        paidDate: "2026-11-09T03:00:00.000Z",
+      },
+    },
+  }];
+  app.handleTableSearchInput("revenue", "Alea Lunas 75.000");
+  assert.equal(app.filteredRevenueEntries.length, 1);
+  app.handleTableSearchInput("revenue", "Nov 2026 081234567890");
+  assert.equal(app.filteredRevenueEntries.length, 1);
+  app.handleTableSearchInput("revenue", "Pelanggan Tidak Ada");
+  assert.equal(app.filteredRevenueEntries.length, 0);
+
+  app.voucherRevenue.entries = [{
+    id: "v-1", username: "voucher-001", profile: "Paket 4 Jam",
+    amount: 3000, costPrice: 1000, commission: 2000,
+    validity: "4h", usedAt: "2026-11-09T03:00:00.000Z",
+  }];
+  app.handleTableSearchInput("voucherRevenue", "voucher 09/11/2026");
+  assert.equal(app.filteredVoucherRevenueEntries.length, 1);
+  app.handleTableSearchInput("voucherRevenue", "paket 2000");
+  assert.equal(app.filteredVoucherRevenueEntries.length, 1);
+});
+
+test("pencarian jaringan, riwayat, dan voucher menangani status lokal", () => {
+  const app = createApp();
+  app.apMonitors = [{
+    id: "ap-1", host: "ap-utama.local", status: "UP",
+    linkStatus: "LINKED", linkedContacts: [{ name: "Alea", phoneNumber: "6281234567890" }],
+    customerCount: 1, since: "2026-11-01",
+  }];
+  app.handleTableSearchInput("monitorAp", "Terhubung Alea");
+  assert.equal(app.filteredApMonitors.length, 1);
+  app.handleTableSearchInput("monitorAp", "081234567890");
+  assert.equal(app.filteredApMonitors.length, 1);
+  app.sent = [{
+    id: "s-1", contactName: "Alea", phoneNumber: "6281234567890",
+    deliveryStatus: "UNCONFIRMED", sentAt: "2026-11-09T03:00:00.000Z",
+    message: "Pesan terkirim",
+  }];
+  app.handleTableSearchInput("sent", "belum terkonfirmasi Alea");
+  assert.equal(app.filteredSent.length, 1);
+
+  app.voucherBatches = [{
+    batchId: "b-1", profile: "Paket Harian", createdAt: "2026-11-09T03:00:00.000Z",
+    vouchers: [{ username: "test-1", password: "rahasia", usageStatus: "USED", usedAt: "2026-11-09T03:00:00.000Z" }],
+  }];
+  app.voucherBatchFilters.search = "sudah digunakan paket";
+  assert.equal(app.filteredVoucherBatchVouchers.length, 1);
+  app.voucherBatchFilters.search = "tidak ditemukan";
+  assert.equal(app.filteredVoucherBatchVouchers.length, 0);
+});
+
+test("pencarian di seluruh menu memakai pencocokan kata tanpa mengubah filter dan halaman lain", () => {
+  const app = createApp();
+  app.contacts = [{ name: "Alea Putri", phoneNumber: "+62 812-3456-7890", id: "p-1", mikrotikUsername: "alea", monthlyPaymentAmount: 75000 }];
+  app.handleTableSearchInput("contacts", "PUTRI 081234567890");
+  assert.equal(app.filteredContacts.length, 1);
+  app.handleTableSearchInput("contactBilling", "alea 75000");
+  assert.equal(app.filteredBillingContacts.length, 1);
+  app.handleTableSearchInput("contactHotspot", "alea");
+  assert.equal(app.filteredHotspotContacts.length, 1);
+  app.handleTableSearchInput("contacts", "tidak cocok");
+  assert.equal(app.filteredContacts.length, 0);
+  assert.equal(app.filters.contactBilling.search, "alea 75000");
+  assert.equal(app.filters.contactHotspot.search, "alea");
+});

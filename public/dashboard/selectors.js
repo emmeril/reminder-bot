@@ -794,11 +794,18 @@ function createDashboardSelectors() {
           const selectedProfile = this.filters.voucherRevenue.profile || "ALL";
           const entries = this.voucherRevenue.entries.filter((entry) => {
             if (selectedProfile !== "ALL" && entry.profile !== selectedProfile) return false;
-            return this.searchMatches(
-              entry,
-              ["username", "profile", "amount", "costPrice", "commission", "validity"],
-              this.filters.voucherRevenue.search
-            );
+            return this.searchValuesMatch([
+              entry.username,
+              entry.profile,
+              entry.amount, this.formatRupiah(entry.amount),
+              entry.costPrice, this.formatRupiah(entry.costPrice),
+              entry.commission, this.formatRupiah(entry.commission),
+              entry.validity,
+              entry.usedAt,
+              entry.usedAt ? this.formatDateTime(entry.usedAt) : "",
+              entry.address,
+              entry.macAddress,
+            ], this.filters.voucherRevenue.search);
           });
           return this.sortTableItems(entries, "voucherRevenue", {
             username: (entry) => entry.username,
@@ -879,11 +886,22 @@ function createDashboardSelectors() {
           const selectedStatus = String(this.filters.revenue.status || "ALL").toUpperCase();
           const entries = this.revenueEntries.filter((entry) => {
             if (selectedStatus !== "ALL" && entry.status !== selectedStatus) return false;
-            return this.searchMatches(
-              entry,
-              ["name", "phoneNumber", "paymentType", "status", "amount"],
-              this.filters.revenue.search
-            );
+            return this.searchValuesMatch([
+              entry.name,
+              entry.phoneNumber,
+              entry.period,
+              this.getRevenuePeriodLabel(entry.period),
+              entry.status,
+              entry.status === "PAID" ? "Lunas" : "Sebagian",
+              entry.paymentType,
+              this.getPaymentTypeLabel(entry.paymentType),
+              entry.amount,
+              this.formatRupiah(entry.amount),
+              entry.paymentDate,
+              entry.paymentDate ? this.formatDateTime(entry.paymentDate) : "Belum tercatat",
+              entry.activeUntil,
+              entry.activeUntil ? this.formatDateTime(entry.activeUntil) : "",
+            ], this.filters.revenue.search);
           });
           return this.sortTableItems(entries, "revenue", {
             name: (entry) => entry.name,
@@ -1095,21 +1113,50 @@ function createDashboardSelectors() {
           return this.getApStatusClass(status);
         },
 
-        searchMatches(item, fields, search) {
-          const needle = String(search || "").trim().toLowerCase();
-          if (!needle) return true;
-          return fields.some((field) => String(item[field] || "").toLowerCase().includes(needle));
+        normalizeSearchText(value) {
+          return String(value ?? "")
+            .normalize("NFKD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLocaleLowerCase("id-ID")
+            .replace(/[^\p{L}\p{N}]+/gu, " ")
+            .replace(/\s+/g, " ")
+            .trim();
         },
 
         searchValuesMatch(values, search) {
-          const needle = String(search || "").trim().toLocaleLowerCase("id-ID");
-          if (!needle) return true;
-          return values
-            .flat(Infinity)
-            .map((value) => String(value ?? "").toLocaleLowerCase("id-ID"))
-            .some((value) => value.includes(needle));
+          const rawQuery = String(search ?? "").trim();
+          if (!rawQuery) return true;
+          const query = this.normalizeSearchText(rawQuery);
+          if (!query) return false;
+
+          const terms = [];
+          for (const value of values.flat(Infinity)) {
+            if (value === null || value === undefined) continue;
+            const raw = String(value);
+            terms.push(this.normalizeSearchText(raw));
+            const compact = raw.replace(/[^\p{L}\p{N}]/gu, "").toLocaleLowerCase("id-ID");
+            if (compact.length >= 3) terms.push(compact);
+
+            const digits = raw.replace(/\D/g, "");
+            if (digits.length >= 10 && digits.length <= 16) {
+              if (digits.startsWith("62")) terms.push(`0${digits.slice(2)}`);
+              if (digits.startsWith("0")) terms.push(`62${digits.slice(1)}`);
+            }
+          }
+          const haystack = terms.join(" ");
+          return query.split(" ").every((token) => haystack.includes(token));
         },
 
+        searchMatches(item, fields, search) {
+          return this.searchValuesMatch(fields.map((field) => item?.[field]), search);
+        },
+
+        handleTableSearchInput(tableKey, value) {
+          if (!Object.prototype.hasOwnProperty.call(this.filters, tableKey)
+            || !Object.prototype.hasOwnProperty.call(this.filters[tableKey], "search")) return;
+          this.filters[tableKey].search = String(value ?? "");
+          this.resetPage(tableKey);
+        },
 
         getMobileSortOptions(tableKey) {
           const fields = this.mobileSortFields[tableKey] || [];
@@ -1443,17 +1490,20 @@ function createDashboardSelectors() {
               linkedCustomerNames: (ap.linkedContacts || []).map((contact) => contact.name).join(" "),
               linkedCustomerPhones: (ap.linkedContacts || []).map((contact) => contact.phoneNumber).join(" "),
             };
-            return this.searchMatches(searchableAp, [
-              "host",
-              "status",
-              "since",
-              "comment",
-              "interval",
-              "timeout",
-              "type",
-              "linkStatus",
-              "linkedCustomerNames",
-              "linkedCustomerPhones",
+            return this.searchValuesMatch([
+              searchableAp.host,
+              searchableAp.status,
+              searchableAp.since,
+              searchableAp.comment,
+              searchableAp.interval,
+              searchableAp.timeout,
+              searchableAp.type,
+              searchableAp.linkStatus,
+              this.getApLinkStatusLabel(searchableAp.linkStatus),
+              this.getApCustomerSummary(searchableAp),
+              searchableAp.customerCount,
+              searchableAp.linkedCustomerNames,
+              searchableAp.linkedCustomerPhones,
             ], this.filters.monitorAp.search);
           });
           return this.sortTableItems(monitors, "monitorAp", {
@@ -1517,6 +1567,7 @@ function createDashboardSelectors() {
               sentAt,
               sentAt ? this.formatDateTime(sentAt) : "",
               status,
+              status === "UNCONFIRMED" ? "Belum terkonfirmasi" : status,
               item.message || "-",
             ], this.filters.sent.search);
           });
