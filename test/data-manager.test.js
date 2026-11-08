@@ -101,6 +101,41 @@ test("ringkasan dashboard menghitung layanan dan pesan terkirim hari ini", () =>
   assert.equal(summary.sentToday, 1);
 });
 
+test("ringkasan status tidak menghidrasi seluruh pelanggan atau mengurutkan reminder", () => {
+  const manager = createManager({
+    id: "summary-fast",
+    name: "Pelanggan",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID,
+    hotspotProvisioningStatus: "NONE",
+  });
+  manager.getSortedContacts = () => { throw new Error("unnecessary contact sorting"); };
+  manager.getSortedReminders = () => { throw new Error("unnecessary reminder sorting"); };
+  manager.getSentReminders = () => { throw new Error("unnecessary sent history sorting"); };
+  manager.hydrateContact = () => { throw new Error("unnecessary contact hydration"); };
+
+  const summary = manager.getDashboardSummary(new Date("2026-11-08T05:00:00.000Z"));
+  assert.equal(summary.contacts, 1);
+  assert.equal(summary.reminders, 0);
+  assert.equal(summary.sentReminders, 0);
+});
+
+test("serialisasi kontak terhidrasi tetap menghapus password MikroTik", () => {
+  const manager = createManager({
+    id: "public-safe",
+    name: "Pelanggan",
+    mikrotikPassword: "hidden",
+    hotspotProvisioningPrevious: { password: "hidden" },
+    hotspotNotificationPending: { attempts: 1, lastError: "retry" },
+  });
+  const hydrated = manager.hydrateContact(manager.contacts.get("public-safe"));
+  const serialized = manager.toPublicContact(hydrated, { alreadyHydrated: true });
+  assert.equal(serialized.mikrotikPassword, undefined);
+  assert.equal(serialized.hotspotProvisioningPrevious, undefined);
+  assert.equal(serialized.hotspotNotificationPending.attempts, 1);
+  assert.equal(hydrated.mikrotikPassword, "hidden");
+});
+
 test("riwayat batch voucher disimpan terpisah dari komentar user MikroTik", async () => {
   const manager = createManager({ id: "contact-placeholder", phoneNumber: "6281234567890" });
   let saveCalls = 0;

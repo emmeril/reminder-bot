@@ -122,19 +122,28 @@ test("halaman login membedakan akses administrator dan pelanggan", async () => {
   assert.doesNotMatch(adminHtml, /Akun ini berbeda dari akun hotspot/);
 });
 
-test("JavaScript dashboard tidak disimpan di cache browser", async () => {
+test("aset dashboard menggunakan validasi cache agar perubahan tetap terambil", async () => {
   const baseUrl = await startServer();
-  for (const scriptPath of [
+  for (const assetPath of [
     "app.js",
     "dashboard/state.js",
     "dashboard/ui.js",
     "dashboard/selectors.js",
     "dashboard/data.js",
     "dashboard/actions.js",
+    "styles.css",
+    "interface.css",
   ]) {
-    const response = await fetch(`${baseUrl}/public/${scriptPath}?v=test`);
+    const url = `${baseUrl}/public/${assetPath}?v=test`;
+    const response = await fetch(url);
     assert.equal(response.status, 200);
-    assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
+    assert.equal(response.headers.get("cache-control"), "private, no-cache, must-revalidate");
+    const etag = response.headers.get("etag");
+    assert.ok(etag);
+    await response.arrayBuffer();
+
+    const unchanged = await fetch(url, { headers: { "if-none-match": etag, "cache-control": "max-age=0" } });
+    assert.equal(unchanged.status, 304);
   }
 });
 

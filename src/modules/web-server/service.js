@@ -1414,7 +1414,7 @@ class WebServer {
       const isDashboardModule = req.path.startsWith("/dashboard/") && req.path.endsWith(".js");
       if (isDashboardModule
         || ["/app.js", "/styles.css", "/interface.css", "/customer.js", "/customer.css", "/customer-login.js"].includes(req.path)) {
-        res.setHeader("Cache-Control", "no-store, max-age=0");
+        res.setHeader("Cache-Control", "private, no-cache, must-revalidate");
       }
       next();
     }, express.static(CONFIG.PUBLIC_PATH, { etag: true, maxAge: "1h" }));

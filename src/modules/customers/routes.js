@@ -43,7 +43,7 @@ function registerCustomerRoutes({
   recoverHotspotAfterPayment,
 }) {
   app.get("/api/contacts", requireApiAuth, handleApi(async () => (
-    dataManager.getSortedContacts().map((contact) => dataManager.toPublicContact(contact))
+    dataManager.getSortedContacts().map((contact) => dataManager.toPublicContact(contact, { alreadyHydrated: true }))
   )));
 
   app.post("/api/contacts", requireApiAuth, handleApi(async (req) => {
