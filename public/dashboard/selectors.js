@@ -983,17 +983,18 @@ function createDashboardSelectors() {
 
         getDueStatusLabel(status) {
           const labels = {
-            NOT_SCHEDULED: "Perlu Dijadwalkan",
-            UPCOMING: "Belum Jatuh Tempo",
-            OVERDUE: "Jatuh Tempo",
-            PAID: "Lunas",
+            NOT_SCHEDULED: "Belum ada jadwal",
+            UPCOMING: "Masih aktif",
+            OVERDUE: "Perlu diperpanjang",
+            PAID: "Paket aktif",
+            NOT_APPLICABLE: "Tidak dijadwalkan",
           };
-          return labels[String(status || "").toUpperCase()] || "Perlu Dijadwalkan";
+          return labels[String(status || "").toUpperCase()] || "Belum ada jadwal";
         },
 
         getDueDateLabel(contact) {
           if (contact?.dueDate) return this.formatDateTime(contact.dueDate);
-          return "Jadwal belum tersedia";
+          return "Masa aktif belum tersedia";
         },
 
         getDueStatusClass(status) {
@@ -1224,16 +1225,10 @@ function createDashboardSelectors() {
 
         get billingStatusFilterOptions() {
           const values = new Map();
-          let hasDebt = false;
-          let hasNoDebt = false;
           for (const contact of this.contacts) {
             const label = this.getCurrentPaymentLabel(contact);
-            values.set(`PAYMENT|${label}`, `Bulan ini · ${label}`);
-            if (this.hasDebt(contact)) hasDebt = true;
-            else hasNoDebt = true;
+            values.set(`PAYMENT|${label}`, label);
           }
-          if (hasDebt) values.set("DEBT|YES", "Tunggakan · Ada tunggakan");
-          if (hasNoDebt) values.set("DEBT|NO", "Tunggakan · Tidak ada tunggakan");
           return Array.from(values, ([value, label]) => ({ value, label }));
         },
 
@@ -1327,7 +1322,6 @@ function createDashboardSelectors() {
               const [scope, ...labelParts] = String(this.filters.contactBilling.status).split("|");
               const expected = labelParts.join("|");
               if (scope === "PAYMENT" && this.getCurrentPaymentLabel(contact) !== expected) return false;
-              if (scope === "DEBT" && (this.hasDebt(contact) ? "YES" : "NO") !== expected) return false;
             }
             if (selectedDueStatus !== "ALL" && dueStatus !== selectedDueStatus) return false;
 
@@ -1342,8 +1336,6 @@ function createDashboardSelectors() {
               this.formatRupiah(contact.monthlyPaymentAmount),
               this.getPaymentAmountSourceLabel(contact),
               this.getCurrentPaymentLabel(contact),
-              this.hasDebt(contact) ? this.getDebtCountLabel(contact) : "Tidak ada tunggakan",
-              this.hasDebt(contact) ? this.getDebtNote(contact) : "",
             ], this.filters.contactBilling.search);
           });
           return this.sortTableItems(contacts, "contactBilling", {
@@ -1355,7 +1347,6 @@ function createDashboardSelectors() {
             amount: (contact) => Number(contact.monthlyPaymentAmount || 0),
             amountSource: (contact) => this.getPaymentAmountSourceLabel(contact),
             currentPayment: (contact) => this.getCurrentPaymentLabel(contact),
-            debt: (contact) => this.hasDebt(contact) ? Number(contact.debtCount || 1) : 0,
           });
         },
 

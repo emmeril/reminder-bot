@@ -175,7 +175,7 @@ function createDashboardUi() {
 
         get paymentProgress() {
           const total = this.summaryValue("Pelanggan");
-          return total ? Math.min(100, Math.round((this.summaryValue("Lunas / paket aktif") / total) * 100)) : 0;
+          return total ? Math.min(100, Math.round((this.summaryValue("Paket aktif") / total) * 100)) : 0;
         },
 
         async loadNonCriticalData() {

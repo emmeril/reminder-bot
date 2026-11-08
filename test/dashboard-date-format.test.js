@@ -200,7 +200,7 @@ test("simpan jadwal mengirim pilihan modal dan menutup form setelah berhasil", a
   assert.equal(notification, "Jadwal penonaktifan berhasil disimpan.");
 });
 
-test("aksi tagihan memakai satu tombol dan menampilkan pilihan di modal", () => {
+test("aksi tagihan prabayar memakai satu tombol dan hanya menawarkan perpanjangan paket", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
 
@@ -210,23 +210,14 @@ test("aksi tagihan memakai satu tombol dan menampilkan pilihan di modal", () => 
   assert.match(html, /@keydown\.escape\.window="closeBillingActionModal\(\)"/);
   assert.match(html, /@keydown\.tab="trapModalFocus\(\$event, 'billing-action-dialog'\)"/);
   assert.match(html, /billing-action-section-heading[\s\S]*?Pilih tindakan/);
-  const currentBillingButton = html.match(/billing-action-primary-row">[\s\S]*?(<button[\s\S]*?<\/button>)/)?.[1] || "";
-  assert.doesNotMatch(currentBillingButton, /x-show=/);
-  assert.match(currentBillingButton, /:disabled="!canPayCurrentBilling\(billingActionModal\.contact\)"/);
-  assert.match(currentBillingButton, /getCurrentBillingActionLabel\(billingActionModal\.contact\)/);
-  assert.match(html, /billing-action-primary-row[\s\S]*?aria-label="Kirim pengingat WhatsApp"[\s\S]*?>Kirim WhatsApp</);
-  assert.match(html, /billing-action-quick-row[\s\S]*?:aria-label="getFullPaymentActionLabel\(billingActionModal\.contact\)"[\s\S]*?getFullPaymentActionLabel\(billingActionModal\.contact\)/);
-  assert.match(html, /Tandai belum bayar/);
-  assert.match(html, /getArrearsPaymentLabel\(billingActionModal\.contact\)/);
-  assert.match(html, /getArrearsPaymentSubmitLabel\(billingActionModal\.contact\)/);
+  const modal = html.slice(html.indexOf('id="billing-action-dialog"'), html.indexOf('class="billing-action-footer"'));
+  assert.match(modal, /@click="purchaseActivePeriod\(billingActionModal\.contact\)"/);
+  assert.match(modal, /getActivePeriodPurchaseLabel\(billingActionModal\.contact\)/);
+  assert.doesNotMatch(modal, /payArrears\(|getArrearsPaymentLabel|billing-action-primary-row|Tandai belum bayar|FULL-PAID/);
   assert.doesNotMatch(html, /<details[^>]*customer-payment-menu/);
   assert.match(styles, /\.billing-action-option \{[^}]*width: fit-content;[^}]*justify-self: end;[^}]*border-radius: 999px;/);
-  assert.match(styles, /\.billing-action-submit \{[^}]*width: fit-content;[^}]*justify-self: end;[^}]*border-radius: 999px;/);
   assert.match(styles, /\.billing-action-option:hover > i \{ color: #fff; \}/);
   assert.match(styles, /\.billing-action-option:disabled, \.billing-action-option:disabled:hover \{[^}]*cursor: not-allowed;/);
-  assert.match(styles, /\.billing-action-submit > i, \.billing-action-submit:hover > i \{ color: #fff; \}/);
-  assert.match(styles, /\.billing-action-option-reminder \{[^}]*background: #15803d;/);
-  assert.match(styles, /\.billing-action-quick-row \{[^}]*justify-content: flex-end;/);
 });
 
 test("tombol tagihan manual tidak ditawarkan pada pelanggan prabayar", () => {
@@ -565,8 +556,8 @@ test("filter jatuh tempo hanya menampilkan jadwal pelanggan bulanan", () => {
   const app = createDashboardApp();
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
 
-  assert.equal(app.getDueStatusLabel("NOT_SCHEDULED"), "Perlu Dijadwalkan");
-  assert.equal(app.getDueDateLabel({ dueStatus: "NOT_SCHEDULED" }), "Jadwal belum tersedia");
+  assert.equal(app.getDueStatusLabel("NOT_SCHEDULED"), "Belum ada jadwal");
+  assert.equal(app.getDueDateLabel({ dueStatus: "NOT_SCHEDULED" }), "Masa aktif belum tersedia");
   assert.match(html, /billingDueStatusOptions/);
   assert.doesNotMatch(html, /ONE_TIME|Sekali berlangganan|Tanpa jadwal bulanan/);
   assert.match(html, /x-text="getDueDateLabel\(contact\)"/);
@@ -1201,10 +1192,10 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(html, /data-label="Langganan"[^>]*>\s*<span[^>]*:class="getBillingCycleBadgeClass\(contact\)"[^>]*x-text="getBillingCycleLabel\(contact\)"/);
   assert.doesNotMatch(html, /getSubscriptionTypeLabel/);
   assert.match(html, /data-label="Nomor HP"/);
-  assert.match(html, /data-label="Status Jatuh Tempo"/);
-  assert.match(html, /data-label="Sumber Nominal"/);
-  assert.match(html, /data-label="Bulan Ini"/);
-  assert.match(html, /data-label="Tunggakan"/);
+  assert.match(html, /data-label="Masa Aktif"/);
+  assert.match(html, /data-label="Sumber Harga"/);
+  assert.match(html, /data-label="Status Paket"/);
+  assert.doesNotMatch(html, /data-label="Tunggakan"/);
   assert.match(html, /data-label="Akun Hotspot"/);
   assert.match(html, /data-label="Akun IP Binding"/);
   assert.match(html, /data-label="User Hotspot"/);
@@ -1216,13 +1207,13 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(html, /data-label="Status AP"/);
   assert.match(html, /data-label="Aksi Akun"/);
   assert.match(html, /data-label="Aksi Layanan"/);
-  assert.match(html, /<td colspan="10"[^>]*Tidak ada tagihan yang cocok/);
+  assert.match(html, /<td colspan="9"[^>]*Tidak ada tagihan yang cocok/);
   assert.match(html, /<td colspan="13"[^>]*Tidak ada akun hotspot yang cocok/);
   assert.match(html, /getSortLabel\('contactHotspot', 'name', 'Pelanggan'\)[\s\S]*getSortLabel\('contactHotspot', 'phone', 'Nomor HP'\)[\s\S]*getSortLabel\('contactHotspot', 'username', 'User Hotspot'\)/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 36px !important;[^}]*border-radius: 9px !important;[^}]*font-size: 10px !important;/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 44px !important;[^}]*font-size: 11px !important;/);
   assert.match(styles, /\.customer-due-status \{[^}]*white-space: nowrap;/);
-  assert.match(styles, /\.customer-billing-table th:nth-child\(3\) \{ width: 11%; \}/);
+  assert.match(styles, /\.customer-billing-table th:nth-child\(3\) \{ width: 12%; \}/);
   assert.match(styles, /\.customer-hotspot-status, \.customer-schedule-status \{[^}]*white-space: nowrap;/);
   assert.match(styles, /\.customer-hotspot-table \{ min-width: 1960px; \}/);
   assert.match(styles, /\.customer-hotspot-table th:nth-child\(6\) \{ width: 8%; \}/);
@@ -1237,7 +1228,7 @@ test("filter tagihan dan hotspot dapat direset tanpa mengubah jumlah baris", () 
   const billingPanel = html.slice(html.indexOf('id="customer-billing-panel"'), html.indexOf('id="customer-hotspot-panel"'));
   const hotspotPanel = html.slice(html.indexOf('id="customer-hotspot-panel"'), html.indexOf('id="contact-modal"'));
 
-  app.filters.contactBilling = { search: "Nayya", billingCycle: "POSTPAID", status: "DEBT|YES", dueStatus: "OVERDUE", page: 3, pageSize: 25 };
+  app.filters.contactBilling = { search: "Nayya", billingCycle: "POSTPAID", status: "PAYMENT|Paket aktif", dueStatus: "OVERDUE", page: 3, pageSize: 25 };
   assert.equal(app.hasContactBillingFilters, true);
   app.resetContactBillingFilters();
   assert.deepEqual(app.filters.contactBilling, { search: "", billingCycle: "ALL", status: "ALL", dueStatus: "ALL", page: 1, pageSize: 25 });
@@ -1956,7 +1947,7 @@ test("semua kolom tabel target dapat diurutkan kecuali kolom aksi", () => {
   const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
   const expectedControls = {
     contacts: 5,
-    contactBilling: 9,
+    contactBilling: 8,
     contactHotspot: 11,
     voucherProfiles: 4,
     voucherStats: 5,
