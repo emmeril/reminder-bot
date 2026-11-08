@@ -251,6 +251,92 @@ test("notifikasi pembayaran menyertakan akun WiFi dari template pengaturan", asy
   assert.doesNotMatch(sent[0].message, /{{|}}/);
 });
 
+test("pembelian paket IP Binding saja tidak mengirim kredensial hotspot", async () => {
+  const { bot, sent } = createBot();
+  await bot.sendPaymentNotification(
+    createContact({
+      billingCycle: "PREPAID",
+      name: "Alea",
+      hotspotAccessMode: "IP_BINDING_ONLY",
+      mikrotikUsername: "alea",
+      mikrotikPassword: "9036",
+      mikrotikMacAddresses: ["AA:BB:CC:DD:EE:01"],
+      hotspotProvisioningStatus: "ACTIVE",
+    }),
+    "ACT-IP-BINDING-1",
+    "ACTIVE-PERIOD",
+    { paymentAmount: 75000, paymentDate: "2026-11-08T02:30:00.000Z", activeUntil: "2026-12-08T02:30:00.000Z" }
+  );
+
+  assert.equal(sent.length, 1);
+  const message = sent[0].message;
+  assert.match(message, /\*Pembelian Paket WiFi\*/);
+  assert.match(message, /ACT-IP-BINDING-1/);
+  assert.match(message, /Rp 75\.000/);
+  assert.match(message, /08\/12\/2026/);
+  assert.match(message, /\*Akses WiFi\*/);
+  assert.match(message, /Metode akses: IP Binding/);
+  assert.match(message, /Perangkat yang terdaftar dapat terhubung/);
+  assert.doesNotMatch(message, /\*Akun WiFi\*|Username:|Password:|9036|{{|}}/);
+});
+
+test("pembelian paket Hotspot saja tetap menggunakan template kredensial yang diatur", async () => {
+  const { bot, sent } = createBot({
+    paymentHotspotAccountMessageTemplate: "DATA HOTSPOT\nLogin: {{hotspotUsername}}\nSandi: {{hotspotPassword}}",
+  });
+  await bot.sendPaymentNotification(
+    createContact({
+      billingCycle: "PREPAID",
+      hotspotAccessMode: "HOTSPOT_ONLY",
+      mikrotikUsername: "wifi_al",
+      mikrotikPassword: "sandinya",
+      mikrotikMacAddresses: ["AA:BB:CC:DD:EE:02"],
+    }),
+    "ACT-HOTSPOT-ONLY",
+    "ACTIVE-PERIOD",
+    { activeUntil: "2026-12-08T02:30:00.000Z" }
+  );
+
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /DATA HOTSPOT\nLogin: wifi_al\nSandi: sandinya/);
+  assert.doesNotMatch(sent[0].message, /Metode akses: IP Binding|{{|}}/);
+});
+
+test("pembelian paket mode gabungan mengirim akun hotspot dan informasi IP Binding", async () => {
+  const { bot, sent } = createBot();
+  await bot.sendPaymentNotification(
+    createContact({
+      billingCycle: "PREPAID",
+      hotspotAccessMode: "BOTH",
+      mikrotikUsername: "wifi_both",
+      mikrotikPassword: "both123",
+      mikrotikMacAddresses: ["AA:BB:CC:DD:EE:03"],
+    }),
+    "ACT-BOTH",
+    "ACTIVE-PERIOD",
+    { activeUntil: "2026-12-08T02:30:00.000Z" }
+  );
+
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /\*Akun WiFi\*[\s\S]*Username: wifi_both[\s\S]*Password: both123/);
+  assert.match(sent[0].message, /\*Akses IP Binding\*[\s\S]*Metode akses: IP Binding/);
+  assert.equal((sent[0].message.match(/\*Akun WiFi\*/g) || []).length, 1);
+  assert.doesNotMatch(sent[0].message, /{{|}}/);
+});
+
+test("mode gabungan tanpa kredensial tetap menjelaskan IP Binding tanpa field kosong", async () => {
+  const { bot, sent } = createBot();
+  await bot.sendPaymentNotification(
+    createContact({ billingCycle: "PREPAID", hotspotAccessMode: "BOTH", mikrotikMacAddresses: ["AA:BB:CC:DD:EE:04"] }),
+    "ACT-BOTH-NO-CREDENTIALS",
+    "ACTIVE-PERIOD",
+    { activeUntil: "2026-12-08T02:30:00.000Z" }
+  );
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /\*Akses IP Binding\*/);
+  assert.doesNotMatch(sent[0].message, /\*Akun WiFi\*|Username:|Password:|{{|}}/);
+});
+
 test("template pembayaran bawaan menggunakan bahasa formal dan mudah dipahami", async () => {
   const { bot, sent } = createBot();
 

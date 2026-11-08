@@ -7,7 +7,9 @@ const {
 const TelegramManager = require("../../telegram-manager");
 const WhatsAppProviderManager = require("../../whatsapp/provider-manager");
 const {
+  HOTSPOT_ACCESS_MODES,
   HOTSPOT_PROVISIONING_STATUS,
+  getContactHotspotAccessMode,
   normalizeHotspotProvisioningStatus,
 } = require("../customers/domain");
 const {
@@ -166,18 +168,17 @@ class NotificationBot {
     return labels[status] || "Belum tersedia";
   }
 
-  buildPaymentHotspotAccountDetails(contact, options = {}, settings = {}) {
+  buildPaymentAccessDetails(contact, options = {}, settings = {}) {
     const storedContact = contact?.id && typeof this.dataManager.getContact === "function"
       ? this.dataManager.getContact(contact.id)
       : null;
     const account = { ...(contact || {}), ...(storedContact || {}) };
+    const accessMode = getContactHotspotAccessMode(account);
     const portalHotspot = contact?.id && typeof this.dataManager.getCustomerPortalData === "function"
       ? this.dataManager.getCustomerPortalData(contact.id)?.hotspot
       : null;
     const username = sanitizeInput(String(account.mikrotikUsername || portalHotspot?.username || ""));
     const password = sanitizeInput(String(account.mikrotikPassword || portalHotspot?.password || ""));
-    if (!username || !password) return "";
-
     const profile = sanitizeInput(String(account.mikrotikProfile || portalHotspot?.profile || "")) || "-";
     const status = this.getPaymentHotspotStatusText({
       ...account,
@@ -203,15 +204,27 @@ class NotificationBot {
         });
     const template = sanitizeMultilineText(settings.paymentHotspotAccountMessageTemplate)
       || DEFAULT_SETTINGS.paymentHotspotAccountMessageTemplate;
+    const hotspotDetails = accessMode !== HOTSPOT_ACCESS_MODES.IP_BINDING_ONLY && username && password
+      ? template
+          .replace(/{{\s*hotspotUsername\s*}}/gi, () => username)
+          .replace(/{{\s*hotspotPassword\s*}}/gi, () => password)
+          .replace(/{{\s*hotspotProfile\s*}}/gi, () => profile)
+          .replace(/{{\s*hotspotStatus\s*}}/gi, () => status)
+          .replace(/{{\s*activeUntil\s*}}/gi, () => activeUntil)
+          .replace(/\n{3,}/g, "\n\n")
+          .trim()
+      : "";
+    if (accessMode === HOTSPOT_ACCESS_MODES.HOTSPOT_ONLY) return hotspotDetails;
 
-    return template
-      .replace(/{{\s*hotspotUsername\s*}}/gi, () => username)
-      .replace(/{{\s*hotspotPassword\s*}}/gi, () => password)
-      .replace(/{{\s*hotspotProfile\s*}}/gi, () => profile)
-      .replace(/{{\s*hotspotStatus\s*}}/gi, () => status)
-      .replace(/{{\s*activeUntil\s*}}/gi, () => activeUntil)
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
+    const ipBindingDetails = [
+      accessMode === HOTSPOT_ACCESS_MODES.IP_BINDING_ONLY ? "*Akses WiFi*" : "*Akses IP Binding*",
+      "Metode akses: IP Binding",
+      `Status: ${status}`,
+      `Aktif sampai: ${activeUntil}`,
+      "",
+      "Perangkat yang terdaftar dapat terhubung ke internet secara otomatis tanpa memasukkan username dan password.",
+    ].join("\n");
+    return [hotspotDetails, ipBindingDetails].filter(Boolean).join("\n\n");
   }
 
   async sendPaymentNotification(contact, transactionId, paymentType = "DEFAULT", options = {}) {
@@ -275,7 +288,7 @@ class NotificationBot {
     }
     const companyName = sanitizeInput(settings.companyName) || "Emmeril Hotspot";
     const supportSignature = sanitizeInput(settings.supportSignature) || "CS Emmeril Hotspot";
-    const hotspotAccountDetails = this.buildPaymentHotspotAccountDetails(contact, options, settings);
+    const hotspotAccountDetails = this.buildPaymentAccessDetails(contact, options, settings);
     const placesHotspotAccount = /{{\s*hotspotAccountDetails\s*}}/i.test(messageTemplate);
 
     let message = messageTemplate
