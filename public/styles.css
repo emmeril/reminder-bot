@@ -944,17 +944,16 @@ table tbody tr:hover { background: #fafaff; }
 .customer-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; color: #667085; font-size: 12px; }
 .customer-pagination-controls { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; white-space: nowrap; }
 .customer-pagination-controls span { min-width: 48px; text-align: center; }
-.customer-billing-table { min-width: 1600px; }
-.customer-billing-table th:nth-child(1) { width: 9%; }
-.customer-billing-table th:nth-child(2) { width: 9%; }
-.customer-billing-table th:nth-child(3) { width: 11%; }
-.customer-billing-table th:nth-child(4) { width: 10%; }
-.customer-billing-table th:nth-child(5) { width: 10%; }
-.customer-billing-table th:nth-child(6) { width: 14%; }
+.customer-billing-table { min-width: 1360px; }
+.customer-billing-table th:nth-child(1) { width: 11%; }
+.customer-billing-table th:nth-child(2) { width: 11%; }
+.customer-billing-table th:nth-child(3) { width: 12%; }
+.customer-billing-table th:nth-child(4) { width: 12%; }
+.customer-billing-table th:nth-child(5) { width: 11%; }
+.customer-billing-table th:nth-child(6) { width: 15%; }
 .customer-billing-table th:nth-child(7) { width: 12%; }
-.customer-billing-table th:nth-child(8) { width: 9%; }
-.customer-billing-table th:nth-child(9) { width: 10%; }
-.customer-billing-table th:nth-child(10) { width: 6%; }
+.customer-billing-table th:nth-child(8) { width: 10%; }
+.customer-billing-table th:nth-child(9) { width: 6%; }
 .customer-hotspot-table { min-width: 1960px; }
 .customer-hotspot-table th:nth-child(1) { width: 8%; }
 .customer-hotspot-table th:nth-child(2) { width: 8%; }
