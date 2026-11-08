@@ -59,9 +59,10 @@ function createDashboardUi() {
           }
 
           setTimeout(() => {
-            this.loadNonCriticalData();
+            void this.loadNonCriticalData();
           }, this.isMobile ? 900 : 250);
 
+          void this.loadVisibleMikrotikData();
           this.startPolling();
         },
 
@@ -103,6 +104,7 @@ function createDashboardUi() {
           }
           this.activeMenu = key;
           this.mobileSidebarOpen = false;
+          void this.loadVisibleMikrotikData();
           if (key === "vouchers" && (!this.voucherProfiles.length || !this.mikrotikServers.length)) {
             void this.loadVoucherOptions({ silent: true });
           }
@@ -121,11 +123,13 @@ function createDashboardUi() {
         selectContactTab(key) {
           if (!["data", "billing", "hotspot"].includes(key)) return;
           this.activeContactTab = key;
+          if (key === "hotspot") void this.loadVisibleMikrotikData();
         },
 
         selectSettingsTab(key) {
           if (!["general", "rates", "isolation", "backup", "messages", "automation"].includes(key)) return;
           this.activeSettingsTab = key;
+          if (key === "rates") void this.loadVisibleMikrotikData();
         },
 
         selectRevenueTab(key) {
@@ -139,6 +143,7 @@ function createDashboardUi() {
           const currentIndex = tabs.indexOf(this.activeSettingsTab);
           const nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
           this.activeSettingsTab = tabs[nextIndex];
+          if (tabs[nextIndex] === "rates") void this.loadVisibleMikrotikData();
           this.$nextTick(() => document.getElementById(`settings-${tabs[nextIndex]}-tab`)?.focus());
         },
 
@@ -175,13 +180,25 @@ function createDashboardUi() {
 
         async loadNonCriticalData() {
           await Promise.allSettled([
-            this.loadApMonitors(),
-            this.loadMikrotikProfiles({ silent: true }),
-            this.loadHotspotUsers({ silent: true }),
             this.loadSent(),
             this.loadRecipients(),
             this.loadLogs(),
           ]);
+        },
+
+        async loadVisibleMikrotikData() {
+          const requests = [];
+          if (this.activeMenu === "monitor-ap" && !this.apMonitors.length) {
+            requests.push(this.loadApMonitors({ silent: true }));
+          }
+          if (this.activeMenu === "contacts" && this.activeContactTab === "hotspot") {
+            if (!this.hotspotUsers.length) requests.push(this.loadHotspotUsers({ silent: true }));
+            if (!this.mikrotikProfiles.length) requests.push(this.loadMikrotikProfiles({ silent: true }));
+          }
+          if (this.activeMenu === "settings" && this.activeSettingsTab === "rates" && !this.mikrotikProfiles.length) {
+            requests.push(this.loadMikrotikProfiles({ silent: true }));
+          }
+          await Promise.allSettled(requests);
         },
 
         async api(path, options = {}) {
