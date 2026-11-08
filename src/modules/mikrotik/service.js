@@ -5,6 +5,7 @@ const path = require("path");
 const crypto = require("crypto");
 const ftp = require("basic-ftp");
 const { RouterOSClient } = require("routeros-client");
+const AsyncLock = require("../../async-lock");
 const { CONFIG, DEFAULT_SETTINGS } = require("../../config");
 const {
   VOUCHER_CHARACTER_SETS,
@@ -46,6 +47,10 @@ const {
 class MikrotikService {
   constructor(activityLog) {
     this.activityLog = activityLog;
+    this.connectionLock = new AsyncLock();
+    this.liveConnection = null;
+    this.pendingOperations = 0;
+    this.idleDisconnectTimer = null;
   }
 
   getConnectionConfigs() {
@@ -63,33 +68,101 @@ class MikrotikService {
       this.activityLog.push("info", "mikrotik", `Terhubung ke MikroTik ${label}`);
       return { client, connection, label, config };
     } catch (error) {
-      client.close();
+      try {
+        await client.close();
+      } catch {
+        // A failed connect may not have an open socket to close.
+      }
       this.activityLog.push("error", "mikrotik", `Gagal konek MikroTik ${label}: ${error.message}`);
       return null;
     }
   }
 
-  async withConnection(operation) {
-    const configs = this.getConnectionConfigs();
-    if (configs.length === 0) {
-      throw new Error("Konfigurasi MikroTik belum lengkap. Isi IP_MIKROTIK, USER_MIKROTIK, dan PASSWORD_MIKROTIK di .env.");
-    }
-
-    let connectionObj = null;
-    for (const item of configs) {
-      connectionObj = await this.tryConnect(item);
-      if (connectionObj) break;
-    }
-
-    if (!connectionObj) {
-      throw new Error("Gagal terhubung ke MikroTik primary maupun backup.");
-    }
-
+  async disconnectCurrentConnection() {
+    const active = this.liveConnection;
+    this.liveConnection = null;
+    if (!active) return;
     try {
-      return await operation(connectionObj.connection, connectionObj);
-    } finally {
-      connectionObj.client.close();
+      await active.client.close();
+    } catch (error) {
+      this.activityLog.push("warn", "mikrotik", `Gagal menutup koneksi MikroTik: ${error.message}`);
     }
+  }
+
+  scheduleIdleDisconnect() {
+    clearTimeout(this.idleDisconnectTimer);
+    this.idleDisconnectTimer = null;
+    if (!this.liveConnection) return;
+
+    const idleMs = Math.max(0, Number(CONFIG.MIKROTIK_IDLE_TIMEOUT_MS) || 0);
+    if (idleMs === 0) return;
+    this.idleDisconnectTimer = setTimeout(() => {
+      this.idleDisconnectTimer = null;
+      void this.connectionLock.runExclusive("routeros", async () => {
+        if (this.liveConnection && this.pendingOperations === 0) {
+          await this.disconnectCurrentConnection();
+        }
+      }).catch((error) => {
+        this.activityLog.push("warn", "mikrotik", `Pembersihan koneksi idle gagal: ${error.message}`);
+      });
+    }, idleMs);
+    this.idleDisconnectTimer.unref?.();
+  }
+
+  async withConnection(operation) {
+    const limit = Math.max(1, Number(CONFIG.MIKROTIK_MAX_PENDING_OPERATIONS) || 40);
+    if (this.pendingOperations >= limit) {
+      const error = new Error("Antrean MikroTik sedang penuh. Coba beberapa saat lagi.");
+      error.statusCode = 503;
+      throw error;
+    }
+
+    this.pendingOperations += 1;
+    try {
+      return await this.connectionLock.runExclusive("routeros", async () => {
+        clearTimeout(this.idleDisconnectTimer);
+        this.idleDisconnectTimer = null;
+
+        try {
+          if (this.liveConnection
+            && typeof this.liveConnection.client.isConnected === "function"
+            && !this.liveConnection.client.isConnected()) {
+            await this.disconnectCurrentConnection();
+          }
+
+          if (!this.liveConnection) {
+            const configs = this.getConnectionConfigs();
+            if (configs.length === 0) {
+              throw new Error("Konfigurasi MikroTik belum lengkap. Isi IP_MIKROTIK, USER_MIKROTIK, dan PASSWORD_MIKROTIK di .env.");
+            }
+            for (const item of configs) {
+              this.liveConnection = await this.tryConnect(item);
+              if (this.liveConnection) break;
+            }
+          }
+
+          if (!this.liveConnection) {
+            throw new Error("Gagal terhubung ke MikroTik primary maupun backup.");
+          }
+
+          // Never replay a failed operation: it may have changed state on the router.
+          return await operation(this.liveConnection.connection, this.liveConnection);
+        } catch (error) {
+          await this.disconnectCurrentConnection();
+          throw error;
+        } finally {
+          this.scheduleIdleDisconnect();
+        }
+      });
+    } finally {
+      this.pendingOperations -= 1;
+    }
+  }
+
+  async close() {
+    clearTimeout(this.idleDisconnectTimer);
+    this.idleDisconnectTimer = null;
+    await this.connectionLock.runExclusive("routeros", () => this.disconnectCurrentConnection());
   }
 
   async getHotspotProfiles() {

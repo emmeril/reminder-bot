@@ -224,6 +224,9 @@ async function bootstrap() {
         await notificationBot.shutdown().catch((error) => {
           activityLog.push("error", "shutdown", `Transport gagal dihentikan: ${error.message}`);
         });
+        await mikrotikService.close().catch((error) => {
+          activityLog.push("warn", "shutdown", `Koneksi MikroTik gagal ditutup: ${error.message}`);
+        });
         await dataManager.saveAll().catch((error) => {
           activityLog.push("error", "shutdown", `Penyimpanan akhir gagal: ${error.message}`);
         });
