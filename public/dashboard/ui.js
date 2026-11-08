@@ -186,17 +186,20 @@ function createDashboardUi() {
           ]);
         },
 
-        async loadVisibleMikrotikData() {
+        async loadVisibleMikrotikData(options = {}) {
+          const { refresh = false } = options;
           const requests = [];
-          if (this.activeMenu === "monitor-ap" && !this.apMonitors.length) {
-            requests.push(this.loadApMonitors({ silent: true }));
+          const loadOptions = { silent: true, fresh: refresh };
+          if (this.activeMenu === "monitor-ap" && (refresh || !this.apMonitors.length)) {
+            requests.push(this.loadApMonitors(loadOptions));
           }
           if (this.activeMenu === "contacts" && this.activeContactTab === "hotspot") {
-            if (!this.hotspotUsers.length) requests.push(this.loadHotspotUsers({ silent: true }));
-            if (!this.mikrotikProfiles.length) requests.push(this.loadMikrotikProfiles({ silent: true }));
+            if (refresh || !this.hotspotUsers.length) requests.push(this.loadHotspotUsers(loadOptions));
+            if (refresh || !this.mikrotikProfiles.length) requests.push(this.loadMikrotikProfiles(loadOptions));
           }
-          if (this.activeMenu === "settings" && this.activeSettingsTab === "rates" && !this.mikrotikProfiles.length) {
-            requests.push(this.loadMikrotikProfiles({ silent: true }));
+          if (this.activeMenu === "settings" && this.activeSettingsTab === "rates"
+            && (refresh || !this.mikrotikProfiles.length)) {
+            requests.push(this.loadMikrotikProfiles(loadOptions));
           }
           await Promise.allSettled(requests);
         },
