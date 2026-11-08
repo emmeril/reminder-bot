@@ -255,43 +255,64 @@ class CustomerDataManager extends DataManagerCore {
   }
 
   getDashboardSummary(now = new Date()) {
-    const contacts = this.getSortedContacts();
-    const reminders = this.getSortedReminders();
-    const sentReminders = this.getSentReminders();
-    const paid = contacts.filter((contact) => contact.paymentStatus === PAYMENT_STATUS.PAID).length;
-    const unpaid = contacts.length - paid;
-    const debt = contacts.filter((contact) => contact.hasDebt).length;
-    const managedServices = contacts.filter((contact) => {
+    let paid = 0;
+    let debt = 0;
+    let managedServices = 0;
+    let activeServices = 0;
+
+    for (const contact of this.contacts.values()) {
+      const billing = this.buildDebtInfo(contact);
+      if (billing.paymentStatus === PAYMENT_STATUS.PAID) paid++;
+      if (billing.hasDebt) debt++;
+
       const status = normalizeHotspotProvisioningStatus(contact.hotspotProvisioningStatus);
-      return Boolean(contact.mikrotikUsername)
-        || normalizeMacAddresses(contact.mikrotikMacAddresses).length > 0
-        || status !== HOTSPOT_PROVISIONING_STATUS.NONE;
-    });
-    const activeServices = managedServices.filter((contact) => (
-      normalizeHotspotProvisioningStatus(contact.hotspotProvisioningStatus)
-        === HOTSPOT_PROVISIONING_STATUS.ACTIVE
-    )).length;
+      if (!contact.mikrotikUsername
+        && normalizeMacAddresses(contact.mikrotikMacAddresses).length === 0
+        && status === HOTSPOT_PROVISIONING_STATUS.NONE) continue;
+      managedServices++;
+      if (status === HOTSPOT_PROVISIONING_STATUS.ACTIVE) activeServices++;
+    }
+
+    let nextReminderAt = null;
+    let nextReminderTimestamp = Infinity;
+    let firstReminderAt = null;
+    for (const reminder of this.reminders.values()) {
+      const deliveryDate = this.getReminderDeliveryDate(reminder);
+      const scheduledAt = Number.isNaN(deliveryDate.getTime())
+        ? reminder.reminderDateTime || null
+        : deliveryDate.toISOString();
+      if (firstReminderAt === null) firstReminderAt = scheduledAt;
+      const timestamp = new Date(scheduledAt || "").getTime();
+      if (Number.isFinite(timestamp) && timestamp < nextReminderTimestamp) {
+        nextReminderTimestamp = timestamp;
+        nextReminderAt = scheduledAt;
+      }
+    }
+
     const successfulDeliveryStatuses = new Set(["SENT", "SENT_BAILEYS", "ACCEPTED", "DELIVERED", "READ"]);
-    const todayKey = getDateTimePartsInTimezone(now, this.getTimezone()).dateKey;
-    const sentToday = sentReminders.filter((reminder) => {
-      if (!successfulDeliveryStatuses.has(String(reminder.deliveryStatus || "").toUpperCase())) return false;
+    const timeZone = this.getTimezone();
+    const todayKey = getDateTimePartsInTimezone(now, timeZone).dateKey;
+    let sentToday = 0;
+    for (const reminder of this.sentReminders.values()) {
+      if (!successfulDeliveryStatuses.has(String(reminder.deliveryStatus || "").toUpperCase())) continue;
       const sentAt = new Date(reminder.sentAt || reminder.reminderDateTime || "");
-      return !Number.isNaN(sentAt.getTime())
-        && getDateTimePartsInTimezone(sentAt, this.getTimezone()).dateKey === todayKey;
-    }).length;
+      if (Number.isNaN(sentAt.getTime())) continue;
+      if (getDateTimePartsInTimezone(sentAt, timeZone).dateKey === todayKey) sentToday++;
+    }
+
     return {
-      contacts: contacts.length,
+      contacts: this.contacts.size,
       pelanggan: this.pelanggan.size,
-      reminders: reminders.length,
-      sentReminders: sentReminders.length,
+      reminders: this.reminders.size,
+      sentReminders: this.sentReminders.size,
       sentToday,
       paidContacts: paid,
-      unpaidContacts: unpaid,
+      unpaidContacts: this.contacts.size - paid,
       debtContacts: debt,
       activeServices,
-      serviceAttention: managedServices.length - activeServices,
+      serviceAttention: managedServices - activeServices,
       adminRecipients: this.getAdminRecipients().length,
-      nextReminderAt: reminders[0]?.deliveryDateTime || reminders[0]?.reminderDateTime || null,
+      nextReminderAt: nextReminderAt || firstReminderAt,
     };
   }
 
@@ -992,8 +1013,8 @@ class CustomerDataManager extends DataManagerCore {
     };
   }
 
-  toPublicContact(contact) {
-    const result = this.hydrateContact(contact);
+  toPublicContact(contact, options = {}) {
+    const result = options.alreadyHydrated ? { ...contact } : this.hydrateContact(contact);
     delete result.mikrotikPassword;
     delete result.hotspotProvisioningPrevious;
     delete result.subscriptionChangedByArrears;
