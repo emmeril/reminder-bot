@@ -573,16 +573,16 @@
             <div class="voucher-heading-actions">
               <button x-show="activeVoucherTab === 'create'" id="voucher-create-button" type="button" @click="openVoucherCreateModal($event.currentTarget)" class="ui-primary-button"><i class="fa-solid fa-ticket-simple"></i>Buat voucher</button>
               <button x-show="activeVoucherTab === 'profiles'" id="voucher-profile-button" type="button" @click="resetVoucherProfileForm(); openVoucherProfileModal($event.currentTarget)" class="ui-primary-button"><i class="fa-solid fa-plus"></i>Profile voucher baru</button>
-              <button type="button" @click="loadVoucherOptions(); loadVoucherBatches(); loadVoucherStats()" :disabled="loading.voucherOptions || loading.voucherHistory || loading.voucherStats" class="ui-secondary-button voucher-refresh-button disabled:cursor-not-allowed disabled:opacity-50" aria-label="Muat ulang data voucher">
+              <button type="button" @click="loadVisibleVoucherData()" :disabled="loading.voucherOptions || loading.voucherHistory || loading.voucherStats" class="ui-secondary-button voucher-refresh-button disabled:cursor-not-allowed disabled:opacity-50" aria-label="Muat ulang data voucher">
                 <i class="fa-solid" :class="loading.voucherOptions || loading.voucherHistory || loading.voucherStats ? 'fa-circle-notch fa-spin' : 'fa-rotate'"></i>
               </button>
             </div>
           </div>
 
           <div class="voucher-tabs" role="tablist" aria-label="Menu voucher">
-            <button type="button" role="tab" :aria-selected="activeVoucherTab === 'create'" :class="activeVoucherTab === 'create' ? 'active' : ''" @click="activeVoucherTab = 'create'"><i class="fa-solid fa-ticket-simple"></i>Voucher</button>
-            <button type="button" role="tab" :aria-selected="activeVoucherTab === 'profiles'" :class="activeVoucherTab === 'profiles' ? 'active' : ''" @click="activeVoucherTab = 'profiles'"><i class="fa-solid fa-sliders"></i>Profile voucher</button>
-            <button type="button" role="tab" :aria-selected="activeVoucherTab === 'stats'" :class="activeVoucherTab === 'stats' ? 'active' : ''" @click="activeVoucherTab = 'stats'; loadVoucherStats({ silent: true })"><i class="fa-solid fa-chart-column"></i>Statistik voucher</button>
+            <button type="button" role="tab" :aria-selected="activeVoucherTab === 'create'" :class="activeVoucherTab === 'create' ? 'active' : ''" @click="activeVoucherTab = 'create'; loadVisibleVoucherData()"><i class="fa-solid fa-ticket-simple"></i>Voucher</button>
+            <button type="button" role="tab" :aria-selected="activeVoucherTab === 'profiles'" :class="activeVoucherTab === 'profiles' ? 'active' : ''" @click="activeVoucherTab = 'profiles'; loadVisibleVoucherData()"><i class="fa-solid fa-sliders"></i>Profile voucher</button>
+            <button type="button" role="tab" :aria-selected="activeVoucherTab === 'stats'" :class="activeVoucherTab === 'stats' ? 'active' : ''" @click="activeVoucherTab = 'stats'; loadVisibleVoucherData()"><i class="fa-solid fa-chart-column"></i>Statistik voucher</button>
           </div>
 
           <div x-cloak x-show="activeVoucherTab === 'create'" class="voucher-workspace voucher-history-workspace">
