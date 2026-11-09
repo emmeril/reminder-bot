@@ -1024,16 +1024,21 @@ test("rentang tanggal laporan divalidasi sebelum laporan voucher dimuat", async 
   assert.equal(apiCalls, 1);
 });
 
-test("modal aksi prabayar hanya aktif untuk akun dengan paket yang bisa dibeli", () => {
+test("Kelola tetap terbuka untuk pengaturan nominal saat pembelian paket belum tersedia", () => {
   const app = createDashboardApp();
   const contact = {
     id: "paket", subscriptionType: "RECURRING", mikrotikUsername: "paket",
     mikrotikProfile: "50M", monthlyPaymentAmount: 75000,
     hotspotProvisioningStatus: "ACTIVE",
   };
-  assert.equal(app.hasBillingActions({ ...contact, mikrotikProfile: "" }), false);
   assert.equal(app.hasBillingActions(contact), true);
-  assert.equal(app.hasBillingActions({ ...contact, monthlyPaymentAmount: 0 }), false);
+  assert.equal(app.hasBillingPaymentActions(contact), true);
+  assert.equal(app.hasBillingActions({ ...contact, mikrotikProfile: "" }), true);
+  assert.equal(app.hasBillingPaymentActions({ ...contact, mikrotikProfile: "" }), false);
+  assert.equal(app.hasBillingActions({ ...contact, monthlyPaymentAmount: 0 }), true);
+  assert.equal(app.hasBillingPaymentActions({ ...contact, monthlyPaymentAmount: 0 }), false);
+  assert.equal(app.hasBillingActions({ id: "baru", monthlyPaymentAmount: 0 }), true);
+  assert.equal(app.hasBillingActions(null), false);
 });
 test("label pembayaran prabayar berasal dari status paket, bukan jenis tagihan lama", () => {
   const app = createDashboardApp();
@@ -1232,17 +1237,24 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(styles, /\.customer-hotspot-table th:nth-child\(12\) \{ width: 8%; \}/);
 });
 
-test("kolom nominal dapat dibaca ketika tombol simpan dan reset muncul", () => {
+test("nominal pada tabel hanya teks rupiah, pengeditan melalui tab modal Kelola", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
-  assert.match(html, /class="customer-amount-actions"/);
-  assert.match(html, /:aria-label="'Nominal bulanan ' \+ contact\.name"/);
-  assert.match(styles, /\.customer-amount-editor \{[^}]*flex-wrap: wrap;/);
-  assert.match(styles, /\.customer-amount-editor \.currency-input-group \{[^}]*flex: 1 0 178px;/);
-  assert.match(styles, /\.customer-amount-actions \{[^}]*flex: 0 0 auto;/);
-  assert.match(styles, /\.customer-billing-table th:nth-child\(6\) \{ width: 18%; \}/);
-  assert.match(styles, /@media \(max-width: 767px\) \{[\s\S]*?\.customer-amount-editor \.currency-input-group \{ flex-basis: 100%; min-width: 0;/);
-  assert.match(html, /\/public\/styles\.css\?v=20261109-2/);
+  const nominalColumn = html.split('data-label="Nominal Bulanan"')[1].split('data-label="Sumber Nominal"')[0];
+  assert.match(nominalColumn, /class="customer-monthly-amount tabular-nums" x-text="formatRupiah\(contact\.monthlyPaymentAmount\)"/);
+  assert.doesNotMatch(nominalColumn, /<input|customer-amount-actions|saveContactPaymentAmount/);
+  assert.match(html, /role="tablist" aria-label="Kelola tagihan pelanggan"/);
+  assert.match(html, /id="billing-action-tab-actions"[^>]*role="tab"[^>]*aria-controls="billing-action-panel-actions"/);
+  assert.match(html, /id="billing-action-tab-amount"[^>]*role="tab"[^>]*aria-controls="billing-action-panel-amount"/);
+  assert.match(html, /id="billing-action-panel-amount"[^>]*role="tabpanel"[^>]*@submit\.prevent="saveBillingActionAmount\(\)"/);
+  assert.match(html, /x-model="billingActionModal\.amountDraft"/);
+  assert.match(html, /@click="resetBillingActionAmount\(\)"/);
+  assert.match(html, /x-text="getPaymentAmountSourceLabel\(billingActionModal\.contact\)"/);
+  assert.match(styles, /\.customer-monthly-amount \{[^}]*font-weight: 700;/);
+  assert.match(styles, /\.customer-billing-table th:nth-child\(6\) \{ width: 12%; \}/);
+  assert.match(styles, /\.billing-action-tabs \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /@media \(max-width: 767px\) \{[\s\S]*?\.billing-amount-buttons \{ display: grid; grid-template-columns: minmax\(0, 1fr\); \}/);
+  assert.match(html, /\/public\/styles\.css\?v=20261109-3/);
 });
 
 test("pembayaran terakhir memakai transaksi valid, bukan tanggal perkiraan", () => {
