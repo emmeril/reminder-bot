@@ -1258,6 +1258,33 @@ function createDashboardSelectors() {
           return Number.isFinite(timestamp) ? timestamp : null;
         },
 
+        getContactLastPaymentAt(contact) {
+          let latest = null;
+          const recordDate = (value) => {
+            const timestamp = this.getSortTimestamp(value);
+            if (timestamp !== null && (latest === null || timestamp > latest)) latest = timestamp;
+          };
+          const purchases = Array.isArray(contact?.activePeriodPurchases) ? contact.activePeriodPurchases : [];
+          for (const purchase of purchases) {
+            if (String(purchase?.status || "PAID").toUpperCase() === "PAID") {
+              recordDate(purchase?.purchasedAt);
+            }
+          }
+          for (const payment of Object.values(contact?.paymentMonths || {})) {
+            if (payment?.billingPaused || String(payment?.status || "").toUpperCase() !== "PAID") continue;
+            recordDate(payment?.lastPaymentDate || payment?.paidDate);
+          }
+          if (String(contact?.paymentStatus || "").toUpperCase() === "PAID") {
+            recordDate(contact?.paymentDate);
+          }
+          return latest === null ? null : new Date(latest).toISOString();
+        },
+
+        getContactLastPaymentLabel(contact) {
+          const paidAt = this.getContactLastPaymentAt(contact);
+          return paidAt ? this.formatDateTime(paidAt) : "Belum ada pembayaran";
+        },
+
         get sortedVoucherProfiles() {
           return this.sortTableItems(this.voucherProfiles, "voucherProfiles", {
             name: (profile) => profile.name,
@@ -1297,16 +1324,10 @@ function createDashboardSelectors() {
 
         get billingStatusFilterOptions() {
           const values = new Map();
-          let hasDebt = false;
-          let hasNoDebt = false;
           for (const contact of this.contacts) {
             const label = this.getCurrentPaymentLabel(contact);
             values.set(`PAYMENT|${label}`, `Bulan ini · ${label}`);
-            if (this.hasDebt(contact)) hasDebt = true;
-            else hasNoDebt = true;
           }
-          if (hasDebt) values.set("DEBT|YES", "Tunggakan · Ada tunggakan");
-          if (hasNoDebt) values.set("DEBT|NO", "Tunggakan · Tidak ada tunggakan");
           return Array.from(values, ([value, label]) => ({ value, label }));
         },
 
@@ -1415,8 +1436,7 @@ function createDashboardSelectors() {
               this.formatRupiah(contact.monthlyPaymentAmount),
               this.getPaymentAmountSourceLabel(contact),
               this.getCurrentPaymentLabel(contact),
-              this.hasDebt(contact) ? this.getDebtCountLabel(contact) : "Tidak ada tunggakan",
-              this.hasDebt(contact) ? this.getDebtNote(contact) : "",
+              this.getContactLastPaymentLabel(contact),
             ], this.filters.contactBilling.search);
           });
           return this.sortTableItems(contacts, "contactBilling", {
@@ -1428,7 +1448,7 @@ function createDashboardSelectors() {
             amount: (contact) => Number(contact.monthlyPaymentAmount || 0),
             amountSource: (contact) => this.getPaymentAmountSourceLabel(contact),
             currentPayment: (contact) => this.getCurrentPaymentLabel(contact),
-            debt: (contact) => this.hasDebt(contact) ? Number(contact.debtCount || 1) : 0,
+            lastPayment: (contact) => this.getSortTimestamp(this.getContactLastPaymentAt(contact)),
           });
         },
 

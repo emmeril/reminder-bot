@@ -252,8 +252,8 @@ function createDashboardState() {
               "Pembayaran bulan ini"
             ],
             [
-              "debt",
-              "Tunggakan"
+              "lastPayment",
+              "Pembayaran terakhir"
             ]
           ],
           "contactHotspot": [

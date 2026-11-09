@@ -1204,7 +1204,8 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(html, /data-label="Status Jatuh Tempo"/);
   assert.match(html, /data-label="Sumber Nominal"/);
   assert.match(html, /data-label="Bulan Ini"/);
-  assert.match(html, /data-label="Tunggakan"/);
+  assert.match(html, /data-label="Pembayaran Terakhir"/);
+  assert.doesNotMatch(html, /data-label="Tunggakan"/);
   assert.match(html, /data-label="Akun Hotspot"/);
   assert.match(html, /data-label="Akun IP Binding"/);
   assert.match(html, /data-label="User Hotspot"/);
@@ -1222,13 +1223,66 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 36px !important;[^}]*border-radius: 9px !important;[^}]*font-size: 10px !important;/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 44px !important;[^}]*font-size: 11px !important;/);
   assert.match(styles, /\.customer-due-status \{[^}]*white-space: nowrap;/);
-  assert.match(styles, /\.customer-billing-table th:nth-child\(3\) \{ width: 11%; \}/);
+  assert.match(styles, /\.customer-billing-table th:nth-child\(3\) \{ width: 10%; \}/);
   assert.match(styles, /\.customer-hotspot-status, \.customer-schedule-status \{[^}]*white-space: nowrap;/);
   assert.match(styles, /\.customer-hotspot-table \{ min-width: 1960px; \}/);
   assert.match(styles, /\.customer-hotspot-table th:nth-child\(6\) \{ width: 8%; \}/);
   assert.match(styles, /\.customer-hotspot-table th:nth-child\(7\) \{ width: 8%; \}/);
   assert.match(styles, /\.customer-hotspot-account-actions button \{[^}]*gap: 7px;[^}]*padding-inline: 12px !important;/);
   assert.match(styles, /\.customer-hotspot-table th:nth-child\(12\) \{ width: 8%; \}/);
+});
+
+test("kolom nominal dapat dibaca ketika tombol simpan dan reset muncul", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
+  assert.match(html, /class="customer-amount-actions"/);
+  assert.match(html, /:aria-label="'Nominal bulanan ' \+ contact\.name"/);
+  assert.match(styles, /\.customer-amount-editor \{[^}]*flex-wrap: wrap;/);
+  assert.match(styles, /\.customer-amount-editor \.currency-input-group \{[^}]*flex: 1 0 178px;/);
+  assert.match(styles, /\.customer-amount-actions \{[^}]*flex: 0 0 auto;/);
+  assert.match(styles, /\.customer-billing-table th:nth-child\(6\) \{ width: 18%; \}/);
+  assert.match(styles, /@media \(max-width: 767px\) \{[\s\S]*?\.customer-amount-editor \.currency-input-group \{ flex-basis: 100%; min-width: 0;/);
+  assert.match(html, /\/public\/styles\.css\?v=20261109-2/);
+});
+
+test("pembayaran terakhir memakai transaksi valid, bukan tanggal perkiraan", () => {
+  const app = createDashboardApp();
+  const paid = {
+    id: "paid", name: "Pelanggan Dibayar", phoneNumber: "628111111112",
+    billingCycle: "PREPAID", monthlyPaymentAmount: 75000, dueStatus: "NOT_SCHEDULED",
+    activePeriodPurchases: [
+      { id: "oct", status: "PAID", purchasedAt: "2026-10-25T03:00:00.000Z" },
+      { id: "nov", status: "PAID", purchasedAt: "2026-11-06T03:00:00.000Z" },
+      { id: "refunded", status: "REFUNDED", purchasedAt: "2026-12-06T03:00:00.000Z" },
+      { id: "invalid", status: "PAID", purchasedAt: "not-a-date" },
+    ],
+    paymentMonths: {
+      "2026-09": { status: "PAID", paidDate: "2026-09-05T03:00:00.000Z" },
+      "2026-12": { status: "UNPAID", paidDate: "2026-12-31T03:00:00.000Z" },
+    },
+    paymentStatus: "PAID", paymentDate: "2026-10-01T03:00:00.000Z",
+  };
+  const unpaid = {
+    id: "unpaid", name: "Pelanggan Baru", phoneNumber: "628111111113",
+    billingCycle: "PREPAID", monthlyPaymentAmount: 100000, dueStatus: "NOT_SCHEDULED",
+    activePeriodPurchases: [], paymentMonths: {}, paymentStatus: "UNPAID",
+  };
+  assert.equal(app.getContactLastPaymentAt(paid), "2026-11-06T03:00:00.000Z");
+  assert.equal(app.getContactLastPaymentAt(unpaid), null);
+  assert.equal(app.getContactLastPaymentLabel(unpaid), "Belum ada pembayaran");
+  assert.match(app.getContactLastPaymentLabel(paid), /2026/);
+  assert.equal(app.getContactLastPaymentAt({
+    paymentMonths: { "2026-08": { status: "PAID", paidDate: "2026-08-01T03:00:00.000Z" } },
+  }), "2026-08-01T03:00:00.000Z");
+
+  app.contacts = [paid, unpaid];
+  assert.equal(app.mobileSortFields.contactBilling.some(([key, label]) => key === "lastPayment" && label === "Pembayaran terakhir"), true);
+  assert.equal(app.billingStatusFilterOptions.some(({ value }) => String(value).startsWith("DEBT|")), false);
+  app.filters.contactBilling.search = "Belum ada pembayaran";
+  assert.deepEqual(Array.from(app.filteredBillingContacts, (contact) => contact.id), ["unpaid"]);
+  app.filters.contactBilling.search = "";
+  app.sorts.contactBilling = { key: "lastPayment", direction: "desc" };
+  assert.deepEqual(Array.from(app.filteredBillingContacts, (contact) => contact.id), ["paid", "unpaid"]);
 });
 
 test("filter tagihan dan hotspot dapat direset tanpa mengubah jumlah baris", () => {

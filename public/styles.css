@@ -845,9 +845,16 @@ table tbody tr:hover { background: #fafaff; }
 .customer-data-table th:nth-child(6) { width: 29%; }
 .customer-due-date { display: block; color: #596579; font-size: 12px; line-height: 1.45; }
 .customer-due-status { margin-top: 0; white-space: nowrap; }
-.customer-amount-editor { display: flex; min-width: 0; align-items: center; gap: 6px; }
-.customer-amount-editor .currency-input-group { min-width: 0; flex: 1; }
-.customer-amount-save { display: inline-flex; width: 38px; min-width: 38px; height: 38px; align-items: center; justify-content: center; padding: 0 !important; }
+.customer-amount-editor { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: 8px; }
+.customer-amount-editor .currency-input-group { min-width: min(100%, 178px); flex: 1 0 178px; }
+.customer-amount-editor .currency-prefix { min-width: 38px; flex-basis: 38px; }
+.customer-amount-editor .currency-input-group input[type="number"] { font-size: 16px; font-variant-numeric: tabular-nums; appearance: textfield; }
+.customer-amount-editor .currency-input-group input[type="number"]::-webkit-inner-spin-button,
+.customer-amount-editor .currency-input-group input[type="number"]::-webkit-outer-spin-button { margin: 0; -webkit-appearance: none; }
+.customer-amount-actions { display: flex; min-width: 0; flex: 0 0 auto; align-items: center; gap: 6px; }
+.customer-amount-save { display: inline-flex; width: 44px; min-width: 44px; height: 44px; align-items: center; justify-content: center; padding: 0 !important; }
+.customer-last-payment { display: block; color: #344054; font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.45; }
+.customer-last-payment.is-empty { color: #596579; font-weight: 500; }
 .customer-arrears-payment-form { display: grid; min-width: 0; gap: 7px; padding: 9px; border: 1px solid #e1e5ec; border-radius: 9px; background: #fbfcfd; }
 .customer-arrears-payment-form label { color: #344054; font-size: 11px; font-weight: 700; }
 .customer-arrears-payment-form .currency-input-group { min-width: 0; min-height: 40px; }
@@ -945,13 +952,13 @@ table tbody tr:hover { background: #fafaff; }
 .customer-pagination-controls { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; white-space: nowrap; }
 .customer-pagination-controls span { min-width: 48px; text-align: center; }
 .customer-billing-table { min-width: 1600px; }
-.customer-billing-table th:nth-child(1) { width: 9%; }
-.customer-billing-table th:nth-child(2) { width: 9%; }
-.customer-billing-table th:nth-child(3) { width: 11%; }
+.customer-billing-table th:nth-child(1) { width: 8%; }
+.customer-billing-table th:nth-child(2) { width: 8%; }
+.customer-billing-table th:nth-child(3) { width: 10%; }
 .customer-billing-table th:nth-child(4) { width: 10%; }
 .customer-billing-table th:nth-child(5) { width: 10%; }
-.customer-billing-table th:nth-child(6) { width: 14%; }
-.customer-billing-table th:nth-child(7) { width: 12%; }
+.customer-billing-table th:nth-child(6) { width: 18%; }
+.customer-billing-table th:nth-child(7) { width: 11%; }
 .customer-billing-table th:nth-child(8) { width: 9%; }
 .customer-billing-table th:nth-child(9) { width: 10%; }
 .customer-billing-table th:nth-child(10) { width: 6%; }
@@ -997,7 +1004,8 @@ table tbody tr:hover { background: #fafaff; }
   .customer-hotspot-action-grid button { flex: none; min-height: 44px; font-size: 11px !important; }
   .hotspot-schedule-time-grid { grid-template-columns: 1fr; }
   .customer-amount-editor { width: 100%; min-width: 0; }
-  .customer-amount-editor .currency-input-group { min-width: 0; flex: 1; }
+  .customer-amount-editor .currency-input-group { flex-basis: 100%; min-width: 0; }
+  .customer-amount-actions { width: 100%; justify-content: flex-end; }
   .panel-shell .customer-row-actions button { min-height: 44px !important; font-size: 11px !important; }
   .customer-arrears-payment-form .currency-input-group, .customer-arrears-payment-form input { min-height: 44px; }
   .customer-arrears-payment-form input { font-size: 16px; }
