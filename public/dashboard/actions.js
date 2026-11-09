@@ -387,7 +387,7 @@ function createDashboardActions() {
           if (!modal.open || !modal.contact?.id || modal.amountSaving) return;
           const raw = String(modal.amountDraft ?? "").trim();
           const amount = Number(raw);
-          if (!/^\\d+$/.test(raw) || !Number.isSafeInteger(amount) || amount > 1_000_000_000) {
+          if (!/^\d+$/.test(raw) || !Number.isSafeInteger(amount) || amount > 1_000_000_000) {
             modal.amountError = "Masukkan nominal bulanan dari Rp 0 sampai Rp 1.000.000.000.";
             return;
           }
