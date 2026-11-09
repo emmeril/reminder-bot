@@ -6,7 +6,7 @@
   <title>__DASHBOARD_TITLE__</title>
   <link rel="stylesheet" href="/public/tailwind.css?v=20261105-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20261106-3">
+  <link rel="stylesheet" href="/public/styles.css?v=20261109-2">
   <link rel="stylesheet" href="/public/interface.css?v=20261109-1">
   <script defer src="/public/dashboard/state.js?v=20261107-1"></script>
   <script defer src="/public/dashboard/ui.js?v=20261106-1"></script>
@@ -407,7 +407,7 @@
                       <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'amount')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'amount')" :aria-label="getSortLabel('contactBilling', 'amount', 'Nominal Bulanan')"><span>Nominal Bulanan</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'amount')" aria-hidden="true"></i></button></th>
                       <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'amountSource')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'amountSource')" :aria-label="getSortLabel('contactBilling', 'amountSource', 'Sumber Nominal')"><span>Sumber Nominal</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'amountSource')" aria-hidden="true"></i></button></th>
                       <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'currentPayment')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'currentPayment')" :aria-label="getSortLabel('contactBilling', 'currentPayment', 'Bulan Ini')"><span>Bulan Ini</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'currentPayment')" aria-hidden="true"></i></button></th>
-                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'debt')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'debt')" :aria-label="getSortLabel('contactBilling', 'debt', 'Tunggakan')"><span>Tunggakan</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'debt')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactBilling', 'lastPayment')"><button type="button" class="table-sort-button" @click="toggleSort('contactBilling', 'lastPayment')" :aria-label="getSortLabel('contactBilling', 'lastPayment', 'Pembayaran Terakhir')"><span>Pembayaran Terakhir</span><i class="table-sort-indicator" :class="getSortIcon('contactBilling', 'lastPayment')" aria-hidden="true"></i></button></th>
                       <th class="px-4 py-3">Aksi</th>
                     </tr>
                   </thead>
@@ -430,9 +430,11 @@
                         </td>
                         <td class="px-4 py-4" data-label="Nominal Bulanan">
                           <div class="customer-amount-editor">
-                            <div class="currency-input-group"><span class="currency-prefix">Rp</span><input x-model.number="contact.monthlyPaymentAmount" @input="contact.monthlyPaymentAmountCustomized = true" type="number" min="0" max="1000000000" step="1000" class="tabular-nums" aria-label="Nominal pembayaran per bulan"></div>
-                            <button type="button" @click="saveContactPaymentAmount(contact)" class="customer-amount-save bg-moss text-xs font-semibold text-white" title="Simpan nominal custom" aria-label="Simpan nominal custom"><i class="fa-solid fa-floppy-disk"></i></button>
-                            <button x-show="contact.monthlyPaymentAmountCustomized && hasProfileMonthlyAmount(contact)" type="button" @click="resetContactPaymentAmount(contact)" class="customer-amount-save border border-moss/20 bg-white text-xs font-semibold text-moss" title="Kembalikan ke tarif profile" aria-label="Kembalikan ke tarif profile"><i class="fa-solid fa-rotate-left"></i></button>
+                            <div class="currency-input-group"><span class="currency-prefix">Rp</span><input x-model.number="contact.monthlyPaymentAmount" @input="contact.monthlyPaymentAmountCustomized = true" type="number" inputmode="numeric" min="0" max="1000000000" step="1000" class="tabular-nums" :aria-label="'Nominal bulanan ' + contact.name"></div>
+                            <div class="customer-amount-actions">
+                              <button type="button" @click="saveContactPaymentAmount(contact)" class="customer-amount-save bg-moss text-xs font-semibold text-white" title="Simpan nominal custom" :aria-label="'Simpan nominal ' + contact.name"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i></button>
+                              <button x-show="contact.monthlyPaymentAmountCustomized && hasProfileMonthlyAmount(contact)" type="button" @click="resetContactPaymentAmount(contact)" class="customer-amount-save border border-moss/20 bg-white text-xs font-semibold text-moss" title="Kembalikan ke tarif profile" :aria-label="'Kembalikan tarif profile ' + contact.name"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>
+                            </div>
                           </div>
                         </td>
                         <td class="px-4 py-4" data-label="Sumber Nominal">
@@ -441,13 +443,8 @@
                         <td class="px-4 py-4" data-label="Bulan Ini">
                           <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="contact.currentPaymentStatus === 'PAID' ? 'bg-moss/10 text-moss' : 'bg-clay/10 text-clay'" x-text="getCurrentPaymentLabel(contact)"></span>
                         </td>
-                        <td class="px-4 py-4" data-label="Tunggakan">
-                          <template x-if="hasDebt(contact)">
-                            <div class="customer-debt-note"><strong><i class="fa-solid fa-triangle-exclamation"></i><span x-text="getDebtCountLabel(contact)"></span></strong><small x-text="getDebtNote(contact)"></small></div>
-                          </template>
-                          <template x-if="!hasDebt(contact)">
-                            <span class="text-xs font-semibold text-ink/50">Tidak ada tunggakan</span>
-                          </template>
+                        <td class="px-4 py-4" data-label="Pembayaran Terakhir">
+                          <span class="customer-last-payment" x-text="getContactLastPaymentLabel(contact)" :class="{ 'is-empty': !getContactLastPaymentAt(contact) }"></span>
                         </td>
                         <td class="px-4 py-4 align-top" data-label="Aksi">
                           <div class="customer-action-group customer-billing-actions customer-row-actions">
