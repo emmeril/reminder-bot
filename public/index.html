@@ -6,13 +6,13 @@
   <title>__DASHBOARD_TITLE__</title>
   <link rel="stylesheet" href="/public/tailwind.css?v=20261105-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20261109-2">
+  <link rel="stylesheet" href="/public/styles.css?v=20261109-3">
   <link rel="stylesheet" href="/public/interface.css?v=20261109-1">
-  <script defer src="/public/dashboard/state.js?v=20261109-1"></script>
+  <script defer src="/public/dashboard/state.js?v=20261109-2"></script>
   <script defer src="/public/dashboard/ui.js?v=20261106-1"></script>
   <script defer src="/public/dashboard/selectors.js?v=20261109-1"></script>
-  <script defer src="/public/dashboard/data.js?v=20261107-1"></script>
-  <script defer src="/public/dashboard/actions.js?v=20261106-1"></script>
+  <script defer src="/public/dashboard/data.js?v=20261109-2"></script>
+  <script defer src="/public/dashboard/actions.js?v=20261109-2"></script>
   <script defer src="/public/app.js?v=20261106-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
@@ -429,13 +429,7 @@
                           <span class="customer-due-status inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="getDueStatusClass(contact.dueStatus)" x-text="getDueStatusLabel(contact.dueStatus)"></span>
                         </td>
                         <td class="px-4 py-4" data-label="Nominal Bulanan">
-                          <div class="customer-amount-editor">
-                            <div class="currency-input-group"><span class="currency-prefix">Rp</span><input x-model.number="contact.monthlyPaymentAmount" @input="contact.monthlyPaymentAmountCustomized = true" type="number" inputmode="numeric" min="0" max="1000000000" step="1000" class="tabular-nums" :aria-label="'Nominal bulanan ' + contact.name"></div>
-                            <div class="customer-amount-actions">
-                              <button type="button" @click="saveContactPaymentAmount(contact)" class="customer-amount-save bg-moss text-xs font-semibold text-white" title="Simpan nominal custom" :aria-label="'Simpan nominal ' + contact.name"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i></button>
-                              <button x-show="contact.monthlyPaymentAmountCustomized && hasProfileMonthlyAmount(contact)" type="button" @click="resetContactPaymentAmount(contact)" class="customer-amount-save border border-moss/20 bg-white text-xs font-semibold text-moss" title="Kembalikan ke tarif profile" :aria-label="'Kembalikan tarif profile ' + contact.name"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>
-                            </div>
-                          </div>
+                          <span class="customer-monthly-amount tabular-nums" x-text="formatRupiah(contact.monthlyPaymentAmount)"></span>
                         </td>
                         <td class="px-4 py-4" data-label="Sumber Nominal">
                           <small class="block text-xs" :class="hasProfileMonthlyAmount(contact) ? (contact.monthlyPaymentAmountCustomized ? 'text-clay' : 'text-moss') : 'text-ink/50'" x-text="getPaymentAmountSourceLabel(contact)"></small>
@@ -1930,7 +1924,7 @@
               <span x-show="billingActionModal.contact?.phoneNumber" x-text="' · ' + billingActionModal.contact?.phoneNumber"></span>
             </p>
           </div>
-          <button id="billing-action-close" type="button" @click="closeBillingActionModal()" class="billing-action-close" aria-label="Tutup aksi tagihan">
+          <button id="billing-action-close" type="button" @click="closeBillingActionModal()" :disabled="billingActionModal.amountSaving" class="billing-action-close" aria-label="Tutup aksi tagihan">
             <i class="fa-solid fa-xmark"></i>
           </button>
         </div>
@@ -1941,7 +1935,13 @@
           <div><span x-text="isPrepaidPackage(billingActionModal.contact) ? 'Aktif sampai' : 'Jatuh tempo'"></span><strong x-text="getDueDateLabel(billingActionModal.contact)"></strong></div>
         </div>
 
-        <div class="billing-action-list">
+        <div class="billing-action-tabs" role="tablist" aria-label="Kelola tagihan pelanggan">
+          <button id="billing-action-tab-actions" type="button" role="tab" aria-controls="billing-action-panel-actions" :aria-selected="billingActionModal.activeTab === 'actions'" :tabindex="billingActionModal.activeTab === 'actions' ? 0 : -1" :disabled="billingActionModal.amountSaving" @click="selectBillingActionTab('actions')" @keydown.arrow-right.prevent="selectBillingActionTab('amount')" @keydown.arrow-left.prevent="selectBillingActionTab('amount')" @keydown.home.prevent="selectBillingActionTab('actions')" @keydown.end.prevent="selectBillingActionTab('amount')">Tindakan pembayaran</button>
+          <button id="billing-action-tab-amount" type="button" role="tab" aria-controls="billing-action-panel-amount" :aria-selected="billingActionModal.activeTab === 'amount'" :tabindex="billingActionModal.activeTab === 'amount' ? 0 : -1" :disabled="billingActionModal.amountSaving" @click="selectBillingActionTab('amount')" @keydown.arrow-right.prevent="selectBillingActionTab('actions')" @keydown.arrow-left.prevent="selectBillingActionTab('actions')" @keydown.home.prevent="selectBillingActionTab('actions')" @keydown.end.prevent="selectBillingActionTab('amount')">Atur nominal</button>
+        </div>
+
+        <section id="billing-action-panel-actions" class="billing-action-tab-panel" role="tabpanel" aria-labelledby="billing-action-tab-actions" x-show="billingActionModal.activeTab === 'actions'" tabindex="0">
+          <div class="billing-action-list">
           <div class="billing-action-section-heading">
             <strong>Pilih tindakan</strong>
             <small>Pilih satu tindakan untuk pelanggan ini.</small>
@@ -2003,10 +2003,31 @@
             <i class="fa-solid fa-rotate-left"></i>
             <span>Tandai belum bayar</span>
           </button>
-        </div>
+          <p x-show="!hasBillingPaymentActions(billingActionModal.contact)" class="billing-action-empty">Pembelian paket belum tersedia. Periksa akun Hotspot, profil, dan nominal pelanggan. Nominal dapat diubah melalui tab Atur nominal.</p>
+          </div>
+        </section>
+
+        <form id="billing-action-panel-amount" class="billing-amount-form billing-action-tab-panel" role="tabpanel" aria-labelledby="billing-action-tab-amount" x-show="billingActionModal.activeTab === 'amount'" tabindex="0" @submit.prevent="saveBillingActionAmount()" novalidate>
+          <div class="billing-amount-current">
+            <span>Nominal tersimpan</span>
+            <strong x-text="formatRupiah(billingActionModal.contact?.monthlyPaymentAmount)"></strong>
+            <small x-text="getPaymentAmountSourceLabel(billingActionModal.contact)"></small>
+          </div>
+          <label for="billing-monthly-amount-input" class="billing-amount-label">Nominal bulanan baru</label>
+          <div class="currency-input-group billing-amount-input">
+            <span class="currency-prefix" aria-hidden="true">Rp</span>
+            <input id="billing-monthly-amount-input" name="billingMonthlyAmount" type="number" inputmode="numeric" autocomplete="off" min="0" max="1000000000" step="1" x-model="billingActionModal.amountDraft" @input="billingActionModal.amountError = ''" :disabled="billingActionModal.amountSaving" :aria-invalid="Boolean(billingActionModal.amountError)" aria-describedby="billing-amount-help billing-amount-error" required>
+          </div>
+          <p id="billing-amount-help" class="billing-amount-help">Perubahan nominal berlaku untuk pembelian paket berikutnya. Tidak mengubah riwayat pembayaran yang sudah tercatat.</p>
+          <p id="billing-amount-error" x-cloak x-show="billingActionModal.amountError" class="billing-amount-error" role="alert" x-text="billingActionModal.amountError"></p>
+          <div class="billing-amount-buttons">
+            <button type="button" x-show="billingActionModal.contact?.monthlyPaymentAmountCustomized && hasProfileMonthlyAmount(billingActionModal.contact)" @click="resetBillingActionAmount()" :disabled="billingActionModal.amountSaving" class="ui-secondary-button billing-amount-reset"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i><span>Kembalikan ke tarif profil</span></button>
+            <button type="submit" :disabled="billingActionModal.amountSaving" class="ui-primary-button billing-amount-save"><i class="fa-solid" :class="billingActionModal.amountSaving ? 'fa-circle-notch fa-spin' : 'fa-floppy-disk'" aria-hidden="true"></i><span x-text="billingActionModal.amountSaving ? 'Menyimpan...' : 'Simpan nominal'"></span></button>
+          </div>
+        </form>
 
         <div class="billing-action-footer">
-          <button type="button" @click="closeBillingActionModal()" class="ui-secondary-button">Tutup</button>
+          <button type="button" @click="closeBillingActionModal()" :disabled="billingActionModal.amountSaving" class="ui-secondary-button">Tutup</button>
         </div>
       </div>
     </div>
