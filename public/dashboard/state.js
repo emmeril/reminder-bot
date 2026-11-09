@@ -85,6 +85,10 @@ function createDashboardState() {
         billingActionModal: {
           open: false,
           contact: null,
+          activeTab: "actions",
+          amountDraft: "",
+          amountSaving: false,
+          amountError: "",
           returnFocusId: "",
         },
         accountDeliveryModal: {
