@@ -328,33 +328,103 @@ function createDashboardActions() {
           }
         },
 
-        hasBillingActions(contact) {
+        hasBillingPaymentActions(contact) {
+          if (!contact?.id) return false;
           if (this.isPrepaidPackage(contact)) return this.canPurchaseActivePeriod(contact);
           return Boolean(
-            (contact?.subscriptionActive !== false && contact?.currentPaymentStatus !== "PAID")
+            (contact.subscriptionActive !== false && contact.currentPaymentStatus !== "PAID")
             || this.hasDebt(contact)
             || this.canSendBillingReminder(contact)
-            || (contact?.subscriptionActive !== false && contact?.currentPaymentStatus === "PAID")
+            || (contact.subscriptionActive !== false && contact.currentPaymentStatus === "PAID")
           );
         },
 
+        hasBillingActions(contact) {
+          return Boolean(contact?.id);
+        },
+
         openBillingActionModal(contact, trigger = null) {
-          if (!contact?.id || !this.hasBillingActions(contact)) return;
-          this.billingActionModal.contact = contact;
-          this.billingActionModal.returnFocusId = trigger?.id || "";
-          this.billingActionModal.open = true;
+          if (!this.hasBillingActions(contact)) return;
+          this.billingActionModal = {
+            open: true,
+            contact,
+            activeTab: "actions",
+            amountDraft: String(contact.monthlyPaymentAmount ?? 0),
+            amountSaving: false,
+            amountError: "",
+            returnFocusId: trigger?.id || "",
+          };
           document.body.classList.add("overflow-hidden");
           this.$nextTick(() => document.getElementById("billing-action-close")?.focus());
         },
 
         closeBillingActionModal() {
-          if (!this.billingActionModal.open) return;
+          if (!this.billingActionModal.open || this.billingActionModal.amountSaving) return;
           const returnFocusId = this.billingActionModal.returnFocusId;
-          this.billingActionModal.open = false;
-          this.billingActionModal.contact = null;
-          this.billingActionModal.returnFocusId = "";
+          this.billingActionModal = {
+            open: false,
+            contact: null,
+            activeTab: "actions",
+            amountDraft: "",
+            amountSaving: false,
+            amountError: "",
+            returnFocusId: "",
+          };
           document.body.classList.remove("overflow-hidden");
           this.$nextTick(() => document.getElementById(returnFocusId)?.focus());
+        },
+
+        selectBillingActionTab(tab) {
+          if (!this.billingActionModal.open || this.billingActionModal.amountSaving) return;
+          if (!["actions", "amount"].includes(tab)) return;
+          this.billingActionModal.activeTab = tab;
+          this.billingActionModal.amountError = "";
+          this.$nextTick(() => document.getElementById(`billing-action-tab-${tab}`)?.focus());
+        },
+
+        async saveBillingActionAmount() {
+          const modal = this.billingActionModal;
+          if (!modal.open || !modal.contact?.id || modal.amountSaving) return;
+          const raw = String(modal.amountDraft ?? "").trim();
+          const amount = Number(raw);
+          if (!/^\\d+$/.test(raw) || !Number.isSafeInteger(amount) || amount > 1_000_000_000) {
+            modal.amountError = "Masukkan nominal bulanan dari Rp 0 sampai Rp 1.000.000.000.";
+            return;
+          }
+          modal.amountSaving = true;
+          modal.amountError = "";
+          try {
+            const updated = await this.saveContactPaymentAmount({
+              ...modal.contact,
+              monthlyPaymentAmount: amount,
+            });
+            if (updated) {
+              modal.contact = updated;
+              modal.amountDraft = String(updated.monthlyPaymentAmount);
+            }
+          } catch (error) {
+            modal.amountError = error?.message || "Nominal gagal disimpan. Coba lagi.";
+          } finally {
+            modal.amountSaving = false;
+          }
+        },
+
+        async resetBillingActionAmount() {
+          const modal = this.billingActionModal;
+          if (!modal.open || !modal.contact?.id || modal.amountSaving || !this.hasProfileMonthlyAmount(modal.contact)) return;
+          modal.amountSaving = true;
+          modal.amountError = "";
+          try {
+            const updated = await this.resetContactPaymentAmount(modal.contact);
+            if (updated) {
+              modal.contact = updated;
+              modal.amountDraft = String(updated.monthlyPaymentAmount);
+            }
+          } catch (error) {
+            modal.amountError = error?.message || "Tarif profil gagal dipulihkan. Coba lagi.";
+          } finally {
+            modal.amountSaving = false;
+          }
         },
 
         trapModalFocus(event, dialogId) {
