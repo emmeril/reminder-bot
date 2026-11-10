@@ -102,8 +102,11 @@ test("reservasi transaksi dan riwayat pembelian tetap ada setelah database dibuk
   const reopened = new DataManager({ push() {} });
   await reopened.initDatabase();
   await reopened.loadFromDatabase();
-  t.after(async () => reopened.close());
-  assert.equal((await reopened.getActivePeriodPurchaseRequest(contact.id, requestId)).status, "COMPLETED");
-  assert.equal(reopened.getContact(contact.id).activePeriodPurchases.length, 1);
-  assert.equal(reopened.getContact(contact.id).activePeriodPurchases[0].activeUntil, result.purchase.activeUntil);
+  try {
+    assert.equal((await reopened.getActivePeriodPurchaseRequest(contact.id, requestId)).status, "COMPLETED");
+    assert.equal(reopened.getContact(contact.id).activePeriodPurchases.length, 1);
+    assert.equal(reopened.getContact(contact.id).activePeriodPurchases[0].activeUntil, result.purchase.activeUntil);
+  } finally {
+    await reopened.close();
+  }
 });
