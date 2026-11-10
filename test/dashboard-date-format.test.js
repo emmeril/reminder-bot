@@ -2106,3 +2106,28 @@ test("kirim backup manual menangani Telegram yang belum dikonfigurasi", async ()
   assert.match(app.formErrors.settings, /Telegram belum dikonfigurasi/);
   assert.equal(app.loading.backups, false);
 });
+
+test("Penerima admin tetap disimpan melalui endpoint terpisah tanpa menyimpan settings", async () => {
+  const app = createDashboardApp();
+  const requests = [];
+  const messages = [];
+  app.forms.recipients = "628111111111\n628222222222";
+  app.withProcessing = async (_message, action) => action();
+  app.api = async (url, options) => {
+    requests.push({ url, method: options.method, body: JSON.parse(options.body) });
+    return {};
+  };
+  app.loadRecipients = async () => {};
+  app.loadStatus = async () => {};
+  app.notify = (message) => messages.push(message);
+  app.settingsDirty = false;
+  await app.saveRecipients();
+  assert.deepEqual(requests, [{
+    url: "/api/admin-recipients",
+    method: "PUT",
+    body: { recipients: "628111111111\n628222222222" },
+  }]);
+  assert.equal(messages[0], "Penerima admin diperbarui.");
+  assert.equal(app.settingsDirty, false);
+  assert.equal(app.formErrors.recipients, "");
+});
