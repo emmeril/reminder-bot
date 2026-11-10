@@ -42,7 +42,7 @@ test("backup dan pengiriman tidak mencampur input, opsi aktivasi backup tetap te
     assert.ok(!backup.includes(`forms.settings.${field}`), `Backup tidak berisi ${field}`);
   }
   assert.equal(html.match(/x-model="forms.settings.enableMikrotikBackupToWa"/g)?.length, 1);
-  assert.match(html, /x-show="activeSettingsTab === 'backup'"[^>]*type="button" @click="sendMikrotikBackupNow\(\)"/);
+  assert.match(html, /x-show="activeSettingsTab === 'backup'"[^>]*type="button" @click="sendBackupsNow\(\)"/);
   assert.ok(html.includes('@submit.prevent="saveSettings()"'));
 });
 
@@ -145,4 +145,12 @@ test("tab Backup menampilkan jadwal database dan opsi pengiriman Telegram yang t
   assert.match(backup, /Backup lokal tetap dibuat setiap hari/);
   assert.match(backup, /TELEGRAM_CHAT_IDS/);
   assert.match(backup, /md:grid-cols-2/);
+});
+
+test("tombol backup manual mengirim MikroTik dan database aplikasi", () => {
+  const backup = panel("backup");
+  assert.match(html, /@click="sendBackupsNow\(\)"/);
+  assert.match(html, /Kirim Backup MikroTik & Aplikasi/);
+  assert.doesNotMatch(html, /Kirim Backup MikroTik Sekarang/);
+  assert.match(backup, /Tombol kirim manual mengirim kedua backup/);
 });

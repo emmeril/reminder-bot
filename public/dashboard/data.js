@@ -535,6 +535,12 @@ function createDashboardData() {
               ? "Membuat file backup MikroTik..."
               : `Mengirim backup ${Math.min(progress, total)} dari ${total} tujuan...`;
           }
+          if (job?.type === "MANUAL_BACKUPS") {
+            if (job?.phase === "CREATING_MIKROTIK") return "Membuat backup MikroTik...";
+            if (job?.phase === "CREATING_DATABASE") return "Membuat backup database aplikasi...";
+            const source = job?.phase === "SENDING_DATABASE" ? "database aplikasi" : "MikroTik";
+            return `Mengirim backup ${source} ke Telegram (${Math.min(progress, total)}/${total})...`;
+          }
           if (job?.type === "REMINDER_SCHEDULER") {
             return "Memproses reminder yang sudah jatuh tempo...";
           }

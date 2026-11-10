@@ -918,33 +918,37 @@ function createDashboardActions() {
           }
         },
 
-        async sendMikrotikBackupNow() {
-          if (this.loading.mikrotikBackup) return;
-          this.loading.mikrotikBackup = true;
+        async sendBackupsNow() {
+          if (this.loading.backups) return;
+          this.loading.backups = true;
+          this.clearFormError("settings");
           try {
-            await this.withProcessing("Membuat dan mengirim backup MikroTik...", async () => {
-              const job = await this.api("/api/mikrotik/backup/send", {
+            await this.withProcessing("Membuat dan mengirim backup MikroTik & Aplikasi...", async () => {
+              const job = await this.api("/api/backups/send", {
                 method: "POST",
                 body: JSON.stringify({}),
               });
               const response = await this.waitForOperationJob(job);
-              const results = Array.isArray(response.results) ? response.results : [];
-              const successCount = results.filter((item) => item.status === "sent").length;
-              const failedCount = results.filter((item) => item.status === "failed").length;
-              const fileName = response.fileName ? ` (${response.fileName})` : "";
-
-              if (successCount > 0 && failedCount === 0) {
-                this.notify(`Backup MikroTik terkirim ke ${successCount} admin${fileName}.`);
-              } else if (successCount > 0) {
-                this.notify(`Backup MikroTik terkirim ${successCount}, gagal ${failedCount}${fileName}.`);
-              } else {
-                this.notify(`Backup MikroTik dibuat, tapi gagal dikirim ke semua admin${fileName}.`);
+              const files = Array.isArray(response?.files) ? response.files : [];
+              const describe = (kind, name) => {
+                const file = files.find((item) => item.kind === kind);
+                if (!file) return `${name}: hasil tidak tersedia`;
+                if (file.error) return `${name}: gagal dibuat (${file.error})`;
+                if (file.status === "sent") return `${name}: terkirim ke ${file.sentCount} tujuan`;
+                if (file.status === "partial") return `${name}: terkirim ${file.sentCount}, gagal ${file.failedCount}`;
+                return `${name}: gagal dikirim ke ${file.failedCount} tujuan`;
+              };
+              const summary = `${describe("mikrotik", "MikroTik")}. ${describe("database", "Database aplikasi")}.`;
+              this.notify(summary);
+              if (files.length !== 2 || files.some((item) => item.status !== "sent")) {
+                this.setFormError("settings", new Error(summary));
               }
-
               await Promise.allSettled([this.loadLogs(), this.loadStatus()]);
             });
+          } catch (error) {
+            this.setFormError("settings", error);
           } finally {
-            this.loading.mikrotikBackup = false;
+            this.loading.backups = false;
           }
         },
 

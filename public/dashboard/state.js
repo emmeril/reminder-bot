@@ -2,7 +2,7 @@ function createDashboardState() {
   return {
         loading: {
           status: false,
-          mikrotikBackup: false,
+          backups: false,
           hotspotOptions: false,
           voucherOptions: false,
           voucherHistory: false,

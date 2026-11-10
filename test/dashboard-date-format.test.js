@@ -2042,3 +2042,67 @@ test("semua kolom tabel target dapat diurutkan kecuali kolom aksi", () => {
   assert.match(styles, /\.table-sort-button\s*\{[^}]*min-height:\s*44px/s);
   assert.match(styles, /\.table-sort-button:focus-visible/);
 });
+
+test("kirim backup manual melaporkan keberhasilan kedua file dan memperbarui log", async () => {
+  const app = createDashboardApp();
+  const calls = [];
+  const messages = [];
+  app.withProcessing = async (_message, action) => action();
+  app.api = async (url, options) => {
+    calls.push({ url, method: options.method });
+    return { id: "job-backup", type: "MANUAL_BACKUPS", status: "QUEUED" };
+  };
+  app.waitForOperationJob = async () => ({
+    files: [
+      { kind: "mikrotik", status: "sent", sentCount: 2, failedCount: 0 },
+      { kind: "database", status: "sent", sentCount: 2, failedCount: 0 },
+    ],
+  });
+  app.loadLogs = async () => {};
+  app.loadStatus = async () => {};
+  app.notify = (message) => messages.push(message);
+  await app.sendBackupsNow();
+  assert.deepEqual(calls, [{ url: "/api/backups/send", method: "POST" }]);
+  assert.equal(messages.length, 1);
+  assert.match(messages[0], /MikroTik: terkirim ke 2 tujuan/);
+  assert.match(messages[0], /Database aplikasi: terkirim ke 2 tujuan/);
+  assert.equal(app.loading.backups, false);
+  assert.equal(app.formErrors.settings, "");
+  assert.equal(
+    app.getOperationJobMessage({ type: "MANUAL_BACKUPS", phase: "CREATING_DATABASE", progress: 2, total: 4 }),
+    "Membuat backup database aplikasi..."
+  );
+  assert.equal(
+    app.getOperationJobMessage({ type: "MANUAL_BACKUPS", phase: "SENDING_DATABASE", progress: 3, total: 4 }),
+    "Mengirim backup database aplikasi ke Telegram (3/4)..."
+  );
+});
+
+test("kirim backup manual menampilkan kegagalan database walau MikroTik terkirim", async () => {
+  const app = createDashboardApp();
+  let notification = "";
+  app.withProcessing = async (_message, action) => action();
+  app.api = async () => ({ id: "job-backup" });
+  app.waitForOperationJob = async () => ({
+    files: [
+      { kind: "mikrotik", status: "sent", sentCount: 1, failedCount: 0 },
+      { kind: "database", status: "failed", sentCount: 0, failedCount: 0, error: "SQLite tidak tersedia" },
+    ],
+  });
+  app.loadLogs = async () => {};
+  app.loadStatus = async () => {};
+  app.notify = (message) => { notification = message; };
+  await app.sendBackupsNow();
+  assert.match(notification, /MikroTik: terkirim ke 1 tujuan/);
+  assert.match(notification, /Database aplikasi: gagal dibuat/);
+  assert.match(app.formErrors.settings, /SQLite tidak tersedia/);
+});
+
+test("kirim backup manual menangani Telegram yang belum dikonfigurasi", async () => {
+  const app = createDashboardApp();
+  app.withProcessing = async (_message, action) => action();
+  app.api = async () => { throw new Error("Telegram belum dikonfigurasi"); };
+  await app.sendBackupsNow();
+  assert.match(app.formErrors.settings, /Telegram belum dikonfigurasi/);
+  assert.equal(app.loading.backups, false);
+});

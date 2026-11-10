@@ -18,6 +18,7 @@ const {
   normalizeMidtransPaymentStatus,
 } = require("../../midtrans-service");
 const TelegramManager = require("../../telegram-manager");
+const { sendManualBackups } = require("./manual-backup");
 const {
   HOTSPOT_ACCESS_MODES,
   HOTSPOT_PROVISIONING_OPERATION,
@@ -2175,6 +2176,29 @@ class WebServer {
             });
           }
         }),
+      });
+      res.status(202);
+      return job;
+    }));
+
+    this.app.post("/api/backups/send", requireApiAuth, handleApi(async (_req, res) => {
+      if (!TelegramManager.isConfigured()) {
+        throw new Error("Transport backup Telegram belum siap. Isi TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_IDS.");
+      }
+      const recipients = TelegramManager.getChatIds();
+      const job = this.createBackgroundJob({
+        type: "MANUAL_BACKUPS",
+        total: recipients.length * 2,
+        run: (update) => this.backgroundOperationLock.runExclusive("mikrotik-backup", () => (
+          sendManualBackups({
+            mikrotikService: this.mikrotikService,
+            dataManager: this.dataManager,
+            notificationBot: this.notificationBot,
+            activityLog: this.activityLog,
+            recipients,
+            update,
+          })
+        )),
       });
       res.status(202);
       return job;
