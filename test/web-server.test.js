@@ -1523,6 +1523,8 @@ test("reset pairing memerlukan konfirmasi eksplisit", async () => {
   assert.match(html, /Hapus sesi dan buat QR baru/);
   assert.match(html, /<strong>ISP Baru<\/strong>/);
   assert.match(html, /<img src="\/branding\/icon" alt=""/);
+  assert.match(html, /class="brand-mark has-custom-icon"/);
+  assert.match(html, /\.brand-mark\.has-custom-icon\{border:0;border-radius:0;background:transparent\}/);
   const csrfToken = html.match(/name="csrfToken" value="([a-f0-9]+)"/)?.[1];
   assert.match(csrfToken || "", /^[a-f0-9]{64}$/);
 
@@ -3008,6 +3010,7 @@ test("identitas aplikasi di halaman login aman dan sesuai pengaturan", async () 
   assert.match(html, /<strong>ISP &lt;b&gt;Baru&lt;\/b&gt;<\/strong>/);
   assert.match(html, /<small>Layanan &lt;pelanggan&gt;<\/small>/);
   assert.match(html, /<img src="\/branding\/icon"/);
+  assert.match(html, /class="brand-icon has-custom-icon"/);
   assert.doesNotMatch(html, /__APP_BRAND_/);
   assert.doesNotMatch(html, /<strong>ISP <b>/);
 });
@@ -3090,4 +3093,15 @@ test("aturan keamanan memperbolehkan pratinjau ikon lokal dari blob URL", async 
   assert.match(source, /URL\.createObjectURL\(file\)/);
   assert.match(source, /await image\.decode\(\)/);
   assert.match(source, /Gambar tidak dapat dibaca oleh browser/);
+});
+
+test("tanpa ikon khusus login tetap memakai ikon bawaan dengan kelas default", async () => {
+  const baseUrl = await startServer({
+    getSettings: () => ({ dashboardTitle: "Admin", appBrandName: "Hotspot" }),
+    getAppBrandIconMeta: () => ({ hasIcon: false, version: "" }),
+  });
+  const html = await (await fetch(`${baseUrl}/login`)).text();
+  assert.match(html, /<span class="brand-icon"><i class="fa-solid fa-bell"/);
+  assert.doesNotMatch(html, /has-custom-icon/);
+  assert.doesNotMatch(html, /__APP_BRAND_ICON_CLASS__/);
 });

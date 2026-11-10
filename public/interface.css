@@ -4137,6 +4137,21 @@ body.admin-body:not(.voucher-print-mode) .toolbar-reset:focus-visible {
 }
 
 /* App branding */
+.brand-icon.has-custom-icon,
+.login-brand .brand-icon.has-custom-icon {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.brand-icon.has-custom-icon img,
+.login-brand .brand-icon.has-custom-icon img {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
 .brand-icon img,
 .login-brand .brand-icon img {
   display: block;
@@ -4170,9 +4185,14 @@ body.admin-body:not(.voucher-print-mode) .toolbar-reset:focus-visible {
   overflow: hidden;
   border: 1px solid #d8e1db;
   border-radius: 16px;
-  background: #f1f5f2;
-  color: #426656;
+  background: var(--ui-primary, #0f6b57);
+  color: #fff;
   font-size: 32px;
+}
+.app-branding-icon-preview.has-custom-icon {
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
 }
 .app-branding-icon-preview img {
   width: 80px;
