@@ -56,6 +56,8 @@ function createDashboardData() {
                 waRandomDelayMaxSeconds: Number(data.settings.waRandomDelayMaxSeconds ?? 5),
                 enableMikrotikBackupToWa: Boolean(data.settings.enableMikrotikBackupToWa),
                 mikrotikBackupTime: data.settings.mikrotikBackupTime || "02:00",
+                databaseBackupTime: data.settings.databaseBackupTime || data.settings.mikrotikBackupTime || "02:00",
+                enableDatabaseBackupToTelegram: data.settings.enableDatabaseBackupToTelegram === true,
                 mikrotikBackupTimezone: data.settings.mikrotikBackupTimezone || data.settings.timezone || "Asia/Jakarta",
                 profileMonthlyAmounts: { ...(data.settings.profileMonthlyAmounts || {}) },
               };

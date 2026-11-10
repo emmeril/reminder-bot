@@ -153,11 +153,19 @@ class DataManager extends CustomerDataManager {
           ? sanitizeTimeHHMM(payload.mikrotikBackupTime, current.mikrotikBackupTime || DEFAULT_SETTINGS.mikrotikBackupTime)
           : current.mikrotikBackupTime,
         mikrotikBackupTimezone: requestedBackupTimezone || requestedTimezone,
+        databaseBackupTime: payload.databaseBackupTime !== undefined
+          ? sanitizeTimeHHMM(payload.databaseBackupTime, current.databaseBackupTime || DEFAULT_SETTINGS.databaseBackupTime)
+          : current.databaseBackupTime,
+        enableDatabaseBackupToTelegram: payload.enableDatabaseBackupToTelegram !== undefined
+          ? parseBoolean(payload.enableDatabaseBackupToTelegram, current.enableDatabaseBackupToTelegram)
+          : current.enableDatabaseBackupToTelegram,
         profileMonthlyAmounts: requestedProfileMonthlyAmounts,
         mikrotikBackupLastRunDate: payload.mikrotikBackupLastRunDate !== undefined
           ? sanitizeInput(payload.mikrotikBackupLastRunDate)
           : current.mikrotikBackupLastRunDate,
         databaseBackupLastRunDate: current.databaseBackupLastRunDate,
+        databaseBackupSnapshotName: current.databaseBackupSnapshotName,
+        databaseBackupTelegramLastRunDate: current.databaseBackupTelegramLastRunDate,
       };
       let contactsChanged = false;
       let remindersChanged = this.syncActiveRemindersWithSettings(this.settings);
@@ -196,14 +204,29 @@ class DataManager extends CustomerDataManager {
     });
   }
 
-  async markDatabaseBackupRun(dateKey) {
+  async markDatabaseBackupRun(dateKey, backupDir) {
     return this.withDataMutation(async () => {
+      const snapshotName = path.basename(String(backupDir || ""));
       this.settings = {
         ...this.getSettings(),
         databaseBackupLastRunDate: sanitizeInput(dateKey),
+        databaseBackupSnapshotName: /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/.test(snapshotName)
+          ? snapshotName
+          : "",
       };
       await this.saveSettings();
       return this.settings.databaseBackupLastRunDate;
+    });
+  }
+
+  async markDatabaseBackupTelegramRun(dateKey) {
+    return this.withDataMutation(async () => {
+      this.settings = {
+        ...this.getSettings(),
+        databaseBackupTelegramLastRunDate: sanitizeInput(dateKey),
+      };
+      await this.saveSettings();
+      return this.settings.databaseBackupTelegramLastRunDate;
     });
   }
 
