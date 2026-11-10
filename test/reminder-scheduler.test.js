@@ -492,28 +492,23 @@ test("template paket prabayar tetap dipakai selama masa tenggang", () => {
   assert.equal(scheduler.buildReminderMessage(reminder, new Date("2030-01-09T01:00:00.000Z")), "Prabayar baru Pelanggan");
 });
 
-test("reminder berikutnya kembali menjadi reminder tagihan setelah masa aktif berakhir", () => {
+test("reminder paket yang terkirim tidak membuat tagihan bulan berikutnya", async () => {
+  let added = 0;
+  const archived = [];
   const scheduler = new ReminderScheduler({}, {
-    getTimezone: () => "Asia/Jakarta",
+    getSettings: () => ({ hotspotIsolationGraceDays: 0 }),
+    getResolvedReminderContact: () => ({ id: "prepaid", subscriptionType: "RECURRING", billingCycle: "PREPAID" }),
+    moveToSent: async (id) => { archived.push(id); return { id }; },
+    addReminder: async () => { added += 1; },
   }, { push() {} });
-
-  const next = scheduler.buildNextReminder({
-    contactId: "contact-active-period-next",
-    reminderDateTime: "2026-11-25T01:00:00.000Z",
+  const result = await scheduler.finalizeReminderDelivery({
+    id: "prepaid-sent", contactId: "prepaid",
     reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
-    activePeriodUntil: "2026-11-28T01:00:00.000Z",
-    message: DEFAULT_SETTINGS.activePeriodReminderMessageTemplate,
-    messageSource: DEFAULT_SETTINGS.activePeriodReminderMessageTemplate,
-    templateName: "MasaAktifSementara",
-  });
-
-  assert.equal(next.reminderKind, REMINDER_KINDS.BILLING);
-  assert.equal(next.reminderDateTime.toISOString(), "2026-12-25T01:00:00.000Z");
-  assert.equal(next.templateName, "Penagihan.txt");
-  assert.equal(next.message, DEFAULT_REMINDER_MESSAGE_TEMPLATE);
-  assert.equal(next.activePeriodUntil, undefined);
+  }, { deliveryStatus: "SENT" });
+  assert.deepEqual(archived, ["prepaid-sent"]);
+  assert.equal(result.graceScheduled, false);
+  assert.equal(added, 0);
 });
-
 test("template pesan paket prabayar tidak menambahkan tunggakan atau informasi penagihan", () => {
   const scheduler = new ReminderScheduler({}, {
     getSettings: () => ({
@@ -652,68 +647,56 @@ test("reminder paket prabayar tidak menimpa nominal kustom dengan akumulasi huta
   assert.equal(message, "Beli paket seharga Rp 100.000, Pelanggan.");
 });
 
-test("reminder pelanggan sekali berlangganan tidak dijadwalkan ulang", async () => {
+test("arsip reminder tidak otomatis menambah tagihan bulan berikutnya", async () => {
   let created = 0;
   const scheduler = new ReminderScheduler({}, {
-    getSettings: () => ({ autoRescheduleMonthly: true }),
-    getTimezone: () => "Asia/Jakarta",
+    getSettings: () => ({ hotspotIsolationGraceDays: 0 }),
     getResolvedReminderContact: () => ({ id: "one-time", subscriptionType: "ONE_TIME" }),
+    moveToSent: async (id) => ({ id }),
     addReminder: async () => { created += 1; },
   }, { push() {} });
-
-  const result = await scheduler.rescheduleMonthlyReminder({ id: "reminder-one-time", contactId: "one-time" });
-
-  assert.equal(result, null);
+  const result = await scheduler.finalizeReminderDelivery({ id: "one-time" }, { deliveryStatus: "SENT" });
+  assert.equal(result.graceScheduled, false);
   assert.equal(created, 0);
 });
-
-test("reminder jatuh tempo prabayar masuk masa tenggang tanpa dijadwalkan ulang bulanan", async () => {
+test("pengingat paket prabayar tetap masuk masa tenggang jika diaktifkan", async () => {
   let created = 0;
   const reminder = {
-    id: "reminder-prepaid-legacy",
-    contactId: "prepaid",
+    id: "grace-prepaid", contactId: "prepaid",
     reminderDateTime: "2026-11-28T01:00:00.000Z",
     reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
     templateName: "PaketPrabayar",
   };
   const scheduler = new ReminderScheduler({}, {
-    getSettings: () => ({ autoRescheduleMonthly: true, hotspotIsolationGraceDays: 3 }),
-    getTimezone: () => "Asia/Jakarta",
-    getResolvedReminderContact: () => ({
-      id: "prepaid",
-      subscriptionType: "RECURRING",
-      billingCycle: "PREPAID",
-    }),
-    moveToGracePeriod: async () => ({}),
+    getSettings: () => ({ hotspotIsolationGraceDays: 3 }),
+    getResolvedReminderContact: () => ({ id: "prepaid", subscriptionType: "RECURRING", billingCycle: "PREPAID" }),
+    moveToGracePeriod: async () => ({ reminder: { id: "grace-prepaid" }, sentReminder: { id: "history" } }),
     addReminder: async () => { created += 1; },
   }, { push() {} });
-
   assert.equal(scheduler.shouldQueueGracePeriodReminder(reminder), true);
-  assert.equal(await scheduler.rescheduleMonthlyReminder(reminder), null);
+  const result = await scheduler.finalizeReminderDelivery(reminder, { deliveryStatus: "SENT" });
+  assert.equal(result.graceScheduled, true);
   assert.equal(created, 0);
 });
-
-test("pelanggan prabayar tidak dijadwalkan ulang sebagai tagihan setelah pembayaran bersamaan", async () => {
-  let added = 0;
+test("pengingat paket yang dilewati setelah pembayaran tidak menjadi tagihan baru", async () => {
   const contact = {
     id: "concurrent-payment", subscriptionType: "RECURRING", billingCycle: "PREPAID",
     hotspotReactivationAt: new Date(Date.now() + 20 * 86_400_000).toISOString(),
   };
+  let added = 0;
   const scheduler = new ReminderScheduler({}, {
-    getSettings: () => ({ autoRescheduleMonthly: true }),
-    getTimezone: () => "Asia/Jakarta",
+    getSettings: () => ({ hotspotIsolationGraceDays: 0 }),
     getResolvedReminderContact: () => contact,
+    moveToSent: async (id) => ({ id }),
     addReminder: async () => { added += 1; },
   }, { push() {} });
-  const result = await scheduler.rescheduleMonthlyReminder({
+  const result = await scheduler.finalizeReminderDelivery({
     id: "processing-reminder", contactId: contact.id,
     reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
-    reminderDateTime: new Date(Date.now() - 60_000).toISOString(),
-  }, "SKIPPED_PAID");
-  assert.equal(result, null);
+  }, { deliveryStatus: "SKIPPED_PAID" });
+  assert.equal(result.graceScheduled, false);
   assert.equal(added, 0);
 });
-
 test("reminder jatuh tempo pelanggan sekali berlangganan dilewati tanpa mengirim WA", async () => {
   const reminder = {
     id: "reminder-one-time-due",

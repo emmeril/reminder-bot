@@ -41,6 +41,9 @@ class DataManager extends CustomerDataManager {
     settings.profileMonthlyAmounts = normalizeProfileMonthlyAmounts(settings.profileMonthlyAmounts);
     delete settings.monthlyPaymentAmount;
     delete settings.hotspotReactivationMessageTemplate;
+    delete settings.autoRescheduleMonthly;
+    delete settings.notifyAdminsOnPaymentReset;
+    delete settings.lastPaymentResetPeriod;
     return settings;
   }
 
@@ -139,11 +142,9 @@ class DataManager extends CustomerDataManager {
               30
             )
           : current.hotspotIsolationGraceDays,
-        autoRescheduleMonthly: payload.autoRescheduleMonthly !== undefined ? parseBoolean(payload.autoRescheduleMonthly, current.autoRescheduleMonthly) : current.autoRescheduleMonthly,
         notifyContactsOnApDown: payload.notifyContactsOnApDown !== undefined ? parseBoolean(payload.notifyContactsOnApDown, current.notifyContactsOnApDown) : current.notifyContactsOnApDown,
         notifyAdminsOnDelivery: payload.notifyAdminsOnDelivery !== undefined ? parseBoolean(payload.notifyAdminsOnDelivery, current.notifyAdminsOnDelivery) : current.notifyAdminsOnDelivery,
         notifyAdminsOnConnectionChange: payload.notifyAdminsOnConnectionChange !== undefined ? parseBoolean(payload.notifyAdminsOnConnectionChange, current.notifyAdminsOnConnectionChange) : current.notifyAdminsOnConnectionChange,
-        notifyAdminsOnPaymentReset: payload.notifyAdminsOnPaymentReset !== undefined ? parseBoolean(payload.notifyAdminsOnPaymentReset, current.notifyAdminsOnPaymentReset) : current.notifyAdminsOnPaymentReset,
         waRandomDelayMinSeconds: Math.min(requestedDelayMin, requestedDelayMax),
         waRandomDelayMaxSeconds: Math.max(requestedDelayMin, requestedDelayMax),
         enableMikrotikBackupToWa: payload.enableMikrotikBackupToWa !== undefined
@@ -782,196 +783,54 @@ class DataManager extends CustomerDataManager {
     return Object.values(PAYMENT_TYPES);
   }
 
-  getOverdueContacts(year, month) {
-    return this.getSortedContacts().filter((contact) => (
-      this.buildDebtInfo(contact, { year, month }).hasDebt
-    ));
-  }
+  async synchronizePrepaidPackageStatuses() {
+    return this.withDataMutation(async () => {
+      let updated = 0;
+      let remindersUpdated = 0;
+      const obsoleteSettings = ["autoRescheduleMonthly", "notifyAdminsOnPaymentReset", "lastPaymentResetPeriod"];
+      const settingsCleaned = obsoleteSettings.some((key) => Object.prototype.hasOwnProperty.call(this.settings, key));
 
-  async resetAllPaymentStatus() {
-    return this.withDataMutation(async () => this.resetAllPaymentStatusUnlocked());
-  }
+      for (const key of obsoleteSettings) delete this.settings[key];
 
-  async resetAllPaymentStatusUnlocked(options = {}) {
-    let resetCount = 0;
-    let remindersChanged = 0;
-    const referencePeriod = getBillingPeriodParts(new Date(), this.getTimezone());
+      for (const contact of this.contacts.values()) {
+        if (!isPrepaidPackage(contact)) continue;
 
-    for (const contact of this.contacts.values()) {
-      const billingPeriod = getContactBillingPeriod(contact, referencePeriod);
-      const currentKey = makeBillingPeriodKey(billingPeriod.year, billingPeriod.month);
-      const arrearsPolicy = this.applyArrearsSubscriptionPolicy(contact);
-      remindersChanged += arrearsPolicy.remindersAdded + arrearsPolicy.remindersRemoved;
-      if (isPrepaidPackage(contact)) {
-        const packageState = this.buildDebtInfo(contact);
-        contact.paymentStatus = packageState.currentPaymentStatus;
-        contact.paymentDate = packageState.packageActive ? contact.paymentDate : null;
-        contact.paymentType = packageState.packageActive ? PAYMENT_TYPES.ACTIVE_PERIOD : null;
-        contact.billingPausedForArrears = false;
-        contact.billingPausedAfterPeriod = null;
-        contact.updatedAt = new Date().toISOString();
-        remindersChanged += this.updateContactReminderMessages(contact);
-        resetCount += 1;
-        continue;
-      }
-      if (parseBoolean(contact.billingPausedForArrears, false)) {
-        contact.paymentStatus = PAYMENT_STATUS.PAID;
-        contact.paymentDate = null;
-        contact.paymentType = null;
-        contact.updatedAt = new Date().toISOString();
-        remindersChanged += this.updateContactReminderMessages(contact);
-        resetCount += 1;
-        continue;
-      }
-      if (!isRecurringSubscription(contact)) {
-        const startPeriod = getContactBillingStartPeriod(contact, this.getTimezone());
-        const currentPeriod = getBillingPeriodParts(new Date(), this.getTimezone());
-        if (compareBillingPeriods(startPeriod, currentPeriod) < 0) {
-          contact.paymentStatus = PAYMENT_STATUS.PAID;
-          contact.paymentDate = null;
-          contact.paymentType = null;
-          contact.updatedAt = new Date().toISOString();
-          remindersChanged += this.updateContactReminderMessages(contact);
-          resetCount += 1;
-          continue;
-        }
-      }
-      contact.paymentStatus = PAYMENT_STATUS.UNPAID;
-      contact.paymentDate = null;
-      contact.paymentType = null;
-      if (!contact.paymentMonths) {
-        contact.paymentMonths = {};
-      }
-      contact.paymentMonths[currentKey] = {
-        status: PAYMENT_STATUS.UNPAID,
-        paidDate: null,
-        paymentType: null,
-        paidAmount: 0,
-      };
-      contact.updatedAt = new Date().toISOString();
-      remindersChanged += this.updateContactReminderMessages(contact);
-      resetCount += 1;
-    }
-
-    if (resetCount > 0 && options.save !== false) {
-      await this.savePaymentAndReminderChanges(remindersChanged);
-    }
-
-    return resetCount;
-  }
-
-  synchronizeCurrentPaymentStatus() {
-    const referencePeriod = getBillingPeriodParts(new Date(), this.getTimezone());
-    let changed = 0;
-
-    for (const contact of this.contacts.values()) {
-      const billingPeriod = getContactBillingPeriod(contact, referencePeriod);
-      const currentKey = makeBillingPeriodKey(billingPeriod.year, billingPeriod.month);
-      const currentPayment = contact.paymentMonths?.[currentKey];
-      if (isPrepaidPackage(contact)) {
         const packageState = this.buildDebtInfo(contact);
         const nextStatus = packageState.currentPaymentStatus;
         const nextPaymentDate = packageState.packageActive ? contact.paymentDate || null : null;
         const nextPaymentType = packageState.packageActive ? PAYMENT_TYPES.ACTIVE_PERIOD : null;
-        if (contact.paymentStatus !== nextStatus
-          || contact.paymentDate !== nextPaymentDate
-          || contact.paymentType !== nextPaymentType
-          || parseBoolean(contact.billingPausedForArrears, false)) {
-          contact.paymentStatus = nextStatus;
-          contact.paymentDate = nextPaymentDate;
-          contact.paymentType = nextPaymentType;
-          contact.billingPausedForArrears = false;
-          contact.billingPausedAfterPeriod = null;
-          contact.updatedAt = new Date().toISOString();
-          this.updateContactReminderMessages(contact);
-          changed += 1;
-        }
-        continue;
-      }
-      const billingPaused = parseBoolean(contact.billingPausedForArrears, false);
-      const billingStarted = compareBillingPeriods(
-        getContactBillingStartPeriod(contact, this.getTimezone()),
-        billingPeriod
-      ) <= 0;
-      const isPaid = billingPaused
-        || currentPayment?.status === PAYMENT_STATUS.PAID;
-      const nextStatus = isPaid ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.UNPAID;
-      const nextPaymentDate = isPaid && !billingPaused ? currentPayment?.paidDate || null : null;
-      const nextPaymentType = isPaid && !billingPaused ? currentPayment?.paymentType || null : null;
 
-      if (contact.paymentStatus !== nextStatus
-        || contact.paymentDate !== nextPaymentDate
-        || contact.paymentType !== nextPaymentType) {
+        if (contact.paymentStatus === nextStatus
+          && (contact.paymentDate || null) === nextPaymentDate
+          && (contact.paymentType || null) === nextPaymentType
+          && !parseBoolean(contact.billingPausedForArrears, false)
+          && !contact.billingPausedAfterPeriod) {
+          continue;
+        }
+
         contact.paymentStatus = nextStatus;
         contact.paymentDate = nextPaymentDate;
         contact.paymentType = nextPaymentType;
+        contact.billingPausedForArrears = false;
+        contact.billingPausedAfterPeriod = null;
         contact.updatedAt = new Date().toISOString();
-        this.updateContactReminderMessages(contact);
-        changed += 1;
+        remindersUpdated += this.updateContactReminderMessages(contact);
+        updated += 1;
       }
-    }
 
-    return changed;
-  }
-
-  async ensureMonthlyPaymentReset() {
-    return this.withDataMutation(async () => {
-      const currentPeriod = getBillingPeriodKey(new Date(), this.getTimezone());
-      const settings = this.getSettings();
-
-      if (!settings.lastPaymentResetPeriod) {
-        const synchronized = this.synchronizeCurrentPaymentStatus();
-        const arrearsPolicy = this.enforceArrearsSubscriptionPolicy();
-        this.settings.lastPaymentResetPeriod = currentPeriod;
+      if (updated > 0 || settingsCleaned) {
         await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
           const options = { transaction };
-          if (synchronized > 0 || arrearsPolicy.changed > 0) {
-            await this.saveContacts(options);
-            await this.saveReminders(options);
-          }
-          await this.saveSettings(options);
+          if (updated > 0) await this.saveContacts(options);
+          if (remindersUpdated > 0) await this.saveReminders(options);
+          if (settingsCleaned) await this.saveSettings(options);
         }));
-        return {
-          reset: false,
-          initialized: true,
-          period: currentPeriod,
-          count: synchronized,
-          converted: arrearsPolicy.converted,
-          restored: arrearsPolicy.restored,
-        };
       }
 
-      if (settings.lastPaymentResetPeriod === currentPeriod) {
-        const arrearsPolicy = this.enforceArrearsSubscriptionPolicy();
-        if (arrearsPolicy.changed > 0) {
-          await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
-            const options = { transaction };
-            await this.saveContacts(options);
-            if (arrearsPolicy.remindersAdded > 0 || arrearsPolicy.remindersRemoved > 0) {
-              await this.saveReminders(options);
-            }
-          }));
-        }
-        return {
-          reset: false,
-          period: currentPeriod,
-          count: 0,
-          converted: arrearsPolicy.converted,
-          restored: arrearsPolicy.restored,
-        };
-      }
-
-      const count = await this.resetAllPaymentStatusUnlocked({ save: false });
-      this.settings.lastPaymentResetPeriod = currentPeriod;
-      await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
-        const options = { transaction };
-        await this.saveContacts(options);
-        await this.saveReminders(options);
-        await this.saveSettings(options);
-      }));
-      return { reset: true, period: currentPeriod, count };
+      return { updated, remindersUpdated, settingsCleaned };
     });
   }
+
 }
 
 

@@ -1,7 +1,6 @@
 const {
   BILLING_REMINDER_STOP_DEBT_COUNT,
   CONFIG,
-  DEFAULT_REMINDER_MESSAGE_TEMPLATE,
   DEFAULT_SETTINGS,
   REMINDER_KINDS,
 } = require("./config");
@@ -10,7 +9,6 @@ const path = require("path");
 const TelegramManager = require("./telegram-manager");
 const {
   addDaysSafely,
-  addMonthsSafely,
   buildBillingDetails,
   formatDate,
   formatDateTime,
@@ -40,84 +38,6 @@ class ReminderScheduler {
     this.dataManager = dataManager;
     this.activityLog = activityLog;
     this.isProcessing = false;
-  }
-
-  buildNextReminder(reminder) {
-    const timeZone = this.dataManager.getTimezone();
-    const nextDate = addMonthsSafely(reminder.reminderDateTime, 1, timeZone);
-    const nextDateText = formatDate(nextDate, timeZone);
-    const nextMonthName = nextDate.toLocaleString("id-ID", { month: "long", timeZone });
-    const activePeriodExpired = reminder.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY;
-    const sourceMessage = activePeriodExpired
-      ? DEFAULT_REMINDER_MESSAGE_TEMPLATE
-      : String(reminder.messageSource || reminder.message || "");
-    const nextMessage = sourceMessage
-      .replace(/\d{4}-\d{2}-\d{2}/, nextDateText)
-      .replace(/bulan\s+\w+/gi, `bulan ${nextMonthName}`);
-
-    return {
-      contactId: reminder.contactId,
-      reminderDateTime: nextDate,
-      reminderKind: REMINDER_KINDS.BILLING,
-      message: nextMessage,
-      messageSource: nextMessage,
-      templateName: activePeriodExpired ? "Penagihan.txt" : reminder.templateName || null,
-    };
-  }
-
-  async rescheduleMonthlyReminder(reminder, sourceStatus = "SENT") {
-    if (!this.dataManager.getSettings().autoRescheduleMonthly) return null;
-    if (reminder.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY) return null;
-    const contact = this.dataManager.getResolvedReminderContact?.(reminder);
-    if (contact && String(contact.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "ONE_TIME") {
-      this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} tidak dijadwalkan ulang karena pelanggan sekali berlangganan`, {
-        reminderId: reminder.id,
-        contactId: contact.id || null,
-        sourceStatus,
-      });
-      return null;
-    }
-    if (isPrepaidContact(contact)) {
-      this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} tidak dijadwalkan ulang karena pelanggan prabayar menunggu pembelian paket berikutnya`, {
-        reminderId: reminder.id,
-        contactId: contact.id || reminder.contactId || null,
-        sourceStatus,
-      });
-      return null;
-    }
-    const contactDebt = contact && typeof this.dataManager.buildDebtInfo === "function"
-      ? this.dataManager.buildDebtInfo(contact)
-      : contact;
-    const debtCount = Math.max(0, Number(
-      contactDebt?.debtCount ?? contactDebt?.debtPeriods?.length ?? 0
-    ) || 0);
-    if (debtCount >= BILLING_REMINDER_STOP_DEBT_COUNT) {
-      this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} tidak dijadwalkan ulang karena tunggakan sudah 2 bulan atau lebih`, {
-        reminderId: reminder.id,
-        contactId: contact?.id || reminder.contactId || null,
-        debtCount,
-        sourceStatus,
-      });
-      return null;
-    }
-
-    const nextReminder = this.buildNextReminder(reminder);
-    const currentSchedule = new Date(contact?.hotspotReactivationAt || 0);
-    if (contact
-      && !parseBoolean(contact.billingPausedForArrears, false)
-      && Number.isFinite(currentSchedule.getTime())
-      && currentSchedule.getTime() > Date.now()) {
-      nextReminder.reminderDateTime = currentSchedule;
-    }
-    const createdReminder = await this.dataManager.addReminder(nextReminder);
-    this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} dijadwalkan ulang bulanan`, {
-      reminderId: reminder.id,
-      nextReminderId: createdReminder.id,
-      contactId: reminder.contactId || null,
-      sourceStatus,
-      nextReminderDateTime: createdReminder.reminderDateTime,
-    });
-    return createdReminder;
   }
 
   getReminderBilling(reminder) {
@@ -319,7 +239,7 @@ class ReminderScheduler {
     return graceDays > 0 && (activePeriodExpiry || isAutomaticBillingReminder(reminder));
   }
 
-  async finalizeReminderDelivery(reminder, extras, sourceStatus) {
+  async finalizeReminderDelivery(reminder, extras) {
     if (this.shouldQueueGracePeriodReminder(reminder)) {
       const transition = await this.dataManager.moveToGracePeriod(reminder.id, extras);
       this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} dilanjutkan ke pengingat masa tenggang`, {
@@ -335,7 +255,6 @@ class ReminderScheduler {
     }
 
     const sentReminder = await this.dataManager.moveToSent(reminder.id, extras);
-    await this.rescheduleMonthlyReminder(reminder, sourceStatus);
     return { sentReminder, graceScheduled: false };
   }
 
@@ -460,7 +379,6 @@ class ReminderScheduler {
               deliveryStatus: "SKIPPED_PAID",
             });
             claimedReminderId = null;
-            await this.rescheduleMonthlyReminder(reminder, "SKIPPED_PAID");
             this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} dilewati karena status jatuh tempo sudah lunas`, {
               reminderId: reminder.id,
               contactId: reminder.contactId || null,

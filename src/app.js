@@ -1,7 +1,7 @@
 require("dotenv").config({ quiet: true });
 
 const cron = require("node-cron");
-const { CONFIG, MONTH_NAMES } = require("./config");
+const { CONFIG } = require("./config");
 const ActivityLog = require("./activity-log");
 const AuthManager = require("./auth-manager");
 const { MidtransService } = require("./midtrans-service");
@@ -23,46 +23,7 @@ const WebServer = require("./modules/web-server/service");
 const {
   assertSecureConfiguration,
   collectSecurityWarnings,
-  getBillingPeriodParts,
 } = require("./utils");
-
-// ===============================
-// SEND MONTHLY RESET NOTIFICATION
-// ===============================
-
-async function sendMonthlyResetNotification(notificationBot, dataManager, activityLog) {
-  const resetResult = await dataManager.ensureMonthlyPaymentReset();
-  if (!resetResult.reset) {
-    return;
-  }
-
-  const count = resetResult.count;
-  const settings = dataManager.getSettings();
-  const now = new Date();
-  const { year: currentYear, month: currentMonth } = getBillingPeriodParts(
-    now,
-    dataManager.getTimezone()
-  );
-  const overdue = dataManager.getOverdueContacts(currentYear, currentMonth);
-
-  activityLog.push("info", "billing", `Monthly payment status reset completed for ${count} contact(s)`);
-
-  if (!settings.notifyAdminsOnPaymentReset || !notificationBot.getStatus().whatsappProviderEnabled) {
-    return;
-  }
-
-  let body = `Status pembayaran bulan ${MONTH_NAMES[currentMonth]} ${currentYear} telah direset.\n\nKontak yang direset: ${count}.`;
-  if (overdue.length > 0) {
-    body += `\n\nMasih ada ${overdue.length} kontak dengan tunggakan dari periode sebelumnya:\n${overdue.slice(0, 8).map((item, index) => `${index + 1}. ${item.name}`).join("\n")}`;
-    if (overdue.length > 8) {
-      body += `\n...dan ${overdue.length - 8} lainnya.`;
-    }
-  } else {
-    body += "\n\nTidak ada tunggakan dari periode sebelumnya.";
-  }
-
-  await notificationBot.sendAdminBroadcast("Reset pembayaran bulanan", body);
-}
 
 async function runScheduledTasks(tasks, activityLog) {
   const results = await Promise.allSettled(
@@ -150,7 +111,7 @@ async function bootstrap() {
     voucherRevenueSyncScheduler
   );
 
-  await sendMonthlyResetNotification(notificationBot, dataManager, activityLog);
+  await dataManager.synchronizePrepaidPackageStatuses();
 
   const scheduledJobs = [];
   const intervals = [];
@@ -173,7 +134,7 @@ async function bootstrap() {
       { name: "database-backup", run: () => databaseBackupScheduler.processDailyBackup() },
       { name: "hotspot-reactivation", run: () => hotspotReactivationScheduler.processDueReactivations() },
       { name: "midtrans-payments", run: () => webServer.reconcilePendingMidtransPayments() },
-      { name: "monthly-payment-reset", run: () => sendMonthlyResetNotification(notificationBot, dataManager, activityLog) },
+      { name: "prepaid-status-sync", run: () => dataManager.synchronizePrepaidPackageStatuses() },
     ], activityLog));
   }));
 

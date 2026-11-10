@@ -284,3 +284,13 @@ test("penjelasan yang diperbarui tidak mengubah input atau variabel template", (
   assert.match(html, /@submit.prevent="saveSettings\(\)"/);
   assert.match(html, />Simpan Pengaturan<\/button>/);
 });
+
+test("tab Otomasi hanya menampilkan pemberitahuan yang berlaku untuk prabayar", () => {
+  const automation = panel("automation");
+  assert.doesNotMatch(automation, /forms\.settings\.autoRescheduleMonthly|forms\.settings\.notifyAdminsOnPaymentReset/);
+  assert.doesNotMatch(automation, /pengingat tagihan bulanan lama|status pembayaran bulanan direset/);
+  for (const key of ["notifyContactsOnApDown", "notifyAdminsOnDelivery", "notifyAdminsOnConnectionChange"]) {
+    assert.ok(automation.includes("forms.settings." + key), key);
+  }
+  assert.equal((automation.match(/type="checkbox"/g) || []).length, 3);
+});
