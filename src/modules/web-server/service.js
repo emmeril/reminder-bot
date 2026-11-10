@@ -768,8 +768,94 @@ class WebServer {
     });
   }
 
-  async purchaseActivePeriod(contactId) {
+  async getActivePeriodPurchaseStatus(contactId, requestId) {
+    if (typeof this.dataManager.getActivePeriodPurchaseRequest !== "function") {
+      return { status: "NOT_FOUND", requestId };
+    }
+    const request = await this.dataManager.getActivePeriodPurchaseRequest(contactId, requestId);
+    if (!request) return { status: "NOT_FOUND", requestId };
+    const contact = this.dataManager.getContact(contactId);
+    const purchase = (contact?.activePeriodPurchases || [])
+      .find((item) => String(item.id) === requestId);
+    if (purchase && request.status !== "COMPLETED") {
+      await this.dataManager.completeActivePeriodPurchaseRequest(contactId, requestId);
+      return { status: "COMPLETED", requestId, purchase, reused: true, notificationStatus: "PENDING" };
+    }
+    if (request.status === "COMPLETED" && !purchase) {
+      const error = new Error("Data pembelian berhasil tidak ditemukan. Periksa riwayat transaksi sebelum melanjutkan.");
+      error.statusCode = 409;
+      throw error;
+    }
+    return {
+      status: request.status,
+      requestId,
+      purchase: purchase || null,
+      reused: true,
+      notificationStatus: request.notificationStatus,
+    };
+  }
+
+  async dispatchActivePeriodNotifications() {
+    if (this.purchaseNotificationRunning
+      || typeof this.dataManager.getPendingActivePeriodNotifications !== "function") return;
+    this.purchaseNotificationRunning = true;
+    try {
+      const pending = await this.dataManager.getPendingActivePeriodNotifications();
+      for (const task of pending) {
+        if (!await this.dataManager.claimActivePeriodNotification(task.requestId)) continue;
+        const contact = this.dataManager.getContact(task.contactId);
+        const purchase = (contact?.activePeriodPurchases || [])
+          .find((item) => String(item.id) === task.requestId);
+        try {
+          if (!contact || !purchase) throw new Error("Data pembelian tidak ditemukan.");
+          const hydrated = this.dataManager.hydrateContact(contact);
+          await this.notificationBot.sendPaymentNotification(
+            hydrated,
+            purchase.id,
+            PAYMENT_TYPES.ACTIVE_PERIOD,
+            {
+              paymentAmount: purchase.amount,
+              paymentDate: purchase.purchasedAt,
+              activeUntil: purchase.activeUntil,
+              remainingDebtAmount: Math.max(0, Number(hydrated.debtAmount) || 0),
+            }
+          );
+          await this.dataManager.setActivePeriodNotificationStatus(task.requestId, "SENT");
+        } catch (error) {
+          this.activityLog.push("error", "payment", "Notifikasi pembelian paket gagal dikirim", {
+            contactId: task.contactId,
+            transactionId: task.requestId,
+            error: error.message,
+          });
+          await this.dataManager.setActivePeriodNotificationStatus(task.requestId, "FAILED");
+        }
+      }
+    } finally {
+      this.purchaseNotificationRunning = false;
+    }
+  }
+
+  async purchaseActivePeriod(contactId, requestId) {
     return this.activePeriodPurchaseLock.runExclusive(String(contactId), async () => {
+      if (!/^ACT-[0-9a-f-]{36}$/i.test(requestId)) {
+        const error = new Error("ID permintaan pembelian tidak valid.");
+        error.statusCode = 400;
+        throw error;
+      }
+      const previous = await this.getActivePeriodPurchaseStatus(contactId, requestId);
+      if (previous.status === "COMPLETED") {
+        return {
+          operation: "REUSED",
+          purchase: previous.purchase,
+          contact: this.dataManager.hydrateContact(this.dataManager.getContact(contactId)),
+          reused: true,
+        };
+      }
+      if (previous.status === "PROCESSING" || previous.status === "REVIEW_REQUIRED") {
+        const error = new Error("Status pembelian sebelumnya belum pasti. Periksa riwayat sebelum membuat pembelian baru.");
+        error.statusCode = 409;
+        throw error;
+      }
       const contact = this.dataManager.getContact(contactId);
       if (!contact) throw new Error("Kontak tidak ditemukan.");
       const hydrated = this.dataManager.hydrateContact(contact);
@@ -801,12 +887,30 @@ class WebServer {
         throw error;
       }
 
+      if (typeof this.dataManager.beginActivePeriodPurchaseRequest === "function") {
+        const reserved = await this.dataManager.beginActivePeriodPurchaseRequest(contactId, requestId);
+        if (!reserved) {
+          const existing = await this.getActivePeriodPurchaseStatus(contactId, requestId);
+          if (existing.status === "COMPLETED") {
+            return {
+              operation: "REUSED",
+              purchase: existing.purchase,
+              contact: this.dataManager.hydrateContact(this.dataManager.getContact(contactId)),
+              reused: true,
+            };
+          }
+          const error = new Error("Pembelian sebelumnya masih diproses atau perlu diperiksa.");
+          error.statusCode = 409;
+          throw error;
+        }
+      }
+
       const activeFrom = canExtend && Number.isFinite(currentEnd.getTime()) && currentEnd.getTime() > now.getTime()
         ? currentEnd
         : now;
       const activeUntil = addMonthsSafely(activeFrom, 1, this.dataManager.getTimezone());
       const purchase = {
-        id: `ACT-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
+        id: requestId,
         purchasedAt: now.toISOString(),
         activeFrom: activeFrom.toISOString(),
         activeUntil: activeUntil.toISOString(),
@@ -815,6 +919,7 @@ class WebServer {
 
       let persisted;
       let operation;
+      try {
       if (canExtend) {
         const recorded = await this.dataManager.recordActivePeriodPurchase(contact.id, purchase);
         persisted = recorded.contact;
@@ -826,6 +931,17 @@ class WebServer {
         });
         persisted = enabled.contact;
         operation = "ACTIVATE";
+      }
+
+      if (typeof this.dataManager.completeActivePeriodPurchaseRequest === "function") {
+        await this.dataManager.completeActivePeriodPurchaseRequest(contactId, requestId);
+      }
+      } catch (error) {
+        if (typeof this.dataManager.markActivePeriodPurchaseForReview === "function") {
+          await this.dataManager.markActivePeriodPurchaseForReview(contactId, requestId)
+            .catch((statusError) => this.activityLog.push("error", "payment", statusError.message));
+        }
+        throw error;
       }
 
       const storedPurchase = (persisted.activePeriodPurchases || [])
@@ -2114,7 +2230,9 @@ class WebServer {
       syncContactIpBindings: (contact, macAddresses) => this.syncContactIpBindings(contact, macAddresses),
       deleteContactWithHotspot: (contactId) => this.deleteContactWithHotspot(contactId),
       setHotspotContactDisabled: (contact, disabled) => this.setHotspotContactDisabled(contact, disabled),
-      purchaseActivePeriod: (contactId) => this.purchaseActivePeriod(contactId),
+      purchaseActivePeriod: (contactId, requestId) => this.purchaseActivePeriod(contactId, requestId),
+      getActivePeriodPurchaseStatus: (contactId, requestId) => this.getActivePeriodPurchaseStatus(contactId, requestId),
+      dispatchActivePeriodNotifications: () => this.dispatchActivePeriodNotifications(),
       createBackgroundJob: (options) => this.createBackgroundJob(options),
       recoverHotspotAfterPayment: (contact) => this.recoverHotspotAfterPayment(contact),
     });
@@ -2509,6 +2627,15 @@ class WebServer {
       server.once("error", handleError);
       server.once("listening", () => {
         server.off("error", handleError);
+        this.purchaseNotificationTimer = setInterval(() => {
+          void this.dispatchActivePeriodNotifications().catch((error) => {
+            this.activityLog.push("error", "payment", `Antrean notifikasi paket gagal: ${error.message}`);
+          });
+        }, 30_000);
+        this.purchaseNotificationTimer.unref?.();
+        void this.dispatchActivePeriodNotifications().catch((error) => {
+          this.activityLog.push("error", "payment", `Antrean notifikasi paket gagal: ${error.message}`);
+        });
         this.activityLog.push("info", "web", `Dashboard running at http://${CONFIG.HOST}:${CONFIG.PORT}/dashboard`);
         this.activityLog.push("info", "web", `WhatsApp provider status page running at http://${CONFIG.HOST}:${CONFIG.PORT}/transport`);
         resolve(server);
@@ -2518,6 +2645,8 @@ class WebServer {
 
   async stop(timeoutMs = Math.min(CONFIG.SHUTDOWN_TIMEOUT, 10_000)) {
     this.ready = false;
+    clearInterval(this.purchaseNotificationTimer);
+    this.purchaseNotificationTimer = null;
     const server = this.server;
     if (!server) return;
 

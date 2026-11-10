@@ -252,7 +252,15 @@ test("riwayat bulan lama tidak menjadi tunggakan pada paket prabayar", () => {
 test("aksi beli paket prabayar tersedia tanpa menuntut adanya tunggakan", async () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
-  const app = createDashboardApp();
+  const storedRequests = new Map();
+  const app = createDashboardApp({
+    crypto: { randomUUID: () => "12345678-1234-1234-1234-123456789abc" },
+    sessionStorage: {
+      getItem: (key) => storedRequests.get(key) || null,
+      setItem: (key, value) => storedRequests.set(key, value),
+      removeItem: (key) => storedRequests.delete(key),
+    },
+  });
   const contact = {
     id: "contact-active-period-ui",
     subscriptionType: "RECURRING",
@@ -277,11 +285,12 @@ test("aksi beli paket prabayar tersedia tanpa menuntut adanya tunggakan", async 
   let refreshCount = 0;
   app.closeBillingActionModal = () => {};
   app.openDeleteConfirm = (options) => { confirmation = options; };
-  app.api = async (url, options) => {
+  app.api = async (url, options = {}) => {
+    if (options.method !== "POST") return { status: "NOT_FOUND" };
     request = { url, method: options.method, payload: JSON.parse(options.body) };
     return {
       purchase: { activeUntil: "2026-11-28T03:00:00.000Z" },
-      notificationSent: true,
+      notificationQueued: true,
     };
   };
   app.notify = (message) => { notification = message; };
@@ -299,10 +308,11 @@ test("aksi beli paket prabayar tersedia tanpa menuntut adanya tunggakan", async 
   assert.deepEqual(request, {
     url: "/api/contacts/contact-active-period-ui/active-period-purchase",
     method: "POST",
-    payload: {},
+    payload: { requestId: "ACT-12345678-1234-1234-1234-123456789abc" },
   });
+  assert.equal(storedRequests.size, 0);
   assert.match(notification, /Masa aktif tercatat sampai/);
-  assert.match(notification, /Bukti pembayaran terkirim/);
+  assert.match(notification, /Bukti pembayaran sedang dikirim/);
   assert.equal(refreshCount, 3);
 });
 
