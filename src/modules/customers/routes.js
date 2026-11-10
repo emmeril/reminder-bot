@@ -39,6 +39,8 @@ function registerCustomerRoutes({
   deleteContactWithHotspot,
   setHotspotContactDisabled,
   purchaseActivePeriod,
+  getActivePeriodPurchaseStatus,
+  dispatchActivePeriodNotifications,
   createBackgroundJob,
   recoverHotspotAfterPayment,
 }) {
@@ -358,37 +360,31 @@ function registerCustomerRoutes({
     };
   }));
 
+  app.get("/api/contacts/:id/active-period-purchase/:requestId", requireApiAuth, handleApi(async (req) => {
+    const requestId = String(req.params.requestId || "");
+    if (!/^ACT-[0-9a-f-]{36}$/i.test(requestId)) {
+      const error = new Error("ID permintaan pembelian tidak valid.");
+      error.statusCode = 400;
+      throw error;
+    }
+    return getActivePeriodPurchaseStatus(req.params.id, requestId);
+  }));
+
   app.post("/api/contacts/:id/active-period-purchase", requireApiAuth, handleApi(async (req) => {
-    const result = await purchaseActivePeriod(req.params.id);
-    const remainingDebtAmount = Math.max(0, Number(result.contact.debtAmount) || 0);
-    let notificationSent = false;
-    let notificationError = null;
-    try {
-      await notificationBot.sendPaymentNotification(
-        result.contact,
-        result.purchase.id,
-        PAYMENT_TYPES.ACTIVE_PERIOD,
-        {
-          paymentAmount: result.purchase.amount,
-          paymentDate: result.purchase.purchasedAt,
-          activeUntil: result.purchase.activeUntil,
-          remainingDebtAmount,
-        }
-      );
-      notificationSent = true;
-    } catch (error) {
-      notificationError = error.message;
-      activityLog.push("error", "payment", `Masa aktif tersimpan tetapi notifikasi gagal dikirim ke ${result.contact.phoneNumber}`, {
-        contactId: result.contact.id,
-        transactionId: result.purchase.id,
-        error: error.message,
+    const requestId = req.body?.requestId === undefined
+      ? undefined
+      : String(req.body.requestId || "");
+    const result = await purchaseActivePeriod(req.params.id, requestId);
+    if (!result.reused) {
+      void Promise.resolve().then(() => dispatchActivePeriodNotifications?.()).catch((error) => {
+        activityLog.push("error", "payment", `Notifikasi paket belum dapat diproses: ${error.message}`);
       });
     }
     return {
       ...result,
       contact: dataManager.toPublicContact(result.contact),
-      notificationSent,
-      notificationError,
+      notificationSent: false,
+      notificationQueued: !result.reused,
     };
   }));
 
