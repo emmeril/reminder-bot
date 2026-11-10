@@ -435,7 +435,7 @@ test("simpan pengaturan memperbarui pesan reminder sebelum menampilkan sukses", 
   assert.equal(request.payload.prepaidPackageReminderMessageTemplate, template);
   assert.equal(app.paginatedReminders[0].message, message);
   assert.equal(app.settingsDirty, false);
-  assert.deepEqual(notifications, ["Settings diperbarui."]);
+  assert.deepEqual(notifications, ["Pengaturan diperbarui."]);
 });
 
 test("simpan pengaturan yang gagal mempertahankan form dan pesan reminder", async () => {
