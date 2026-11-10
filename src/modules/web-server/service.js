@@ -835,7 +835,7 @@ class WebServer {
     }
   }
 
-  async purchaseActivePeriod(contactId, requestId = `ACT-${crypto.randomUUID()}`) {
+  async purchaseActivePeriod(contactId, requestId) {
     return this.activePeriodPurchaseLock.runExclusive(String(contactId), async () => {
       if (!/^ACT-[0-9a-f-]{36}$/i.test(requestId)) {
         const error = new Error("ID permintaan pembelian tidak valid.");
