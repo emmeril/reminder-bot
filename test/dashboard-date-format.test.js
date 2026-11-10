@@ -337,7 +337,7 @@ test("pelanggan prabayar membeli paket tanpa tunggakan kalender", () => {
 test("pengaturan hanya menampilkan template masa aktif paket prabayar", () => {
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const app = createDashboardApp();
-  assert.match(html, /Paket prabayar akan berakhir/);
+  assert.match(html, /Pengingat masa aktif paket/);
   assert.match(html, /x-model="forms\.settings\.prepaidPackageReminderMessageTemplate"/);
   assert.doesNotMatch(html, /pelanggan pascabayar yang masih menunggak/);
   assert.doesNotMatch(html, /x-model="forms\.settings\.activePeriodReminderMessageTemplate"/);
@@ -467,8 +467,8 @@ test("pengaturan menyediakan template Hotspot dan IP Binding setelah pembayaran"
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const app = createDashboardApp();
 
-  assert.match(html, /Akun Hotspot setelah pembayaran/);
-  assert.match(html, /Akses IP Binding setelah pembayaran/);
+  assert.match(html, /Akun WiFi setelah pembayaran \(Hotspot\)/);
+  assert.match(html, /Akses WiFi otomatis \(IP Binding\)/);
   assert.match(html, /x-model="forms\.settings\.paymentHotspotAccountMessageTemplate"/);
   assert.match(html, /<code>{{hotspotStatus}}<\/code>/);
   assert.match(html, /<code>{{ipBindingStatus}}<\/code>/);
@@ -548,7 +548,7 @@ test("pengaturan memiliki tab masa tenggang isolir", () => {
   assert.equal(app.activeSettingsTab, "isolation");
   assert.match(html, /id="settings-isolation-tab"/);
   assert.match(html, /x-model\.number="forms\.settings\.hotspotIsolationGraceDays"/);
-  assert.match(html, /Jeda setelah jatuh tempo \(hari\)/);
+  assert.match(html, /Lama masa tenggang \(hari\)/);
 });
 
 test("form notifikasi prabayar hanya menampilkan variabel masa aktif yang relevan", () => {
