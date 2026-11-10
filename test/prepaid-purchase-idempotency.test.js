@@ -13,14 +13,14 @@ async function fixture(t) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "prepaid-idempotency-"));
   const originalStorage = CONFIG.DB_STORAGE;
   CONFIG.DB_STORAGE = path.join(directory, "db.sqlite");
-  t.after(async () => {
-    CONFIG.DB_STORAGE = originalStorage;
-    await fs.rm(directory, { recursive: true, force: true });
-  });
   const log = { push() {}, list: () => [] };
   const manager = new DataManager(log);
   await manager.initDatabase();
-  t.after(async () => manager.close());
+  t.after(async () => {
+    await manager.close();
+    CONFIG.DB_STORAGE = originalStorage;
+    await fs.rm(directory, { recursive: true, force: true });
+  });
   const contact = {
     id: "prepaid-test",
     name: "Pelanggan Paket",
