@@ -508,13 +508,49 @@ function createDashboardActions() {
             confirmLabel: extending ? "Tambah masa aktif" : "Beli dan aktifkan",
             processingMessage: extending ? "Menambah masa aktif..." : "Mencatat pembelian masa aktif...",
             action: async () => {
-              const result = await this.api(`/api/contacts/${contact.id}/active-period-purchase`, {
-                method: "POST",
-                body: JSON.stringify({}),
-              });
-              const notificationText = result.notificationSent
-                ? " Bukti pembayaran terkirim."
-                : (result.notificationError ? ` Bukti pembayaran gagal dikirim: ${result.notificationError}` : "");
+              const storageKey = `active-period-purchase:${contact.id}`;
+              let requestId = sessionStorage.getItem(storageKey);
+              if (!/^ACT-[0-9a-f-]{36}$/i.test(requestId || "")) {
+                if (!globalThis.crypto?.randomUUID) {
+                  throw new Error("Browser tidak mendukung ID transaksi aman. Gunakan browser terbaru.");
+                }
+                requestId = `ACT-${globalThis.crypto.randomUUID()}`;
+                sessionStorage.setItem(storageKey, requestId);
+              }
+              const endpoint = `/api/contacts/${contact.id}/active-period-purchase`;
+              const checkStatus = () => this.api(`${endpoint}/${encodeURIComponent(requestId)}`, { silent: true });
+              let result;
+              try {
+                const current = await checkStatus();
+                if (current.status === "COMPLETED" && current.purchase) {
+                  result = current;
+                } else if (["PROCESSING", "REVIEW_REQUIRED"].includes(current.status)) {
+                  throw new Error("Pembelian masih diproses atau perlu diperiksa. Masa aktif tidak ditambahkan lagi. Periksa riwayat dan status transaksi.");
+                } else {
+                  result = await this.api(endpoint, {
+                    method: "POST",
+                    body: JSON.stringify({ requestId }),
+                    timeoutMs: 30_000,
+                    timeoutMessage: "Respons pembelian terlambat. Status transaksi sedang diperiksa.",
+                    silent: true,
+                  });
+                }
+              } catch (error) {
+                try {
+                  const current = await checkStatus();
+                  if (current.status === "COMPLETED" && current.purchase) {
+                    result = current;
+                  } else if (current.status === "PROCESSING" || current.status === "REVIEW_REQUIRED") {
+                    throw new Error("Status pembelian belum pasti. Jangan membeli ulang. Periksa status dan riwayat sebelum mencoba lagi.");
+                  }
+                } catch (statusError) {
+                  if (/Status pembelian belum pasti/.test(statusError.message)) throw statusError;
+                  throw new Error("Tidak dapat memastikan hasil pembelian. Jangan membuat pembelian baru sampai status transaksi diperiksa.");
+                }
+                if (!result) throw error;
+              }
+              sessionStorage.removeItem(storageKey);
+              const notificationText = result.notificationQueued ? " Bukti pembayaran sedang dikirim." : "";
               this.notify(`Masa aktif tercatat sampai ${this.formatDateTime(result.purchase.activeUntil)}.${notificationText}`);
               await Promise.all([this.loadContacts(), this.loadStatus(), this.loadLogs()]);
             },
