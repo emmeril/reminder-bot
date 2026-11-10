@@ -1,5 +1,8 @@
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
+const fs = require("node:fs/promises");
+const os = require("node:os");
+const path = require("node:path");
 const { afterEach, test } = require("node:test");
 
 const AuthManager = require("../src/auth-manager");
@@ -9,6 +12,9 @@ const { CONFIG, PAYMENT_STATUS, PAYMENT_TYPES } = require("../src/config");
 
 const originalAuthConfig = {
   WEB_API_KEY: CONFIG.WEB_API_KEY,
+  TELEGRAM_BOT_TOKEN: CONFIG.TELEGRAM_BOT_TOKEN,
+  TELEGRAM_CHAT_IDS: CONFIG.TELEGRAM_CHAT_IDS,
+  DB_STORAGE: CONFIG.DB_STORAGE,
   AUTH_USERNAME: CONFIG.AUTH_USERNAME,
   AUTH_PASSWORD: CONFIG.AUTH_PASSWORD,
   SESSION_SECRET: CONFIG.SESSION_SECRET,
@@ -2907,4 +2913,76 @@ test("penghapusan pelanggan dengan transaksi aktif tidak menyentuh MikroTik", as
   assert.equal(response.status, 409);
   assert.equal(deletedFromRouter, 0);
   assert.equal(deletedFromDb, 0);
+});
+
+test("endpoint gabungan memerlukan autentikasi dan mengirim dua file ke Telegram", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "combined-backup-web-"));
+  Object.assign(CONFIG, {
+    WEB_API_KEY: "test-manual-backups-secret",
+    TELEGRAM_BOT_TOKEN: "telegram-test-token",
+    TELEGRAM_CHAT_IDS: "123456",
+    DB_STORAGE: path.join(directory, "database.sqlite"),
+  });
+  let routerCleaned = 0;
+  const deliveredFiles = [];
+  try {
+    const baseUrl = await startServer({
+      async createBackup() {
+        const backupDir = path.join(directory, "backups", "current");
+        await fs.mkdir(backupDir, { recursive: true });
+        await fs.writeFile(path.join(backupDir, "database.sqlite"), "safe sqlite snapshot");
+        return { backupDir };
+      },
+    }, {
+      async sendTelegramFile(chatId, filePath, caption) {
+        deliveredFiles.push({
+          chatId,
+          content: await fs.readFile(filePath, "utf8"),
+          caption,
+        });
+      },
+    }, {
+      async generateDailyBackupFile() {
+        const filePath = path.join(directory, "router.rsc");
+        await fs.writeFile(filePath, "router config");
+        return {
+          filePath,
+          fileName: "router.rsc",
+          async cleanup() {
+            routerCleaned += 1;
+            await fs.rm(filePath);
+          },
+        };
+      },
+    });
+
+    const unauthorized = await fetch(`${baseUrl}/api/backups/send`, { method: "POST" });
+    assert.equal(unauthorized.status, 401);
+    const headers = { "x-api-key": CONFIG.WEB_API_KEY, "content-type": "application/json" };
+    const response = await fetch(`${baseUrl}/api/backups/send`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({}),
+    });
+    assert.equal(response.status, 202);
+    let job = (await response.json()).data;
+    assert.equal(job.type, "MANUAL_BACKUPS");
+    assert.equal(job.total, 2);
+
+    for (let attempt = 0; attempt < 60 && !["COMPLETED", "FAILED"].includes(job.status); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const jobResponse = await fetch(`${baseUrl}/api/jobs/${job.id}`, { headers });
+      assert.equal(jobResponse.status, 200);
+      job = (await jobResponse.json()).data;
+    }
+
+    assert.equal(job.status, "COMPLETED", job.error);
+    assert.equal(job.result.files.length, 2);
+    assert.deepEqual(job.result.files.map((file) => file.status), ["sent", "sent"]);
+    assert.deepEqual(deliveredFiles.map((item) => item.content), ["router config", "safe sqlite snapshot"]);
+    assert.equal(routerCleaned, 1);
+    assert.equal(await fs.readFile(path.join(directory, "backups", "current", "database.sqlite"), "utf8"), "safe sqlite snapshot");
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
 });
