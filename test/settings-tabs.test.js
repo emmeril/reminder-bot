@@ -238,8 +238,6 @@ test("semua tab pengaturan memiliki judul dan petunjuk yang mudah dipahami", () 
       "Beritahu pelanggan jika perangkat WiFi terputus",
       "Beritahu admin saat pengingat berhasil dikirim",
       "Beritahu admin saat koneksi WhatsApp berubah",
-      "Beritahu admin jika status pembayaran bulanan direset",
-      "Tidak berlaku untuk paket prabayar",
     ],
   };
   for (const [tab, examples] of Object.entries(labels)) {

@@ -239,7 +239,7 @@ class ReminderScheduler {
     return graceDays > 0 && (activePeriodExpiry || isAutomaticBillingReminder(reminder));
   }
 
-  async finalizeReminderDelivery(reminder, extras) {
+  async finalizeReminderDelivery(reminder, extras, sourceStatus) {
     if (this.shouldQueueGracePeriodReminder(reminder)) {
       const transition = await this.dataManager.moveToGracePeriod(reminder.id, extras);
       this.activityLog.push("info", "scheduler", `Reminder ${reminder.id} dilanjutkan ke pengingat masa tenggang`, {

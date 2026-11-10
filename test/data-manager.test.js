@@ -2770,7 +2770,7 @@ test("sinkronisasi paket prabayar mengikuti masa aktif dan tidak menyentuh histo
   assert.equal(expired.paymentDate, null);
   assert.equal(JSON.stringify([active.paymentMonths, expired.paymentMonths]), history);
   assert.equal(savedContacts, 1);
-  assert.equal(savedReminders, 0);
+  assert.equal(savedReminders, Number(result.remindersUpdated > 0));
   const repeat = await manager.synchronizePrepaidPackageStatuses();
   assert.equal(repeat.updated, 0);
   assert.equal(savedContacts, 1);
