@@ -152,6 +152,7 @@ function createDashboardState() {
         statusCards: [],
         summaryMetrics: [],
         settingsDirty: false,
+        recipientsDirty: false,
         isMobile: window.matchMedia("(max-width: 768px)").matches,
         pollers: [],
         paymentTypeSelection: {},

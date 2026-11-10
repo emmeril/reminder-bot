@@ -168,13 +168,14 @@ test("Penerima admin hanya muncul di Pengaturan > Pengiriman dan tidak membuat f
 
   assert.match(delivery, /<h3[^>]*>Penerima admin<\/h3>/);
   assert.match(delivery, /<textarea[^>]*id="settings-admin-recipients"[^>]*x-model="forms\.recipients"/);
-  assert.match(delivery, /<button[^>]*type="button"[^>]*@click="saveRecipients\(\)"/);
+  assert.doesNotMatch(delivery, /@click="saveRecipients\(\)"|Simpan penerima admin/);
   assert.match(delivery, /x-show="formErrors\.recipients"/);
-  assert.match(delivery, /@input\.stop @change\.stop/);
+  assert.match(delivery, /@input\.stop="recipientsDirty = true" @change\.stop="recipientsDirty = true"/);
+  assert.match(delivery, /Simpan perubahan melalui tombol Simpan Pengaturan/);
   assert.doesNotMatch(delivery, /<form\b/i);
   assert.equal(html.match(/x-model="forms\.recipients"/g)?.length, 1);
-  assert.equal(html.match(/@click="saveRecipients\(\)"/g)?.length, 1);
-  assert.match(html, /@submit\.prevent="saveSettings\(\)"/);
+  assert.equal(html.match(/@click="saveRecipients\(\)"/g)?.length ?? 0, 0);
+  assert.equal(html.match(/@submit\.prevent="saveSettings\(\)"/g)?.length, 1);
 });
 
 test("layout Kirim Pesan menampilkan dua formulir responsif", () => {

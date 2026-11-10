@@ -808,7 +808,9 @@ function createDashboardData() {
 
         async loadRecipients() {
           const recipients = await this.api("/api/admin-recipients");
-          this.forms.recipients = recipients.join("\n");
+          if (!this.recipientsDirty) {
+            this.forms.recipients = recipients.join("\n");
+          }
         },
 
         async loadLogs(options = {}) {

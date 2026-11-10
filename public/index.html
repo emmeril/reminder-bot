@@ -8,11 +8,11 @@
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261110-5">
   <link rel="stylesheet" href="/public/interface.css?v=20261110-1">
-  <script defer src="/public/dashboard/state.js?v=20261110-4"></script>
+  <script defer src="/public/dashboard/state.js?v=20261110-6"></script>
   <script defer src="/public/dashboard/ui.js?v=20261110-2"></script>
   <script defer src="/public/dashboard/selectors.js?v=20261109-1"></script>
-  <script defer src="/public/dashboard/data.js?v=20261110-4"></script>
-  <script defer src="/public/dashboard/actions.js?v=20261110-5"></script>
+  <script defer src="/public/dashboard/data.js?v=20261110-6"></script>
+  <script defer src="/public/dashboard/actions.js?v=20261110-6"></script>
   <script defer src="/public/app.js?v=20261106-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
@@ -1548,7 +1548,7 @@
                 <input x-model.number="forms.settings.waRandomDelayMaxSeconds" type="number" min="0" max="300" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               </label>
               </div>
-              <div class="mt-2 min-w-0 rounded-xl border border-ink/10 bg-white p-4" @input.stop @change.stop>
+              <div class="mt-2 min-w-0 rounded-xl border border-ink/10 bg-white p-4" @input.stop="recipientsDirty = true" @change.stop="recipientsDirty = true">
                 <div class="flex items-start gap-3">
                   <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-haze text-ink/75" aria-hidden="true"><i class="fa-solid fa-user-shield"></i></span>
                   <div class="min-w-0">
@@ -1558,12 +1558,7 @@
                 </div>
                 <label for="settings-admin-recipients" class="mt-4 block text-sm font-medium text-ink/75">Nomor admin</label>
                 <textarea id="settings-admin-recipients" x-model="forms.recipients" rows="4" aria-describedby="settings-admin-recipients-help" :aria-invalid="Boolean(formErrors.recipients)" class="mt-2 min-h-32 w-full min-w-0 rounded-xl border border-ink/20 bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/20" placeholder="Satu nomor per baris, contoh: 628123456789"></textarea>
-                <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
-                  <p id="settings-admin-recipients-help" class="min-w-0 text-xs leading-5 text-ink/65">Pisahkan nomor dengan baris baru. Daftar ini disimpan terpisah dari pengaturan pengiriman.</p>
-                  <button type="button" @click="saveRecipients()" class="min-h-11 w-full rounded-full border border-ink/20 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-haze focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-clay sm:w-auto">
-                    <i class="fa-solid fa-floppy-disk mr-2" aria-hidden="true"></i>Simpan penerima admin
-                  </button>
-                </div>
+                <p id="settings-admin-recipients-help" class="mt-3 text-xs leading-5 text-ink/65">Pisahkan nomor dengan baris baru. Simpan perubahan melalui tombol Simpan Pengaturan di bawah.</p>
                 <p x-cloak x-show="formErrors.recipients" role="alert" x-transition class="mt-3 rounded-xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.recipients"></p>
               </div>
             </section>
