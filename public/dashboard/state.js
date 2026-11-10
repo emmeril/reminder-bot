@@ -588,6 +588,8 @@ function createDashboardState() {
             waRandomDelayMaxSeconds: 5,
             enableMikrotikBackupToWa: false,
             mikrotikBackupTime: "02:00",
+            databaseBackupTime: "02:00",
+            enableDatabaseBackupToTelegram: false,
             mikrotikBackupTimezone: "Asia/Jakarta",
             profileMonthlyAmounts: {},
           },

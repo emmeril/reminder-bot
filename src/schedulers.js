@@ -5,6 +5,8 @@ const {
   DEFAULT_SETTINGS,
   REMINDER_KINDS,
 } = require("./config");
+const fs = require("fs/promises");
+const path = require("path");
 const TelegramManager = require("./telegram-manager");
 const {
   addDaysSafely,
@@ -682,6 +684,7 @@ class DatabaseBackupScheduler {
     this.dataManager = dataManager;
     this.activityLog = activityLog;
     this.isProcessing = false;
+    this.nextTelegramAttemptAt = 0;
   }
 
   isDueNow(settings) {
@@ -689,7 +692,10 @@ class DatabaseBackupScheduler {
     const timeZone = [...new Set([requestedTimeZone, settings.timezone, "Asia/Jakarta"].filter(Boolean))]
       .find(isValidTimeZone)
       || "Asia/Jakarta";
-    const configuredTime = sanitizeTimeHHMM(settings.mikrotikBackupTime, DEFAULT_SETTINGS.mikrotikBackupTime);
+    const configuredTime = sanitizeTimeHHMM(
+      settings.databaseBackupTime,
+      DEFAULT_SETTINGS.databaseBackupTime
+    );
     const nowParts = getDateTimePartsInTimezone(new Date(), timeZone);
 
     return {
@@ -705,18 +711,71 @@ class DatabaseBackupScheduler {
 
     const settings = this.dataManager.getSettings();
     const scheduleCheck = this.isDueNow(settings);
-    if (!scheduleCheck.due || settings.databaseBackupLastRunDate === scheduleCheck.nowParts.dateKey) {
-      return;
-    }
+    if (!scheduleCheck.due) return;
+
+    const dateKey = scheduleCheck.nowParts.dateKey;
+    const localBackupDone = settings.databaseBackupLastRunDate === dateKey;
+    const telegramPending = settings.enableDatabaseBackupToTelegram
+      && settings.databaseBackupTelegramLastRunDate !== dateKey;
+    if (localBackupDone && !telegramPending) return;
 
     this.isProcessing = true;
     try {
-      const backup = await this.dataManager.createBackup();
-      await this.dataManager.markDatabaseBackupRun(scheduleCheck.nowParts.dateKey);
-      this.activityLog.push("info", "database-backup", "Backup database harian selesai", {
-        backupDir: backup.backupDir,
-        deletedCount: backup.deletedCount,
-        retentionDays: CONFIG.DB_BACKUP_RETENTION_DAYS,
+      let backup = null;
+      if (!localBackupDone) {
+        backup = await this.dataManager.createBackup();
+        await this.dataManager.markDatabaseBackupRun(dateKey, backup.backupDir);
+        this.activityLog.push("info", "database-backup", "Backup database harian tersimpan lokal", {
+          backupDir: backup.backupDir,
+          deletedCount: backup.deletedCount,
+          retentionDays: CONFIG.DB_BACKUP_RETENTION_DAYS,
+          schedule: `${scheduleCheck.configuredTime} ${scheduleCheck.timeZone}`,
+        });
+      }
+
+      if (!telegramPending || Date.now() < this.nextTelegramAttemptAt) return;
+
+      this.nextTelegramAttemptAt = Date.now() + 5 * 60_000;
+      const recipients = [...new Set(TelegramManager.getChatIds())];
+      if (!TelegramManager.isConfigured() || recipients.length === 0) {
+        this.activityLog.push("warn", "database-backup", "Backup database tersimpan lokal; pengiriman Telegram menunggu TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_IDS");
+        return;
+      }
+
+      let snapshotName = backup ? path.basename(backup.backupDir) : settings.databaseBackupSnapshotName;
+      let filePath = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/.test(snapshotName || "")
+        ? path.join(CONFIG.DB_PATH, "backups", snapshotName, path.basename(CONFIG.DB_STORAGE))
+        : null;
+      const existingFile = filePath
+        ? await fs.stat(filePath).then((stat) => stat.isFile()).catch(() => false)
+        : false;
+
+      if (!existingFile) {
+        backup = await this.dataManager.createBackup();
+        await this.dataManager.markDatabaseBackupRun(dateKey, backup.backupDir);
+        snapshotName = path.basename(backup.backupDir);
+        filePath = path.join(backup.backupDir, path.basename(CONFIG.DB_STORAGE));
+      }
+
+      const caption = `Backup database aplikasi (SQLite) - ${dateKey}\nJadwal: ${scheduleCheck.configuredTime} ${scheduleCheck.timeZone}`;
+      let sentCount = 0;
+      let failedCount = 0;
+      for (const chatId of recipients) {
+        try {
+          await TelegramManager.sendDocument(chatId, filePath, caption);
+          sentCount += 1;
+        } catch (error) {
+          failedCount += 1;
+          this.activityLog.push("warn", "database-backup", `Pengiriman backup database ke Telegram gagal: ${error.message}`);
+        }
+      }
+
+      if (sentCount > 0) {
+        await this.dataManager.markDatabaseBackupTelegramRun(dateKey);
+      }
+      this.activityLog.push(sentCount > 0 ? "info" : "error", "database-backup", "Pengiriman backup database harian ke Telegram selesai", {
+        sentCount,
+        failedCount,
         schedule: `${scheduleCheck.configuredTime} ${scheduleCheck.timeZone}`,
       });
     } catch (error) {

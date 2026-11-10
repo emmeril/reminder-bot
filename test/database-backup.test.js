@@ -70,7 +70,8 @@ test("scheduler database hanya menjalankan satu backup per tanggal", async () =>
     getSettings() {
       return {
         ...DEFAULT_SETTINGS,
-        mikrotikBackupTime: "00:00",
+        mikrotikBackupTime: "23:59",
+        databaseBackupTime: "00:00",
         mikrotikBackupTimezone: "UTC",
         databaseBackupLastRunDate: lastRunDate,
       };

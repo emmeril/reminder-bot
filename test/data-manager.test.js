@@ -2823,3 +2823,32 @@ test("reminder yang sudah dicoba tidak mencatat percobaan kedua", async () => {
   assert.equal(await manager.markReminderDeliveryAttempt("rem-1", "baileys"), null);
   assert.equal(manager.getReminder("rem-1").deliveryAttempts, undefined);
 });
+
+
+test("jadwal database dan izin Telegram tersimpan tanpa bisa menimpa penanda internal", async () => {
+  const manager = new DataManager({ push() {} });
+  manager.saveSettings = async () => {};
+
+  const settings = await manager.updateSettings({
+    databaseBackupTime: "03:15",
+    enableDatabaseBackupToTelegram: true,
+  });
+  assert.equal(settings.databaseBackupTime, "03:15");
+  assert.equal(settings.enableDatabaseBackupToTelegram, true);
+  assert.equal(settings.mikrotikBackupTime, DEFAULT_SETTINGS.mikrotikBackupTime);
+
+  await manager.markDatabaseBackupRun("2026-11-10", "/backup/2026-11-10T02-00-00-000Z");
+  await manager.markDatabaseBackupTelegramRun("2026-11-10");
+  const afterUserUpdate = await manager.updateSettings({
+    databaseBackupTime: "invalid",
+    enableDatabaseBackupToTelegram: "false",
+    databaseBackupLastRunDate: "2099-01-01",
+    databaseBackupTelegramLastRunDate: "2099-01-01",
+    databaseBackupSnapshotName: "../unsafe",
+  });
+  assert.equal(afterUserUpdate.databaseBackupTime, "03:15");
+  assert.equal(afterUserUpdate.enableDatabaseBackupToTelegram, false);
+  assert.equal(afterUserUpdate.databaseBackupLastRunDate, "2026-11-10");
+  assert.equal(afterUserUpdate.databaseBackupTelegramLastRunDate, "2026-11-10");
+  assert.equal(afterUserUpdate.databaseBackupSnapshotName, "2026-11-10T02-00-00-000Z");
+});

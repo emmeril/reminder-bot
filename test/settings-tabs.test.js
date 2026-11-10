@@ -131,3 +131,18 @@ test("pilihan WIB WITA WIT tersedia dan zona waktu lama tidak hilang", () => {
   assert.equal(app.settingsTimezoneOptions.filter((zone) => zone.value === "Asia/Makassar").length, 1);
   assert.ok(app.settingsTimezoneOptions.some((zone) => zone.value === "Europe/London"));
 });
+
+
+test("tab Backup menampilkan jadwal database dan opsi pengiriman Telegram yang terpisah", () => {
+  const backup = panel("backup");
+  for (const field of ["mikrotikBackupTime", "databaseBackupTime"]) {
+    assert.match(backup, new RegExp(`<input[^>]*x-model="forms\\.settings\\.${field}"[^>]*type="time"[^>]*required`));
+    assert.equal(html.match(new RegExp(`x-model="forms\\.settings\\.${field}"`, "g")).length, 1);
+  }
+  assert.match(backup, /x-model="forms\.settings\.enableMikrotikBackupToWa"[^>]*type="checkbox"/);
+  assert.match(backup, /x-model="forms\.settings\.enableDatabaseBackupToTelegram"[^>]*type="checkbox"/);
+  assert.match(backup, /Zona waktu untuk kedua jadwal backup/);
+  assert.match(backup, /Backup lokal tetap dibuat setiap hari/);
+  assert.match(backup, /TELEGRAM_CHAT_IDS/);
+  assert.match(backup, /md:grid-cols-2/);
+});
