@@ -1493,7 +1493,10 @@ test("endpoint pairing code nomor WhatsApp tidak tersedia", async () => {
 
 test("reset pairing memerlukan konfirmasi eksplisit", async () => {
   let resetCalls = 0;
-  const baseUrl = await startServer({}, {
+  const baseUrl = await startServer({
+    getSettings: () => ({ dashboardTitle: "Dashboard Baru", appBrandName: "ISP Baru" }),
+    getAppBrandIconMeta: () => ({ hasIcon: true, version: "demo" }),
+  }, {
     resetPairing: async () => { resetCalls += 1; },
     getTransportStatus: async () => ({
       whatsappProviderEnabled: true,
@@ -1518,6 +1521,8 @@ test("reset pairing memerlukan konfirmasi eksplisit", async () => {
   assert.equal(pageResponse.status, 200);
   assert.match(html, /name="confirmReset" value="yes" required/);
   assert.match(html, /Hapus sesi dan buat QR baru/);
+  assert.match(html, /<strong>ISP Baru<\/strong>/);
+  assert.match(html, /<img src="\/branding\/icon" alt=""/);
   const csrfToken = html.match(/name="csrfToken" value="([a-f0-9]+)"/)?.[1];
   assert.match(csrfToken || "", /^[a-f0-9]{64}$/);
 
