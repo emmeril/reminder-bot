@@ -43,7 +43,7 @@ test("backup dan pengiriman tidak mencampur input, opsi aktivasi backup tetap te
   }
   assert.equal(html.match(/x-model="forms.settings.enableMikrotikBackupToWa"/g)?.length, 1);
   assert.match(html, /x-show="activeSettingsTab === 'backup'"[^>]*type="button" @click="sendMikrotikBackupNow\(\)"/);
-  assert.match(html, /@submit.prevent="saveSettings\(\)"/);
+  assert.ok(html.includes('@submit.prevent="saveSettings()"'));
 });
 
 test("Pengiriman dapat dipilih dengan klik dan panah keyboard", () => {
@@ -118,7 +118,7 @@ test("zona waktu Umum dan Backup memakai dropdown dan menyimpan nilai IANA", () 
 });
 
 test("pilihan WIB WITA WIT tersedia dan zona waktu lama tidak hilang", () => {
-  const createDashboardUi = vm.runInNewContext(uiSource + "\\n;createDashboardUi");
+  const createDashboardUi = vm.runInNewContext(uiSource + "\n;createDashboardUi");
   const app = createDashboardUi();
   app.forms = { settings: { timezone: "America/New_York", mikrotikBackupTimezone: "Europe/London" } };
   const zones = app.settingsTimezoneOptions;
