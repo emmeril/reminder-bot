@@ -181,3 +181,26 @@ test("keberhasilan sebagian tujuan tidak mengirim ulang ke chat yang sudah mener
   assert.equal(state.sendDateCount, 1);
   assert.ok(state.logs.some((entry) => entry.source === "database-backup" && entry.level === "warn"));
 });
+
+
+test("konfigurasi database lama mempertahankan jam backup MikroTik sebagai jadwal awal", async () => {
+  const { DataManager } = require("../src/app");
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "reminder-legacy-settings-"));
+  directories.push(directory);
+  const originalGetPath = DataManager.prototype.getPath;
+  const manager = new DataManager({ push() {} });
+  manager.getPath = (name) => path.join(directory, name);
+  await fs.writeFile(path.join(directory, "settings.json"), JSON.stringify({ mikrotikBackupTime: "04:20" }));
+  try {
+    const settings = await manager.loadLegacySettings();
+    assert.equal(settings.databaseBackupTime, "04:20");
+    await fs.writeFile(path.join(directory, "settings.json"), JSON.stringify({
+      mikrotikBackupTime: "04:20",
+      databaseBackupTime: "05:45",
+    }));
+    const updated = await manager.loadLegacySettings();
+    assert.equal(updated.databaseBackupTime, "05:45");
+  } finally {
+    manager.getPath = originalGetPath;
+  }
+});

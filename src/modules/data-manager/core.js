@@ -345,7 +345,11 @@ class DataManagerCore {
     try {
       const raw = await fs.readFile(this.getPath("settings.json"), "utf-8");
       if (!raw.trim()) return { ...DEFAULT_SETTINGS };
-      const settings = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+      const storedSettings = JSON.parse(raw);
+      const settings = { ...DEFAULT_SETTINGS, ...storedSettings };
+      if (!Object.hasOwn(storedSettings || {}, "databaseBackupTime")) {
+        settings.databaseBackupTime = settings.mikrotikBackupTime || DEFAULT_SETTINGS.databaseBackupTime;
+      }
       delete settings.whatsappProvider;
       delete settings.hotspotReactivationMessageTemplate;
       return settings;
@@ -406,7 +410,11 @@ class DataManagerCore {
     this.roles = new Map(roleRows.map((row) => [String(row.phoneNumber), row.role]));
 
     const settingsRow = await this.models.Setting.findByPk("app", { raw: true });
-    this.settings = { ...DEFAULT_SETTINGS, ...this.parseStoredJson(settingsRow?.value, {}) };
+    const storedSettings = this.parseStoredJson(settingsRow?.value, {});
+    this.settings = { ...DEFAULT_SETTINGS, ...storedSettings };
+    if (!Object.hasOwn(storedSettings || {}, "databaseBackupTime")) {
+      this.settings.databaseBackupTime = this.settings.mikrotikBackupTime || DEFAULT_SETTINGS.databaseBackupTime;
+    }
     if (Object.hasOwn(this.settings, "whatsappProvider")) {
       delete this.settings.whatsappProvider;
       await this.saveSettings();
