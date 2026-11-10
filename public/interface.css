@@ -2116,7 +2116,22 @@ span[class*="rounded-full"][class*="text-xs"],
   }
 
   .settings-tabs {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .settings-tabs > button {
+    gap: 6px !important;
+    padding: 7px 6px !important;
+  }
+
+  .settings-tabs > button > span {
+    width: 24px;
+    height: 24px;
+    flex-basis: 24px;
+  }
+
+  .settings-tabs > button strong {
+    overflow-wrap: anywhere;
   }
 
   .portal-credential-list > div {

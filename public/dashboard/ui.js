@@ -18,7 +18,7 @@ function createDashboardUi() {
           if (savedMenu !== "payment-amount" && ["data", "billing", "hotspot"].includes(savedContactTab)) {
             this.activeContactTab = savedContactTab;
           }
-          if (["general", "rates", "isolation", "backup", "messages", "automation"].includes(savedSettingsTab)) {
+          if (["general", "rates", "backup", "delivery", "isolation", "messages", "automation"].includes(savedSettingsTab)) {
             this.activeSettingsTab = savedSettingsTab;
           }
           if (["customers", "vouchers"].includes(savedRevenueTab)) {
@@ -124,7 +124,7 @@ function createDashboardUi() {
         },
 
         selectSettingsTab(key) {
-          if (!["general", "rates", "isolation", "backup", "messages", "automation"].includes(key)) return;
+          if (!["general", "rates", "backup", "delivery", "isolation", "messages", "automation"].includes(key)) return;
           this.activeSettingsTab = key;
         },
 
@@ -135,7 +135,7 @@ function createDashboardUi() {
         },
 
         selectAdjacentSettingsTab(direction) {
-          const tabs = ["general", "rates", "isolation", "backup", "messages", "automation"];
+          const tabs = ["general", "rates", "backup", "delivery", "isolation", "messages", "automation"];
           const currentIndex = tabs.indexOf(this.activeSettingsTab);
           const nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
           this.activeSettingsTab = tabs[nextIndex];
