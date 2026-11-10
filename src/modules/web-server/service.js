@@ -1996,6 +1996,8 @@ class WebServer {
               .page-heading .eyebrow,.connection-heading small{text-transform:none}
               .summary-bar,.connection-card,.sending-panel,.disabled-card{box-shadow:none}
               .helper{border:1px solid #c9ddd6;border-radius:8px;background:#f9fbfa}
+              .brand-mark.has-custom-icon{border:0;border-radius:0;background:transparent}
+              .brand-mark.has-custom-icon img{display:block;width:100%;height:100%;object-fit:contain}
               :focus-visible{outline-color:#c9572a}
             </style>
           </head>
@@ -2003,7 +2005,7 @@ class WebServer {
             <a class="skip-link" href="#transport-content">Langsung ke konten</a>
             <main id="transport-content" class="transport-page" tabindex="-1">
               <header class="topbar">
-                <a class="brand" href="/dashboard"><span class="brand-mark">${this.dataManager.getAppBrandIconMeta?.()?.hasIcon ? '<img src="/branding/icon" alt="" width="25" height="25">' : "R"}</span><span class="brand-copy"><strong>${escapeHtml(this.dataManager.getSettings().appBrandName || "Reminder Bot")}</strong><small>Pengaturan koneksi</small></span></a>
+                <a class="brand" href="/dashboard"><span class="brand-mark${this.dataManager.getAppBrandIconMeta?.()?.hasIcon ? " has-custom-icon" : ""}">${this.dataManager.getAppBrandIconMeta?.()?.hasIcon ? '<img src="/branding/icon" alt="" width="25" height="25">' : "R"}</span><span class="brand-copy"><strong>${escapeHtml(this.dataManager.getSettings().appBrandName || "Reminder Bot")}</strong><small>Pengaturan koneksi</small></span></a>
                 <nav class="top-actions" aria-label="Aksi halaman"><a class="button" href="/dashboard">Kembali</a><a class="button" href="/transport">Muat ulang</a></nav>
               </header>
               <section class="page-heading">
@@ -2462,7 +2464,8 @@ class WebServer {
     return html.replace(/__DASHBOARD_TITLE__/g, title)
       .replace(/__APP_BRAND_NAME__/g, name)
       .replace(/__APP_BRAND_SUBTITLE__/g, subtitle)
-      .replace(/__APP_BRAND_ICON__/g, iconMarkup);
+      .replace(/__APP_BRAND_ICON__/g, iconMarkup)
+      .replace(/__APP_BRAND_ICON_CLASS__/g, hasIcon ? " has-custom-icon" : "");
   }
 
   async renderCustomerLoginPage() {

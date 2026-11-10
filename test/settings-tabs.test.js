@@ -313,3 +313,14 @@ test("pengaturan Umum menyediakan identitas aplikasi dan ikon dengan satu tombol
   assert.match(interfaceCss, /\.app-branding-editor\s*\{/);
   assert.match(interfaceCss, /@media \(max-width: 480px\)\s*\{/);
 });
+
+test("ikon hasil unggahan tidak memakai latar tambahan di sidebar maupun pratinjau", () => {
+  const general = panel("general");
+  assert.match(html, /class="brand-icon" :class="\{ 'has-custom-icon': branding\.hasIcon \}"/);
+  assert.match(general, /class="app-branding-icon-preview" :class="\{ 'has-custom-icon': Boolean\(appIconPreviewUrl\(\)\) \}"/);
+  assert.match(interfaceCss, /\.brand-icon\.has-custom-icon,[\s\S]*?background: transparent !important/);
+  assert.match(interfaceCss, /\.brand-icon\.has-custom-icon img,[\s\S]*?object-fit: contain/);
+  assert.match(interfaceCss, /\.app-branding-icon-preview\.has-custom-icon\s*\{[^}]*background: transparent/);
+  assert.match(interfaceCss, /\.app-branding-icon-preview\s*\{[^}]*background: var\(--ui-primary/);
+  assert.match(interfaceCss, /\.brand-icon\s*\{[^}]*background: var\(--ui-primary\) !important/);
+});
