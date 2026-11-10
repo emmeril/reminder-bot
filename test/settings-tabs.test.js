@@ -43,7 +43,7 @@ test("backup dan pengiriman tidak mencampur input, opsi aktivasi backup tetap te
   }
   assert.equal(html.match(/x-model="forms.settings.enableMikrotikBackupToWa"/g)?.length, 1);
   assert.match(html, /x-show="activeSettingsTab === 'backup'"[^>]*type="button" @click="sendMikrotikBackupNow\(\)"/);
-  assert.match(html, /@submit.prevent="saveSettings\(\)"/);
+  assert.ok(html.includes('@submit.prevent="saveSettings()"'));
 });
 
 test("Pengiriman dapat dipilih dengan klik dan panah keyboard", () => {
@@ -101,4 +101,33 @@ test("tab beradaptasi di desktop, tablet, dan layar ponsel sempit", () => {
   assert.ok(styles.includes(".settings-tabs { grid-template-columns: repeat(4,minmax(0,1fr)); }"));
   assert.match(interfaceCss, /@media \(max-width: 767px\) \{[\s\S]*?\.settings-tabs \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important;/);
   assert.match(interfaceCss, /@media \(max-width: 420px\) \{[\s\S]*?\.settings-tabs \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important;/);
+});
+
+
+test("zona waktu Umum dan Backup memakai dropdown dan menyimpan nilai IANA", () => {
+  for (const [tab, field] of [["general", "timezone"], ["backup", "mikrotikBackupTimezone"]]) {
+    const markup = panel(tab);
+    const select = markup.match(new RegExp(`<select[^>]*x-model="forms\\.settings\\.${field}"[^>]*>[\\s\\S]*?<\\/select>`))?.[0];
+    assert.ok(select, `Dropdown ${field} harus tersedia`);
+    assert.match(select, /required/);
+    assert.match(select, /x-for="zone in settingsTimezoneOptions"/);
+    assert.match(select, /:value="zone.value"/);
+    assert.doesNotMatch(markup, new RegExp(`<input[^>]*x-model="forms\\.settings\\.${field}"`));
+  }
+  assert.ok(html.includes('@submit.prevent="saveSettings()"'));
+});
+
+test("pilihan WIB WITA WIT tersedia dan zona waktu lama tidak hilang", () => {
+  const createDashboardUi = vm.runInNewContext(uiSource + "\n;createDashboardUi");
+  const app = createDashboardUi();
+  app.forms = { settings: { timezone: "America/New_York", mikrotikBackupTimezone: "Europe/London" } };
+  const zones = app.settingsTimezoneOptions;
+  for (const value of ["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura", "UTC", "America/New_York", "Europe/London"]) {
+    assert.ok(zones.some((zone) => zone.value === value), value);
+  }
+  assert.equal(zones.find((zone) => zone.value === "Asia/Jakarta").label, "WIB (UTC+07:00) - Jakarta");
+  assert.equal(zones.find((zone) => zone.value === "America/New_York").label, "America/New_York (tersimpan)");
+  app.forms.settings.timezone = "Asia/Makassar";
+  assert.equal(app.settingsTimezoneOptions.filter((zone) => zone.value === "Asia/Makassar").length, 1);
+  assert.ok(app.settingsTimezoneOptions.some((zone) => zone.value === "Europe/London"));
 });

@@ -142,6 +142,25 @@ function createDashboardUi() {
           this.$nextTick(() => document.getElementById(`settings-${tabs[nextIndex]}-tab`)?.focus());
         },
 
+        get settingsTimezoneOptions() {
+          const zones = [
+            { value: "Asia/Jakarta", label: "WIB (UTC+07:00) - Jakarta" },
+            { value: "Asia/Makassar", label: "WITA (UTC+08:00) - Makassar" },
+            { value: "Asia/Jayapura", label: "WIT (UTC+09:00) - Jayapura" },
+            { value: "Asia/Bangkok", label: "Bangkok (UTC+07:00)" },
+            { value: "Asia/Singapore", label: "Singapura (UTC+08:00)" },
+            { value: "Asia/Kuala_Lumpur", label: "Kuala Lumpur (UTC+08:00)" },
+            { value: "Asia/Tokyo", label: "Tokyo (UTC+09:00)" },
+            { value: "UTC", label: "UTC (UTC+00:00)" },
+          ];
+          for (const value of [this.forms.settings.timezone, this.forms.settings.mikrotikBackupTimezone]) {
+            if (value && !zones.some((zone) => zone.value === value)) {
+              zones.push({ value, label: `${value} (tersimpan)` });
+            }
+          }
+          return zones;
+        },
+
         get activeMenuLabel() {
           return this.navMenus.find((menu) => menu.key === this.activeMenu)?.label || "Dashboard";
         },
