@@ -21,7 +21,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .portal-login-card::before { position: absolute; top: 0; right: 0; left: 0; height: 5px; content: ""; background: linear-gradient(90deg,#2563eb,#38bdf8); }
 .portal-login-mark { display: inline-flex; width: 52px; height: 52px; align-items: center; justify-content: center; color: #fff; border-radius: 15px; background: linear-gradient(145deg,#3b82f6,#1d4ed8); box-shadow: 0 12px 28px rgba(37,99,235,.25); }
 .portal-kicker { margin: 25px 0 7px; color: var(--portal-primary); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
-.portal-login .portal-kicker { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; color: var(--portal-primary-dark); border-radius: 7px; background: #eff6ff; letter-spacing: .08em; }
+.portal-login .portal-kicker { display: flex; align-items: center; gap: 6px; padding: 6px 9px; color: var(--portal-primary-dark); border-radius: 7px; background: #eff6ff; letter-spacing: .08em; }
 .portal-login h1 { margin: 0; color: var(--portal-ink); font-size: 28px; line-height: 1.2; }
 .portal-login-company { margin: 7px 0 0; color: #344054; font-size: 14px; font-weight: 750; }
 .portal-login-lead { margin: 8px 0 27px; color: var(--portal-muted); font-size: 14px; line-height: 1.65; }
@@ -239,7 +239,7 @@ input::placeholder, textarea::placeholder { color: #667085 !important; opacity: 
 .portal-login-card { width: min(430px,100%); padding: 32px; border-color: var(--portal-border); border-radius: 14px; background: #fff; box-shadow: 0 16px 44px rgba(16,24,40,.09); }
 .portal-login-card::before { display: none; }
 .portal-login-mark { width: 46px; height: 46px; border-radius: 10px; background: var(--portal-primary); box-shadow: none; }
-.portal-login .portal-kicker { margin-top: 20px; padding: 0; color: var(--portal-primary-dark); border-radius: 0; background: transparent; }
+.portal-login .portal-kicker { margin-top: 12px; padding: 0; color: var(--portal-primary-dark); border-radius: 0; background: transparent; }
 .portal-login h1 { font-size: 26px; }
 .portal-login-company { color: #475467; }
 .portal-login-lead { margin-bottom: 22px; }
