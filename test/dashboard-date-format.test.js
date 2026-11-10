@@ -2107,11 +2107,13 @@ test("kirim backup manual menangani Telegram yang belum dikonfigurasi", async ()
   assert.equal(app.loading.backups, false);
 });
 
-test("Penerima admin tetap disimpan melalui endpoint terpisah tanpa menyimpan settings", async () => {
+test("Simpan Pengaturan menyimpan settings dan penerima admin yang diubah dalam satu aksi", async () => {
   const app = createDashboardApp();
   const requests = [];
-  const messages = [];
+  const notifications = [];
   app.forms.recipients = "628111111111\n628222222222";
+  app.recipientsDirty = true;
+  app.settingsDirty = true;
   app.withProcessing = async (_message, action) => action();
   app.api = async (url, options) => {
     requests.push({ url, method: options.method, body: JSON.parse(options.body) });
@@ -2119,15 +2121,102 @@ test("Penerima admin tetap disimpan melalui endpoint terpisah tanpa menyimpan se
   };
   app.loadRecipients = async () => {};
   app.loadStatus = async () => {};
-  app.notify = (message) => messages.push(message);
-  app.settingsDirty = false;
-  await app.saveRecipients();
-  assert.deepEqual(requests, [{
-    url: "/api/admin-recipients",
-    method: "PUT",
-    body: { recipients: "628111111111\n628222222222" },
-  }]);
-  assert.equal(messages[0], "Penerima admin diperbarui.");
+  app.loadReminders = async () => {};
+  app.notify = (message) => notifications.push(message);
+
+  await app.saveSettings();
+
+  assert.deepEqual(requests.map((request) => request.url), ["/api/settings", "/api/admin-recipients"]);
+  assert.equal(requests[0].method, "PUT");
+  assert.equal(requests[1].method, "PUT");
+  assert.deepEqual(requests[1].body, { recipients: "628111111111\n628222222222" });
+  assert.deepEqual(notifications, ["Pengaturan diperbarui."]);
   assert.equal(app.settingsDirty, false);
+  assert.equal(app.recipientsDirty, false);
+  assert.equal(app.formErrors.settings, "");
   assert.equal(app.formErrors.recipients, "");
 });
+
+test("Simpan Pengaturan tidak menimpa nomor admin ketika daftar belum diedit", async () => {
+  const app = createDashboardApp();
+  app.forms.recipients = "";
+  app.recipientsDirty = false;
+  const requests = [];
+  app.withProcessing = async (_message, action) => action();
+  app.api = async (url) => { requests.push(url); return {}; };
+  app.loadStatus = async () => {};
+  app.loadReminders = async () => {};
+  app.notify = () => {};
+  await app.saveSettings();
+  assert.deepEqual(requests, ["/api/settings"]);
+});
+
+test("kegagalan simpan settings tidak mencoba menyimpan nomor admin dan menjaga editannya", async () => {
+  const app = createDashboardApp();
+  app.recipientsDirty = true;
+  app.settingsDirty = true;
+  app.forms.recipients = "628123456789";
+  const requests = [];
+  app.withProcessing = async (_message, action) => action();
+  app.api = async (url) => {
+    requests.push(url);
+    throw new Error("Settings ditolak");
+  };
+  await app.saveSettings();
+  assert.deepEqual(requests, ["/api/settings"]);
+  assert.equal(app.recipientsDirty, true);
+  assert.equal(app.settingsDirty, true);
+  assert.equal(app.forms.recipients, "628123456789");
+  assert.match(app.formErrors.settings, /Settings ditolak/);
+});
+
+test("gagal simpan penerima admin mempertahankan editan untuk dicoba ulang", async () => {
+  const app = createDashboardApp();
+  app.recipientsDirty = true;
+  app.settingsDirty = true;
+  app.forms.recipients = "628987654321";
+  app.withProcessing = async (_message, action) => action();
+  const requests = [];
+  let failRecipients = true;
+  app.api = async (url) => {
+    requests.push(url);
+    if (url === "/api/admin-recipients" && failRecipients) {
+      throw new Error("Tidak bisa mengirim data penerima");
+    }
+    return {};
+  };
+  app.loadStatus = async () => {};
+  app.loadReminders = async () => {};
+  app.loadRecipients = async () => {};
+  app.notify = () => {};
+  await app.saveSettings();
+  assert.deepEqual(requests, ["/api/settings", "/api/admin-recipients"]);
+  assert.equal(app.settingsDirty, false);
+  assert.equal(app.recipientsDirty, true);
+  assert.equal(app.forms.recipients, "628987654321");
+  assert.match(app.formErrors.settings, /Pengaturan lain tersimpan, tetapi penerima admin gagal disimpan/);
+  assert.match(app.formErrors.recipients, /Tidak bisa mengirim data penerima/);
+
+  failRecipients = false;
+  await app.saveSettings();
+  assert.equal(app.settingsDirty, false);
+  assert.equal(app.recipientsDirty, false);
+  assert.equal(app.formErrors.settings, "");
+  assert.equal(app.formErrors.recipients, "");
+});
+
+test("memuat daftar admin tidak menghapus perubahan nomor yang belum disimpan", async () => {
+  const app = createDashboardApp();
+  app.api = async (url) => {
+    assert.equal(url, "/api/admin-recipients");
+    return ["628111111111"];
+  };
+  app.recipientsDirty = true;
+  app.forms.recipients = "628222222222";
+  await app.loadRecipients();
+  assert.equal(app.forms.recipients, "628222222222");
+  app.recipientsDirty = false;
+  await app.loadRecipients();
+  assert.equal(app.forms.recipients, "628111111111");
+});
+

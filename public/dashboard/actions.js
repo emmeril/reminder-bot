@@ -862,15 +862,33 @@ function createDashboardActions() {
 
         async saveSettings() {
           this.clearFormError("settings");
+          this.clearFormError("recipients");
           try {
-            await this.withProcessing("Menyimpan settings...", async () => {
+            await this.withProcessing("Menyimpan pengaturan...", async () => {
               await this.api("/api/settings", {
                 method: "PUT",
                 body: JSON.stringify(this.forms.settings),
               });
               this.settingsDirty = false;
-              await Promise.all([this.loadStatus(), this.loadReminders()]);
-              this.notify("Settings diperbarui.");
+
+              const saveRecipients = this.recipientsDirty;
+              if (saveRecipients) {
+                const recipients = this.forms.recipients;
+                try {
+                  await this.api("/api/admin-recipients", {
+                    method: "PUT",
+                    body: JSON.stringify({ recipients }),
+                  });
+                  if (this.forms.recipients === recipients) this.recipientsDirty = false;
+                } catch (error) {
+                  this.setFormError("recipients", error);
+                  throw new Error(`Pengaturan lain tersimpan, tetapi penerima admin gagal disimpan: ${error.message}`);
+                }
+              }
+
+              await Promise.all([this.loadStatus(), this.loadReminders(),
+                ...(saveRecipients ? [this.loadRecipients()] : [])]);
+              this.notify("Pengaturan diperbarui.");
             });
           } catch (error) {
             this.setFormError("settings", error);
@@ -949,22 +967,6 @@ function createDashboardActions() {
             this.setFormError("settings", error);
           } finally {
             this.loading.backups = false;
-          }
-        },
-
-        async saveRecipients() {
-          this.clearFormError("recipients");
-          try {
-            await this.withProcessing("Menyimpan penerima admin...", async () => {
-              await this.api("/api/admin-recipients", {
-                method: "PUT",
-                body: JSON.stringify({ recipients: this.forms.recipients }),
-              });
-              this.notify("Penerima admin diperbarui.");
-              await Promise.all([this.loadRecipients(), this.loadStatus()]);
-            });
-          } catch (error) {
-            this.setFormError("recipients", error);
           }
         },
 
