@@ -18,8 +18,12 @@ function parseAppIconDataUrl(dataUrl) {
   }
 
   const bytes = Buffer.from(match[1], "base64");
+  if (bytes.length > MAX_APP_ICON_BYTES) {
+    const error = new Error("Ukuran ikon melebihi 256 KB. Pilih gambar lain.");
+    error.statusCode = 413;
+    throw error;
+  }
   const validPng = bytes.length >= 45
-    && bytes.length <= MAX_APP_ICON_BYTES
     && bytes.subarray(0, 8).equals(PNG_SIGNATURE)
     && bytes.readUInt32BE(8) === 13
     && bytes.toString("ascii", 12, 16) === "IHDR"
@@ -31,7 +35,7 @@ function parseAppIconDataUrl(dataUrl) {
     && bytes.toString("base64") === match[1];
   if (!validPng) {
     const error = new Error("Berkas ikon tidak valid. Gunakan gambar yang bisa dibuka di perangkat Anda.");
-    error.statusCode = bytes.length > MAX_APP_ICON_BYTES ? 413 : 400;
+    error.statusCode = 400;
     throw error;
   }
 
