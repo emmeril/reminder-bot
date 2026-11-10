@@ -769,6 +769,9 @@ class WebServer {
   }
 
   async getActivePeriodPurchaseStatus(contactId, requestId) {
+    if (typeof this.dataManager.getActivePeriodPurchaseRequest !== "function") {
+      return { status: "NOT_FOUND", requestId };
+    }
     const request = await this.dataManager.getActivePeriodPurchaseRequest(contactId, requestId);
     if (!request) return { status: "NOT_FOUND", requestId };
     const contact = this.dataManager.getContact(contactId);
