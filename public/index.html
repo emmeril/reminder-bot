@@ -6,10 +6,10 @@
   <title>__DASHBOARD_TITLE__</title>
   <link rel="stylesheet" href="/public/tailwind.css?v=20261105-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20261109-3">
-  <link rel="stylesheet" href="/public/interface.css?v=20261109-1">
+  <link rel="stylesheet" href="/public/styles.css?v=20261110-1">
+  <link rel="stylesheet" href="/public/interface.css?v=20261110-1">
   <script defer src="/public/dashboard/state.js?v=20261109-2"></script>
-  <script defer src="/public/dashboard/ui.js?v=20261106-1"></script>
+  <script defer src="/public/dashboard/ui.js?v=20261110-1"></script>
   <script defer src="/public/dashboard/selectors.js?v=20261109-1"></script>
   <script defer src="/public/dashboard/data.js?v=20261109-2"></script>
   <script defer src="/public/dashboard/actions.js?v=20261109-2"></script>
@@ -1464,8 +1464,9 @@
             <div class="settings-tabs" role="tablist" aria-label="Bagian pengaturan">
               <button id="settings-general-tab" type="button" role="tab" aria-controls="settings-general-panel" :aria-selected="activeSettingsTab === 'general'" :tabindex="activeSettingsTab === 'general' ? 0 : -1" @click="selectSettingsTab('general')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'general' ? 'active' : ''"><span><i class="fa-solid fa-building"></i></span><strong>Umum</strong></button>
               <button id="settings-rates-tab" type="button" role="tab" aria-controls="settings-rates-panel" :aria-selected="activeSettingsTab === 'rates'" :tabindex="activeSettingsTab === 'rates' ? 0 : -1" @click="selectSettingsTab('rates')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'rates' ? 'active' : ''"><span><i class="fa-solid fa-tags"></i></span><strong>Tarif</strong></button>
-              <button id="settings-isolation-tab" type="button" role="tab" aria-controls="settings-isolation-panel" :aria-selected="activeSettingsTab === 'isolation'" :tabindex="activeSettingsTab === 'isolation' ? 0 : -1" @click="selectSettingsTab('isolation')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'isolation' ? 'active' : ''"><span><i class="fa-solid fa-user-lock"></i></span><strong>Isolir</strong></button>
               <button id="settings-backup-tab" type="button" role="tab" aria-controls="settings-backup-panel" :aria-selected="activeSettingsTab === 'backup'" :tabindex="activeSettingsTab === 'backup' ? 0 : -1" @click="selectSettingsTab('backup')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'backup' ? 'active' : ''"><span><i class="fa-solid fa-database"></i></span><strong>Backup</strong></button>
+              <button id="settings-delivery-tab" type="button" role="tab" aria-controls="settings-delivery-panel" :aria-selected="activeSettingsTab === 'delivery'" :tabindex="activeSettingsTab === 'delivery' ? 0 : -1" @click="selectSettingsTab('delivery')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'delivery' ? 'active' : ''"><span><i class="fa-solid fa-paper-plane"></i></span><strong>Pengiriman</strong></button>
+              <button id="settings-isolation-tab" type="button" role="tab" aria-controls="settings-isolation-panel" :aria-selected="activeSettingsTab === 'isolation'" :tabindex="activeSettingsTab === 'isolation' ? 0 : -1" @click="selectSettingsTab('isolation')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'isolation' ? 'active' : ''"><span><i class="fa-solid fa-user-lock"></i></span><strong>Isolir</strong></button>
               <button id="settings-messages-tab" type="button" role="tab" aria-controls="settings-messages-panel" :aria-selected="activeSettingsTab === 'messages'" :tabindex="activeSettingsTab === 'messages' ? 0 : -1" @click="selectSettingsTab('messages')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'messages' ? 'active' : ''"><span><i class="fa-solid fa-message"></i></span><strong>Template Pesan</strong></button>
               <button id="settings-automation-tab" type="button" role="tab" aria-controls="settings-automation-panel" :aria-selected="activeSettingsTab === 'automation'" :tabindex="activeSettingsTab === 'automation' ? 0 : -1" @click="selectSettingsTab('automation')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'automation' ? 'active' : ''"><span><i class="fa-solid fa-bell"></i></span><strong>Otomasi</strong></button>
             </div>
@@ -1506,6 +1507,36 @@
               </div>
               <p x-show="!mikrotikProfiles.length" class="rounded-2xl border border-dashed border-ink/15 px-4 py-6 text-center text-sm text-ink/45">Muat profile MikroTik untuk mengatur nominal bulanan.</p>
             </section>
+            <section id="settings-backup-panel" role="tabpanel" aria-labelledby="settings-backup-tab" x-cloak x-show="activeSettingsTab === 'backup'" x-transition.opacity class="settings-section">
+              <div class="settings-section-heading"><span><i class="fa-solid fa-database"></i></span><div><strong>Backup terjadwal</strong><small>Atur jadwal backup MikroTik dan database</small></div></div>
+              <div class="grid gap-4 md:grid-cols-2">
+              <label class="block text-sm text-ink/60">
+                Jam backup MikroTik dan database harian (HH:MM)
+                <input x-model="forms.settings.mikrotikBackupTime" placeholder="02:00" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+              </label>
+              <label class="block text-sm text-ink/60">
+                Timezone backup MikroTik dan database
+                <input x-model="forms.settings.mikrotikBackupTimezone" placeholder="Asia/Jakarta" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+              </label>
+              </div>
+              <label class="flex items-start gap-3 rounded-xl border border-ink/10 bg-white px-4 py-3 text-sm text-ink/75">
+                <input x-model="forms.settings.enableMikrotikBackupToWa" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
+                <span>Aktifkan backup MikroTik harian dan kirim file via Telegram</span>
+              </label>
+            </section>
+            <section id="settings-delivery-panel" role="tabpanel" aria-labelledby="settings-delivery-tab" x-cloak x-show="activeSettingsTab === 'delivery'" x-transition.opacity class="settings-section">
+              <div class="settings-section-heading"><span><i class="fa-solid fa-paper-plane"></i></span><div><strong>Pengiriman WhatsApp</strong><small>Atur jeda acak antar pengiriman pesan</small></div></div>
+              <div class="grid gap-4 md:grid-cols-2">
+              <label class="block text-sm text-ink/60">
+                Jeda acak minimum WhatsApp (detik)
+                <input x-model.number="forms.settings.waRandomDelayMinSeconds" type="number" min="0" max="300" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+              </label>
+              <label class="block text-sm text-ink/60">
+                Jeda acak maksimum WhatsApp (detik)
+                <input x-model.number="forms.settings.waRandomDelayMaxSeconds" type="number" min="0" max="300" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+              </label>
+              </div>
+            </section>
             <section id="settings-isolation-panel" role="tabpanel" aria-labelledby="settings-isolation-tab" x-cloak x-show="activeSettingsTab === 'isolation'" x-transition.opacity class="settings-section">
               <div class="settings-section-heading"><span><i class="fa-solid fa-user-lock"></i></span><div><strong>Jeda isolir pelanggan</strong><small>Tentukan masa tenggang setelah tanggal jatuh tempo</small></div></div>
               <div class="grid gap-4 md:grid-cols-2">
@@ -1517,27 +1548,6 @@
                   <strong class="block">Contoh</strong>
                   Jika jatuh tempo hari ini dan jeda diatur <strong>3 hari</strong>, akun yang belum lunas baru diisolir tiga hari lagi. Isi <strong>0</strong> untuk isolir tepat saat jatuh tempo.
                 </div>
-              </div>
-            </section>
-            <section id="settings-backup-panel" role="tabpanel" aria-labelledby="settings-backup-tab" x-cloak x-show="activeSettingsTab === 'backup'" x-transition.opacity class="settings-section">
-              <div class="settings-section-heading"><span><i class="fa-solid fa-database"></i></span><div><strong>Backup dan pengiriman</strong><small>Jadwal backup serta jeda aman WhatsApp</small></div></div>
-              <div class="grid gap-4 md:grid-cols-2">
-              <label class="block text-sm text-ink/60">
-                Jam backup MikroTik dan database harian (HH:MM)
-                <input x-model="forms.settings.mikrotikBackupTime" placeholder="02:00" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
-              </label>
-              <label class="block text-sm text-ink/60">
-                Timezone backup MikroTik dan database
-                <input x-model="forms.settings.mikrotikBackupTimezone" placeholder="Asia/Jakarta" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
-              </label>
-              <label class="block text-sm text-ink/60">
-                Jeda acak minimum WhatsApp (detik)
-                <input x-model.number="forms.settings.waRandomDelayMinSeconds" type="number" min="0" max="300" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
-              </label>
-              <label class="block text-sm text-ink/60">
-                Jeda acak maksimum WhatsApp (detik)
-                <input x-model.number="forms.settings.waRandomDelayMaxSeconds" type="number" min="0" max="300" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
-              </label>
               </div>
             </section>
             <section id="settings-messages-panel" role="tabpanel" aria-labelledby="settings-messages-tab" x-cloak x-show="activeSettingsTab === 'messages'" x-transition.opacity class="settings-section notification-settings-section">
@@ -1621,10 +1631,6 @@
               <label class="flex items-start gap-3 text-sm text-ink/75">
                 <input x-model="forms.settings.notifyAdminsOnPaymentReset" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
                 <span>Kirim alert reset pembayaran bulanan</span>
-              </label>
-              <label class="flex items-start gap-3 text-sm text-ink/75">
-                <input x-model="forms.settings.enableMikrotikBackupToWa" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
-                <span>Aktifkan backup MikroTik harian dan kirim file via Telegram</span>
               </label>
             </div>
             </section>

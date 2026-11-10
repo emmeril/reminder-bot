@@ -1254,7 +1254,7 @@ test("nominal pada tabel hanya teks rupiah, pengeditan melalui tab modal Kelola"
   assert.match(styles, /\.customer-billing-table th:nth-child\(6\) \{ width: 12%; \}/);
   assert.match(styles, /\.billing-action-tabs \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(styles, /@media \(max-width: 767px\) \{[\s\S]*?\.billing-amount-buttons \{ display: grid; grid-template-columns: minmax\(0, 1fr\); \}/);
-  assert.match(html, /\/public\/styles\.css\?v=20261109-3/);
+  assert.match(html, /\/public\/styles\.css\?v=\d{8}-\d+/);
 });
 
 test("pembayaran terakhir memakai transaksi valid, bukan tanggal perkiraan", () => {
