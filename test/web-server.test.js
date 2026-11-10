@@ -3105,3 +3105,58 @@ test("tanpa ikon khusus login tetap memakai ikon bawaan dengan kelas default", a
   assert.doesNotMatch(html, /has-custom-icon/);
   assert.doesNotMatch(html, /__APP_BRAND_ICON_CLASS__/);
 });
+
+test("identitas dan logo khusus tampil konsisten pada login serta portal pelanggan", async () => {
+  const settings = {
+    dashboardTitle: "Dashboard",
+    companyName: "Perusahaan Asli",
+    appBrandName: "WiFi <Emmeril> & Co",
+  };
+  const dataManager = {
+    getSettings: () => settings,
+    getAppBrandIconMeta: () => ({ hasIcon: true, version: "version" }),
+  };
+  const server = { dataManager, renderCustomerBranding: WebServer.prototype.renderCustomerBranding };
+  const [login, portal] = await Promise.all([
+    WebServer.prototype.renderCustomerLoginPage.call(server),
+    WebServer.prototype.renderCustomerPortal.call(server),
+  ]);
+
+  for (const html of [login, portal]) {
+    assert.match(html, /<link rel="icon" type="image\/png" href="\/branding\/icon">/);
+    assert.match(html, /<img src="\/branding\/icon" width="40" height="40" alt="" aria-hidden="true">/);
+    assert.match(html, /WiFi &lt;Emmeril&gt; &amp; Co/);
+    assert.doesNotMatch(html, /WiFi <Emmeril>/);
+    assert.doesNotMatch(html, /__CUSTOMER_APP_|__CUSTOMER_PORTAL_TITLE__/);
+    assert.match(html, /has-custom-icon/);
+  }
+
+  assert.match(login, /class="portal-login-mark has-custom-icon"/);
+  assert.match(login, /<p class="portal-login-company">WiFi &lt;Emmeril&gt; &amp; Co<\/p>/);
+  assert.match(portal, /class="portal-brand-icon has-custom-icon"/);
+  assert.match(portal, /<strong>WiFi &lt;Emmeril&gt; &amp; Co<\/strong>/);
+  assert.match(portal, /<small>Portal Pelanggan<\/small>/);
+  const css = await fs.readFile(path.join(__dirname, "../public/interface.css"), "utf8");
+  assert.match(css, /\.portal-login-mark\.has-custom-icon,[\s\S]*?background: transparent !important/);
+  assert.match(css, /\.portal-brand > \.portal-brand-icon\.has-custom-icon img \{[\s\S]*?object-fit: contain/);
+});
+
+test("portal pelanggan tetap menggunakan ikon WiFi bawaan saat belum ada logo khusus", async () => {
+  const dataManager = {
+    getSettings: () => ({ dashboardTitle: "Portal Hotspot", companyName: "ISP Lokal" }),
+    getAppBrandIconMeta: () => ({ hasIcon: false, version: "" }),
+  };
+  const server = { dataManager, renderCustomerBranding: WebServer.prototype.renderCustomerBranding };
+  const [login, portal] = await Promise.all([
+    WebServer.prototype.renderCustomerLoginPage.call(server),
+    WebServer.prototype.renderCustomerPortal.call(server),
+  ]);
+
+  for (const html of [login, portal]) {
+    assert.match(html, /<i class="fa-solid fa-wifi" aria-hidden="true"><\/i>/);
+    assert.doesNotMatch(html, /has-custom-icon|__CUSTOMER_APP_/);
+    assert.match(html, /ISP Lokal/);
+  }
+  assert.match(login, /class="portal-login-mark"/);
+  assert.match(portal, /class="portal-brand-icon"/);
+});

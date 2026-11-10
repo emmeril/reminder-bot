@@ -4,9 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Akun Saya - __CUSTOMER_PORTAL_TITLE__</title>
+  <link rel="icon" type="image/png" href="/branding/icon">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/customer.css?v=20261014-2">
-  <link rel="stylesheet" href="/public/interface.css?v=20261030-1">
+  <link rel="stylesheet" href="/public/interface.css?v=20261110-5">
   <script defer src="/public/customer.js?v=20261104-3"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
@@ -15,8 +16,8 @@
   <main class="customer-portal" x-data="customerPortalApp()" x-init="load()">
     <header class="portal-header">
       <a href="/pelanggan" class="portal-brand">
-        <span><i class="fa-solid fa-wifi"></i></span>
-        <div><strong x-text="data?.company?.name || '__CUSTOMER_PORTAL_TITLE__'"></strong><small>Portal Pelanggan</small></div>
+        <span class="portal-brand-icon__CUSTOMER_APP_ICON_CLASS__">__CUSTOMER_APP_ICON__</span>
+        <div><strong>__CUSTOMER_APP_NAME__</strong><small>Portal Pelanggan</small></div>
       </a>
       <button type="button" class="portal-logout" @click="logout()" :disabled="loggingOut"><i class="fa-solid fa-arrow-right-from-bracket"></i><span>Keluar</span></button>
     </header>

@@ -2468,20 +2468,31 @@ class WebServer {
       .replace(/__APP_BRAND_ICON_CLASS__/g, hasIcon ? " has-custom-icon" : "");
   }
 
+  renderCustomerBranding(html, settings) {
+    const title = escapeHtml(settings.companyName || settings.dashboardTitle || "Hotspot");
+    const name = escapeHtml(settings.appBrandName || settings.companyName || settings.dashboardTitle || "Hotspot");
+    const hasIcon = Boolean(this.dataManager.getAppBrandIconMeta?.()?.hasIcon);
+    const iconMarkup = hasIcon
+      ? '<img src="/branding/icon" width="40" height="40" alt="" aria-hidden="true">'
+      : '<i class="fa-solid fa-wifi" aria-hidden="true"></i>';
+    return html.replace(/__CUSTOMER_PORTAL_TITLE__/g, title)
+      .replace(/__CUSTOMER_APP_NAME__/g, name)
+      .replace(/__CUSTOMER_APP_ICON__/g, iconMarkup)
+      .replace(/__CUSTOMER_APP_ICON_CLASS__/g, hasIcon ? " has-custom-icon" : "");
+  }
+
   async renderCustomerLoginPage() {
     const settings = this.dataManager.getSettings();
-    const title = escapeHtml(settings.companyName || settings.dashboardTitle);
     const templatePath = path.join(CONFIG.PUBLIC_PATH, "customer-login.html");
     const html = await fs.readFile(templatePath, "utf-8");
-    return html.replace(/__CUSTOMER_PORTAL_TITLE__/g, title);
+    return this.renderCustomerBranding(html, settings);
   }
 
   async renderCustomerPortal() {
     const settings = this.dataManager.getSettings();
-    const title = escapeHtml(settings.companyName || settings.dashboardTitle);
     const templatePath = path.join(CONFIG.PUBLIC_PATH, "customer.html");
     const html = await fs.readFile(templatePath, "utf-8");
-    return html.replace(/__CUSTOMER_PORTAL_TITLE__/g, title);
+    return this.renderCustomerBranding(html, settings);
   }
 
   async start() {

@@ -4234,3 +4234,19 @@ body.admin-body:not(.voucher-print-mode) .toolbar-reset:focus-visible {
   .app-branding-icon-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
   .app-branding-select-button, .app-branding-remove-button { padding-inline: 8px; }
 }
+
+/* Customer portal: uploaded brand icon retains its own transparent canvas. */
+.portal-login-mark.has-custom-icon,
+.portal-brand > .portal-brand-icon.has-custom-icon {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.portal-login-mark.has-custom-icon img,
+.portal-brand > .portal-brand-icon.has-custom-icon img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
