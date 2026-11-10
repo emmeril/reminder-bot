@@ -34,9 +34,13 @@ function createDashboardData() {
               { label: "Memiliki tunggakan", value: data.summary.debtContacts || 0, icon: "fa-solid fa-file-invoice-dollar", tone: "red", menu: "payment-amount" },
             ];
             this.updateApSummaryMetrics();
+            this.branding.hasIcon = Boolean(data.branding?.hasIcon);
+            this.branding.version = String(data.branding?.version || "");
             if (!this.settingsDirty) {
               this.forms.settings = {
                 dashboardTitle: data.settings.dashboardTitle || "",
+                appBrandName: data.settings.appBrandName || "Reminder Bot",
+                appBrandSubtitle: data.settings.appBrandSubtitle ?? "",
                 companyName: data.settings.companyName || "",
                 supportSignature: data.settings.supportSignature || "",
                 apDownMessageTemplate: data.settings.apDownMessageTemplate || "",

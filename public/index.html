@@ -4,15 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>__DASHBOARD_TITLE__</title>
+  <link rel="icon" type="image/png" href="/branding/icon">
   <link rel="stylesheet" href="/public/tailwind.css?v=20261105-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261110-5">
-  <link rel="stylesheet" href="/public/interface.css?v=20261110-1">
-  <script defer src="/public/dashboard/state.js?v=20261110-7"></script>
+  <link rel="stylesheet" href="/public/interface.css?v=20261110-3">
+  <script defer src="/public/dashboard/state.js?v=20261110-8"></script>
   <script defer src="/public/dashboard/ui.js?v=20261110-2"></script>
   <script defer src="/public/dashboard/selectors.js?v=20261109-1"></script>
-  <script defer src="/public/dashboard/data.js?v=20261110-7"></script>
-  <script defer src="/public/dashboard/actions.js?v=20261110-6"></script>
+  <script defer src="/public/dashboard/data.js?v=20261110-8"></script>
+  <script defer src="/public/dashboard/actions.js?v=20261110-8"></script>
   <script defer src="/public/app.js?v=20261106-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
@@ -32,10 +33,13 @@
     </datalist>
     <aside class="main-sidebar" aria-label="Navigasi utama">
       <a href="/dashboard" class="brand-link">
-        <span class="brand-icon"><i class="fa-solid fa-bell"></i></span>
+        <span class="brand-icon">
+          <img x-cloak x-show="branding.hasIcon" :src="savedAppIconUrl()" width="32" height="32" alt="" aria-hidden="true">
+          <i x-show="!branding.hasIcon" class="fa-solid fa-bell" aria-hidden="true"></i>
+        </span>
         <span class="brand-copy">
-          <strong>Reminder Bot</strong>
-          <small>Operasional pelanggan</small>
+          <strong x-text="forms.settings.appBrandName || 'Reminder Bot'">Reminder Bot</strong>
+          <small x-text="forms.settings.appBrandSubtitle || ''">Operasional pelanggan</small>
         </span>
       </a>
       <div class="sidebar-body">
@@ -1457,11 +1461,41 @@
               <button id="settings-automation-tab" type="button" role="tab" aria-controls="settings-automation-panel" :aria-selected="activeSettingsTab === 'automation'" :tabindex="activeSettingsTab === 'automation' ? 0 : -1" @click="selectSettingsTab('automation')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'automation' ? 'active' : ''"><span><i class="fa-solid fa-bell"></i></span><strong>Otomasi</strong></button>
             </div>
             <section id="settings-general-panel" role="tabpanel" aria-labelledby="settings-general-tab" x-cloak x-show="activeSettingsTab === 'general'" x-transition.opacity class="settings-section">
-              <div class="settings-section-heading"><span><i class="fa-solid fa-building"></i></span><div><strong>Informasi aplikasi</strong><small>Atur judul dashboard, identitas pengirim pesan, dan zona waktu.</small></div></div>
+              <div class="settings-section-heading"><span><i class="fa-solid fa-building"></i></span><div><strong>Identitas aplikasi</strong><small>Atur nama, ikon, dan informasi yang tampil di aplikasi.</small></div></div>
               <div class="grid gap-4 md:grid-cols-2">
-              <label class="block text-sm text-ink/60">
-                Judul yang tampil di dashboard
-                <input x-model="forms.settings.dashboardTitle" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+              <label class="block text-sm text-ink/75">
+                Nama aplikasi
+                <input x-model="forms.settings.appBrandName" required maxlength="64" autocomplete="off" placeholder="Contoh: Emmeril Hotspot" class="mt-2 h-11 w-full rounded-xl border border-ink/20 bg-white px-4 text-sm text-ink outline-none focus:border-clay focus:ring-2 focus:ring-clay/20">
+                <span class="mt-1 block text-xs text-ink/60">Tampil di menu samping dan halaman login.</span>
+              </label>
+              <label class="block text-sm text-ink/75">
+                Keterangan singkat aplikasi
+                <input x-model="forms.settings.appBrandSubtitle" maxlength="100" autocomplete="off" placeholder="Contoh: Pengelolaan pelanggan WiFi" class="mt-2 h-11 w-full rounded-xl border border-ink/20 bg-white px-4 text-sm text-ink outline-none focus:border-clay focus:ring-2 focus:ring-clay/20">
+                <span class="mt-1 block text-xs text-ink/60">Tampil tepat di bawah nama aplikasi.</span>
+              </label>
+              </div>
+              <div class="app-branding-editor" aria-labelledby="app-icon-heading">
+                <div class="app-branding-icon-preview" aria-hidden="true">
+                  <img x-cloak x-show="appIconPreviewUrl()" :src="appIconPreviewUrl()" alt="" width="80" height="80">
+                  <i x-show="!appIconPreviewUrl()" class="fa-solid fa-bell"></i>
+                </div>
+                <div class="app-branding-icon-controls">
+                  <h3 id="app-icon-heading" class="text-sm font-semibold text-ink">Ikon aplikasi</h3>
+                  <p id="app-icon-help" class="mt-1 text-xs leading-5 text-ink/65">Pilih gambar PNG, JPG, atau WebP (maksimal 3 MB). Ikon akan diperkecil menjadi 256 × 256 piksel agar sesuai untuk menu aplikasi dan ikon tab browser.</p>
+                  <input x-ref="appIconFile" id="app-icon-file" type="file" accept="image/png,image/jpeg,image/webp" class="sr-only" tabindex="-1" aria-describedby="app-icon-help" @input.stop @change.stop="chooseAppIcon($event)">
+                  <div class="app-branding-icon-actions">
+                    <button type="button" class="app-branding-select-button" :disabled="branding.processing" @click="$refs.appIconFile.click()"><i class="fa-solid fa-image" aria-hidden="true"></i><span>Pilih ikon</span></button>
+                    <button x-cloak x-show="appIconPreviewUrl()" type="button" class="app-branding-remove-button" :disabled="branding.processing" @click="removeAppIcon()"><i class="fa-solid fa-trash-can" aria-hidden="true"></i><span>Hapus ikon</span></button>
+                  </div>
+                  <p class="mt-2 text-xs text-ink/65" role="status" aria-live="polite" x-text="branding.dirty ? 'Ikon belum disimpan. Tekan Simpan Pengaturan.' : branding.hasIcon ? 'Ikon aktif dan tersimpan.' : 'Belum ada ikon khusus. Ikon bawaan akan digunakan.'"></p>
+                  <p x-cloak x-show="formErrors.appIcon" role="alert" class="mt-2 text-sm font-semibold text-clay" x-text="formErrors.appIcon"></p>
+                </div>
+              </div>
+              <div class="grid gap-4 md:grid-cols-2">
+              <label class="block text-sm text-ink/75">
+                Judul tab browser
+                <input x-model="forms.settings.dashboardTitle" maxlength="120" class="mt-2 h-11 w-full rounded-xl border border-ink/20 bg-white px-4 text-sm text-ink outline-none focus:border-clay focus:ring-2 focus:ring-clay/20">
+                <span class="mt-1 block text-xs text-ink/60">Teks di tab browser saat dashboard dibuka.</span>
               </label>
               <label class="block text-sm text-ink/60">
                 Nama perusahaan
@@ -1655,7 +1689,7 @@
             </div>
             </section>
             <div class="flex flex-wrap gap-2">
-              <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Pengaturan</button>
+              <button :disabled="branding.processing" class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss disabled:cursor-not-allowed disabled:opacity-60"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Pengaturan</button>
               <button x-cloak x-show="activeSettingsTab === 'backup'" type="button" @click="sendBackupsNow()" :disabled="loading.backups" class="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-haze disabled:cursor-not-allowed disabled:opacity-60">
                 <i :class="loading.backups ? 'fa-solid fa-spinner fa-spin mr-2' : 'fa-solid fa-file-export mr-2'"></i>
                 <span x-text="loading.backups ? 'Mengirim Backup MikroTik & Aplikasi...' : 'Kirim Backup MikroTik & Aplikasi'"></span>

@@ -1409,7 +1409,14 @@ class WebServer {
       }
     });
 
-    this.app.get("/favicon.ico", (_req, res) => res.status(204).end());
+    const serveAppIcon = (_req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      const icon = this.dataManager.getAppBrandIcon?.();
+      if (!icon) return res.status(204).end();
+      res.type("png").send(Buffer.from(icon.base64, "base64"));
+    };
+    this.app.get("/favicon.ico", serveAppIcon);
+    this.app.get("/branding/icon", serveAppIcon);
 
     this.app.use("/public", (req, res, next) => {
       const isDashboardModule = req.path.startsWith("/dashboard/") && req.path.endsWith(".js");
@@ -1996,7 +2003,7 @@ class WebServer {
             <a class="skip-link" href="#transport-content">Langsung ke konten</a>
             <main id="transport-content" class="transport-page" tabindex="-1">
               <header class="topbar">
-                <a class="brand" href="/dashboard"><span class="brand-mark">R</span><span class="brand-copy"><strong>Reminder Bot</strong><small>Pengaturan koneksi</small></span></a>
+                <a class="brand" href="/dashboard"><span class="brand-mark">${this.dataManager.getAppBrandIconMeta?.()?.hasIcon ? '<img src="/branding/icon" alt="" width="25" height="25">' : "R"}</span><span class="brand-copy"><strong>${escapeHtml(this.dataManager.getSettings().appBrandName || "Reminder Bot")}</strong><small>Pengaturan koneksi</small></span></a>
                 <nav class="top-actions" aria-label="Aksi halaman"><a class="button" href="/dashboard">Kembali</a><a class="button" href="/transport">Muat ulang</a></nav>
               </header>
               <section class="page-heading">
@@ -2040,6 +2047,7 @@ class WebServer {
         bot,
         summary: this.dataManager.getDashboardSummary(),
         settings: this.dataManager.getSettings(),
+        branding: this.dataManager.getAppBrandIconMeta?.() || { hasIcon: false, version: "" },
         billingPeriod: getBillingPeriodKey(new Date(), this.dataManager.getTimezone()),
         scheduler: {
           isProcessing: this.reminderScheduler.isProcessing,
@@ -2225,6 +2233,12 @@ class WebServer {
 
     this.app.get("/api/settings", requireApiAuth, handleApi(async () => this.dataManager.getSettings()));
     this.app.put("/api/settings", requireApiAuth, handleApi(async (req) => this.dataManager.updateSettings(req.body)));
+    this.app.put("/api/settings/icon", requireApiAuth, handleApi(async (req) => (
+      this.dataManager.saveAppBrandIcon(req.body?.dataUrl)
+    )));
+    this.app.delete("/api/settings/icon", requireApiAuth, handleApi(async () => (
+      this.dataManager.deleteAppBrandIcon()
+    )));
 
     this.app.get("/api/admin-recipients", requireApiAuth, handleApi(async () => this.dataManager.getAdminRecipients()));
     this.app.put("/api/admin-recipients", requireApiAuth, handleApi(async (req) => {
@@ -2435,10 +2449,20 @@ class WebServer {
   }
 
   async renderLoginPage() {
-    const title = escapeHtml(this.dataManager.getSettings().dashboardTitle);
+    const settings = this.dataManager.getSettings();
+    const title = escapeHtml(settings.dashboardTitle);
+    const name = escapeHtml(settings.appBrandName || "Reminder Bot");
+    const subtitle = escapeHtml(settings.appBrandSubtitle || "");
+    const hasIcon = this.dataManager.getAppBrandIconMeta?.().hasIcon;
+    const iconMarkup = hasIcon
+      ? '<img src="/branding/icon" width="28" height="28" alt="" aria-hidden="true">'
+      : '<i class="fa-solid fa-bell" aria-hidden="true"></i>';
     const templatePath = path.join(CONFIG.PUBLIC_PATH, "login.html");
     const html = await fs.readFile(templatePath, "utf-8");
-    return html.replace(/__DASHBOARD_TITLE__/g, title);
+    return html.replace(/__DASHBOARD_TITLE__/g, title)
+      .replace(/__APP_BRAND_NAME__/g, name)
+      .replace(/__APP_BRAND_SUBTITLE__/g, subtitle)
+      .replace(/__APP_BRAND_ICON__/g, iconMarkup);
   }
 
   async renderCustomerLoginPage() {

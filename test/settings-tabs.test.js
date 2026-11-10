@@ -189,8 +189,11 @@ test("layout Kirim Pesan menampilkan dua formulir responsif", () => {
 test("semua tab pengaturan memiliki judul dan petunjuk yang mudah dipahami", () => {
   const labels = {
     general: [
-      "Informasi aplikasi",
-      "Judul yang tampil di dashboard",
+      "Identitas aplikasi",
+      "Nama aplikasi",
+      "Keterangan singkat aplikasi",
+      "Ikon aplikasi",
+      "Judul tab browser",
       "Nama pengirim di akhir pesan",
       "Zona waktu untuk tanggal dan jadwal",
       "Zona waktu menentukan tanggal dan jam",
@@ -258,7 +261,7 @@ test("penjelasan yang diperbarui tidak mengubah input atau variabel template", (
     html.indexOf('</form>', html.indexOf('<section id="settings-general-panel"'))
   );
   const settingKeys = [
-    "dashboardTitle", "companyName", "supportSignature", "timezone",
+    "dashboardTitle", "appBrandName", "appBrandSubtitle", "companyName", "supportSignature", "timezone",
     "mikrotikBackupTime", "databaseBackupTime", "mikrotikBackupTimezone",
     "enableMikrotikBackupToWa", "enableDatabaseBackupToTelegram",
     "waRandomDelayMinSeconds", "waRandomDelayMaxSeconds",
@@ -291,4 +294,22 @@ test("tab Otomasi hanya menampilkan pemberitahuan yang berlaku untuk prabayar", 
     assert.ok(automation.includes("forms.settings." + key), key);
   }
   assert.equal((automation.match(/type="checkbox"/g) || []).length, 3);
+});
+
+test("pengaturan Umum menyediakan identitas aplikasi dan ikon dengan satu tombol Simpan Pengaturan", () => {
+  const general = panel("general");
+  assert.match(general, /x-model="forms.settings.appBrandName"/);
+  assert.match(general, /x-model="forms.settings.appBrandSubtitle"/);
+  assert.match(general, /x-ref="appIconFile"/);
+  assert.match(general, /accept="image\/png,image\/jpeg,image\/webp"/);
+  assert.match(general, /@change.stop="chooseAppIcon\(\$event\)"/);
+  assert.match(general, /@click="removeAppIcon\(\)"/);
+  assert.match(general, /x-text="formErrors.appIcon"/);
+  assert.doesNotMatch(general, /Simpan ikon|@click="saveAppIcon/);
+  assert.equal((html.match(/@submit.prevent="saveSettings\(\)"/g) || []).length, 1);
+  assert.match(html, /<strong x-text="forms.settings.appBrandName/);
+  assert.match(html, /:src="savedAppIconUrl\(\)"/);
+  assert.match(html, /<link rel="icon" type="image\/png" href="\/branding\/icon"/);
+  assert.match(interfaceCss, /\.app-branding-editor\s*\{/);
+  assert.match(interfaceCss, /@media \(max-width: 480px\)\s*\{/);
 });

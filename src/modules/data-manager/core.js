@@ -71,6 +71,7 @@ class DataManagerCore {
     this.voucherRevenueEntries = new Map();
     this.roles = new Map();
     this.settings = { ...DEFAULT_SETTINGS };
+    this.appBrandIcon = null;
     this.fileLocks = new Map();
     this.dataMutationLock = new AsyncLock();
     this.dbWriteLock = new AsyncLock();
@@ -412,6 +413,12 @@ class DataManagerCore {
     const settingsRow = await this.models.Setting.findByPk("app", { raw: true });
     const storedSettings = this.parseStoredJson(settingsRow?.value, {});
     this.settings = { ...DEFAULT_SETTINGS, ...storedSettings };
+    const iconRow = await this.models.Setting.findByPk("app-icon", { raw: true });
+    const savedIcon = this.parseStoredJson(iconRow?.value, null);
+    this.appBrandIcon = savedIcon?.contentType === "image/png"
+      && typeof savedIcon.base64 === "string"
+      && /^[a-f0-9]{20}$/.test(savedIcon.version || "")
+      ? savedIcon : null;
     if (!Object.hasOwn(storedSettings || {}, "databaseBackupTime")) {
       this.settings.databaseBackupTime = this.settings.mikrotikBackupTime || DEFAULT_SETTINGS.databaseBackupTime;
     }
