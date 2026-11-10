@@ -55,6 +55,7 @@ function createDashboardState() {
           accountDelivery: "",
           template: "",
           settings: "",
+          appIcon: "",
           deleteConfirm: "",
         },
         contactEditModal: {
@@ -112,6 +113,14 @@ function createDashboardState() {
         voucherProfileModal: {
           open: false,
           returnFocusId: "voucher-profile-button",
+        },
+        branding: {
+          hasIcon: false,
+          version: "",
+          pendingDataUrl: "",
+          removePending: false,
+          dirty: false,
+          processing: false,
         },
         activeMenu: "overview",
         activeContactTab: "data",
@@ -570,6 +579,8 @@ function createDashboardState() {
           template: { name: "", content: "" },
           settings: {
             dashboardTitle: "",
+            appBrandName: "Reminder Bot",
+            appBrandSubtitle: "Operasional pelanggan",
             companyName: "",
             supportSignature: "",
             apDownMessageTemplate: "",

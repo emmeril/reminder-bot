@@ -232,6 +232,8 @@ const DETAILED_BILLING_REMINDER_MESSAGE_TEMPLATE = "*Pengingat Pembayaran WiFi*\
 
 const DEFAULT_SETTINGS = {
   dashboardTitle: "Reminder Bot Control Center",
+  appBrandName: "Reminder Bot",
+  appBrandSubtitle: "Operasional pelanggan",
   companyName: "Emmeril Hotspot",
   supportSignature: "CS Emmeril Hotspot",
   apDownMessageTemplate: "*Pemberitahuan Perangkat*\n\nYth. Bapak/Ibu {{name}},\nPerangkat WiFi {{host}} terdeteksi tidak aktif.\n\nMohon periksa daya dan kabel perangkat. Jika WiFi tetap normal, abaikan pesan ini.\n\nTerima kasih,\n{{supportSignature}}",

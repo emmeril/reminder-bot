@@ -2986,3 +2986,81 @@ test("endpoint gabungan memerlukan autentikasi dan mengirim dua file ke Telegram
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
+
+test("identitas aplikasi di halaman login aman dan sesuai pengaturan", async () => {
+  const baseUrl = await startServer({
+    getSettings: () => ({
+      dashboardTitle: "WiFi Admin",
+      appBrandName: 'ISP <b>Baru</b>',
+      appBrandSubtitle: 'Layanan <pelanggan>',
+    }),
+    getAppBrandIconMeta: () => ({ hasIcon: true, version: "0123456789abcdef0123" }),
+  });
+  const response = await fetch(`${baseUrl}/login`);
+  const html = await response.text();
+  assert.equal(response.status, 200);
+  assert.match(html, /<title>Login - WiFi Admin<\/title>/);
+  assert.match(html, /<strong>ISP &lt;b&gt;Baru&lt;\/b&gt;<\/strong>/);
+  assert.match(html, /<small>Layanan &lt;pelanggan&gt;<\/small>/);
+  assert.match(html, /<img src="\/branding\/icon"/);
+  assert.doesNotMatch(html, /__APP_BRAND_/);
+  assert.doesNotMatch(html, /<strong>ISP <b>/);
+});
+
+test("ikon aplikasi bisa diunggah admin, dibaca publik, dan dihapus tanpa memutus favicon", async () => {
+  const { parseAppIconDataUrl } = require("../src/branding-icon");
+  const imageData = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j2Z8AAAAASUVORK5CYII=";
+  let icon = null;
+  const baseUrl = await startServer({
+    getAppBrandIcon: () => icon,
+    getAppBrandIconMeta: () => ({ hasIcon: Boolean(icon), version: icon?.version || "" }),
+    saveAppBrandIcon: async (dataUrl) => {
+      icon = parseAppIconDataUrl(dataUrl);
+      return { hasIcon: true, version: icon.version };
+    },
+    deleteAppBrandIcon: async () => {
+      icon = null;
+      return { hasIcon: false, version: "" };
+    },
+  });
+
+  const before = await fetch(`${baseUrl}/favicon.ico`);
+  assert.equal(before.status, 204);
+  const unauthorized = await fetch(`${baseUrl}/api/settings/icon`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ dataUrl: `data:image/png;base64,${imageData}` }),
+  });
+  assert.equal(unauthorized.status, 401);
+
+  const cookie = await login(baseUrl);
+  const invalid = await fetch(`${baseUrl}/api/settings/icon`, {
+    method: "PUT",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ dataUrl: "data:image/svg+xml;base64,PHN2Zy8+" }),
+  });
+  assert.equal(invalid.status, 400);
+
+  const upload = await fetch(`${baseUrl}/api/settings/icon`, {
+    method: "PUT",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ dataUrl: `data:image/png;base64,${imageData}` }),
+  });
+  assert.equal(upload.status, 200);
+  const uploaded = (await upload.json()).data;
+  assert.equal(uploaded.hasIcon, true);
+  assert.match(uploaded.version, /^[a-f0-9]{20}$/);
+
+  for (const pathName of ["/branding/icon", "/favicon.ico"]) {
+    const response = await fetch(`${baseUrl}${pathName}`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type"), /^image\/png/);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), Buffer.from(imageData, "base64"));
+  }
+
+  const remove = await fetch(`${baseUrl}/api/settings/icon`, { method: "DELETE", headers: { cookie } });
+  assert.equal(remove.status, 200);
+  assert.equal((await remove.json()).data.hasIcon, false);
+  assert.equal((await fetch(`${baseUrl}/branding/icon`)).status, 204);
+});

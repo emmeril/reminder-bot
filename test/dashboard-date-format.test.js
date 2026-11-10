@@ -2220,3 +2220,84 @@ test("memuat daftar admin tidak menghapus perubahan nomor yang belum disimpan", 
   assert.equal(app.forms.recipients, "628111111111");
 });
 
+
+test("Simpan Pengaturan juga menyimpan ikon tanpa tombol simpan tambahan", async () => {
+  const app = createDashboardApp();
+  const payload = "data:image/png;base64,AAA=";
+  const requests = [];
+  app.branding.dirty = true;
+  app.branding.pendingDataUrl = payload;
+  app.forms.settings.appBrandName = "Emmeril Hotspot";
+  app.withProcessing = async (_message, action) => action();
+  app.api = async (url, options) => {
+    requests.push({ url, method: options.method, body: options.body ? JSON.parse(options.body) : null });
+    if (url === "/api/settings/icon") return { hasIcon: true, version: "abc123" };
+    return {};
+  };
+  app.loadStatus = async () => {};
+  app.loadReminders = async () => {};
+  app.notify = () => {};
+
+  await app.saveSettings();
+  assert.deepEqual(requests.map((item) => item.url), ["/api/settings", "/api/settings/icon"]);
+  assert.equal(requests[0].body.appBrandName, "Emmeril Hotspot");
+  assert.deepEqual(requests[1], { url: "/api/settings/icon", method: "PUT", body: { dataUrl: payload } });
+  assert.equal(app.branding.hasIcon, true);
+  assert.equal(app.branding.version, "abc123");
+  assert.equal(app.branding.pendingDataUrl, "");
+  assert.equal(app.branding.dirty, false);
+  assert.equal(app.formErrors.appIcon, "");
+});
+
+test("gagal menyimpan ikon mempertahankan pratinjau dan bisa dicoba lagi", async () => {
+  const app = createDashboardApp();
+  const payload = "data:image/png;base64,AAAB";
+  app.branding.dirty = true;
+  app.branding.pendingDataUrl = payload;
+  let failures = 1;
+  app.withProcessing = async (_message, action) => action();
+  app.api = async (url) => {
+    if (url === "/api/settings/icon") {
+      if (failures--) throw new Error("Penyimpanan tidak tersedia");
+      return { hasIcon: true, version: "brand-v2" };
+    }
+    return {};
+  };
+  app.loadStatus = async () => {};
+  app.loadReminders = async () => {};
+  app.notify = () => {};
+
+  await app.saveSettings();
+  assert.equal(app.branding.dirty, true);
+  assert.equal(app.branding.pendingDataUrl, payload);
+  assert.match(app.formErrors.appIcon, /Penyimpanan tidak tersedia/);
+  assert.match(app.formErrors.settings, /ikon aplikasi gagal disimpan/);
+
+  await app.saveSettings();
+  assert.equal(app.branding.dirty, false);
+  assert.equal(app.branding.hasIcon, true);
+  assert.equal(app.formErrors.appIcon, "");
+});
+
+test("tombol Hapus ikon menggunakan API DELETE saat Simpan Pengaturan", async () => {
+  const app = createDashboardApp();
+  const calls = [];
+  app.branding.hasIcon = true;
+  app.branding.version = "old-icon";
+  app.removeAppIcon();
+  assert.equal(app.branding.removePending, true);
+  assert.equal(app.branding.dirty, true);
+  app.withProcessing = async (_message, action) => action();
+  app.api = async (url, options) => {
+    calls.push([url, options.method]);
+    if (url === "/api/settings/icon") return { hasIcon: false, version: "" };
+    return {};
+  };
+  app.loadStatus = async () => {};
+  app.loadReminders = async () => {};
+  app.notify = () => {};
+  await app.saveSettings();
+  assert.deepEqual(calls, [["/api/settings", "PUT"], ["/api/settings/icon", "DELETE"]]);
+  assert.equal(app.branding.hasIcon, false);
+  assert.equal(app.branding.dirty, false);
+});

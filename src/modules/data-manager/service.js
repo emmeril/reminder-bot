@@ -34,6 +34,7 @@ const {
   sanitizeTimeHHMM,
 } = require("../../utils");
 const CustomerDataManager = require("./customers");
+const { parseAppIconDataUrl } = require("../../branding-icon");
 
 class DataManager extends CustomerDataManager {
   getSettings() {
@@ -45,6 +46,37 @@ class DataManager extends CustomerDataManager {
     delete settings.notifyAdminsOnPaymentReset;
     delete settings.lastPaymentResetPeriod;
     return settings;
+  }
+
+  getAppBrandIconMeta() {
+    return {
+      hasIcon: Boolean(this.appBrandIcon),
+      version: this.appBrandIcon?.version || "",
+    };
+  }
+
+  getAppBrandIcon() {
+    return this.appBrandIcon;
+  }
+
+  async saveAppBrandIcon(dataUrl) {
+    const icon = parseAppIconDataUrl(dataUrl);
+    return this.withDataMutation(async () => {
+      await this.withDatabaseWrite(() => this.models.Setting.upsert({
+        key: "app-icon",
+        value: icon,
+      }));
+      this.appBrandIcon = icon;
+      return this.getAppBrandIconMeta();
+    });
+  }
+
+  async deleteAppBrandIcon() {
+    return this.withDataMutation(async () => {
+      await this.withDatabaseWrite(() => this.models.Setting.destroy({ where: { key: "app-icon" } }));
+      this.appBrandIcon = null;
+      return this.getAppBrandIconMeta();
+    });
   }
 
   getProfileMonthlyAmount(profileName) {
@@ -66,6 +98,18 @@ class DataManager extends CustomerDataManager {
   async updateSettings(payload) {
     return this.withDataMutation(async () => {
       const current = this.getSettings();
+      const requestedAppBrandName = payload.appBrandName !== undefined
+        ? sanitizeInput(payload.appBrandName)
+        : current.appBrandName;
+      const requestedAppBrandSubtitle = payload.appBrandSubtitle !== undefined
+        ? sanitizeInput(payload.appBrandSubtitle)
+        : current.appBrandSubtitle;
+      if (!requestedAppBrandName || requestedAppBrandName.length > 64) {
+        throw new Error("Nama aplikasi harus berisi 1 sampai 64 karakter.");
+      }
+      if (requestedAppBrandSubtitle.length > 100) {
+        throw new Error("Keterangan aplikasi maksimal 100 karakter.");
+      }
       const requestedTimezone = payload.timezone !== undefined
         ? sanitizeInput(payload.timezone)
         : current.timezone;
@@ -90,6 +134,8 @@ class DataManager extends CustomerDataManager {
       this.settings = {
         ...current,
         dashboardTitle: payload.dashboardTitle !== undefined ? sanitizeInput(payload.dashboardTitle) || current.dashboardTitle : current.dashboardTitle,
+        appBrandName: requestedAppBrandName,
+        appBrandSubtitle: requestedAppBrandSubtitle,
         companyName: payload.companyName !== undefined ? sanitizeInput(payload.companyName) || current.companyName : current.companyName,
         supportSignature: payload.supportSignature !== undefined ? sanitizeInput(payload.supportSignature) || current.supportSignature : current.supportSignature,
         apDownMessageTemplate: payload.apDownMessageTemplate !== undefined

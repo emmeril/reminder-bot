@@ -860,9 +860,81 @@ function createDashboardActions() {
           });
         },
 
+        savedAppIconUrl() {
+          return this.branding.hasIcon && this.branding.version
+            ? `/branding/icon?v=${encodeURIComponent(this.branding.version)}`
+            : "";
+        },
+
+        appIconPreviewUrl() {
+          if (this.branding.dirty) {
+            if (this.branding.removePending) return "";
+            if (this.branding.pendingDataUrl) return this.branding.pendingDataUrl;
+          }
+          return this.savedAppIconUrl();
+        },
+
+        async chooseAppIcon(event) {
+          const file = event?.target?.files?.[0];
+          if (!file) return;
+          this.clearFormError("appIcon");
+          this.branding.processing = true;
+          let objectUrl = "";
+          try {
+            if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+              throw new Error("Gunakan gambar PNG, JPG, atau WebP.");
+            }
+            if (file.size > 3 * 1024 * 1024) {
+              throw new Error("Ukuran gambar maksimal 3 MB.");
+            }
+            objectUrl = URL.createObjectURL(file);
+            const image = new Image();
+            image.src = objectUrl;
+            await image.decode();
+            if (!image.naturalWidth || !image.naturalHeight) {
+              throw new Error("Gambar tidak dapat dibuka.");
+            }
+
+            const canvas = document.createElement("canvas");
+            canvas.width = 256;
+            canvas.height = 256;
+            const context = canvas.getContext("2d");
+            if (!context) throw new Error("Browser tidak mendukung pengolahan gambar.");
+            const scale = Math.min(256 / image.naturalWidth, 256 / image.naturalHeight);
+            const width = Math.max(1, Math.round(image.naturalWidth * scale));
+            const height = Math.max(1, Math.round(image.naturalHeight * scale));
+            context.clearRect(0, 0, 256, 256);
+            context.drawImage(image, Math.floor((256 - width) / 2), Math.floor((256 - height) / 2), width, height);
+
+            const dataUrl = canvas.toDataURL("image/png");
+            if (dataUrl.length > 350000) {
+              throw new Error("Ikon masih terlalu besar setelah diperkecil. Pilih gambar lain.");
+            }
+            this.branding.pendingDataUrl = dataUrl;
+            this.branding.removePending = false;
+            this.branding.dirty = true;
+            this.settingsDirty = true;
+          } catch (error) {
+            this.setFormError("appIcon", error);
+          } finally {
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            if (event.target) event.target.value = "";
+            this.branding.processing = false;
+          }
+        },
+
+        removeAppIcon() {
+          this.clearFormError("appIcon");
+          this.branding.pendingDataUrl = "";
+          this.branding.removePending = this.branding.hasIcon;
+          this.branding.dirty = this.branding.hasIcon;
+          if (this.branding.dirty) this.settingsDirty = true;
+        },
+
         async saveSettings() {
           this.clearFormError("settings");
           this.clearFormError("recipients");
+          this.clearFormError("appIcon");
           try {
             await this.withProcessing("Menyimpan pengaturan...", async () => {
               await this.api("/api/settings", {
@@ -870,6 +942,34 @@ function createDashboardActions() {
                 body: JSON.stringify(this.forms.settings),
               });
               this.settingsDirty = false;
+              if (typeof document !== "undefined") {
+                document.title = this.forms.settings.dashboardTitle || document.title;
+              }
+
+              if (this.branding.dirty) {
+                try {
+                  const removing = this.branding.removePending;
+                  const iconDataUrl = this.branding.pendingDataUrl;
+                  const result = await this.api("/api/settings/icon", {
+                    method: removing ? "DELETE" : "PUT",
+                    ...(removing ? {} : { body: JSON.stringify({ dataUrl: iconDataUrl }) }),
+                  });
+                  if (this.branding.pendingDataUrl === iconDataUrl && this.branding.removePending === removing) {
+                    this.branding.dirty = false;
+                    this.branding.pendingDataUrl = "";
+                    this.branding.removePending = false;
+                  }
+                  this.branding.hasIcon = Boolean(result.hasIcon);
+                  this.branding.version = String(result.version || "");
+                  if (typeof document !== "undefined") {
+                    const favicon = document.querySelector('link[rel="icon"]');
+                    if (favicon) favicon.href = this.savedAppIconUrl() || "/favicon.ico";
+                  }
+                } catch (error) {
+                  this.setFormError("appIcon", error);
+                  throw new Error(`Pengaturan lain sudah tersimpan, tetapi ikon aplikasi gagal disimpan: ${error.message}`);
+                }
+              }
 
               const saveRecipients = this.recipientsDirty;
               if (saveRecipients) {
