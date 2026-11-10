@@ -781,6 +781,11 @@ class WebServer {
       await this.dataManager.completeActivePeriodPurchaseRequest(contactId, requestId);
       return { status: "COMPLETED", requestId, purchase, reused: true, notificationStatus: "PENDING" };
     }
+    if (request.status === "COMPLETED" && !purchase) {
+      const error = new Error("Data pembelian berhasil tidak ditemukan. Periksa riwayat transaksi sebelum melanjutkan.");
+      error.statusCode = 409;
+      throw error;
+    }
     return {
       status: request.status,
       requestId,
