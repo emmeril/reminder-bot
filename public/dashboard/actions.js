@@ -511,10 +511,16 @@ function createDashboardActions() {
               const storageKey = `active-period-purchase:${contact.id}`;
               let requestId = sessionStorage.getItem(storageKey);
               if (!/^ACT-[0-9a-f-]{36}$/i.test(requestId || "")) {
-                if (!globalThis.crypto?.randomUUID) {
-                  throw new Error("Browser tidak mendukung ID transaksi aman. Gunakan browser terbaru.");
+                let uuid = globalThis.crypto?.randomUUID?.();
+                if (!uuid && globalThis.crypto?.getRandomValues) {
+                  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+                  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+                  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+                  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+                  uuid = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
                 }
-                requestId = `ACT-${globalThis.crypto.randomUUID()}`;
+                if (!uuid) throw new Error("Browser tidak mendukung pembuatan ID transaksi aman.");
+                requestId = `ACT-${uuid}`;
                 sessionStorage.setItem(storageKey, requestId);
               }
               const endpoint = `/api/contacts/${contact.id}/active-period-purchase`;
