@@ -3160,3 +3160,16 @@ test("portal pelanggan tetap menggunakan ikon WiFi bawaan saat belum ada logo kh
   assert.match(login, /class="portal-login-mark"/);
   assert.match(portal, /class="portal-brand-icon"/);
 });
+
+test("label Login pelanggan tampil di baris setelah logo pada desktop dan ponsel", async () => {
+  const html = await fs.readFile(path.join(__dirname, "../public/customer-login.html"), "utf8");
+  const css = await fs.readFile(path.join(__dirname, "../public/customer.css"), "utf8");
+
+  const iconPosition = html.indexOf('class="portal-login-mark__CUSTOMER_APP_ICON_CLASS__"');
+  const labelPosition = html.indexOf('<p class="portal-kicker"><i class="fa-solid fa-user"></i> Login pelanggan</p>');
+  assert.ok(iconPosition >= 0 && labelPosition > iconPosition, "Ikon aplikasi harus berada sebelum label login");
+  assert.match(css, /\.portal-login \.portal-kicker \{ display: flex; align-items: center; gap: 6px;/);
+  assert.doesNotMatch(css, /\.portal-login \.portal-kicker \{ display: inline-flex/);
+  assert.match(css, /\.portal-login \.portal-kicker \{ margin-top: 12px; padding: 0;/);
+  assert.match(html, /customer\.css\?v=20261110-1/);
+});
