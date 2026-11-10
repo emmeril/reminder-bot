@@ -245,7 +245,6 @@ button, a { transition: color .15s ease, background-color .15s ease, border-colo
 .action-chip { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
 .notify-manual-card { border-top-color: var(--primary) !important; }
 .notify-broadcast-card { border-top-color: var(--success) !important; }
-.notify-recipient-card { border-top-color: var(--warning) !important; }
 .notify-manual-card form > button { border-color: var(--primary) !important; background: var(--primary) !important; }
 .notify-broadcast-card form > button { border-color: var(--success) !important; background: var(--success) !important; }
 
@@ -633,7 +632,7 @@ table td { padding: 12px 13px !important; color: #4a5567 !important; font-size: 
 table tbody tr { border-color: #f0f1f4; }
 table tbody tr:nth-child(even) { background: #fcfcfd; }
 table tbody tr:hover { background: #fafaff; }
-.notify-manual-card, .notify-broadcast-card, .notify-recipient-card { border-top: 1px solid #e8eaf0 !important; }
+.notify-manual-card, .notify-broadcast-card { border-top: 1px solid #e8eaf0 !important; }
 .notify-manual-card form > button, .notify-broadcast-card form > button { background: #4f46e5 !important; }
 .settings-section { display: grid; gap: 14px; padding: 17px; border: 1px solid #eceef3; border-radius: 12px; background: #fbfcfd; }
 .settings-tabs { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 7px; padding: 7px; border: 1px solid #e6e9ef; border-radius: 10px; background: #f7f8fa; }

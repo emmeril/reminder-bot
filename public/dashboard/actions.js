@@ -955,12 +955,12 @@ function createDashboardActions() {
         async saveRecipients() {
           this.clearFormError("recipients");
           try {
-            await this.withProcessing("Menyimpan admin recipients...", async () => {
+            await this.withProcessing("Menyimpan penerima admin...", async () => {
               await this.api("/api/admin-recipients", {
                 method: "PUT",
                 body: JSON.stringify({ recipients: this.forms.recipients }),
               });
-              this.notify("Admin recipients diperbarui.");
+              this.notify("Penerima admin diperbarui.");
               await Promise.all([this.loadRecipients(), this.loadStatus()]);
             });
           } catch (error) {

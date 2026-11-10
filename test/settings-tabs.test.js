@@ -154,3 +154,33 @@ test("tombol backup manual mengirim MikroTik dan database aplikasi", () => {
   assert.doesNotMatch(html, /Kirim Backup MikroTik Sekarang/);
   assert.match(backup, /Tombol kirim manual mengirim kedua backup/);
 });
+
+test("Penerima admin hanya muncul di Pengaturan > Pengiriman dan tidak membuat form bersarang", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const delivery = panel("delivery");
+  const notificationsStart = html.indexOf('<aside x-show="activeMenu === \'notifications\'"');
+  const notificationsEnd = html.indexOf("</aside>", notificationsStart);
+  const notifications = html.slice(notificationsStart, notificationsEnd);
+  assert.ok(notificationsStart > -1 && notificationsEnd > notificationsStart);
+  assert.match(notifications, /Pesan personal/);
+  assert.match(notifications, /Broadcast pelanggan/);
+  assert.doesNotMatch(notifications, /Penerima admin|forms\.recipients|saveRecipients/);
+
+  assert.match(delivery, /<h3[^>]*>Penerima admin<\/h3>/);
+  assert.match(delivery, /<textarea[^>]*id="settings-admin-recipients"[^>]*x-model="forms\.recipients"/);
+  assert.match(delivery, /<button[^>]*type="button"[^>]*@click="saveRecipients\(\)"/);
+  assert.match(delivery, /x-show="formErrors\.recipients"/);
+  assert.match(delivery, /@input\.stop @change\.stop/);
+  assert.doesNotMatch(delivery, /<form\b/i);
+  assert.equal(html.match(/x-model="forms\.recipients"/g)?.length, 1);
+  assert.equal(html.match(/@click="saveRecipients\(\)"/g)?.length, 1);
+  assert.match(html, /@submit\.prevent="saveSettings\(\)"/);
+});
+
+test("layout Kirim Pesan menampilkan dua formulir responsif", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const aside = html.match(/<aside x-show="activeMenu === 'notifications'"[^>]*>/)?.[0];
+  assert.ok(aside);
+  assert.match(aside, /grid gap-6 md:grid-cols-2 w-full/);
+  assert.doesNotMatch(aside, /xl:grid-cols-3/);
+});
