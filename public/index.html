@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="/public/styles.css?v=20261110-1">
   <link rel="stylesheet" href="/public/interface.css?v=20261110-1">
   <script defer src="/public/dashboard/state.js?v=20261109-2"></script>
-  <script defer src="/public/dashboard/ui.js?v=20261110-1"></script>
+  <script defer src="/public/dashboard/ui.js?v=20261110-2"></script>
   <script defer src="/public/dashboard/selectors.js?v=20261109-1"></script>
   <script defer src="/public/dashboard/data.js?v=20261109-2"></script>
   <script defer src="/public/dashboard/actions.js?v=20261109-2"></script>
@@ -1486,8 +1486,13 @@
                 <input x-model="forms.settings.supportSignature" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               </label>
               <label class="block text-sm text-ink/60">
-                Timezone
-                <input x-model="forms.settings.timezone" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+                Zona waktu aplikasi
+                <select x-model="forms.settings.timezone" required class="mt-2 h-11 w-full min-w-0 rounded-2xl border border-ink/20 bg-white px-4 text-sm text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/20">
+                  <option value="" disabled>Pilih zona waktu</option>
+                  <template x-for="zone in settingsTimezoneOptions" :key="zone.value">
+                    <option :value="zone.value" x-text="zone.label"></option>
+                  </template>
+                </select>
               </label>
               </div>
             </section>
@@ -1515,8 +1520,13 @@
                 <input x-model="forms.settings.mikrotikBackupTime" placeholder="02:00" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               </label>
               <label class="block text-sm text-ink/60">
-                Timezone backup MikroTik dan database
-                <input x-model="forms.settings.mikrotikBackupTimezone" placeholder="Asia/Jakarta" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
+                Zona waktu backup MikroTik dan database
+                <select x-model="forms.settings.mikrotikBackupTimezone" required class="mt-2 h-11 w-full min-w-0 rounded-2xl border border-ink/20 bg-white px-4 text-sm text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/20">
+                  <option value="" disabled>Pilih zona waktu</option>
+                  <template x-for="zone in settingsTimezoneOptions" :key="zone.value">
+                    <option :value="zone.value" x-text="zone.label"></option>
+                  </template>
+                </select>
               </label>
               </div>
               <label class="flex items-start gap-3 rounded-xl border border-ink/10 bg-white px-4 py-3 text-sm text-ink/75">
