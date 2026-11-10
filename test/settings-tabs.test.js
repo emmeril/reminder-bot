@@ -95,8 +95,8 @@ test("tab Pengiriman tetap terpilih setelah halaman dimuat ulang", async () => {
 });
 
 test("tab beradaptasi di desktop, tablet, dan layar ponsel sempit", () => {
-  assert.match(styles, /\.settings-tabs \{ display: grid; grid-template-columns: repeat\(7,minmax\(0,1fr\)\)/);
-  assert.match(styles, /@media \(min-width: 768px\) and \(max-width: 1279px\) \{\s*\.settings-tabs \{ grid-template-columns: repeat\(4,minmax\(0,1fr\)\)/);
+  assert.ok(styles.includes(".settings-tabs { display: grid; grid-template-columns: repeat(7,minmax(0,1fr));"));
+  assert.ok(styles.includes("@media (min-width: 768px) and (max-width: 1279px) {\\n  .settings-tabs { grid-template-columns: repeat(4,minmax(0,1fr)); }".replace("\\\\n", "\\n")));
   assert.match(interfaceCss, /@media \(max-width: 767px\) \{[\s\S]*?\.settings-tabs \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important;/);
   assert.match(interfaceCss, /@media \(max-width: 420px\) \{[\s\S]*?\.settings-tabs \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important;/);
 });
