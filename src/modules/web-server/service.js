@@ -2003,7 +2003,7 @@ class WebServer {
             <a class="skip-link" href="#transport-content">Langsung ke konten</a>
             <main id="transport-content" class="transport-page" tabindex="-1">
               <header class="topbar">
-                <a class="brand" href="/dashboard"><span class="brand-mark">R</span><span class="brand-copy"><strong>Reminder Bot</strong><small>Pengaturan koneksi</small></span></a>
+                <a class="brand" href="/dashboard"><span class="brand-mark">${this.dataManager.getAppBrandIconMeta?.()?.hasIcon ? '<img src="/branding/icon" alt="" width="25" height="25">' : "R"}</span><span class="brand-copy"><strong>${escapeHtml(this.dataManager.getSettings().appBrandName || "Reminder Bot")}</strong><small>Pengaturan koneksi</small></span></a>
                 <nav class="top-actions" aria-label="Aksi halaman"><a class="button" href="/dashboard">Kembali</a><a class="button" href="/transport">Muat ulang</a></nav>
               </header>
               <section class="page-heading">
