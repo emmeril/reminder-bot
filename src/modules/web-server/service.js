@@ -1325,7 +1325,7 @@ class WebServer {
       res.setHeader("X-Request-Id", req.requestId);
       res.setHeader(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
       );
       res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
       res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
