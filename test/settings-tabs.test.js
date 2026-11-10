@@ -73,6 +73,7 @@ test("tab Pengiriman tetap terpilih setelah halaman dimuat ulang", async () => {
   const watchers = {};
   const createDashboardUi = vm.runInNewContext(uiSource + "\n;createDashboardUi", {
     window: { location: { search: "" } },
+    URLSearchParams,
     localStorage: {
       getItem: (key) => memory.get(key) || null,
       setItem: (key, value) => memory.set(key, value),
