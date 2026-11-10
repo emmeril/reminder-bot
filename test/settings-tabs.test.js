@@ -141,8 +141,8 @@ test("tab Backup menampilkan jadwal database dan opsi pengiriman Telegram yang t
   }
   assert.match(backup, /x-model="forms\.settings\.enableMikrotikBackupToWa"[^>]*type="checkbox"/);
   assert.match(backup, /x-model="forms\.settings\.enableDatabaseBackupToTelegram"[^>]*type="checkbox"/);
-  assert.match(backup, /Zona waktu untuk kedua jadwal backup/);
-  assert.match(backup, /Backup lokal tetap dibuat setiap hari/);
+  assert.match(backup, /Zona waktu jadwal backup/);
+  assert.match(backup, /Salinan database tetap disimpan di server setiap hari/);
   assert.match(backup, /TELEGRAM_CHAT_IDS/);
   assert.match(backup, /md:grid-cols-2/);
 });
@@ -152,7 +152,7 @@ test("tombol backup manual mengirim MikroTik dan database aplikasi", () => {
   assert.match(html, /@click="sendBackupsNow\(\)"/);
   assert.match(html, /Kirim Backup MikroTik & Aplikasi/);
   assert.doesNotMatch(html, /Kirim Backup MikroTik Sekarang/);
-  assert.match(backup, /Tombol kirim manual mengirim kedua backup/);
+  assert.match(backup, /Tombol kirim manual tetap mengirim keduanya/);
 });
 
 test("Penerima admin hanya muncul di Pengaturan > Pengiriman dan tidak membuat form bersarang", () => {
@@ -171,7 +171,7 @@ test("Penerima admin hanya muncul di Pengaturan > Pengiriman dan tidak membuat f
   assert.doesNotMatch(delivery, /@click="saveRecipients\(\)"|Simpan penerima admin/);
   assert.match(delivery, /x-show="formErrors\.recipients"/);
   assert.match(delivery, /@input\.stop="recipientsDirty = true" @change\.stop="recipientsDirty = true"/);
-  assert.match(delivery, /Simpan perubahan melalui tombol Simpan Pengaturan/);
+  assert.match(delivery, /Tekan Simpan Pengaturan untuk menyimpan/);
   assert.doesNotMatch(delivery, /<form\b/i);
   assert.equal(html.match(/x-model="forms\.recipients"/g)?.length, 1);
   assert.equal(html.match(/@click="saveRecipients\(\)"/g)?.length ?? 0, 0);
@@ -184,4 +184,103 @@ test("layout Kirim Pesan menampilkan dua formulir responsif", () => {
   assert.ok(aside);
   assert.match(aside, /grid gap-6 md:grid-cols-2 w-full/);
   assert.doesNotMatch(aside, /xl:grid-cols-3/);
+});
+
+test("semua tab pengaturan memiliki judul dan petunjuk yang mudah dipahami", () => {
+  const labels = {
+    general: [
+      "Informasi aplikasi",
+      "Judul yang tampil di dashboard",
+      "Nama pengirim di akhir pesan",
+      "Zona waktu untuk tanggal dan jadwal",
+      "Zona waktu menentukan tanggal dan jam",
+    ],
+    rates: [
+      "Harga paket WiFi",
+      "Harga awal mengikuti profil MikroTik",
+      "Harga khusus pelanggan dapat diubah",
+      "Muat daftar profil",
+    ],
+    backup: [
+      "Jadwal backup",
+      "Waktu backup MikroTik setiap hari",
+      "Waktu backup database setiap hari",
+      "Salinan database tetap disimpan di server setiap hari",
+      "Tujuan Telegram diatur di server melalui TELEGRAM_CHAT_IDS",
+      "bukan melalui daftar nomor admin WhatsApp",
+    ],
+    delivery: [
+      "Pengiriman pesan WhatsApp",
+      "Jeda tercepat antar pesan (detik)",
+      "Jeda terlama antar pesan (detik)",
+      "jeda 2–5 detik antar pesan",
+      "Nomor WhatsApp admin",
+      "Ini untuk pesan WhatsApp, bukan backup Telegram",
+    ],
+    isolation: [
+      "Masa tenggang paket WiFi",
+      "Lama masa tenggang (hari)",
+      "Jika paket WiFi berakhir hari ini",
+      "Isi <strong>0</strong> agar akun nonaktif",
+    ],
+    messages: [
+      "Isi pesan otomatis",
+      "Konfirmasi pembelian paket WiFi",
+      "Pengingat masa aktif paket",
+      "Akun WiFi setelah pembayaran (Hotspot)",
+      "Akses WiFi otomatis (IP Binding)",
+      "Kirim informasi akun pelanggan",
+      "Perangkat WiFi terputus (AP)",
+      "Teks dalam tanda kurung kurawal",
+    ],
+    automation: [
+      "Pengingat dan notifikasi otomatis",
+      "Beritahu pelanggan jika perangkat WiFi terputus",
+      "Beritahu admin saat pengingat berhasil dikirim",
+      "Beritahu admin saat koneksi WhatsApp berubah",
+      "Beritahu admin jika status pembayaran bulanan direset",
+      "Tidak berlaku untuk paket prabayar",
+    ],
+  };
+  for (const [tab, examples] of Object.entries(labels)) {
+    const content = panel(tab);
+    for (const phrase of examples) {
+      assert.ok(content.includes(phrase), `Tab ${tab}: petunjuk "${phrase}" hilang`);
+    }
+  }
+  assert.match(html, /settings-isolation-tab[^>]*>[\s\S]*?Masa Tenggang<\/strong>/);
+  assert.doesNotMatch(panel("automation"), /Auto-reschedule reminder bulanan|admin recipients|AP DOWN|update delivery/);
+  assert.doesNotMatch(panel("rates"), /dicustom|Nominal bulanan memakai tarif profile sebagai default/);
+  assert.doesNotMatch(panel("isolation"), /akun yang belum lunas|tunggakan/);
+});
+
+test("penjelasan yang diperbarui tidak mengubah input atau variabel template", () => {
+  const form = html.slice(
+    html.indexOf('<section id="settings-general-panel"'),
+    html.indexOf('</form>', html.indexOf('<section id="settings-general-panel"'))
+  );
+  const settingKeys = [
+    "dashboardTitle", "companyName", "supportSignature", "timezone",
+    "mikrotikBackupTime", "databaseBackupTime", "mikrotikBackupTimezone",
+    "enableMikrotikBackupToWa", "enableDatabaseBackupToTelegram",
+    "waRandomDelayMinSeconds", "waRandomDelayMaxSeconds",
+    "hotspotIsolationGraceDays", "autoRescheduleMonthly",
+    "notifyContactsOnApDown", "notifyAdminsOnDelivery",
+    "notifyAdminsOnConnectionChange", "notifyAdminsOnPaymentReset",
+    "prepaidPackagePaymentMessageTemplate", "prepaidPackageReminderMessageTemplate",
+    "paymentHotspotAccountMessageTemplate", "paymentIpBindingAccessMessageTemplate",
+    "customerAccountMessageTemplate", "apDownMessageTemplate",
+  ];
+  for (const key of settingKeys) {
+    assert.ok(form.includes(`forms.settings.${key}`), `Pengaturan ${key} masih harus tersedia`);
+  }
+  assert.match(panel("rates"), /forms.settings.profileMonthlyAmounts\[profile.name\]/);
+  assert.match(panel("delivery"), /x-model="forms.recipients"/);
+  assert.equal((panel("messages").match(/Data yang diisi otomatis/g) || []).length, 6);
+  for (const key of ["{{name}}", "{{activeUntil}}", "{{hotspotUsername}}", "{{ipBindingTitle}}"]) {
+    assert.ok(panel("messages").includes(key), `Variabel ${key} tetap tersedia`);
+  }
+  assert.equal((form.match(/<button[^>]*>[^<]*Simpan Pengaturan<\/button>/g) || []).length, 0);
+  assert.match(html, /@submit.prevent="saveSettings\(\)"/);
+  assert.match(html, />Simpan Pengaturan<\/button>/);
 });

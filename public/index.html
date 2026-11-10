@@ -1443,7 +1443,7 @@
 
         <section x-show="activeMenu === 'settings'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5">
-            <h2 class="font-display text-2xl"><i class="fa-solid fa-sliders mr-2 text-ink/70"></i>Pengaturan sistem</h2>
+            <h2 class="font-display text-2xl"><i class="fa-solid fa-sliders mr-2 text-ink/70"></i>Pengaturan aplikasi</h2>
             <!-- <p class="mt-1 text-sm text-ink/60">Konfigurasi operasional untuk perilaku dashboard dan alert.</p> -->
           </div>
           <form class="space-y-4" @input="settingsDirty = true" @change="settingsDirty = true" @submit.prevent="saveSettings()">
@@ -1452,15 +1452,15 @@
               <button id="settings-rates-tab" type="button" role="tab" aria-controls="settings-rates-panel" :aria-selected="activeSettingsTab === 'rates'" :tabindex="activeSettingsTab === 'rates' ? 0 : -1" @click="selectSettingsTab('rates')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'rates' ? 'active' : ''"><span><i class="fa-solid fa-tags"></i></span><strong>Tarif</strong></button>
               <button id="settings-backup-tab" type="button" role="tab" aria-controls="settings-backup-panel" :aria-selected="activeSettingsTab === 'backup'" :tabindex="activeSettingsTab === 'backup' ? 0 : -1" @click="selectSettingsTab('backup')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'backup' ? 'active' : ''"><span><i class="fa-solid fa-database"></i></span><strong>Backup</strong></button>
               <button id="settings-delivery-tab" type="button" role="tab" aria-controls="settings-delivery-panel" :aria-selected="activeSettingsTab === 'delivery'" :tabindex="activeSettingsTab === 'delivery' ? 0 : -1" @click="selectSettingsTab('delivery')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'delivery' ? 'active' : ''"><span><i class="fa-solid fa-paper-plane"></i></span><strong>Pengiriman</strong></button>
-              <button id="settings-isolation-tab" type="button" role="tab" aria-controls="settings-isolation-panel" :aria-selected="activeSettingsTab === 'isolation'" :tabindex="activeSettingsTab === 'isolation' ? 0 : -1" @click="selectSettingsTab('isolation')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'isolation' ? 'active' : ''"><span><i class="fa-solid fa-user-lock"></i></span><strong>Isolir</strong></button>
+              <button id="settings-isolation-tab" type="button" role="tab" aria-controls="settings-isolation-panel" :aria-selected="activeSettingsTab === 'isolation'" :tabindex="activeSettingsTab === 'isolation' ? 0 : -1" @click="selectSettingsTab('isolation')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'isolation' ? 'active' : ''"><span><i class="fa-solid fa-user-lock"></i></span><strong>Masa Tenggang</strong></button>
               <button id="settings-messages-tab" type="button" role="tab" aria-controls="settings-messages-panel" :aria-selected="activeSettingsTab === 'messages'" :tabindex="activeSettingsTab === 'messages' ? 0 : -1" @click="selectSettingsTab('messages')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'messages' ? 'active' : ''"><span><i class="fa-solid fa-message"></i></span><strong>Template Pesan</strong></button>
               <button id="settings-automation-tab" type="button" role="tab" aria-controls="settings-automation-panel" :aria-selected="activeSettingsTab === 'automation'" :tabindex="activeSettingsTab === 'automation' ? 0 : -1" @click="selectSettingsTab('automation')" @keydown.arrow-right.prevent="selectAdjacentSettingsTab(1)" @keydown.arrow-left.prevent="selectAdjacentSettingsTab(-1)" :class="activeSettingsTab === 'automation' ? 'active' : ''"><span><i class="fa-solid fa-bell"></i></span><strong>Otomasi</strong></button>
             </div>
             <section id="settings-general-panel" role="tabpanel" aria-labelledby="settings-general-tab" x-cloak x-show="activeSettingsTab === 'general'" x-transition.opacity class="settings-section">
-              <div class="settings-section-heading"><span><i class="fa-solid fa-building"></i></span><div><strong>Identitas dashboard</strong><small>Nama dan zona waktu yang digunakan aplikasi</small></div></div>
+              <div class="settings-section-heading"><span><i class="fa-solid fa-building"></i></span><div><strong>Informasi aplikasi</strong><small>Atur judul dashboard, identitas pengirim pesan, dan zona waktu.</small></div></div>
               <div class="grid gap-4 md:grid-cols-2">
               <label class="block text-sm text-ink/60">
-                Judul dashboard
+                Judul yang tampil di dashboard
                 <input x-model="forms.settings.dashboardTitle" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               </label>
               <label class="block text-sm text-ink/60">
@@ -1468,11 +1468,11 @@
                 <input x-model="forms.settings.companyName" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               </label>
               <label class="block text-sm text-ink/60">
-                Tanda tangan support
+                Nama pengirim di akhir pesan
                 <input x-model="forms.settings.supportSignature" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               </label>
               <label class="block text-sm text-ink/60">
-                Zona waktu aplikasi
+                Zona waktu untuk tanggal dan jadwal
                 <select x-model="forms.settings.timezone" required class="mt-2 h-11 w-full min-w-0 rounded-2xl border border-ink/20 bg-white px-4 text-sm text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/20">
                   <option value="" disabled>Pilih zona waktu</option>
                   <template x-for="zone in settingsTimezoneOptions" :key="zone.value">
@@ -1481,52 +1481,53 @@
                 </select>
               </label>
               </div>
+              <p class="text-xs leading-5 text-ink/65">Zona waktu menentukan tanggal dan jam yang digunakan untuk pengingat serta laporan.</p>
             </section>
             <section id="settings-rates-panel" role="tabpanel" aria-labelledby="settings-rates-tab" x-cloak x-show="activeSettingsTab === 'rates'" x-transition.opacity class="settings-section">
-              <div class="settings-section-heading"><span><i class="fa-solid fa-tags"></i></span><div><strong>Tarif profile MikroTik</strong><small>Nominal bulanan memakai tarif profile sebagai default dan dapat dicustom per pelanggan</small></div></div>
+              <div class="settings-section-heading"><span><i class="fa-solid fa-tags"></i></span><div><strong>Harga paket WiFi</strong><small>Harga awal mengikuti profil MikroTik. Harga setiap pelanggan tetap bisa diubah.</small></div></div>
               <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-moss/15 bg-moss/5 px-4 py-3">
-                <p class="text-sm leading-6 text-ink/60">Contoh: profile <strong>30Hari</strong> diisi <strong>40000</strong>, maka nominal awal pelanggan adalah Rp40.000. Nominal tiap pelanggan tetap dapat dicustom dari menu Tagihan.</p>
-                <button type="button" @click="loadMikrotikProfiles()" :disabled="loading.hotspotOptions" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss disabled:opacity-50"><i class="fa-solid fa-rotate mr-1.5"></i>Muat profile</button>
+                <p class="text-sm leading-6 text-ink/60">Contoh: jika profil <strong>30Hari</strong> diberi harga <strong>Rp40.000</strong>, pelanggan baru yang memakai profil ini akan mendapat harga awal Rp40.000. Harga khusus pelanggan dapat diubah di menu Pelanggan, tab Tagihan.</p>
+                <button type="button" @click="loadMikrotikProfiles()" :disabled="loading.hotspotOptions" class="rounded-full border border-moss/20 bg-white px-3 py-2 text-xs font-semibold text-moss disabled:opacity-50"><i class="fa-solid fa-rotate mr-1.5"></i>Muat daftar profil</button>
               </div>
               <div x-show="mikrotikProfiles.length" class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <template x-for="profile in mikrotikProfiles" :key="'profile-price-' + profile.name">
                   <label class="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm text-ink/60">
                     <span class="flex items-center justify-between gap-3"><strong class="truncate text-ink" x-text="profile.name"></strong><small x-show="profile.rateLimit" class="shrink-0 text-ink/40" x-text="profile.rateLimit"></small></span>
-                    <span class="currency-input-group mt-3"><span class="currency-prefix">Rp</span><input x-model.number="forms.settings.profileMonthlyAmounts[profile.name]" type="number" min="0" max="1000000000" step="1000" placeholder="Belum diatur" class="tabular-nums" aria-label="Tarif bulanan profile MikroTik"></span>
+                    <span class="currency-input-group mt-3"><span class="currency-prefix">Rp</span><input x-model.number="forms.settings.profileMonthlyAmounts[profile.name]" type="number" min="0" max="1000000000" step="1000" placeholder="Belum diatur" class="tabular-nums"  :aria-label="'Harga paket untuk profil ' + profile.name"></span>
                   </label>
                 </template>
               </div>
-              <p x-show="!mikrotikProfiles.length" class="rounded-2xl border border-dashed border-ink/15 px-4 py-6 text-center text-sm text-ink/45">Muat profile MikroTik untuk mengatur nominal bulanan.</p>
+              <p x-show="!mikrotikProfiles.length" class="rounded-2xl border border-dashed border-ink/15 px-4 py-6 text-center text-sm text-ink/45">Belum ada daftar profil. Tekan Muat daftar profil untuk menampilkan paket dari MikroTik.</p>
             </section>
             <section id="settings-backup-panel" role="tabpanel" aria-labelledby="settings-backup-tab" x-cloak x-show="activeSettingsTab === 'backup'" x-transition.opacity class="settings-section">
-              <div class="settings-section-heading"><span><i class="fa-solid fa-database"></i></span><div><strong>Backup terjadwal</strong><small>Jadwal terpisah untuk MikroTik dan database aplikasi</small></div></div>
+              <div class="settings-section-heading"><span><i class="fa-solid fa-database"></i></span><div><strong>Jadwal backup</strong><small>Atur waktu pencadangan MikroTik dan database aplikasi secara terpisah.</small></div></div>
               <div class="grid gap-4 md:grid-cols-2">
                 <div class="min-w-0 space-y-4 rounded-2xl border border-ink/10 bg-white p-4">
                   <div class="flex items-center gap-3"><i class="fa-solid fa-network-wired text-moss" aria-hidden="true"></i><strong class="text-sm text-ink">Backup MikroTik</strong></div>
                   <label class="block text-sm text-ink/75">
-                    Jam backup MikroTik harian
+                    Waktu backup MikroTik setiap hari
                     <input x-model="forms.settings.mikrotikBackupTime" type="time" step="60" required class="mt-2 h-11 w-full min-w-0 rounded-2xl border border-ink/20 bg-white px-4 text-sm text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/20">
                   </label>
                   <label class="flex items-start gap-3 text-sm text-ink/75">
                     <input x-model="forms.settings.enableMikrotikBackupToWa" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
-                    <span>Backup MikroTik otomatis dan kirim file via Telegram</span>
+                    <span>Jalankan backup MikroTik otomatis dan kirim ke Telegram</span>
                   </label>
                 </div>
                 <div class="min-w-0 space-y-4 rounded-2xl border border-ink/10 bg-white p-4">
                   <div class="flex items-center gap-3"><i class="fa-solid fa-database text-moss" aria-hidden="true"></i><strong class="text-sm text-ink">Backup database aplikasi</strong></div>
                   <label class="block text-sm text-ink/75">
-                    Jam backup database harian
+                    Waktu backup database setiap hari
                     <input x-model="forms.settings.databaseBackupTime" type="time" step="60" required class="mt-2 h-11 w-full min-w-0 rounded-2xl border border-ink/20 bg-white px-4 text-sm text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/20">
                   </label>
                   <label class="flex items-start gap-3 text-sm text-ink/75">
                     <input x-model="forms.settings.enableDatabaseBackupToTelegram" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
-                    <span>Kirim file backup database SQLite ke Telegram</span>
+                    <span>Kirim hasil backup database ke Telegram</span>
                   </label>
-                  <p class="text-xs leading-5 text-ink/65">Backup lokal tetap dibuat setiap hari meskipun Telegram tidak aktif atau gagal mengirim.</p>
+                  <p class="text-xs leading-5 text-ink/65">Salinan database tetap disimpan di server setiap hari meskipun pengiriman Telegram dimatikan atau gagal.</p>
                 </div>
               </div>
               <label class="block text-sm text-ink/75">
-                Zona waktu untuk kedua jadwal backup
+                Zona waktu jadwal backup
                 <select x-model="forms.settings.mikrotikBackupTimezone" required class="mt-2 h-11 w-full min-w-0 rounded-2xl border border-ink/20 bg-white px-4 text-sm text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/20">
                   <option value="" disabled>Pilih zona waktu</option>
                   <template x-for="zone in settingsTimezoneOptions" :key="zone.value">
@@ -1534,133 +1535,135 @@
                   </template>
                 </select>
               </label>
-              <p class="text-xs leading-5 text-ink/65">File database berisi data pelanggan dan informasi akun. Gunakan hanya chat Telegram admin tepercaya yang terdaftar di TELEGRAM_CHAT_IDS. Tombol kirim manual mengirim kedua backup meski opsi pengiriman harian tidak aktif.</p>
+              <p class="text-xs leading-5 text-ink/65">Backup database berisi data pelanggan dan informasi akun. Kirim hanya ke Telegram admin yang tepercaya. Tujuan Telegram diatur di server melalui TELEGRAM_CHAT_IDS, bukan melalui daftar nomor admin WhatsApp. Tombol kirim manual tetap mengirim keduanya, meskipun backup terjadwal dimatikan.</p>
             </section>
             <section id="settings-delivery-panel" role="tabpanel" aria-labelledby="settings-delivery-tab" x-cloak x-show="activeSettingsTab === 'delivery'" x-transition.opacity class="settings-section">
-              <div class="settings-section-heading"><span><i class="fa-solid fa-paper-plane"></i></span><div><strong>Pengiriman WhatsApp</strong><small>Atur jeda pengiriman pesan dan nomor penerima admin</small></div></div>
+              <div class="settings-section-heading"><span><i class="fa-solid fa-paper-plane"></i></span><div><strong>Pengiriman pesan WhatsApp</strong><small>Atur jarak waktu antar pesan dan nomor WhatsApp penerima notifikasi admin.</small></div></div>
               <div class="grid gap-4 md:grid-cols-2">
               <label class="block text-sm text-ink/60">
-                Jeda acak minimum WhatsApp (detik)
+                Jeda tercepat antar pesan (detik)
                 <input x-model.number="forms.settings.waRandomDelayMinSeconds" type="number" min="0" max="300" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               </label>
               <label class="block text-sm text-ink/60">
-                Jeda acak maksimum WhatsApp (detik)
+                Jeda terlama antar pesan (detik)
                 <input x-model.number="forms.settings.waRandomDelayMaxSeconds" type="number" min="0" max="300" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay">
               </label>
               </div>
+              <p class="text-xs leading-5 text-ink/65">Aplikasi memilih jeda secara acak di antara kedua nilai. Contoh: 2 dan 5 berarti jeda 2–5 detik antar pesan.</p>
               <div class="mt-2 min-w-0 rounded-xl border border-ink/10 bg-white p-4" @input.stop="recipientsDirty = true" @change.stop="recipientsDirty = true">
                 <div class="flex items-start gap-3">
                   <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-haze text-ink/75" aria-hidden="true"><i class="fa-solid fa-user-shield"></i></span>
                   <div class="min-w-0">
                     <h3 class="text-sm font-semibold text-ink">Penerima admin</h3>
-                    <p class="mt-1 text-xs leading-5 text-ink/65">Nomor WhatsApp admin yang menerima pemberitahuan operasional.</p>
+                    <p class="mt-1 text-xs leading-5 text-ink/65">Nomor WhatsApp admin yang menerima pemberitahuan saat opsi notifikasi admin di tab Otomasi diaktifkan.</p>
                   </div>
                 </div>
-                <label for="settings-admin-recipients" class="mt-4 block text-sm font-medium text-ink/75">Nomor admin</label>
+                <label for="settings-admin-recipients" class="mt-4 block text-sm font-medium text-ink/75">Nomor WhatsApp admin</label>
                 <textarea id="settings-admin-recipients" x-model="forms.recipients" rows="4" aria-describedby="settings-admin-recipients-help" :aria-invalid="Boolean(formErrors.recipients)" class="mt-2 min-h-32 w-full min-w-0 rounded-xl border border-ink/20 bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/20" placeholder="Satu nomor per baris, contoh: 628123456789"></textarea>
-                <p id="settings-admin-recipients-help" class="mt-3 text-xs leading-5 text-ink/65">Pisahkan nomor dengan baris baru. Simpan perubahan melalui tombol Simpan Pengaturan di bawah.</p>
+                <p id="settings-admin-recipients-help" class="mt-3 text-xs leading-5 text-ink/65">Tulis satu nomor per baris, diawali 62 (contoh: 628123456789). Ini untuk pesan WhatsApp, bukan backup Telegram. Tekan Simpan Pengaturan untuk menyimpan.</p>
                 <p x-cloak x-show="formErrors.recipients" role="alert" x-transition class="mt-3 rounded-xl border border-clay/20 bg-clay/5 px-4 py-3 text-sm font-semibold text-clay" x-text="formErrors.recipients"></p>
               </div>
             </section>
             <section id="settings-isolation-panel" role="tabpanel" aria-labelledby="settings-isolation-tab" x-cloak x-show="activeSettingsTab === 'isolation'" x-transition.opacity class="settings-section">
-              <div class="settings-section-heading"><span><i class="fa-solid fa-user-lock"></i></span><div><strong>Jeda isolir pelanggan</strong><small>Tentukan masa tenggang setelah tanggal jatuh tempo</small></div></div>
+              <div class="settings-section-heading"><span><i class="fa-solid fa-user-lock"></i></span><div><strong>Masa tenggang paket WiFi</strong><small>Atur berapa hari akun tetap aktif setelah masa berlaku paket berakhir.</small></div></div>
               <div class="grid gap-4 md:grid-cols-2">
                 <label class="block text-sm text-ink/75">
-                  Jeda setelah jatuh tempo (hari)
+                  Lama masa tenggang (hari)
                   <input x-model.number="forms.settings.hotspotIsolationGraceDays" type="number" min="0" max="30" step="1" inputmode="numeric" required class="mt-2 h-11 w-full rounded-2xl border border-ink/55 bg-white px-4 py-3 outline-none transition focus:border-clay focus:ring-2 focus:ring-clay/20" aria-describedby="hotspot-isolation-help">
                 </label>
                 <div id="hotspot-isolation-help" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
                   <strong class="block">Contoh</strong>
-                  Jika jatuh tempo hari ini dan jeda diatur <strong>3 hari</strong>, akun yang belum lunas baru diisolir tiga hari lagi. Isi <strong>0</strong> untuk isolir tepat saat jatuh tempo.
+                  Jika paket WiFi berakhir hari ini dan diisi <strong>3 hari</strong>, akun dijadwalkan nonaktif tiga hari kemudian. Isi <strong>0</strong> agar akun nonaktif saat masa aktif paket habis.
                 </div>
               </div>
             </section>
             <section id="settings-messages-panel" role="tabpanel" aria-labelledby="settings-messages-tab" x-cloak x-show="activeSettingsTab === 'messages'" x-transition.opacity class="settings-section notification-settings-section">
-              <div class="settings-section-heading"><span><i class="fa-solid fa-message"></i></span><div><strong>Template notifikasi</strong><small>Pesan pembelian dan pengingat paket prabayar, akun pelanggan, serta gangguan AP</small></div></div>
+              <div class="settings-section-heading"><span><i class="fa-solid fa-message"></i></span><div><strong>Isi pesan otomatis</strong><small>Ubah pesan pembelian, pengingat paket, informasi akun, dan gangguan perangkat WiFi.</small></div></div>
+              <p class="text-xs leading-5 text-ink/65">Teks dalam tanda kurung kurawal seperti <code>{{name}}</code> dan <code>{{activeUntil}}</code> akan diganti dengan data pelanggan saat pesan dikirim. Jangan mengubah nama kode tersebut.</p>
               <div class="notification-template-grid">
                 <label class="notification-template-card tone-success">
                   <span class="notification-template-header">
                     <span class="notification-template-icon"><i class="fa-solid fa-box-open"></i></span>
-                    <span class="notification-template-copy"><strong>Pembelian paket prabayar</strong><small>Dikirim setelah pembelian atau perpanjangan paket satu bulan berhasil.</small></span>
+                    <span class="notification-template-copy"><strong>Konfirmasi pembelian paket WiFi</strong><small>Dikirim ketika pelanggan berhasil membeli atau memperpanjang paket.</small></span>
                     <span class="notification-template-badge">Prabayar</span>
                   </span>
-                  <textarea x-model="forms.settings.prepaidPackagePaymentMessageTemplate" placeholder="Tulis konfirmasi pembelian paket prabayar..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{paymentAmount}}</code><code>{{activeUntil}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
+                  <textarea x-model="forms.settings.prepaidPackagePaymentMessageTemplate" placeholder="Tulis pesan konfirmasi pembelian paket WiFi..."></textarea>
+                  <span class="notification-template-variables"><strong>Data yang diisi otomatis</strong><span class="template-variable-list"><code>{{name}}</code><code>{{transactionId}}</code><code>{{paymentDate}}</code><code>{{paymentAmount}}</code><code>{{activeUntil}}</code><code>{{statusText}}</code><code>{{noteText}}</code><code>{{hotspotAccountDetails}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-success">
                   <span class="notification-template-header">
                     <span class="notification-template-icon"><i class="fa-solid fa-clock"></i></span>
-                    <span class="notification-template-copy"><strong>Paket prabayar akan berakhir</strong><small>Pengingat ketika paket mendekati kedaluwarsa dan selama masa tenggang.</small></span>
-                    <span class="notification-template-badge">Pengingat prabayar</span>
+                    <span class="notification-template-copy"><strong>Pengingat masa aktif paket</strong><small>Dikirim menjelang masa aktif paket berakhir dan selama masa tenggang.</small></span>
+                    <span class="notification-template-badge">Pengingat paket</span>
                   </span>
-                  <textarea x-model="forms.settings.prepaidPackageReminderMessageTemplate" placeholder="Tulis pengingat paket prabayar..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{activeUntil}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
+                  <textarea x-model="forms.settings.prepaidPackageReminderMessageTemplate" placeholder="Tulis pesan pengingat masa aktif paket..."></textarea>
+                  <span class="notification-template-variables"><strong>Data yang diisi otomatis</strong><span class="template-variable-list"><code>{{name}}</code><code>{{activeUntil}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-success">
                   <span class="notification-template-header">
                     <span class="notification-template-icon"><i class="fa-solid fa-key"></i></span>
-                    <span class="notification-template-copy"><strong>Akun Hotspot setelah pembayaran</strong><small>Digunakan untuk mode Hotspot saja dan mode gabungan. Template lama tetap tersimpan.</small></span>
+                    <span class="notification-template-copy"><strong>Akun WiFi setelah pembayaran (Hotspot)</strong><small>Berisi nama pengguna dan kata sandi WiFi untuk akses Hotspot atau akses gabungan.</small></span>
                     <span class="notification-template-badge">Hotspot</span>
                   </span>
-                  <textarea x-model="forms.settings.paymentHotspotAccountMessageTemplate" placeholder="Tulis username dan password Hotspot setelah pembayaran..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{hotspotUsername}}</code><code>{{hotspotPassword}}</code><code>{{hotspotProfile}}</code><code>{{hotspotStatus}}</code><code>{{activeUntil}}</code></span></span>
+                  <textarea x-model="forms.settings.paymentHotspotAccountMessageTemplate" placeholder="Tulis nama pengguna dan kata sandi WiFi setelah pembayaran..."></textarea>
+                  <span class="notification-template-variables"><strong>Data yang diisi otomatis</strong><span class="template-variable-list"><code>{{hotspotUsername}}</code><code>{{hotspotPassword}}</code><code>{{hotspotProfile}}</code><code>{{hotspotStatus}}</code><code>{{activeUntil}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-success">
                   <span class="notification-template-header">
                     <span class="notification-template-icon"><i class="fa-solid fa-network-wired"></i></span>
-                    <span class="notification-template-copy"><strong>Akses IP Binding setelah pembayaran</strong><small>Digunakan untuk mode IP Binding saja dan mode gabungan. Tidak mengirim username atau password Hotspot.</small></span>
+                    <span class="notification-template-copy"><strong>Akses WiFi otomatis (IP Binding)</strong><small>Untuk perangkat yang terdaftar melalui IP Binding, termasuk mode gabungan. Tidak berisi nama pengguna atau kata sandi.</small></span>
                     <span class="notification-template-badge">IP Binding</span>
                   </span>
-                  <textarea x-model="forms.settings.paymentIpBindingAccessMessageTemplate" placeholder="Tulis informasi akses IP Binding setelah pembayaran..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{ipBindingTitle}}</code><code>{{ipBindingStatus}}</code><code>{{activeUntil}}</code></span></span>
+                  <textarea x-model="forms.settings.paymentIpBindingAccessMessageTemplate" placeholder="Tulis informasi akses otomatis setelah pembayaran..."></textarea>
+                  <span class="notification-template-variables"><strong>Data yang diisi otomatis</strong><span class="template-variable-list"><code>{{ipBindingTitle}}</code><code>{{ipBindingStatus}}</code><code>{{activeUntil}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-success">
                   <span class="notification-template-header">
                     <span class="notification-template-icon"><i class="fa-brands fa-whatsapp"></i></span>
-                    <span class="notification-template-copy"><strong>Pengiriman akun pelanggan</strong><small>Dikirim manual melalui tombol Kirim Akun pada data pelanggan.</small></span>
+                    <span class="notification-template-copy"><strong>Kirim informasi akun pelanggan</strong><small>Dipakai saat admin menekan tombol Kirim Akun pada menu Pelanggan.</small></span>
                     <span class="notification-template-badge">Akun pelanggan</span>
                   </span>
-                  <textarea x-model="forms.settings.customerAccountMessageTemplate" placeholder="Tulis pesan pengiriman akun pelanggan..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{phoneNumber}}</code><code>{{portalAccountDetails}}</code><code>{{hotspotAccountDetails}}</code><code>{{portalAccessGuide}}</code><code>{{portalLoginUrl}}</code><code>{{portalUsername}}</code><code>{{portalPassword}}</code><code>{{hotspotUsername}}</code><code>{{hotspotPassword}}</code><code>{{hotspotProfile}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
+                  <textarea x-model="forms.settings.customerAccountMessageTemplate" placeholder="Tulis pesan berisi informasi akun pelanggan..."></textarea>
+                  <span class="notification-template-variables"><strong>Data yang diisi otomatis</strong><span class="template-variable-list"><code>{{name}}</code><code>{{phoneNumber}}</code><code>{{portalAccountDetails}}</code><code>{{hotspotAccountDetails}}</code><code>{{portalAccessGuide}}</code><code>{{portalLoginUrl}}</code><code>{{portalUsername}}</code><code>{{portalPassword}}</code><code>{{hotspotUsername}}</code><code>{{hotspotPassword}}</code><code>{{hotspotProfile}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code><code>{{supportSignature}}</code></span></span>
                 </label>
                 <label class="notification-template-card tone-danger">
                   <span class="notification-template-header">
                     <span class="notification-template-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
-                    <span class="notification-template-copy"><strong>AP terputus</strong><small>Dikirim saat perangkat pelanggan terdeteksi offline.</small></span>
+                    <span class="notification-template-copy"><strong>Perangkat WiFi terputus (AP)</strong><small>Dikirim jika perangkat WiFi pelanggan terdeteksi tidak tersambung.</small></span>
                     <span class="notification-template-badge">Jaringan</span>
                   </span>
-                  <textarea x-model="forms.settings.apDownMessageTemplate" placeholder="Tulis pesan ketika AP pelanggan terputus..."></textarea>
-                  <span class="notification-template-variables"><strong>Variabel yang bisa digunakan</strong><span class="template-variable-list"><code>{{name}}</code><code>{{host}}</code><code>{{status}}</code><code>{{supportSignature}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code></span></span>
+                  <textarea x-model="forms.settings.apDownMessageTemplate" placeholder="Tulis pemberitahuan saat perangkat WiFi pelanggan terputus..."></textarea>
+                  <span class="notification-template-variables"><strong>Data yang diisi otomatis</strong><span class="template-variable-list"><code>{{name}}</code><code>{{host}}</code><code>{{status}}</code><code>{{supportSignature}}</code><code>{{companyName}}</code><code>{{companyNameUpper}}</code></span></span>
                 </label>
               </div>
             </section>
             <section id="settings-automation-panel" role="tabpanel" aria-labelledby="settings-automation-tab" x-cloak x-show="activeSettingsTab === 'automation'" x-transition.opacity class="settings-section">
-              <div class="settings-section-heading"><span><i class="fa-solid fa-bell"></i></span><div><strong>Otomasi dan pemberitahuan</strong><small>Pilih aktivitas yang berjalan dan siapa yang menerima update</small></div></div>
+              <div class="settings-section-heading"><span><i class="fa-solid fa-bell"></i></span><div><strong>Pengingat dan notifikasi otomatis</strong><small>Centang fungsi yang ingin dijalankan. Notifikasi admin dikirim ke nomor di tab Pengiriman.</small></div></div>
             <div class="grid gap-3 rounded-[1.5rem] border border-ink/8 bg-haze p-4">
               <label class="flex items-start gap-3 text-sm text-ink/75">
                 <input x-model="forms.settings.autoRescheduleMonthly" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
-                <span>Auto-reschedule reminder bulanan</span>
+                <span><strong class="block font-medium">Jadwalkan ulang pengingat tagihan bulanan lama</strong><small class="mt-1 block text-xs leading-5 text-ink/60">Tidak berlaku untuk paket prabayar. Pengingat paket mengikuti masa aktif yang dibeli.</small></span>
               </label>
               <label class="flex items-start gap-3 text-sm text-ink/75">
                 <input x-model="forms.settings.notifyContactsOnApDown" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
-                <span>Kirim notifikasi AP DOWN ke pelanggan terkait</span>
+                <span><strong class="block font-medium">Beritahu pelanggan jika perangkat WiFi terputus</strong><small class="mt-1 block text-xs leading-5 text-ink/60">Pesan dikirim ke pelanggan yang perangkat WiFi-nya terdeteksi tidak aktif.</small></span>
               </label>
               <label class="flex items-start gap-3 text-sm text-ink/75">
                 <input x-model="forms.settings.notifyAdminsOnDelivery" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
-                <span>Kirim update delivery ke admin recipients</span>
+                <span><strong class="block font-medium">Beritahu admin saat pengingat berhasil dikirim</strong><small class="mt-1 block text-xs leading-5 text-ink/60">Admin menerima salinan pesan pengingat WhatsApp yang dikirim ke pelanggan.</small></span>
               </label>
               <label class="flex items-start gap-3 text-sm text-ink/75">
                 <input x-model="forms.settings.notifyAdminsOnConnectionChange" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
-                <span>Kirim alert status provider WhatsApp ke admin recipients</span>
+                <span><strong class="block font-medium">Beritahu admin saat koneksi WhatsApp berubah</strong><small class="mt-1 block text-xs leading-5 text-ink/60">Misalnya saat koneksi WhatsApp terputus atau tersambung kembali.</small></span>
               </label>
               <label class="flex items-start gap-3 text-sm text-ink/75">
                 <input x-model="forms.settings.notifyAdminsOnPaymentReset" type="checkbox" class="mt-1 h-4 w-4 rounded border-ink/20 text-clay focus:ring-clay">
-                <span>Kirim alert reset pembayaran bulanan</span>
+                <span><strong class="block font-medium">Beritahu admin jika status pembayaran bulanan direset</strong><small class="mt-1 block text-xs leading-5 text-ink/60">Khusus proses pembayaran bulanan lama; tidak berlaku untuk pembelian paket prabayar.</small></span>
               </label>
             </div>
             </section>
             <div class="flex flex-wrap gap-2">
-              <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan pengaturan</button>
+              <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Pengaturan</button>
               <button x-cloak x-show="activeSettingsTab === 'backup'" type="button" @click="sendBackupsNow()" :disabled="loading.backups" class="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-haze disabled:cursor-not-allowed disabled:opacity-60">
                 <i :class="loading.backups ? 'fa-solid fa-spinner fa-spin mr-2' : 'fa-solid fa-file-export mr-2'"></i>
                 <span x-text="loading.backups ? 'Mengirim Backup MikroTik & Aplikasi...' : 'Kirim Backup MikroTik & Aplikasi'"></span>
