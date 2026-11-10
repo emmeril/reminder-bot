@@ -105,3 +105,12 @@ test("prabayar: pembelian periode tidak menyebabkan hutang baru pada bulan berik
   assert.equal(future.hasDebt, false);
   assert.equal(future.packageActive, true);
 });
+
+test("startup dan jadwal rutin tidak lagi menjalankan reset pembayaran bulanan", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const source = fs.readFileSync(path.join(__dirname, "../src/app.js"), "utf8");
+  assert.match(source, /await dataManager\.synchronizePrepaidPackageStatuses\(\)/);
+  assert.match(source, /name: "prepaid-status-sync"/);
+  assert.doesNotMatch(source, /monthly-payment-reset|ensureMonthlyPaymentReset|sendMonthlyResetNotification/);
+});

@@ -238,8 +238,6 @@ test("semua tab pengaturan memiliki judul dan petunjuk yang mudah dipahami", () 
       "Beritahu pelanggan jika perangkat WiFi terputus",
       "Beritahu admin saat pengingat berhasil dikirim",
       "Beritahu admin saat koneksi WhatsApp berubah",
-      "Beritahu admin jika status pembayaran bulanan direset",
-      "Tidak berlaku untuk paket prabayar",
     ],
   };
   for (const [tab, examples] of Object.entries(labels)) {
@@ -264,9 +262,9 @@ test("penjelasan yang diperbarui tidak mengubah input atau variabel template", (
     "mikrotikBackupTime", "databaseBackupTime", "mikrotikBackupTimezone",
     "enableMikrotikBackupToWa", "enableDatabaseBackupToTelegram",
     "waRandomDelayMinSeconds", "waRandomDelayMaxSeconds",
-    "hotspotIsolationGraceDays", "autoRescheduleMonthly",
+    "hotspotIsolationGraceDays",
     "notifyContactsOnApDown", "notifyAdminsOnDelivery",
-    "notifyAdminsOnConnectionChange", "notifyAdminsOnPaymentReset",
+    "notifyAdminsOnConnectionChange",
     "prepaidPackagePaymentMessageTemplate", "prepaidPackageReminderMessageTemplate",
     "paymentHotspotAccountMessageTemplate", "paymentIpBindingAccessMessageTemplate",
     "customerAccountMessageTemplate", "apDownMessageTemplate",
@@ -283,4 +281,14 @@ test("penjelasan yang diperbarui tidak mengubah input atau variabel template", (
   assert.equal((form.match(/<button[^>]*>[^<]*Simpan Pengaturan<\/button>/g) || []).length, 0);
   assert.match(html, /@submit.prevent="saveSettings\(\)"/);
   assert.match(html, />Simpan Pengaturan<\/button>/);
+});
+
+test("tab Otomasi hanya menampilkan pemberitahuan yang berlaku untuk prabayar", () => {
+  const automation = panel("automation");
+  assert.doesNotMatch(automation, /forms\.settings\.autoRescheduleMonthly|forms\.settings\.notifyAdminsOnPaymentReset/);
+  assert.doesNotMatch(automation, /pengingat tagihan bulanan lama|status pembayaran bulanan direset/);
+  for (const key of ["notifyContactsOnApDown", "notifyAdminsOnDelivery", "notifyAdminsOnConnectionChange"]) {
+    assert.ok(automation.includes("forms.settings." + key), key);
+  }
+  assert.equal((automation.match(/type="checkbox"/g) || []).length, 3);
 });
