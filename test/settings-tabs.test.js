@@ -114,7 +114,7 @@ test("zona waktu Umum dan Backup memakai dropdown dan menyimpan nilai IANA", () 
     assert.match(select, /:value="zone.value"/);
     assert.doesNotMatch(markup, new RegExp(`<input[^>]*x-model="forms\\.settings\\.${field}"`));
   }
-  assert.match(html, /@submit.prevent="saveSettings\\(\\)"/);
+  assert.ok(html.includes('@submit.prevent="saveSettings()"'));
 });
 
 test("pilihan WIB WITA WIT tersedia dan zona waktu lama tidak hilang", () => {
