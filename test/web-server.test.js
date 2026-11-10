@@ -3069,3 +3069,25 @@ test("ikon aplikasi bisa diunggah admin, dibaca publik, dan dihapus tanpa memutu
   assert.equal((await remove.json()).data.hasIcon, false);
   assert.equal((await fetch(`${baseUrl}/branding/icon`)).status, 204);
 });
+
+test("aturan keamanan memperbolehkan pratinjau ikon lokal dari blob URL", async () => {
+  const baseUrl = await startServer();
+  const cookie = await login(baseUrl);
+  for (const route of ["/login", "/dashboard"]) {
+    const response = await fetch(`${baseUrl}${route}`, { headers: { cookie } });
+    assert.equal(response.status, 200);
+    const policy = response.headers.get("content-security-policy") || "";
+    const imageDirective = policy.split(";").map((part) => part.trim())
+      .find((part) => part.startsWith("img-src "));
+    assert.equal(imageDirective, "img-src 'self' data: blob:");
+    assert.match(policy, /object-src 'none'/);
+    assert.doesNotMatch(policy, /script-src[^;]*blob:/);
+  }
+
+  const jsResponse = await fetch(`${baseUrl}/public/dashboard/actions.js`);
+  assert.equal(jsResponse.status, 200);
+  const source = await jsResponse.text();
+  assert.match(source, /URL\.createObjectURL\(file\)/);
+  assert.match(source, /await image\.decode\(\)/);
+  assert.match(source, /Gambar tidak dapat dibaca oleh browser/);
+});

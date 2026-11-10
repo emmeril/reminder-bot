@@ -915,7 +915,12 @@ function createDashboardActions() {
             this.branding.dirty = true;
             this.settingsDirty = true;
           } catch (error) {
-            this.setFormError("appIcon", error);
+            const message = String(error?.message || "");
+            const failedToDecode = error?.name === "EncodingError"
+              || /(?:cannot be decoded|failed to decode|image decode)/i.test(message);
+            this.setFormError("appIcon", failedToDecode
+              ? new Error("Gambar tidak dapat dibaca oleh browser. Pilih gambar PNG, JPG, atau WebP lain yang valid.")
+              : error);
           } finally {
             if (objectUrl) URL.revokeObjectURL(objectUrl);
             if (event.target) event.target.value = "";
