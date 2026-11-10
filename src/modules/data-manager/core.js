@@ -136,6 +136,16 @@ class DataManagerCore {
       "payment_gateway_transactions",
       "orderId"
     );
+    this.models.ActivePeriodPurchaseRequest = this.sequelize.define("ActivePeriodPurchaseRequest", {
+      requestId: { type: DataTypes.STRING, primaryKey: true },
+      contactId: { type: DataTypes.STRING, allowNull: false },
+      pendingContactId: { type: DataTypes.STRING, allowNull: true, unique: true },
+      status: { type: DataTypes.STRING, allowNull: false },
+      notificationStatus: { type: DataTypes.STRING, allowNull: false, defaultValue: "NOT_QUEUED" },
+    }, {
+      tableName: "active_period_purchase_requests",
+      timestamps: true,
+    });
     this.models.Reminder = jsonPayloadModel("Reminder", "reminders", "id");
     this.models.SentReminder = jsonPayloadModel("SentReminder", "sent_reminders", "id");
     this.models.VoucherBatch = jsonPayloadModel("VoucherBatch", "voucher_batches", "batchId");
@@ -210,6 +220,79 @@ class DataManagerCore {
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  async getActivePeriodPurchaseRequest(contactId, requestId) {
+    const model = this.models.ActivePeriodPurchaseRequest;
+    const record = await model.findByPk(requestId);
+    if (!record) return null;
+    if (String(record.contactId) !== String(contactId)) {
+      const error = new Error("ID pembelian ini sudah digunakan untuk pelanggan lain.");
+      error.statusCode = 409;
+      throw error;
+    }
+    return record.get({ plain: true });
+  }
+
+  async beginActivePeriodPurchaseRequest(contactId, requestId) {
+    const model = this.models.ActivePeriodPurchaseRequest;
+    try {
+      await model.create({
+        requestId,
+        contactId: String(contactId),
+        pendingContactId: String(contactId),
+        status: "PROCESSING",
+        notificationStatus: "NOT_QUEUED",
+      });
+      return true;
+    } catch (error) {
+      if (!(error instanceof Sequelize.UniqueConstraintError)) throw error;
+      const sameRequest = await this.getActivePeriodPurchaseRequest(contactId, requestId);
+      if (sameRequest) return false;
+      const conflict = new Error("Pelanggan masih memiliki pembelian yang belum selesai. Periksa status transaksi sebelum membuat pembelian baru.");
+      conflict.statusCode = 409;
+      throw conflict;
+    }
+  }
+
+  async completeActivePeriodPurchaseRequest(contactId, requestId) {
+    const [updated] = await this.models.ActivePeriodPurchaseRequest.update({
+      status: "COMPLETED",
+      pendingContactId: null,
+      notificationStatus: "PENDING",
+    }, { where: { requestId, contactId: String(contactId) } });
+    if (!updated) throw new Error("Status pembelian tidak dapat diperbarui.");
+  }
+
+  async markActivePeriodPurchaseForReview(contactId, requestId) {
+    await this.models.ActivePeriodPurchaseRequest.update({
+      status: "REVIEW_REQUIRED",
+    }, {
+      where: { requestId, contactId: String(contactId), status: "PROCESSING" },
+    });
+  }
+
+  async getPendingActivePeriodNotifications() {
+    return this.models.ActivePeriodPurchaseRequest.findAll({
+      where: { status: "COMPLETED", notificationStatus: "PENDING" },
+      order: [["createdAt", "ASC"]],
+      limit: 20,
+      raw: true,
+    });
+  }
+
+  async claimActivePeriodNotification(requestId) {
+    const [claimed] = await this.models.ActivePeriodPurchaseRequest.update({
+      notificationStatus: "SENDING",
+    }, { where: { requestId, status: "COMPLETED", notificationStatus: "PENDING" } });
+    return claimed === 1;
+  }
+
+  async setActivePeriodNotificationStatus(requestId, status) {
+    if (!["SENT", "FAILED"].includes(status)) throw new Error("Status notifikasi tidak valid.");
+    await this.models.ActivePeriodPurchaseRequest.update({
+      notificationStatus: status,
+    }, { where: { requestId, status: "COMPLETED", notificationStatus: "SENDING" } });
   }
 
   async close() {
