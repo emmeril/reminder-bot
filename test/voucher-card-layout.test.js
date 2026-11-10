@@ -24,5 +24,5 @@ test("voucher cards reserve room for status and usage timestamp", () => {
 test("voucher layout remains responsive without changing print cards", () => {
   assert.match(css, /@media \(max-width: 620px\) \{[\s\S]*?\.voucher-card-grid \{\s*grid-template-columns: 1fr/);
   assert.match(css, /body\.voucher-print-mode \.voucher-print-page-grid \.voucher-card \{/);
-  assert.match(html, /href="\/public\/interface\.css\?v=20261110-1"/);
+  assert.match(html, /href="\/public\/interface\.css\?v=\d{8}-\d+"/);
 });
