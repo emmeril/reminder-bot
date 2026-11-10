@@ -1754,13 +1754,13 @@ test("pembelian masa aktif mengaktifkan hotspot tanpa mengubah tunggakan", async
   assert.equal(payload.data.purchase.amount, 100000);
   assert.equal(payload.data.contact.debtAmount, 200000);
   assert.equal(payload.data.contact.hotspotManualActivationWithArrears, true);
-  assert.equal(payload.data.notificationSent, true);
+  assert.equal(payload.data.notificationSent, false);
+  assert.equal(payload.data.notificationQueued, true);
   assert.deepEqual(calls, [
     "prepare",
     "status",
     "router:false",
     "persist",
-    "notify:ACTIVE-PERIOD:100000",
   ]);
 });
 
