@@ -1689,7 +1689,7 @@
             </div>
             </section>
             <div class="flex flex-wrap gap-2">
-              <button class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Pengaturan</button>
+              <button :disabled="branding.processing" class="rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-moss disabled:cursor-not-allowed disabled:opacity-60"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan Pengaturan</button>
               <button x-cloak x-show="activeSettingsTab === 'backup'" type="button" @click="sendBackupsNow()" :disabled="loading.backups" class="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-haze disabled:cursor-not-allowed disabled:opacity-60">
                 <i :class="loading.backups ? 'fa-solid fa-spinner fa-spin mr-2' : 'fa-solid fa-file-export mr-2'"></i>
                 <span x-text="loading.backups ? 'Mengirim Backup MikroTik & Aplikasi...' : 'Kirim Backup MikroTik & Aplikasi'"></span>
