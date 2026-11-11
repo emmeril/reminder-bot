@@ -1349,15 +1349,18 @@
                         </span>
                       </td>
                       <td class="px-5 py-4 text-ink/65" data-label="Waktu pengiriman">
-                        <span class="inline-flex items-center gap-2 whitespace-nowrap font-semibold text-ink/70">
-                          <i class="fa-regular fa-calendar text-ink/35"></i>
-                          <span x-text="getReminderDeliveryLabel(reminder) + ': ' + formatDateTime(reminder.deliveryDateTime || reminder.reminderDateTime)"></span>
-                        </span>
-                        <div
-                          x-show="reminder.deliveryDateTime && reminder.deliveryDateTime !== reminder.reminderDateTime"
-                          class="mt-1 text-xs text-ink/45"
-                          x-text="'Jatuh tempo tagihan: ' + formatDateTime(reminder.reminderDateTime)"
-                        ></div>
+                        <div class="flex min-w-0 items-start gap-2">
+                          <i class="fa-regular fa-calendar mt-1 shrink-0 text-ink/35" aria-hidden="true"></i>
+                          <div class="min-w-0">
+                            <div class="font-semibold leading-snug text-ink/80" x-text="getReminderDeliveryLabel(reminder)"></div>
+                            <div class="mt-1 break-words text-sm leading-relaxed text-ink/70" x-text="formatDateTime(reminder.deliveryDateTime || reminder.reminderDateTime)"></div>
+                            <div
+                              x-show="getReminderReferenceDate(reminder) && getReminderReferenceDate(reminder) !== (reminder.deliveryDateTime || reminder.reminderDateTime)"
+                              class="mt-2 break-words text-xs leading-relaxed text-ink/50"
+                              x-text="getReminderReferenceLabel(reminder) + ': ' + formatDateTime(getReminderReferenceDate(reminder))"
+                            ></div>
+                          </div>
+                        </div>
                       </td>
                       <td class="px-5 py-4" data-label="Template">
                         <span class="inline-flex max-w-full items-center rounded-full bg-moss/10 px-3 py-1 text-xs font-bold text-moss ring-1 ring-moss/10">
