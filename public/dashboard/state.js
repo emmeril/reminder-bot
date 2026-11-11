@@ -469,7 +469,7 @@ function createDashboardState() {
             ],
             [
               "referenceAt",
-              "Masa aktif berakhir"
+              "Batas layanan"
             ],
             [
               "template",

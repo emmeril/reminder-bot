@@ -466,6 +466,10 @@ class CustomerDataManager extends DataManagerCore {
       0,
       30
     );
+    const graceReferenceDate = reminder.activePeriodUntil || reminder.reminderDateTime;
+    const graceEnd = graceDays > 0 && isGracePeriodReminder(reminder) && graceReferenceDate
+      ? addDaysSafely(graceReferenceDate, graceDays, this.getTimezone())
+      : null;
     let deliveryScheduleType = "STANDARD";
     if (!Number.isNaN(retryDate.getTime())) {
       deliveryScheduleType = "RETRY";
@@ -484,6 +488,9 @@ class CustomerDataManager extends DataManagerCore {
       paymentAmount: Math.max(0, Number(reminder.paymentAmount ?? contact?.monthlyPaymentAmount) || 0),
       deliveryDateTime: Number.isNaN(deliveryDate.getTime()) ? reminder.reminderDateTime : deliveryDate.toISOString(),
       deliveryScheduleType,
+      gracePeriodEndsAt: graceEnd && Number.isFinite(graceEnd.getTime())
+        ? graceEnd.toISOString()
+        : null,
     };
   }
 

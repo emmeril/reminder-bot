@@ -42,7 +42,19 @@ function createDashboardSelectors() {
           return "Waktu reminder";
         },
 
+        isPrepaidGraceReminder(reminder) {
+          if (!this.isPrepaidExpiryReminder(reminder)) return false;
+          const deliveryType = String(reminder?.deliveryScheduleType || "").toUpperCase();
+          if (deliveryType === "GRACE_PERIOD") return true;
+          return deliveryType === "RETRY"
+            && (String(reminder?.reminderKind || "").toUpperCase() === "GRACE_PERIOD"
+              || Boolean(reminder?.gracePeriodCreatedAt));
+        },
+
         getReminderReferenceDate(reminder) {
+          if (this.isPrepaidGraceReminder(reminder)) {
+            return reminder?.gracePeriodEndsAt || null;
+          }
           if (this.isPrepaidExpiryReminder(reminder)) {
             return reminder?.activePeriodUntil || reminder?.reminderDateTime || null;
           }
@@ -50,6 +62,7 @@ function createDashboardSelectors() {
         },
 
         getReminderReferenceLabel(reminder) {
+          if (this.isPrepaidGraceReminder(reminder)) return "Batas masa tenggang";
           return this.isPrepaidExpiryReminder(reminder)
             ? "Masa aktif paket berakhir"
             : "Jatuh tempo tagihan";
