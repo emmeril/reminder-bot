@@ -72,7 +72,7 @@ function createDashboardUi() {
           this.pollers.push(setInterval(() => {
             if (!document.hidden) {
               const requests = [this.loadStatus({ silent: true })];
-              if (this.activeMenu === "contacts" && this.activeContactTab === "hotspot") {
+              if (this.activeMenu === "contacts" && ["hotspot", "billing"].includes(this.activeContactTab)) {
                 requests.push(this.loadContacts({ silent: true }));
               }
               if (this.activeMenu === "monitor-ap") {
