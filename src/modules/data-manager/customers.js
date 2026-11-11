@@ -998,6 +998,7 @@ class CustomerDataManager extends DataManagerCore {
     delete result.hotspotProvisioningPrevious;
     delete result.subscriptionChangedByArrears;
     delete result.arrearsSubscriptionDebtPeriods;
+    delete result.prepaidReminderDeliveries;
     if (result.hotspotNotificationPending) {
       result.hotspotNotificationPending = {
         attempts: result.hotspotNotificationPending.attempts || 0,
@@ -1779,7 +1780,7 @@ class CustomerDataManager extends DataManagerCore {
     const created = !existing;
     const previousState = existing ? JSON.stringify(existing) : null;
     const preserveGracePeriod = Boolean(
-      samePeriod && (isGracePeriodReminder(existing) || (expiryCompleted && graceDays > 0))
+      (samePeriod && isGracePeriodReminder(existing)) || (expiryCompleted && graceDays > 0)
     );
     const reminder = existing || {
       id: generateId(),
@@ -2932,7 +2933,9 @@ class CustomerDataManager extends DataManagerCore {
   async markReminderDeliveryAttempt(id, provider = null) {
     return this.withDataMutation(async () => {
       const reminder = this.getReminder(id);
-      if (!reminder || reminder.deliveryAttemptedAt) return null;
+      if (!reminder || reminder.deliveryAttemptedAt || this.getPrepaidReminderStageRecord(reminder)) {
+        return null;
+      }
 
       const now = new Date().toISOString();
       reminder.deliveryAttempts = Math.max(0, Number(reminder.deliveryAttempts) || 0) + 1;
@@ -2941,7 +2944,16 @@ class CustomerDataManager extends DataManagerCore {
       reminder.whatsappProvider = provider || reminder.whatsappProvider || null;
       reminder.providerStatus = "processing";
       reminder.providerError = null;
-      await this.saveReminders();
+      const stageRecorded = this.recordPrepaidReminderStage(reminder, "PROCESSING", now);
+      if (stageRecorded) {
+        await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+          const options = { transaction };
+          await this.saveReminders(options);
+          await this.saveContacts(options);
+        }));
+      } else {
+        await this.saveReminders();
+      }
       return this.hydrateReminder(reminder);
     });
   }
@@ -3073,6 +3085,19 @@ class CustomerDataManager extends DataManagerCore {
         return null;
       }
 
+      const previousDelivery = this.getPrepaidReminderStageRecord(reminder);
+      if (previousDelivery) {
+        if (previousDelivery.reminderId !== String(reminder.id)
+          || previousDelivery.status !== "PROCESSING") {
+          this.reminders.delete(String(id));
+          await this.saveReminders();
+          return null;
+        }
+        reminder.deliveryAttemptedAt = reminder.deliveryAttemptedAt || previousDelivery.at;
+        reminder.lastDeliveryAttemptAt = reminder.lastDeliveryAttemptAt || previousDelivery.at;
+        reminder.providerStatus = "processing";
+      }
+
       const processingStartedAt = reminder.processingAt ? new Date(reminder.processingAt).getTime() : null;
       if (Number.isFinite(processingStartedAt) && (Date.now() - processingStartedAt) < 15 * 60 * 1000) {
         return null;
@@ -3115,12 +3140,16 @@ class CustomerDataManager extends DataManagerCore {
       delete sentReminder.processingAt;
       delete sentReminder.nextDeliveryAttemptAt;
 
+      const stageRecorded = this.recordPrepaidReminderStage(
+        reminder, sentReminder.deliveryStatus, sentReminder.sentAt
+      );
       this.sentReminders.set(String(id), sentReminder);
       this.reminders.delete(String(id));
       await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
         const options = { transaction };
         await this.saveReminders(options);
         await this.saveSentReminders(options);
+        if (stageRecorded) await this.saveContacts(options);
       }));
       return sentReminder;
     });
@@ -3169,11 +3198,15 @@ class CustomerDataManager extends DataManagerCore {
         delete reminder[field];
       }
 
+      const stageRecorded = this.recordPrepaidReminderStage(
+        sentReminder, sentReminder.deliveryStatus, sentReminder.sentAt
+      );
       this.sentReminders.set(historyId, sentReminder);
       await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
         const options = { transaction };
         await this.saveReminders(options);
         await this.saveSentReminders(options);
+        if (stageRecorded) await this.saveContacts(options);
       }));
       return {
         sentReminder,
