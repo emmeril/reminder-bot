@@ -677,13 +677,6 @@ function createDashboardSelectors() {
           return classes[this.getPrepaidPackageStatus(contact)];
         },
 
-        getPrepaidRenewalHint(contact) {
-          if (!this.isPrepaidPackage(contact)) return "";
-          return ["GRACE", "INACTIVE"].includes(this.getPrepaidPackageStatus(contact))
-            ? "Perlu perpanjangan"
-            : "";
-        },
-
         getCurrentPaymentClass(contact) {
           if (this.isPrepaidPackage(contact)) {
             return this.getPrepaidPackageStatusClass(contact);
@@ -1531,7 +1524,6 @@ function createDashboardSelectors() {
               this.formatRupiah(contact.monthlyPaymentAmount),
               this.getPaymentAmountSourceLabel(contact),
               this.getCurrentPaymentLabel(contact),
-              this.getPrepaidRenewalHint(contact),
               this.getContactLastPaymentLabel(contact),
             ], this.filters.contactBilling.search);
           });
