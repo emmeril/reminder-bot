@@ -27,6 +27,24 @@ function createDashboardSelectors() {
           return new Date(value).toLocaleString("id-ID", { timeZone: this.getAppTimezone() });
         },
 
+        formatReminderTableDateTime(value) {
+          const date = new Date(value || "");
+          if (Number.isNaN(date.getTime())) return "-";
+          const parts = new Intl.DateTimeFormat("id-ID", {
+            timeZone: this.getAppTimezone(),
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hourCycle: "h23",
+          }).formatToParts(date).reduce((result, part) => {
+            if (part.type !== "literal") result[part.type] = part.value;
+            return result;
+          }, {});
+          return `${parts.day} ${parts.month} ${parts.year}, ${parts.hour}.${parts.minute}`;
+        },
+
         isPrepaidExpiryReminder(reminder) {
           return String(reminder?.billingCycle || "").toUpperCase() === "PREPAID"
             || String(reminder?.reminderKind || "").toUpperCase() === "ACTIVE_PERIOD_EXPIRY"
@@ -53,6 +71,44 @@ function createDashboardSelectors() {
           return this.isPrepaidExpiryReminder(reminder)
             ? "Masa aktif paket berakhir"
             : "Jatuh tempo tagihan";
+        },
+
+        getReminderTableTypeLabel(reminder) {
+          const label = this.getReminderDeliveryLabel(reminder);
+          if (label === "Pengingat masa aktif paket") return "Masa aktif";
+          if (label === "Pengingat masa tenggang") return "Masa tenggang";
+          if (label === "Jatuh tempo tagihan") return "Tagihan";
+          return label;
+        },
+
+        isReminderReferenceSameAsDelivery(reminder) {
+          const reference = this.getReminderReferenceDate(reminder);
+          const delivery = reminder?.deliveryDateTime || reminder?.reminderDateTime;
+          if (!reference || !delivery) return false;
+          const referenceTime = new Date(reference).getTime();
+          const deliveryTime = new Date(delivery).getTime();
+          return Number.isFinite(referenceTime) && referenceTime === deliveryTime;
+        },
+
+        getReminderTableExpiryLabel(reminder) {
+          const reference = this.getReminderReferenceDate(reminder);
+          if (!reference) return "-";
+          if (this.isPrepaidExpiryReminder(reminder) && this.isReminderReferenceSameAsDelivery(reminder)) {
+            return "Saat jadwal kirim";
+          }
+          return this.formatReminderTableDateTime(reference);
+        },
+
+        getReminderTimingNote(reminder) {
+          const stage = String(reminder?.deliveryScheduleType || "").toUpperCase();
+          if (stage === "RETRY") return "Ini merupakan percobaan ulang pengiriman pengingat.";
+          if (!this.isPrepaidExpiryReminder(reminder)) return "Waktu pengiriman mengikuti jadwal pengingat pelanggan.";
+          if (stage === "GRACE_PERIOD") {
+            return this.isReminderReferenceSameAsDelivery(reminder)
+              ? "Pengingat masa tenggang dijadwalkan saat masa aktif paket berakhir."
+              : "Pengingat lanjutan dikirim setelah masa aktif paket berakhir, selama masa tenggang.";
+          }
+          return "Pengingat masa aktif dijadwalkan ketika paket berakhir.";
         },
 
         messageKey(scope, id) {
@@ -1383,7 +1439,7 @@ function createDashboardSelectors() {
           const values = new Map();
           for (const reminder of this.reminders) {
             const value = String(reminder.deliveryScheduleType || "DEFAULT").toUpperCase();
-            values.set(value, this.getReminderDeliveryLabel(reminder));
+            values.set(value, this.getReminderTableTypeLabel(reminder));
           }
           return Array.from(values, ([value, label]) => ({ value, label }));
         },
@@ -1577,6 +1633,8 @@ function createDashboardSelectors() {
               reminder.phoneNumber || "-",
               this.getBillingCycleLabel(reminder),
               this.getReminderDeliveryLabel(reminder),
+              this.getReminderTableTypeLabel(reminder),
+              this.getReminderTableExpiryLabel(reminder),
               deliveryDateTime,
               this.formatDateTime(deliveryDateTime),
               this.getReminderReferenceLabel(reminder),
@@ -1590,7 +1648,7 @@ function createDashboardSelectors() {
           return this.sortTableItems(reminders, "reminders", {
             contact: (reminder) => reminder.contactName || reminder.phoneNumber,
             billingCycle: (reminder) => this.getBillingCycleLabel(reminder),
-            reminderType: (reminder) => this.getReminderDeliveryLabel(reminder),
+            reminderType: (reminder) => this.getReminderTableTypeLabel(reminder),
             deliveryAt: (reminder) => this.getSortTimestamp(reminder.deliveryDateTime || reminder.reminderDateTime),
             referenceAt: (reminder) => this.getSortTimestamp(this.getReminderReferenceDate(reminder)),
             template: (reminder) => reminder.templateName,
