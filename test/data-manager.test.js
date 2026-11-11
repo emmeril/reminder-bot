@@ -2818,3 +2818,140 @@ test("API pengaturan mengabaikan flag bulanan yang sudah dihapus", async () => {
   assert.equal(Object.prototype.hasOwnProperty.call(manager.settings, "autoRescheduleMonthly"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(manager.settings, "notifyAdminsOnPaymentReset"), false);
 });
+
+
+test("pengingat masa tenggang prabayar tidak dibuat ulang sesudah restart atau pembersihan riwayat", async () => {
+  const activeUntil = "2026-11-10T12:08:22.960Z";
+  const contact = {
+    id: "prepaid-no-grace-replay", name: "Pelanggan Prabayar",
+    phoneNumber: "6281234567891",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID,
+    monthlyPaymentAmount: 75000,
+    hotspotReactivationAt: activeUntil,
+    activePeriodPurchases: [{ purchasedAt: "2026-10-10T12:08:22.960Z", activeUntil }],
+  };
+  const manager = createManager(contact);
+  manager.settings.hotspotIsolationGraceDays = 3;
+
+  const scheduled = manager.syncRecurringReminderSchedule(contact);
+  assert.equal(scheduled, 1);
+  const reminder = Array.from(manager.reminders.values())[0];
+  await manager.markReminderDeliveryAttempt(reminder.id, "baileys");
+  await manager.moveToGracePeriod(reminder.id, {
+    sentAt: activeUntil, deliveryStatus: "SENT_BAILEYS",
+  });
+  assert.equal(contact.prepaidReminderDeliveries[activeUntil].EXPIRY.status, "SENT_BAILEYS");
+
+  const grace = manager.getReminder(reminder.id);
+  assert.ok(grace.gracePeriodCreatedAt);
+  assert.equal(manager.syncRecurringReminderSchedule(contact), 0);
+  await manager.markReminderDeliveryAttempt(reminder.id, "baileys");
+  await manager.moveToSent(reminder.id, {
+    sentAt: "2026-11-12T12:08:22.960Z", deliveryStatus: "SENT_BAILEYS",
+  });
+  assert.equal(contact.prepaidReminderDeliveries[activeUntil].GRACE_PERIOD.status, "SENT_BAILEYS");
+  assert.equal(manager.reminders.size, 0);
+
+  for (let restart = 0; restart < 3; restart += 1) {
+    await manager.restorePrepaidReminderDeliveryHistory();
+    assert.equal(await manager.repairMissingRecurringReminders(), 0);
+    assert.equal(manager.reminders.size, 0);
+  }
+
+  manager.sentReminders.clear();
+  assert.equal(await manager.repairMissingRecurringReminders(), 0);
+  assert.equal(manager.reminders.size, 0);
+});
+
+test("startup memulihkan status tahap pengingat dari riwayat lama sebelum membuat jadwal", async () => {
+  const activeUntil = "2026-11-10T12:08:22.960Z";
+  const contact = {
+    id: "prepaid-legacy-sent", name: "Pelanggan Riwayat Lama",
+    phoneNumber: "6281234567892",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID,
+    hotspotReactivationAt: activeUntil,
+  };
+  const manager = createManager(contact);
+  manager.settings.hotspotIsolationGraceDays = 3;
+  manager.sentReminders.set("history-expiry", {
+    id: "history-expiry", sourceReminderId: "original",
+    contactId: contact.id, reminderDateTime: activeUntil,
+    activePeriodUntil: activeUntil, reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    sentAt: activeUntil, deliveryStatus: "SENT_BAILEYS",
+  });
+  manager.sentReminders.set("history-grace", {
+    id: "history-grace", contactId: contact.id,
+    reminderDateTime: activeUntil, activePeriodUntil: activeUntil,
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    gracePeriodCreatedAt: activeUntil,
+    sentAt: "2026-11-12T12:08:22.960Z", deliveryStatus: "SENT_BAILEYS",
+  });
+  assert.equal(await manager.restorePrepaidReminderDeliveryHistory(), 2);
+  assert.equal(contact.prepaidReminderDeliveries[activeUntil].EXPIRY.status, "SENT_BAILEYS");
+  assert.equal(contact.prepaidReminderDeliveries[activeUntil].GRACE_PERIOD.status, "SENT_BAILEYS");
+  assert.equal(await manager.repairMissingRecurringReminders(), 0);
+  assert.equal(manager.reminders.size, 0);
+});
+
+test("pengingat sedang dikirim tidak diulang setelah restart dengan jadwal yang hilang", async () => {
+  const activeUntil = "2026-11-10T12:08:22.960Z";
+  const contact = {
+    id: "prepaid-inflight", name: "Pelanggan Inflight", phoneNumber: "6281234567893",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING, billingCycle: BILLING_CYCLES.PREPAID,
+    hotspotReactivationAt: activeUntil,
+  };
+  const manager = createManager(contact);
+  manager.settings.hotspotIsolationGraceDays = 3;
+  manager.syncRecurringReminderSchedule(contact);
+  const reminder = Array.from(manager.reminders.values())[0];
+  await manager.markReminderDeliveryAttempt(reminder.id, "baileys");
+  assert.equal(contact.prepaidReminderDeliveries[activeUntil].EXPIRY.status, "PROCESSING");
+
+  manager.reminders.clear();
+  assert.equal(await manager.repairMissingRecurringReminders(), 0);
+  assert.equal(manager.reminders.size, 0);
+});
+
+test("periode paket baru boleh dikirim meskipun pengingat periode lama selesai", async () => {
+  const oldUntil = "2026-11-10T12:08:22.960Z";
+  const newUntil = "2026-12-10T12:08:22.960Z";
+  const contact = {
+    id: "prepaid-next-period", name: "Pelanggan Perpanjangan", phoneNumber: "6281234567894",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING, billingCycle: BILLING_CYCLES.PREPAID,
+    hotspotReactivationAt: oldUntil,
+  };
+  const manager = createManager(contact);
+  manager.settings.hotspotIsolationGraceDays = 0;
+  manager.syncRecurringReminderSchedule(contact);
+  const oldReminder = Array.from(manager.reminders.values())[0];
+  await manager.markReminderDeliveryAttempt(oldReminder.id, "baileys");
+  await manager.moveToSent(oldReminder.id, { deliveryStatus: "SENT_BAILEYS" });
+  assert.equal(await manager.repairMissingRecurringReminders(), 0);
+
+  contact.hotspotReactivationAt = newUntil;
+  assert.equal(await manager.repairMissingRecurringReminders(), 1);
+  const nextReminder = Array.from(manager.reminders.values())[0];
+  assert.equal(nextReminder.activePeriodUntil, newUntil);
+  assert.equal(nextReminder.deliveryAttemptedAt, undefined);
+  assert.equal(contact.prepaidReminderDeliveries[oldUntil].EXPIRY.status, "SENT_BAILEYS");
+});
+
+test("pengingat tahap terkirim tidak kehilangan penanda percobaan saat sinkronisasi", async () => {
+  const activeUntil = "2026-11-10T12:08:22.960Z";
+  const contact = {
+    id: "prepaid-attempt-preserved", name: "Pelanggan Attempt", phoneNumber: "6281234567895",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING, billingCycle: BILLING_CYCLES.PREPAID,
+    hotspotReactivationAt: activeUntil,
+  };
+  const manager = createManager(contact);
+  manager.settings.hotspotIsolationGraceDays = 3;
+  manager.syncRecurringReminderSchedule(contact);
+  const reminder = Array.from(manager.reminders.values())[0];
+  await manager.markReminderDeliveryAttempt(reminder.id, "baileys");
+  const initialAttempt = manager.getReminder(reminder.id).deliveryAttemptedAt;
+  manager.syncRecurringReminderSchedule(contact);
+  assert.equal(manager.getReminder(reminder.id).deliveryAttemptedAt, initialAttempt);
+  assert.equal(await manager.markReminderDeliveryAttempt(reminder.id, "baileys"), null);
+});
