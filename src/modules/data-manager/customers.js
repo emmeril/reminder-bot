@@ -1780,7 +1780,8 @@ class CustomerDataManager extends DataManagerCore {
     const created = !existing;
     const previousState = existing ? JSON.stringify(existing) : null;
     const preserveGracePeriod = Boolean(
-      (samePeriod && isGracePeriodReminder(existing)) || (expiryCompleted && graceDays > 0)
+      (samePeriod && existing.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY
+        && isGracePeriodReminder(existing)) || (expiryCompleted && graceDays > 0)
     );
     const reminder = existing || {
       id: generateId(),
