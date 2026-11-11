@@ -7,11 +7,11 @@
   <link rel="icon" type="image/png" href="/branding/icon">
   <link rel="stylesheet" href="/public/tailwind.css?v=20261105-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20261110-5">
+  <link rel="stylesheet" href="/public/styles.css?v=20261111-1">
   <link rel="stylesheet" href="/public/interface.css?v=20261110-4">
-  <script defer src="/public/dashboard/state.js?v=20261110-8"></script>
+  <script defer src="/public/dashboard/state.js?v=20261111-1"></script>
   <script defer src="/public/dashboard/ui.js?v=20261110-2"></script>
-  <script defer src="/public/dashboard/selectors.js?v=20261109-1"></script>
+  <script defer src="/public/dashboard/selectors.js?v=20261111-1"></script>
   <script defer src="/public/dashboard/data.js?v=20261110-8"></script>
   <script defer src="/public/dashboard/actions.js?v=20261110-9"></script>
   <script defer src="/public/app.js?v=20261106-1"></script>
@@ -1316,19 +1316,21 @@
           </div>
           <div class="sent-history-table mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8 bg-white/80 shadow-sm">
             <div class="table-scroll" tabindex="0" role="region" aria-label="Tabel reminder aktif">
-              <table class="dashboard-table min-w-full text-sm">
+              <table class="dashboard-table reminder-schedule-table min-w-full text-sm">
                 <thead class="bg-haze/90 text-left text-xs uppercase text-ink/50">
                   <tr>
-                    <th class="w-[24%] px-5 py-4" :aria-sort="getSortAria('reminders', 'contact')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'contact')" :aria-label="getSortLabel('reminders', 'contact', 'Tujuan')"><i class="fa-solid fa-user table-sort-leading-icon text-moss" aria-hidden="true"></i><span>Tujuan</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'contact')" aria-hidden="true"></i></button></th>
-                    <th class="w-[14%] px-5 py-4" :aria-sort="getSortAria('reminders', 'billingCycle')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'billingCycle')" :aria-label="getSortLabel('reminders', 'billingCycle', 'Siklus')"><i class="fa-solid fa-repeat table-sort-leading-icon text-moss" aria-hidden="true"></i><span>Siklus</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'billingCycle')" aria-hidden="true"></i></button></th>
-                    <th class="w-[20%] px-5 py-4" :aria-sort="getSortAria('reminders', 'deliveryAt')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'deliveryAt')" :aria-label="getSortLabel('reminders', 'deliveryAt', 'Waktu pengiriman')"><i class="fa-solid fa-clock table-sort-leading-icon text-clay" aria-hidden="true"></i><span>Waktu pengiriman</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'deliveryAt')" aria-hidden="true"></i></button></th>
-                    <th class="w-[16%] px-5 py-4" :aria-sort="getSortAria('reminders', 'template')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'template')" :aria-label="getSortLabel('reminders', 'template', 'Template')"><i class="fa-solid fa-file-lines table-sort-leading-icon text-moss" aria-hidden="true"></i><span>Template</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'template')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-4" :aria-sort="getSortAria('reminders', 'contact')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'contact')" :aria-label="getSortLabel('reminders', 'contact', 'Tujuan')"><i class="fa-solid fa-user table-sort-leading-icon text-moss" aria-hidden="true"></i><span>Tujuan</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'contact')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-4" :aria-sort="getSortAria('reminders', 'billingCycle')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'billingCycle')" :aria-label="getSortLabel('reminders', 'billingCycle', 'Siklus')"><i class="fa-solid fa-repeat table-sort-leading-icon text-moss" aria-hidden="true"></i><span>Siklus</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'billingCycle')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-4" :aria-sort="getSortAria('reminders', 'reminderType')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'reminderType')" :aria-label="getSortLabel('reminders', 'reminderType', 'Jenis pengingat')"><span>Jenis pengingat</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'reminderType')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-4" :aria-sort="getSortAria('reminders', 'deliveryAt')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'deliveryAt')" :aria-label="getSortLabel('reminders', 'deliveryAt', 'Waktu pengiriman')"><i class="fa-solid fa-clock table-sort-leading-icon text-clay" aria-hidden="true"></i><span>Waktu pengiriman</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'deliveryAt')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-4" :aria-sort="getSortAria('reminders', 'referenceAt')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'referenceAt')" :aria-label="getSortLabel('reminders', 'referenceAt', 'Masa aktif berakhir')"><span>Masa aktif berakhir</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'referenceAt')" aria-hidden="true"></i></button></th>
+                    <th class="px-4 py-4" :aria-sort="getSortAria('reminders', 'template')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'template')" :aria-label="getSortLabel('reminders', 'template', 'Template')"><i class="fa-solid fa-file-lines table-sort-leading-icon text-moss" aria-hidden="true"></i><span>Template</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'template')" aria-hidden="true"></i></button></th>
                     <th class="px-5 py-4" :aria-sort="getSortAria('reminders', 'message')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'message')" :aria-label="getSortLabel('reminders', 'message', 'Pesan')"><i class="fa-solid fa-message table-sort-leading-icon text-ink/45" aria-hidden="true"></i><span>Pesan</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'message')" aria-hidden="true"></i></button></th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white">
                   <template x-if="!filteredReminders.length">
-                    <tr><td colspan="5" class="px-5 py-10 text-center text-ink/45" x-text="reminders.length ? 'Tidak ada reminder yang cocok.' : 'Belum ada reminder aktif. Jadwal akan muncul setelah pelanggan memiliki siklus pembayaran atau masa aktif.'"></td></tr>
+                    <tr><td colspan="7" class="px-5 py-10 text-center text-ink/45" x-text="reminders.length ? 'Tidak ada reminder yang cocok.' : 'Belum ada reminder aktif. Jadwal akan muncul setelah pelanggan memiliki siklus pembayaran atau masa aktif.'"></td></tr>
                   </template>
                   <template x-for="reminder in paginatedReminders" :key="reminder.id">
                     <tr>
@@ -1348,19 +1350,15 @@
                           <span x-text="getBillingCycleLabel(reminder)"></span>
                         </span>
                       </td>
-                      <td class="px-5 py-4 text-ink/65" data-label="Waktu pengiriman">
-                        <div class="flex min-w-0 items-start gap-2">
-                          <i class="fa-regular fa-calendar mt-1 shrink-0 text-ink/35" aria-hidden="true"></i>
-                          <div class="min-w-0">
-                            <div class="font-semibold leading-snug text-ink/80" x-text="getReminderDeliveryLabel(reminder)"></div>
-                            <div class="mt-1 break-words text-sm leading-relaxed text-ink/70" x-text="formatDateTime(reminder.deliveryDateTime || reminder.reminderDateTime)"></div>
-                            <div
-                              x-show="getReminderReferenceDate(reminder) && getReminderReferenceDate(reminder) !== (reminder.deliveryDateTime || reminder.reminderDateTime)"
-                              class="mt-2 break-words text-xs leading-relaxed text-ink/50"
-                              x-text="getReminderReferenceLabel(reminder) + ': ' + formatDateTime(getReminderReferenceDate(reminder))"
-                            ></div>
-                          </div>
-                        </div>
+                      <td class="px-4 py-4 text-ink/80" data-label="Jenis pengingat">
+                        <span class="block break-words font-medium leading-relaxed" x-text="getReminderDeliveryLabel(reminder)"></span>
+                      </td>
+                      <td class="px-4 py-4 text-ink/70" data-label="Waktu pengiriman">
+                        <time class="block break-words leading-relaxed" :datetime="reminder.deliveryDateTime || reminder.reminderDateTime" x-text="formatDateTime(reminder.deliveryDateTime || reminder.reminderDateTime)"></time>
+                      </td>
+                      <td class="px-4 py-4 text-ink/70" data-label="Masa aktif berakhir">
+                        <span x-show="!isPrepaidExpiryReminder(reminder)" class="mb-1 block text-xs text-ink/50" x-text="getReminderReferenceLabel(reminder)"></span>
+                        <time class="block break-words leading-relaxed" :datetime="getReminderReferenceDate(reminder) || null" x-text="getReminderReferenceDate(reminder) ? formatDateTime(getReminderReferenceDate(reminder)) : '-'"></time>
                       </td>
                       <td class="px-5 py-4" data-label="Template">
                         <span class="inline-flex max-w-full items-center rounded-full bg-moss/10 px-3 py-1 text-xs font-bold text-moss ring-1 ring-moss/10">
