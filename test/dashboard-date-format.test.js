@@ -144,6 +144,45 @@ test("label pelanggan prabayar mengikuti status paket aktif", () => {
   assert.equal(app.getReactivationLabel({ packageActive: true }), "Paket aktif");
   assert.equal(app.getReactivationLabel({ packageActive: false }), "Paket tidak aktif");
 });
+test("tabel hotspot menampilkan dan mengurutkan batas masa tenggang secara responsif", () => {
+  const app = createDashboardApp();
+  const contact = {
+    id: "hotspot-grace-date",
+    name: "Pelanggan Masa Tenggang",
+    phoneNumber: "6281234567890",
+    subscriptionType: "RECURRING",
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: "2026-11-10T02:30:00.000Z",
+    hotspotGraceDays: 3,
+    hotspotGraceEndsAt: "2026-11-13T02:30:00.000Z",
+  };
+  assert.equal(
+    app.getHotspotGracePeriodLabel(contact),
+    app.formatDateTime(contact.hotspotGraceEndsAt)
+  );
+  assert.equal(
+    app.getHotspotGracePeriodLabel({ ...contact, hotspotGraceDays: 0, hotspotGraceEndsAt: null }),
+    "Tanpa masa tenggang"
+  );
+  assert.equal(
+    app.getHotspotGracePeriodLabel({ ...contact, hotspotReactivationAt: null }),
+    "Belum ada masa aktif"
+  );
+
+  app.contacts = [contact];
+  app.filters.contactHotspot.search = app.formatDateTime(contact.hotspotGraceEndsAt).split(",")[0];
+  assert.equal(app.filteredHotspotContacts.length, 1);
+  app.toggleSort("contactHotspot", "graceAt");
+  assert.equal(app.sorts.contactHotspot.key, "graceAt");
+  assert.ok(app.mobileSortFields.contactHotspot.some(([key]) => key === "graceAt"));
+
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  assert.match(html, /getSortAria\('contactHotspot', 'graceAt'\)/);
+  assert.match(html, /data-label="Batas Masa Tenggang"/);
+  assert.match(html, /x-text="getHotspotGracePeriodLabel\(contact\)"/);
+  assert.match(html, /colspan="14"[^>]*x-text="contacts.length/);
+});
+
 test("prabayar tidak menyediakan aktivasi manual tanpa pembelian paket", () => {
   const app = createDashboardApp();
   for (const status of ["DEACTIVATED", "ACTIVE", "DISABLED"]) {
