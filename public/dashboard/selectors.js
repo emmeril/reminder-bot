@@ -1590,7 +1590,9 @@ function createDashboardSelectors() {
           return this.sortTableItems(reminders, "reminders", {
             contact: (reminder) => reminder.contactName || reminder.phoneNumber,
             billingCycle: (reminder) => this.getBillingCycleLabel(reminder),
+            reminderType: (reminder) => this.getReminderDeliveryLabel(reminder),
             deliveryAt: (reminder) => this.getSortTimestamp(reminder.deliveryDateTime || reminder.reminderDateTime),
+            referenceAt: (reminder) => this.getSortTimestamp(this.getReminderReferenceDate(reminder)),
             template: (reminder) => reminder.templateName,
             message: (reminder) => reminder.message,
           });
