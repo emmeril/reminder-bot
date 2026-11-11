@@ -1601,7 +1601,9 @@ test("waktu reminder prabayar membedakan jadwal pengiriman dan masa aktif berakh
   assert.match(scheduleSection, /colspan="7"/);
   assert.match(scheduleSection, /data-label="Jenis pengingat"[\s\S]*?getReminderDeliveryLabel\(reminder\)/);
   assert.match(scheduleSection, /data-label="Waktu pengiriman"[\s\S]*?<time[^>]*formatDateTime\(reminder\.deliveryDateTime \|\| reminder\.reminderDateTime\)/);
-  assert.match(scheduleSection, /data-label="Batas layanan"[\s\S]*?getReminderReferenceLabel\(reminder\)[\s\S]*?<time[^>]*formatDateTime\(getReminderReferenceDate\(reminder\)\)/);
+  const referenceCell = scheduleSection.match(/<td[^>]*data-label="Batas layanan"[\s\S]*?<\/td>/)?.[0] || "";
+  assert.match(referenceCell, /<time[^>]*formatDateTime\(getReminderReferenceDate\(reminder\)\)/);
+  assert.doesNotMatch(referenceCell, /<span|getReminderReferenceLabel|Masa aktif paket berakhir|Batas masa tenggang/);
   assert.match(scheduleSection, /getSortLabel\('reminders', 'referenceAt', 'Batas layanan'\)/);
   assert.doesNotMatch(scheduleSection, /getReminderReferenceLabel\(reminder\) \+ ': ' \+ formatDateTime/);
   assert.match(scheduleSection, /break-words leading-relaxed/);
