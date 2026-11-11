@@ -1128,16 +1128,15 @@ test("label dan warna paket konsisten di Hotspot serta Tagihan tanpa menganggap 
     paymentType: "ARREARS-ONLY",
   };
   const cases = [
-    [{ ...base, hotspotReactivationAt: new Date(now + 60000).toISOString() }, "Paket aktif", "", "bg-moss/10 text-moss"],
-    [{ ...base, hotspotReactivationAt: new Date(now - 60000).toISOString(), hotspotGraceEndsAt: new Date(now + 60000).toISOString() }, "Masa tenggang", "Perlu perpanjangan", "bg-amber-100 text-amber-800"],
-    [{ ...base, hotspotReactivationAt: new Date(now - 60000).toISOString(), hotspotGraceEndsAt: new Date(now - 1000).toISOString() }, "Paket tidak aktif", "Perlu perpanjangan", "bg-red-50 text-red-800"],
-    [{ ...base, hotspotReactivationAt: null }, "Belum ada paket", "", "bg-slate-200/70 text-slate-700"],
+    [{ ...base, hotspotReactivationAt: new Date(now + 60000).toISOString() }, "Paket aktif", "bg-moss/10 text-moss"],
+    [{ ...base, hotspotReactivationAt: new Date(now - 60000).toISOString(), hotspotGraceEndsAt: new Date(now + 60000).toISOString() }, "Masa tenggang", "bg-amber-100 text-amber-800"],
+    [{ ...base, hotspotReactivationAt: new Date(now - 60000).toISOString(), hotspotGraceEndsAt: new Date(now - 1000).toISOString() }, "Paket tidak aktif", "bg-red-50 text-red-800"],
+    [{ ...base, hotspotReactivationAt: null }, "Belum ada paket", "bg-slate-200/70 text-slate-700"],
   ];
 
-  for (const [contact, label, hint, statusClass] of cases) {
+  for (const [contact, label, statusClass] of cases) {
     assert.equal(app.getReactivationLabel(contact), label);
     assert.equal(app.getCurrentPaymentLabel(contact), label);
-    assert.equal(app.getPrepaidRenewalHint(contact), hint);
     assert.equal(app.getReactivationClass(contact), statusClass);
     assert.equal(app.getCurrentPaymentClass(contact), statusClass);
     assert.equal(contact.currentPaymentStatus, "UNPAID");
@@ -1156,7 +1155,10 @@ test("label dan warna paket konsisten di Hotspot serta Tagihan tanpa menganggap 
   const ui = fs.readFileSync(path.join(__dirname, "../public/dashboard/ui.js"), "utf8");
   assert.match(html, /data-label="Status Paket"/);
   assert.match(html, /getCurrentPaymentClass\(contact\)/);
-  assert.match(html, /x-text="getPrepaidRenewalHint\(contact\)"/);
+  const packageStatusCell = html.split('data-label="Status Paket"')[1].split('data-label="Pembayaran Terakhir"')[0];
+  assert.match(packageStatusCell, /x-text="getCurrentPaymentLabel\(contact\)"/);
+  assert.doesNotMatch(packageStatusCell, /<small|Perlu perpanjangan|getPrepaidRenewalHint/);
+  assert.doesNotMatch(html, /Perlu perpanjangan/);
   assert.match(ui, /\["hotspot", "billing"\]\.includes\(this.activeContactTab\)/);
 });
 test("modal aksi tagihan memindahkan fokus lalu mengembalikannya saat ditutup", () => {
