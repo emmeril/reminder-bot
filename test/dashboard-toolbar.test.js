@@ -141,7 +141,8 @@ test("Jadwal mencari gabungan nama, nomor WA, jenis waktu, tanggal, template, da
   assert.deepEqual(find("masa tenggang paket"), ["r-alea"]);
   assert.deepEqual(find("16/11/2026 alea"), ["r-alea"]);
   assert.deepEqual(find("PAKETPRABAYAR WIFI"), ["r-alea"]);
-  assert.deepEqual(find("BIMA jatuh tempo"), ["r-bima"]);
+  assert.deepEqual(find("BIMA pengingat masa aktif paket"), ["r-bima"]);
+  assert.deepEqual(find("alea masa aktif paket berakhir"), ["r-alea"]);
   assert.deepEqual(find("nama tidak ada"), []);
   assert.deepEqual(find(""), ["r-alea", "r-bima"]);
   app.filters.reminders.schedule = "UPCOMING";

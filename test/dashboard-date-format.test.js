@@ -1449,20 +1449,60 @@ test("filter operasional memakai seluruh nilai yang tampil pada tabel", () => {
   assert.match(styles, /\.table-filter-field input, \.table-filter-field select \{[^}]*min-height: 44px;/);
 });
 
-test("jadwal reminder memakai waktu kirim H-1 dan tetap menampilkan jatuh tempo", () => {
+test("waktu reminder prabayar membedakan jadwal pengiriman dan masa aktif berakhir", () => {
   const app = createDashboardApp();
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const script = readDashboardSource();
+  const periodUntil = "2026-11-10T12:08:22.960Z";
+  const legacyDue = "2026-11-12T12:08:22.960Z";
+  const prepaidGrace = {
+    deliveryScheduleType: "GRACE_PERIOD",
+    billingCycle: "PREPAID",
+    reminderKind: "ACTIVE_PERIOD_EXPIRY",
+    deliveryDateTime: legacyDue,
+    reminderDateTime: periodUntil,
+    activePeriodUntil: periodUntil,
+  };
 
   assert.match(html, /Waktu pengiriman/);
-  assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "GRACE_PERIOD" }), "Pengingat masa tenggang");
-  assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "BILLING_DUE" }), "Jatuh tempo tagihan");
-  assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "RETRY" }), "Percobaan ulang");
+  assert.equal(app.getReminderDeliveryLabel(prepaidGrace), "Pengingat masa tenggang");
+  assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "BILLING_DUE", billingCycle: "PREPAID" }), "Pengingat masa aktif paket");
+  assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "STANDARD", reminderKind: "ACTIVE_PERIOD_EXPIRY" }), "Pengingat masa aktif paket");
+  assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "RETRY", billingCycle: "PREPAID" }), "Percobaan ulang");
+  assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "BILLING_DUE", billingCycle: "POSTPAID" }), "Jatuh tempo tagihan");
   assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "STANDARD" }), "Waktu reminder");
+  assert.equal(app.getReminderReferenceLabel(prepaidGrace), "Masa aktif paket berakhir");
+  assert.equal(app.getReminderReferenceDate(prepaidGrace), periodUntil);
+  assert.equal(app.getReminderReferenceLabel({ deliveryScheduleType: "BILLING_DUE", billingCycle: "POSTPAID" }), "Jatuh tempo tagihan");
+  assert.equal(app.getReminderReferenceDate({ billingCycle: "PREPAID", reminderDateTime: legacyDue }), legacyDue);
   assert.match(html, /getReminderDeliveryLabel\(reminder\)/);
-  assert.match(html, /'Jatuh tempo tagihan: ' \+ formatDateTime\(reminder\.reminderDateTime\)/);
+  assert.match(html, /getReminderReferenceLabel\(reminder\) \+ ': ' \+ formatDateTime\(getReminderReferenceDate\(reminder\)\)/);
+  assert.match(html, /getReminderReferenceDate\(reminder\) !== \(reminder\.deliveryDateTime \|\| reminder\.reminderDateTime\)/);
+  assert.match(html, /flex min-w-0 items-start gap-2/);
+  assert.match(html, /break-words text-xs leading-relaxed/);
+  assert.doesNotMatch(html, /'Jatuh tempo tagihan: ' \+ formatDateTime\(reminder\.reminderDateTime\)/);
   assert.match(script, /const deliveryDateTime = reminder\.deliveryDateTime \|\| reminder\.reminderDateTime;/);
   assert.match(script, /this\.isToday\(deliveryDateTime\)/);
+});
+
+test("filter jenis waktu mengikuti label pengingat prabayar tanpa mengubah kode filter", () => {
+  const app = createDashboardApp();
+  app.reminders = [
+    { id: "expiry", deliveryScheduleType: "STANDARD", billingCycle: "PREPAID", reminderDateTime: "2026-11-10T12:00:00.000Z" },
+    { id: "grace", deliveryScheduleType: "GRACE_PERIOD", billingCycle: "PREPAID", reminderDateTime: "2026-11-10T12:00:00.000Z", deliveryDateTime: "2026-11-12T12:00:00.000Z" },
+    { id: "retry", deliveryScheduleType: "RETRY", billingCycle: "PREPAID", reminderDateTime: "2026-11-10T12:00:00.000Z", deliveryDateTime: "2026-11-11T12:00:00.000Z" },
+  ];
+
+  assert.deepEqual(Array.from(app.reminderDeliveryTypeOptions, ({ value, label }) => [value, label]), [
+    ["STANDARD", "Pengingat masa aktif paket"],
+    ["GRACE_PERIOD", "Pengingat masa tenggang"],
+    ["RETRY", "Percobaan ulang"],
+  ]);
+
+  app.filters.reminders.deliveryType = "GRACE_PERIOD";
+  assert.deepEqual(Array.from(app.filteredReminders, (reminder) => reminder.id), ["grace"]);
+  app.filters.reminders.search = "masa aktif paket berakhir";
+  assert.deepEqual(Array.from(app.filteredReminders, (reminder) => reminder.id), ["grace"]);
 });
 
 test("menu jadwal hanya memantau reminder otomatis tanpa CRUD manual", () => {
