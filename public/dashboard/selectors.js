@@ -426,6 +426,17 @@ function createDashboardSelectors() {
           return this.formatDateTime(contact.hotspotReactivationAt);
         },
 
+        getHotspotGracePeriodLabel(contact) {
+          if (!this.isPrepaidPackage(contact)) return "Tidak berlaku";
+          if (!contact?.hotspotReactivationAt) return "Belum ada masa aktif";
+          if (!contact.hotspotReactivationEnabled) return "Tidak berlaku";
+          if (Number(contact.hotspotGraceDays || 0) <= 0) return "Tanpa masa tenggang";
+          if (this.getSortTimestamp(contact.hotspotGraceEndsAt) === null) {
+            return "Batas tenggang belum tersedia";
+          }
+          return this.formatDateTime(contact.hotspotGraceEndsAt);
+        },
+
         getReactivationClass(contact) {
           if (this.isPrepaidPackage(contact)) {
             return contact?.packageActive ? "bg-moss/10 text-moss" : "bg-slate-200/70 text-slate-700";
@@ -1498,6 +1509,8 @@ function createDashboardSelectors() {
               this.getIpBindingAccessLabel(contact),
               this.getReactivationLabel(contact),
               this.getReactivationDetail(contact),
+              this.getHotspotGracePeriodLabel(contact),
+              contact.hotspotGraceEndsAt,
               contact.linkedApHost || "Belum dipilih",
               this.getContactApStatusLabel(contact),
             ], this.filters.contactHotspot.search);
@@ -1512,6 +1525,7 @@ function createDashboardSelectors() {
             ipBindingAccess: (contact) => this.getIpBindingAccessLabel(contact),
             scheduleStatus: (contact) => this.getReactivationLabel(contact),
             scheduleAt: (contact) => this.getSortTimestamp(contact.hotspotReactivationAt),
+            graceAt: (contact) => this.getSortTimestamp(contact.hotspotGraceEndsAt),
             linkedAp: (contact) => contact.linkedApHost,
             apStatus: (contact) => this.getContactApStatusLabel(contact),
           });
