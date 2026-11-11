@@ -1361,7 +1361,6 @@
                         <time class="block break-words leading-relaxed" :datetime="reminder.deliveryDateTime || reminder.reminderDateTime" x-text="formatDateTime(reminder.deliveryDateTime || reminder.reminderDateTime)"></time>
                       </td>
                       <td class="px-4 py-4 text-ink/70" data-label="Batas layanan">
-                        <span class="mb-1 block text-xs text-ink/70" x-text="getReminderReferenceLabel(reminder)"></span>
                         <time class="block break-words leading-relaxed" :datetime="getReminderReferenceDate(reminder) || null" x-text="getReminderReferenceDate(reminder) ? formatDateTime(getReminderReferenceDate(reminder)) : '-'"></time>
                       </td>
                       <td class="px-5 py-4" data-label="Template">
