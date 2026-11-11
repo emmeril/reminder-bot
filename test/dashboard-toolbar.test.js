@@ -122,6 +122,7 @@ test("Jadwal mencari gabungan nama, nomor WA, jenis waktu, tanggal, template, da
       deliveryScheduleType: "GRACE_PERIOD", billingCycle: "PREPAID",
       deliveryDateTime: "2026-11-15T03:00:00.000Z",
       reminderDateTime: "2026-11-16T03:00:00.000Z",
+      gracePeriodEndsAt: "2026-11-19T03:00:00.000Z",
       templateName: "PaketPrabayar.txt", message: "Paket WiFi akan segera berakhir",
     },
     {
@@ -139,10 +140,10 @@ test("Jadwal mencari gabungan nama, nomor WA, jenis waktu, tanggal, template, da
   assert.deepEqual(find("alea"), ["r-alea"]);
   assert.deepEqual(find("putri 081234567890"), ["r-alea"]);
   assert.deepEqual(find("masa tenggang paket"), ["r-alea"]);
-  assert.deepEqual(find("16/11/2026 alea"), ["r-alea"]);
+  assert.deepEqual(find("19/11/2026 alea"), ["r-alea"]);
   assert.deepEqual(find("PAKETPRABAYAR WIFI"), ["r-alea"]);
   assert.deepEqual(find("BIMA pengingat masa aktif paket"), ["r-bima"]);
-  assert.deepEqual(find("alea masa aktif paket berakhir"), ["r-alea"]);
+  assert.deepEqual(find("alea batas masa tenggang"), ["r-alea"]);
   assert.deepEqual(find("nama tidak ada"), []);
   assert.deepEqual(find(""), ["r-alea", "r-bima"]);
   app.filters.reminders.schedule = "UPCOMING";
