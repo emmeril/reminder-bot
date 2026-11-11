@@ -1475,14 +1475,58 @@ test("waktu reminder prabayar membedakan jadwal pengiriman dan masa aktif berakh
   assert.equal(app.getReminderReferenceDate(prepaidGrace), periodUntil);
   assert.equal(app.getReminderReferenceLabel({ deliveryScheduleType: "BILLING_DUE", billingCycle: "POSTPAID" }), "Jatuh tempo tagihan");
   assert.equal(app.getReminderReferenceDate({ billingCycle: "PREPAID", reminderDateTime: legacyDue }), legacyDue);
-  assert.match(html, /getReminderDeliveryLabel\(reminder\)/);
-  assert.match(html, /getReminderReferenceLabel\(reminder\) \+ ': ' \+ formatDateTime\(getReminderReferenceDate\(reminder\)\)/);
-  assert.match(html, /getReminderReferenceDate\(reminder\) !== \(reminder\.deliveryDateTime \|\| reminder\.reminderDateTime\)/);
-  assert.match(html, /flex min-w-0 items-start gap-2/);
-  assert.match(html, /break-words text-xs leading-relaxed/);
+  const scheduleSection = html.match(/<section x-show="activeMenu === 'reminders'"[\s\S]*?<\/section>/)?.[0] || "";
+  assert.match(scheduleSection, /reminder-schedule-table/);
+  assert.match(scheduleSection, /getSortAria\('reminders', 'reminderType'\)/);
+  assert.match(scheduleSection, /getSortAria\('reminders', 'deliveryAt'\)/);
+  assert.match(scheduleSection, /getSortAria\('reminders', 'referenceAt'\)/);
+  assert.match(scheduleSection, /colspan="7"/);
+  assert.match(scheduleSection, /data-label="Jenis pengingat"[\s\S]*?getReminderDeliveryLabel\(reminder\)/);
+  assert.match(scheduleSection, /data-label="Waktu pengiriman"[\s\S]*?<time[^>]*formatDateTime\(reminder\.deliveryDateTime \|\| reminder\.reminderDateTime\)/);
+  assert.match(scheduleSection, /data-label="Masa aktif berakhir"[\s\S]*?<time[^>]*formatDateTime\(getReminderReferenceDate\(reminder\)\)/);
+  assert.doesNotMatch(scheduleSection, /getReminderReferenceLabel\(reminder\) \+ ': ' \+ formatDateTime/);
+  assert.match(scheduleSection, /break-words leading-relaxed/);
   assert.doesNotMatch(html, /'Jatuh tempo tagihan: ' \+ formatDateTime\(reminder\.reminderDateTime\)/);
   assert.match(script, /const deliveryDateTime = reminder\.deliveryDateTime \|\| reminder\.reminderDateTime;/);
   assert.match(script, /this\.isToday\(deliveryDateTime\)/);
+});
+
+test("kolom pengingat terpisah dapat diurutkan pada desktop dan mobile", () => {
+  const app = createDashboardApp();
+  const styles = fs.readFileSync(path.join(__dirname, "../public/styles.css"), "utf8");
+  app.reminders = [
+    {
+      id: "grace", contactName: "Alea", billingCycle: "PREPAID",
+      deliveryScheduleType: "GRACE_PERIOD",
+      deliveryDateTime: "2026-11-15T03:00:00.000Z",
+      reminderDateTime: "2026-11-10T03:00:00.000Z",
+      activePeriodUntil: "2026-11-10T03:00:00.000Z",
+    },
+    {
+      id: "expiry", contactName: "Bima", billingCycle: "PREPAID",
+      deliveryScheduleType: "STANDARD",
+      deliveryDateTime: "2026-11-11T03:00:00.000Z",
+      reminderDateTime: "2026-11-11T03:00:00.000Z",
+      activePeriodUntil: "2026-11-11T03:00:00.000Z",
+    },
+  ];
+
+  const sortOptions = Array.from(app.getMobileSortOptions("reminders"), (option) => option.value);
+  assert.ok(sortOptions.includes("reminderType:asc"));
+  assert.ok(sortOptions.includes("referenceAt:desc"));
+
+  app.toggleSort("reminders", "deliveryAt");
+  assert.equal(app.getSortAria("reminders", "deliveryAt"), "ascending");
+  assert.deepEqual(Array.from(app.filteredReminders, (item) => item.id), ["expiry", "grace"]);
+
+  app.changeMobileSort("reminders", "referenceAt:asc");
+  assert.deepEqual(Array.from(app.filteredReminders, (item) => item.id), ["grace", "expiry"]);
+
+  app.changeMobileSort("reminders", "reminderType:asc");
+  assert.deepEqual(Array.from(app.filteredReminders, (item) => item.id), ["expiry", "grace"]);
+
+  assert.match(styles, /\.reminder-schedule-table \{ min-width: 1240px; \}/);
+  assert.match(styles, /@media \(max-width: 767px\) \{\s*\.reminder-schedule-table \{ min-width: 0; \}/);
 });
 
 test("filter jenis waktu mengikuti label pengingat prabayar tanpa mengubah kode filter", () => {
