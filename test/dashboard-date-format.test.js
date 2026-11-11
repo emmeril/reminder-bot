@@ -1449,44 +1449,56 @@ test("filter operasional memakai seluruh nilai yang tampil pada tabel", () => {
   assert.match(styles, /\.table-filter-field input, \.table-filter-field select \{[^}]*min-height: 44px;/);
 });
 
-test("waktu reminder prabayar membedakan jadwal pengiriman dan masa aktif berakhir", () => {
+test("tabel pengingat ringkas memisahkan jadwal kirim dari paket berakhir", () => {
   const app = createDashboardApp();
   const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
   const script = readDashboardSource();
   const periodUntil = "2026-11-10T12:08:22.960Z";
-  const legacyDue = "2026-11-12T12:08:22.960Z";
+  const sendAt = "2026-11-12T12:08:22.960Z";
   const prepaidGrace = {
     deliveryScheduleType: "GRACE_PERIOD",
     billingCycle: "PREPAID",
     reminderKind: "ACTIVE_PERIOD_EXPIRY",
-    deliveryDateTime: legacyDue,
+    deliveryDateTime: sendAt,
     reminderDateTime: periodUntil,
     activePeriodUntil: periodUntil,
   };
+  const prepaidExpiry = { ...prepaidGrace, deliveryScheduleType: "STANDARD", deliveryDateTime: periodUntil };
 
-  assert.match(html, /Waktu pengiriman/);
   assert.equal(app.getReminderDeliveryLabel(prepaidGrace), "Pengingat masa tenggang");
-  assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "BILLING_DUE", billingCycle: "PREPAID" }), "Pengingat masa aktif paket");
-  assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "STANDARD", reminderKind: "ACTIVE_PERIOD_EXPIRY" }), "Pengingat masa aktif paket");
+  assert.equal(app.getReminderTableTypeLabel(prepaidGrace), "Masa tenggang");
+  assert.equal(app.getReminderTableTypeLabel(prepaidExpiry), "Masa aktif");
   assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "RETRY", billingCycle: "PREPAID" }), "Percobaan ulang");
-  assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "BILLING_DUE", billingCycle: "POSTPAID" }), "Jatuh tempo tagihan");
-  assert.equal(app.getReminderDeliveryLabel({ deliveryScheduleType: "STANDARD" }), "Waktu reminder");
   assert.equal(app.getReminderReferenceLabel(prepaidGrace), "Masa aktif paket berakhir");
   assert.equal(app.getReminderReferenceDate(prepaidGrace), periodUntil);
-  assert.equal(app.getReminderReferenceLabel({ deliveryScheduleType: "BILLING_DUE", billingCycle: "POSTPAID" }), "Jatuh tempo tagihan");
-  assert.equal(app.getReminderReferenceDate({ billingCycle: "PREPAID", reminderDateTime: legacyDue }), legacyDue);
-  const scheduleSection = html.match(/<section x-show="activeMenu === 'reminders'"[\s\S]*?<\/section>/)?.[0] || "";
-  assert.match(scheduleSection, /reminder-schedule-table/);
-  assert.match(scheduleSection, /getSortAria\('reminders', 'reminderType'\)/);
-  assert.match(scheduleSection, /getSortAria\('reminders', 'deliveryAt'\)/);
-  assert.match(scheduleSection, /getSortAria\('reminders', 'referenceAt'\)/);
-  assert.match(scheduleSection, /colspan="7"/);
-  assert.match(scheduleSection, /data-label="Jenis pengingat"[\s\S]*?getReminderDeliveryLabel\(reminder\)/);
-  assert.match(scheduleSection, /data-label="Waktu pengiriman"[\s\S]*?<time[^>]*formatDateTime\(reminder\.deliveryDateTime \|\| reminder\.reminderDateTime\)/);
-  assert.match(scheduleSection, /data-label="Masa aktif berakhir"[\s\S]*?<time[^>]*formatDateTime\(getReminderReferenceDate\(reminder\)\)/);
-  assert.doesNotMatch(scheduleSection, /getReminderReferenceLabel\(reminder\) \+ ': ' \+ formatDateTime/);
-  assert.match(scheduleSection, /break-words leading-relaxed/);
-  assert.doesNotMatch(html, /'Jatuh tempo tagihan: ' \+ formatDateTime\(reminder\.reminderDateTime\)/);
+  assert.equal(app.isReminderReferenceSameAsDelivery(prepaidGrace), false);
+  assert.equal(app.isReminderReferenceSameAsDelivery(prepaidExpiry), true);
+  assert.equal(app.getReminderTableExpiryLabel(prepaidExpiry), "Saat jadwal kirim");
+  assert.equal(app.formatReminderTableDateTime(periodUntil), "10 Nov 2026, 19.08");
+  assert.equal(app.getReminderTableExpiryLabel(prepaidGrace), "10 Nov 2026, 19.08");
+  assert.equal(app.formatReminderTableDateTime(sendAt), "12 Nov 2026, 19.08");
+  assert.equal(app.formatReminderTableDateTime(null), "-");
+  assert.match(app.getReminderTimingNote(prepaidGrace), /setelah masa aktif paket berakhir/);
+  assert.match(app.getReminderTimingNote(prepaidExpiry), /ketika paket berakhir/);
+  assert.equal(app.getReminderTableTypeLabel({ deliveryScheduleType: "BILLING_DUE", billingCycle: "POSTPAID" }), "Tagihan");
+
+  const section = html.match(/<section x-show="activeMenu === 'reminders'"[\s\S]*?<\/section>/)?.[0] || "";
+  const dialog = html.match(/id="reminder-detail-dialog"[\s\S]*?<\/dl>/)?.[0] || "";
+  assert.match(section, /Jadwal pengingat/);
+  assert.match(section, /colspan="5"/);
+  assert.match(section, /data-label="Pelanggan"/);
+  assert.match(section, /data-label="Pengingat"[\s\S]*?getReminderTableTypeLabel\(reminder\)/);
+  assert.match(section, /data-label="Jadwal kirim"[\s\S]*?formatReminderTableDateTime\(reminder\.deliveryDateTime \|\| reminder\.reminderDateTime\)/);
+  assert.match(section, /data-label="Paket berakhir"[\s\S]*?getReminderTableExpiryLabel\(reminder\)/);
+  assert.match(section, /data-label="Detail"[\s\S]*?openReminderDetail\(reminder, \$event\.currentTarget\)/);
+  assert.doesNotMatch(section, /data-label="Siklus"|data-label="Template"|data-label="Pesan"/);
+  assert.match(dialog, /role="dialog"[\s\S]*?aria-modal="true"/);
+  assert.match(dialog, /trapModalFocus\(\$event, 'reminder-detail-dialog'\)/);
+  assert.match(dialog, /Nomor WhatsApp/);
+  assert.match(dialog, /Siklus paket/);
+  assert.match(dialog, /Template pesan/);
+  assert.match(html, /Teks template pesan/);
+  assert.match(html, /Variabel seperti <code>\{\{name\}\}<\/code>/);
   assert.match(script, /const deliveryDateTime = reminder\.deliveryDateTime \|\| reminder\.reminderDateTime;/);
   assert.match(script, /this\.isToday\(deliveryDateTime\)/);
 });
@@ -1525,7 +1537,7 @@ test("kolom pengingat terpisah dapat diurutkan pada desktop dan mobile", () => {
   app.changeMobileSort("reminders", "reminderType:asc");
   assert.deepEqual(Array.from(app.filteredReminders, (item) => item.id), ["expiry", "grace"]);
 
-  assert.match(styles, /\.reminder-schedule-table \{ min-width: 1240px; \}/);
+  assert.match(styles, /\.reminder-schedule-table \{ min-width: 820px; \}/);
   assert.match(styles, /@media \(max-width: 767px\) \{\s*\.reminder-schedule-table \{ min-width: 0; \}/);
 });
 
@@ -1538,8 +1550,8 @@ test("filter jenis waktu mengikuti label pengingat prabayar tanpa mengubah kode 
   ];
 
   assert.deepEqual(Array.from(app.reminderDeliveryTypeOptions, ({ value, label }) => [value, label]), [
-    ["STANDARD", "Pengingat masa aktif paket"],
-    ["GRACE_PERIOD", "Pengingat masa tenggang"],
+    ["STANDARD", "Masa aktif"],
+    ["GRACE_PERIOD", "Masa tenggang"],
     ["RETRY", "Percobaan ulang"],
   ]);
 
@@ -1547,6 +1559,48 @@ test("filter jenis waktu mengikuti label pengingat prabayar tanpa mengubah kode 
   assert.deepEqual(Array.from(app.filteredReminders, (reminder) => reminder.id), ["grace"]);
   app.filters.reminders.search = "masa aktif paket berakhir";
   assert.deepEqual(Array.from(app.filteredReminders, (reminder) => reminder.id), ["grace"]);
+});
+
+test("detail pengingat mengelola fokus, scroll, dan menutup tanpa mengubah reminder", () => {
+  let locked = false;
+  let closeFocused = false;
+  let triggerFocused = false;
+  const trigger = {
+    isConnected: true,
+    focus() { triggerFocused = true; },
+  };
+  const document = {
+    body: {
+      classList: {
+        add(value) { if (value === "overflow-hidden") locked = true; },
+        remove(value) { if (value === "overflow-hidden") locked = false; },
+      },
+    },
+    getElementById(id) {
+      if (id === "reminder-detail-close") return { focus() { closeFocused = true; } };
+      return null;
+    },
+  };
+  const app = createDashboardApp({ document });
+  app.$nextTick = (callback) => callback();
+  const reminder = {
+    id: "reminder-read-only", contactName: "Tania", phoneNumber: "6281234567890",
+    billingCycle: "PREPAID", templateName: "PaketPrabayar",
+    deliveryScheduleType: "GRACE_PERIOD", message: "Yth. {{name}}",
+  };
+  const snapshot = JSON.stringify(reminder);
+
+  app.openReminderDetail(reminder, trigger);
+  assert.equal(app.reminderDetailModal.open, true);
+  assert.equal(app.reminderDetailModal.reminder, reminder);
+  assert.equal(locked, true);
+  assert.equal(closeFocused, true);
+  app.closeReminderDetail();
+  assert.equal(app.reminderDetailModal.open, false);
+  assert.equal(app.reminderDetailModal.reminder, null);
+  assert.equal(locked, false);
+  assert.equal(triggerFocused, true);
+  assert.equal(JSON.stringify(reminder), snapshot);
 });
 
 test("menu jadwal hanya memantau reminder otomatis tanpa CRUD manual", () => {
@@ -2123,7 +2177,7 @@ test("semua kolom tabel target dapat diurutkan kecuali kolom aksi", () => {
     revenue: 6,
     voucherRevenue: 7,
     monitorAp: 8,
-    reminders: 7,
+    reminders: 4,
     sent: 4,
   };
 
