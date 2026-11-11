@@ -27,13 +27,32 @@ function createDashboardSelectors() {
           return new Date(value).toLocaleString("id-ID", { timeZone: this.getAppTimezone() });
         },
 
+        isPrepaidExpiryReminder(reminder) {
+          return String(reminder?.billingCycle || "").toUpperCase() === "PREPAID"
+            || String(reminder?.reminderKind || "").toUpperCase() === "ACTIVE_PERIOD_EXPIRY"
+            || Boolean(reminder?.activePeriodUntil);
+        },
+
         getReminderDeliveryLabel(reminder) {
-          const labels = {
-            GRACE_PERIOD: "Pengingat masa tenggang",
-            BILLING_DUE: "Jatuh tempo tagihan",
-            RETRY: "Percobaan ulang",
-          };
-          return labels[String(reminder?.deliveryScheduleType || "").toUpperCase()] || "Waktu reminder";
+          const deliveryType = String(reminder?.deliveryScheduleType || "").toUpperCase();
+          if (deliveryType === "GRACE_PERIOD") return "Pengingat masa tenggang";
+          if (deliveryType === "RETRY") return "Percobaan ulang";
+          if (this.isPrepaidExpiryReminder(reminder)) return "Pengingat masa aktif paket";
+          if (deliveryType === "BILLING_DUE") return "Jatuh tempo tagihan";
+          return "Waktu reminder";
+        },
+
+        getReminderReferenceDate(reminder) {
+          if (this.isPrepaidExpiryReminder(reminder)) {
+            return reminder?.activePeriodUntil || reminder?.reminderDateTime || null;
+          }
+          return reminder?.reminderDateTime || null;
+        },
+
+        getReminderReferenceLabel(reminder) {
+          return this.isPrepaidExpiryReminder(reminder)
+            ? "Masa aktif paket berakhir"
+            : "Jatuh tempo tagihan";
         },
 
         messageKey(scope, id) {
@@ -1560,8 +1579,10 @@ function createDashboardSelectors() {
               this.getReminderDeliveryLabel(reminder),
               deliveryDateTime,
               this.formatDateTime(deliveryDateTime),
-              reminder.reminderDateTime,
-              reminder.reminderDateTime ? this.formatDateTime(reminder.reminderDateTime) : "",
+              this.getReminderReferenceLabel(reminder),
+              this.getReminderReferenceDate(reminder),
+              this.getReminderReferenceDate(reminder)
+                ? this.formatDateTime(this.getReminderReferenceDate(reminder)) : "",
               reminder.templateName || "-",
               reminder.message,
             ], this.filters.reminders.search);
