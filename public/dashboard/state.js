@@ -263,7 +263,7 @@ function createDashboardState() {
             ],
             [
               "currentPayment",
-              "Pembayaran bulan ini"
+              "Status paket"
             ],
             [
               "lastPayment",
