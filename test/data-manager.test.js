@@ -46,6 +46,39 @@ function createManager(contact) {
   return manager;
 }
 
+test("tanggal batas masa tenggang hotspot mengikuti jadwal penonaktifan prabayar", () => {
+  const activeUntil = "2026-11-10T02:30:00.000Z";
+  const manager = createManager({
+    id: "hotspot-grace-date",
+    name: "Pelanggan Masa Tenggang",
+    phoneNumber: "6281234567890",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID,
+    mikrotikUsername: "pelanggan_tenggang",
+    mikrotikProfile: "Rumah",
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: activeUntil,
+  });
+  manager.settings.timezone = "Asia/Jakarta";
+  manager.settings.hotspotIsolationGraceDays = 3;
+
+  const graceEndsAt = addDaysSafely(activeUntil, 3, "Asia/Jakarta");
+  const contact = manager.getContacts()[0];
+  assert.equal(contact.hotspotReactivationAt, activeUntil);
+  assert.equal(contact.hotspotGraceDays, 3);
+  assert.equal(contact.hotspotGraceEndsAt, graceEndsAt.toISOString());
+  assert.equal(manager.getDueHotspotReactivationContacts(new Date(graceEndsAt.getTime() - 1)).length, 0);
+  assert.equal(manager.getDueHotspotReactivationContacts(graceEndsAt).length, 1);
+
+  manager.settings.hotspotIsolationGraceDays = 0;
+  assert.equal(manager.getContacts()[0].hotspotGraceDays, 0);
+  assert.equal(manager.getContacts()[0].hotspotGraceEndsAt, null);
+
+  manager.settings.hotspotIsolationGraceDays = 3;
+  manager.contacts.get("hotspot-grace-date").hotspotReactivationEnabled = false;
+  assert.equal(manager.getContacts()[0].hotspotGraceEndsAt, null);
+});
+
 test("ringkasan dashboard menghitung layanan dan pesan terkirim hari ini", () => {
   const manager = createManager({
     id: "summary-active",
