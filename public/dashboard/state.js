@@ -92,6 +92,11 @@ function createDashboardState() {
           amountError: "",
           returnFocusId: "",
         },
+        reminderDetailModal: {
+          open: false,
+          reminder: null,
+          returnFocusElement: null,
+        },
         accountDeliveryModal: {
           open: false,
           loading: false,
@@ -449,31 +454,19 @@ function createDashboardState() {
           "reminders": [
             [
               "contact",
-              "Tujuan"
-            ],
-            [
-              "billingCycle",
-              "Siklus"
+              "Pelanggan"
             ],
             [
               "reminderType",
-              "Jenis pengingat"
+              "Pengingat"
             ],
             [
               "deliveryAt",
-              "Waktu kirim"
+              "Jadwal kirim"
             ],
             [
               "referenceAt",
-              "Masa aktif berakhir"
-            ],
-            [
-              "template",
-              "Template"
-            ],
-            [
-              "message",
-              "Pesan"
+              "Paket berakhir"
             ]
           ],
           "sent": [
