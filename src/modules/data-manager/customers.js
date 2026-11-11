@@ -985,10 +985,28 @@ class CustomerDataManager extends DataManagerCore {
   hydrateContact(contact) {
     const debtInfo = this.buildDebtInfo(contact);
     const dueDateInfo = this.buildDueDateInfo(contact);
+    const graceDays = sanitizePositiveInteger(
+      this.getSettings().hotspotIsolationGraceDays,
+      DEFAULT_SETTINGS.hotspotIsolationGraceDays,
+      0,
+      30
+    );
+    const isPrepaidSchedule = isPrepaidPackage(contact)
+      && Boolean(contact.hotspotReactivationEnabled);
+    const activeUntil = isPrepaidSchedule && contact.hotspotReactivationAt
+      ? new Date(contact.hotspotReactivationAt)
+      : null;
+    const hotspotGraceEndsAt = graceDays > 0
+      && activeUntil
+      && Number.isFinite(activeUntil.getTime())
+      ? addDaysSafely(activeUntil, graceDays, this.getTimezone()).toISOString()
+      : null;
     return {
       ...contact,
       ...debtInfo,
       ...dueDateInfo,
+      hotspotGraceDays: isPrepaidSchedule ? graceDays : 0,
+      hotspotGraceEndsAt,
     };
   }
 

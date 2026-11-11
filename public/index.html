@@ -483,6 +483,7 @@
                       <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'ipBindingAccess')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'ipBindingAccess')" :aria-label="getSortLabel('contactHotspot', 'ipBindingAccess', 'Akun IP Binding')"><span>Akun IP Binding</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'ipBindingAccess')" aria-hidden="true"></i></button></th>
                       <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'scheduleStatus')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'scheduleStatus')" :aria-label="getSortLabel('contactHotspot', 'scheduleStatus', 'Status Jadwal')"><span>Status Jadwal</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'scheduleStatus')" aria-hidden="true"></i></button></th>
                       <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'scheduleAt')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'scheduleAt')" :aria-label="getSortLabel('contactHotspot', 'scheduleAt', 'Jadwal layanan')"><span>Jadwal layanan</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'scheduleAt')" aria-hidden="true"></i></button></th>
+                      <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'graceAt')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'graceAt')" :aria-label="getSortLabel('contactHotspot', 'graceAt', 'Batas masa tenggang')"><span>Batas masa tenggang</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'graceAt')" aria-hidden="true"></i></button></th>
                       <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'linkedAp')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'linkedAp')" :aria-label="getSortLabel('contactHotspot', 'linkedAp', 'IP Access Point')"><span>IP Access Point</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'linkedAp')" aria-hidden="true"></i></button></th>
                       <th class="px-4 py-3" :aria-sort="getSortAria('contactHotspot', 'apStatus')"><button type="button" class="table-sort-button" @click="toggleSort('contactHotspot', 'apStatus')" :aria-label="getSortLabel('contactHotspot', 'apStatus', 'Status AP')"><span>Status AP</span><i class="table-sort-indicator" :class="getSortIcon('contactHotspot', 'apStatus')" aria-hidden="true"></i></button></th>
                       <th class="px-4 py-3">Aksi Akun</th>
@@ -491,7 +492,7 @@
                   </thead>
                   <tbody class="divide-y divide-ink/6 bg-white/70">
                     <template x-if="!filteredHotspotContacts.length">
-                      <tr><td colspan="13" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada akun hotspot yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
+                      <tr><td colspan="14" class="px-4 py-8 text-center text-ink/45" x-text="contacts.length ? 'Tidak ada akun hotspot yang cocok.' : 'Belum ada pelanggan.'"></td></tr>
                     </template>
                     <template x-for="contact in paginatedHotspotContacts" :key="'hotspot-' + contact.id">
                       <tr>
@@ -519,6 +520,9 @@
                         </td>
                         <td class="px-4 py-4" data-label="Jadwal Layanan">
                           <small class="customer-schedule-detail" x-text="getReactivationDetail(contact)"></small>
+                        </td>
+                        <td class="px-4 py-4" data-label="Batas Masa Tenggang">
+                          <small class="customer-schedule-detail" x-text="getHotspotGracePeriodLabel(contact)"></small>
                         </td>
                         <td class="px-4 py-4" data-label="IP Access Point">
                           <span class="customer-ap-host" x-text="contact.linkedApHost || 'Belum dipilih'"></span>
