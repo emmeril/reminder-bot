@@ -405,7 +405,7 @@ function createDashboardSelectors() {
 
         getReactivationLabel(contact) {
           if (this.isPrepaidPackage(contact)) {
-            return contact?.packageActive ? "Paket aktif" : "Paket tidak aktif";
+            return this.getPrepaidPackageStatusLabel(contact);
           }
           if (contact.hotspotManualActivationWithArrears) return "Aktif manual satu bulan";
           if (contact.billingPausedForArrears && !contact.hotspotReactivationAt) return "Perpanjangan dijeda";
@@ -439,7 +439,7 @@ function createDashboardSelectors() {
 
         getReactivationClass(contact) {
           if (this.isPrepaidPackage(contact)) {
-            return contact?.packageActive ? "bg-moss/10 text-moss" : "bg-slate-200/70 text-slate-700";
+            return this.getPrepaidPackageStatusClass(contact);
           }
           if (contact.hotspotReactivationEnabled) return "bg-moss/10 text-moss";
           if (contact.hotspotReactivationAt) return "bg-amber-100 text-amber-800";
@@ -628,9 +628,74 @@ function createDashboardSelectors() {
           return String(contact?.subscriptionType || "RECURRING").toUpperCase().replace(/-/g, "_") === "RECURRING";
         },
 
+        getPrepaidPackageStatus(contact, now = new Date()) {
+          const scheduleAt = this.getSortTimestamp(contact?.hotspotReactivationAt);
+          const purchases = Array.isArray(contact?.activePeriodPurchases)
+            ? contact.activePeriodPurchases
+            : [];
+          const lastPurchasedUntil = purchases.reduce((latest, purchase) => {
+            if (String(purchase?.status || "").toUpperCase() !== "PAID") return latest;
+            const purchasedUntil = this.getSortTimestamp(purchase?.activeUntil);
+            return purchasedUntil !== null && (latest === null || purchasedUntil > latest)
+              ? purchasedUntil
+              : latest;
+          }, null);
+          const activeUntil = scheduleAt ?? lastPurchasedUntil;
+          if (activeUntil === null) return "NONE";
+
+          const currentTime = new Date(now).getTime();
+          if (currentTime < activeUntil) return "ACTIVE";
+
+          const graceUntil = this.getSortTimestamp(contact?.hotspotGraceEndsAt);
+          if (scheduleAt !== null
+            && contact?.hotspotReactivationEnabled === true
+            && graceUntil !== null
+            && graceUntil > activeUntil
+            && currentTime < graceUntil) {
+            return "GRACE";
+          }
+          return "INACTIVE";
+        },
+
+        getPrepaidPackageStatusLabel(contact) {
+          const labels = {
+            ACTIVE: "Paket aktif",
+            GRACE: "Masa tenggang",
+            INACTIVE: "Paket tidak aktif",
+            NONE: "Belum ada paket",
+          };
+          return labels[this.getPrepaidPackageStatus(contact)];
+        },
+
+        getPrepaidPackageStatusClass(contact) {
+          const classes = {
+            ACTIVE: "bg-moss/10 text-moss",
+            GRACE: "bg-amber-100 text-amber-800",
+            INACTIVE: "bg-red-50 text-red-800",
+            NONE: "bg-slate-200/70 text-slate-700",
+          };
+          return classes[this.getPrepaidPackageStatus(contact)];
+        },
+
+        getPrepaidRenewalHint(contact) {
+          if (!this.isPrepaidPackage(contact)) return "";
+          return ["GRACE", "INACTIVE"].includes(this.getPrepaidPackageStatus(contact))
+            ? "Perlu perpanjangan"
+            : "";
+        },
+
+        getCurrentPaymentClass(contact) {
+          if (this.isPrepaidPackage(contact)) {
+            return this.getPrepaidPackageStatusClass(contact);
+          }
+          return contact?.currentPaymentStatus === "PAID"
+            ? "bg-moss/10 text-moss"
+            : "bg-clay/10 text-clay";
+        },
+
         getCurrentPaymentLabel(contact) {
           if (this.isPrepaidPackage(contact)) {
-            return contact?.packageActive ? "Paket aktif" : "Paket tidak aktif";
+            return this.getPrepaidPackageStatusLabel(contact);
           }
           if (contact?.subscriptionActive === false) return "Tidak ada tagihan baru";
           if (contact?.currentPaymentStatus !== "PAID") return "Belum Bayar";
@@ -1356,7 +1421,7 @@ function createDashboardSelectors() {
           const values = new Map();
           for (const contact of this.contacts) {
             const label = this.getCurrentPaymentLabel(contact);
-            values.set(`PAYMENT|${label}`, `Bulan ini · ${label}`);
+            values.set(`PAYMENT|${label}`, `Status paket · ${label}`);
           }
           return Array.from(values, ([value, label]) => ({ value, label }));
         },
@@ -1466,6 +1531,7 @@ function createDashboardSelectors() {
               this.formatRupiah(contact.monthlyPaymentAmount),
               this.getPaymentAmountSourceLabel(contact),
               this.getCurrentPaymentLabel(contact),
+              this.getPrepaidRenewalHint(contact),
               this.getContactLastPaymentLabel(contact),
             ], this.filters.contactBilling.search);
           });
