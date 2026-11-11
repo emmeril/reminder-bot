@@ -1117,6 +1117,22 @@ span[class*="rounded-full"][class*="text-xs"],
   border-radius: 8px !important;
 }
 
+.dashboard-modal-overlay.reminder-detail-overlay {
+  align-items: center !important;
+}
+
+.dashboard-modal-overlay.reminder-detail-overlay > .reminder-detail-dialog {
+  max-height: calc(100dvh - 28px) !important;
+  border-radius: 12px !important;
+  overflow-y: auto !important;
+}
+
+.dashboard-modal-overlay.reminder-detail-overlay > .reminder-detail-dialog > .reminder-detail-header {
+  margin: 0 0 12px !important;
+  padding: 0 0 14px !important;
+  background: #fff !important;
+}
+
 .hotspot-schedule-options label,
 .hotspot-schedule-summary,
 .billing-action-section,
