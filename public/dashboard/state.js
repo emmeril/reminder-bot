@@ -456,8 +456,16 @@ function createDashboardState() {
               "Siklus"
             ],
             [
+              "reminderType",
+              "Jenis pengingat"
+            ],
+            [
               "deliveryAt",
               "Waktu kirim"
+            ],
+            [
+              "referenceAt",
+              "Masa aktif berakhir"
             ],
             [
               "template",
