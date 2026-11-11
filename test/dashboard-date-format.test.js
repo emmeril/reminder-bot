@@ -2123,7 +2123,7 @@ test("semua kolom tabel target dapat diurutkan kecuali kolom aksi", () => {
     revenue: 6,
     voucherRevenue: 7,
     monitorAp: 8,
-    reminders: 5,
+    reminders: 7,
     sent: 4,
   };
 
