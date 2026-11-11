@@ -308,6 +308,10 @@ function createDashboardState() {
               "Waktu jadwal"
             ],
             [
+              "graceAt",
+              "Batas masa tenggang"
+            ],
+            [
               "linkedAp",
               "AP terkait"
             ],
