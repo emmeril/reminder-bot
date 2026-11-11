@@ -46,6 +46,51 @@ function createManager(contact) {
   return manager;
 }
 
+test("pengingat masa tenggang memiliki batas terpisah dari waktu kirim dan masa aktif", () => {
+  const contact = {
+    id: "reminder-grace-date",
+    name: "Pelanggan Tenggang",
+    phoneNumber: "6281234567890",
+    subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
+    billingCycle: BILLING_CYCLES.PREPAID,
+  };
+  const manager = createManager(contact);
+  manager.settings.timezone = "Asia/Jakarta";
+  manager.settings.hotspotIsolationGraceDays = 3;
+
+  const activeUntil = "2026-11-10T02:30:00.000Z";
+  const reminder = {
+    id: "reminder-grace",
+    contactId: contact.id,
+    reminderKind: REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY,
+    reminderDateTime: activeUntil,
+    activePeriodUntil: activeUntil,
+    gracePeriodCreatedAt: "2026-11-10T02:30:00.000Z",
+  };
+
+  const hydrated = manager.hydrateReminder(reminder);
+  assert.equal(hydrated.deliveryScheduleType, "GRACE_PERIOD");
+  assert.equal(hydrated.deliveryDateTime, addDaysSafely(activeUntil, 2, "Asia/Jakarta").toISOString());
+  assert.equal(hydrated.gracePeriodEndsAt, addDaysSafely(activeUntil, 3, "Asia/Jakarta").toISOString());
+  assert.equal(reminder.gracePeriodEndsAt, undefined);
+
+  const retry = manager.hydrateReminder({
+    ...reminder,
+    nextDeliveryAttemptAt: "2026-11-12T03:00:00.000Z",
+  });
+  assert.equal(retry.deliveryScheduleType, "RETRY");
+  assert.equal(retry.gracePeriodEndsAt, hydrated.gracePeriodEndsAt);
+  assert.equal(retry.deliveryDateTime, "2026-11-12T03:00:00.000Z");
+
+  const initial = manager.hydrateReminder({ ...reminder, gracePeriodCreatedAt: null });
+  assert.equal(initial.gracePeriodEndsAt, null);
+  assert.equal(initial.deliveryScheduleType, "STANDARD");
+
+  manager.settings.hotspotIsolationGraceDays = 0;
+  assert.equal(manager.hydrateReminder(reminder).gracePeriodEndsAt, null);
+  assert.equal(manager.hydrateReminder(reminder).deliveryDateTime, activeUntil);
+});
+
 test("tanggal batas masa tenggang hotspot mengikuti jadwal penonaktifan prabayar", () => {
   const activeUntil = "2026-11-10T02:30:00.000Z";
   const manager = createManager({
