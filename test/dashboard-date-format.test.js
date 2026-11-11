@@ -139,10 +139,39 @@ test("modal mode akses menyediakan empat pilihan dan tombol tabel", () => {
   assert.match(html, /Tambahkan MAC address melalui Atur akses/);
 });
 
-test("label pelanggan prabayar mengikuti status paket aktif", () => {
+test("status paket mengikuti masa aktif dan masa tenggang pada batas waktu tepat", () => {
   const app = createDashboardApp();
-  assert.equal(app.getReactivationLabel({ packageActive: true }), "Paket aktif");
-  assert.equal(app.getReactivationLabel({ packageActive: false }), "Paket tidak aktif");
+  const contact = {
+    subscriptionType: "RECURRING",
+    hotspotReactivationEnabled: true,
+    hotspotReactivationAt: "2026-11-10T02:30:00.000Z",
+    hotspotGraceEndsAt: "2026-11-13T02:30:00.000Z",
+    packageActive: false,
+    currentPaymentStatus: "UNPAID",
+  };
+
+  assert.equal(app.getPrepaidPackageStatus(contact, "2026-11-10T02:29:59.999Z"), "ACTIVE");
+  assert.equal(app.getPrepaidPackageStatus(contact, "2026-11-10T02:30:00.000Z"), "GRACE");
+  assert.equal(app.getPrepaidPackageStatus(contact, "2026-11-13T02:29:59.999Z"), "GRACE");
+  assert.equal(app.getPrepaidPackageStatus(contact, "2026-11-13T02:30:00.000Z"), "INACTIVE");
+
+  assert.equal(app.getPrepaidPackageStatus({ ...contact, hotspotGraceEndsAt: null }, "2026-11-10T02:30:00.000Z"), "INACTIVE");
+  assert.equal(app.getPrepaidPackageStatus({ ...contact, hotspotReactivationEnabled: false }, "2026-11-11T02:30:00.000Z"), "INACTIVE");
+  assert.equal(app.getPrepaidPackageStatus({ ...contact, hotspotReactivationAt: null }, "2026-11-11T02:30:00.000Z"), "NONE");
+  assert.equal(app.getPrepaidPackageStatus({
+    ...contact,
+    hotspotReactivationAt: null,
+    hotspotReactivationEnabled: false,
+    hotspotGraceEndsAt: null,
+    activePeriodPurchases: [
+      { status: "PAID", activeUntil: "2026-11-10T02:30:00.000Z" },
+    ],
+  }, "2026-11-13T02:30:00.000Z"), "INACTIVE");
+  assert.equal(app.getPrepaidPackageStatus({
+    ...contact,
+    hotspotReactivationAt: null,
+    activePeriodPurchases: [{ status: "UNPAID", activeUntil: "2026-11-10T02:30:00.000Z" }],
+  }, "2026-11-13T02:30:00.000Z"), "NONE");
 });
 test("tabel hotspot menampilkan dan mengurutkan batas masa tenggang secara responsif", () => {
   const app = createDashboardApp();
@@ -1089,10 +1118,46 @@ test("Kelola tetap terbuka untuk pengaturan nominal saat pembelian paket belum t
   assert.equal(app.hasBillingActions({ id: "baru", monthlyPaymentAmount: 0 }), true);
   assert.equal(app.hasBillingActions(null), false);
 });
-test("label pembayaran prabayar berasal dari status paket, bukan jenis tagihan lama", () => {
+test("label dan warna paket konsisten di Hotspot serta Tagihan tanpa menganggap tenggang sudah lunas", () => {
   const app = createDashboardApp();
-  assert.equal(app.getCurrentPaymentLabel({ packageActive: false, paymentType: "ARREARS-ONLY" }), "Paket tidak aktif");
-  assert.equal(app.getCurrentPaymentLabel({ packageActive: true, paymentType: "ARREARS-ONLY" }), "Paket aktif");
+  const now = Date.now();
+  const base = {
+    subscriptionType: "RECURRING",
+    hotspotReactivationEnabled: true,
+    currentPaymentStatus: "UNPAID",
+    paymentType: "ARREARS-ONLY",
+  };
+  const cases = [
+    [{ ...base, hotspotReactivationAt: new Date(now + 60000).toISOString() }, "Paket aktif", "", "bg-moss/10 text-moss"],
+    [{ ...base, hotspotReactivationAt: new Date(now - 60000).toISOString(), hotspotGraceEndsAt: new Date(now + 60000).toISOString() }, "Masa tenggang", "Perlu perpanjangan", "bg-amber-100 text-amber-800"],
+    [{ ...base, hotspotReactivationAt: new Date(now - 60000).toISOString(), hotspotGraceEndsAt: new Date(now - 1000).toISOString() }, "Paket tidak aktif", "Perlu perpanjangan", "bg-red-50 text-red-800"],
+    [{ ...base, hotspotReactivationAt: null }, "Belum ada paket", "", "bg-slate-200/70 text-slate-700"],
+  ];
+
+  for (const [contact, label, hint, statusClass] of cases) {
+    assert.equal(app.getReactivationLabel(contact), label);
+    assert.equal(app.getCurrentPaymentLabel(contact), label);
+    assert.equal(app.getPrepaidRenewalHint(contact), hint);
+    assert.equal(app.getReactivationClass(contact), statusClass);
+    assert.equal(app.getCurrentPaymentClass(contact), statusClass);
+    assert.equal(contact.currentPaymentStatus, "UNPAID");
+  }
+
+  const expiredPurchase = {
+    ...base,
+    hotspotReactivationAt: null,
+    hotspotReactivationEnabled: false,
+    activePeriodPurchases: [{ status: "PAID", activeUntil: new Date(now - 3600000).toISOString() }],
+  };
+  assert.equal(app.getCurrentPaymentLabel(expiredPurchase), "Paket tidak aktif");
+  assert.equal(app.getReactivationLabel(expiredPurchase), "Paket tidak aktif");
+
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const ui = fs.readFileSync(path.join(__dirname, "../public/dashboard/ui.js"), "utf8");
+  assert.match(html, /data-label="Status Paket"/);
+  assert.match(html, /getCurrentPaymentClass\(contact\)/);
+  assert.match(html, /x-text="getPrepaidRenewalHint\(contact\)"/);
+  assert.match(ui, /\["hotspot", "billing"\]\.includes\(this.activeContactTab\)/);
 });
 test("modal aksi tagihan memindahkan fokus lalu mengembalikannya saat ditutup", () => {
   let bodyLocked = false;
@@ -1257,7 +1322,7 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(html, /data-label="Nomor HP"/);
   assert.match(html, /data-label="Status Jatuh Tempo"/);
   assert.match(html, /data-label="Sumber Nominal"/);
-  assert.match(html, /data-label="Bulan Ini"/);
+  assert.match(html, /data-label="Status Paket"/);
   assert.match(html, /data-label="Pembayaran Terakhir"/);
   assert.doesNotMatch(html, /data-label="Tunggakan"/);
   assert.match(html, /data-label="Akun Hotspot"/);
