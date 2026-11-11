@@ -1272,7 +1272,7 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(html, /data-label="Aksi Akun"/);
   assert.match(html, /data-label="Aksi Layanan"/);
   assert.match(html, /<td colspan="10"[^>]*Tidak ada tagihan yang cocok/);
-  assert.match(html, /<td colspan="13"[^>]*Tidak ada akun hotspot yang cocok/);
+  assert.match(html, /<td colspan="14"[^>]*Tidak ada akun hotspot yang cocok/);
   assert.match(html, /getSortLabel\('contactHotspot', 'name', 'Pelanggan'\)[\s\S]*getSortLabel\('contactHotspot', 'phone', 'Nomor HP'\)[\s\S]*getSortLabel\('contactHotspot', 'username', 'User Hotspot'\)/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 36px !important;[^}]*border-radius: 9px !important;[^}]*font-size: 10px !important;/);
   assert.match(styles, /\.panel-shell \.customer-row-actions button \{[^}]*min-height: 44px !important;[^}]*font-size: 11px !important;/);
@@ -2156,7 +2156,7 @@ test("semua kolom tabel target dapat diurutkan kecuali kolom aksi", () => {
   const expectedControls = {
     contacts: 5,
     contactBilling: 9,
-    contactHotspot: 11,
+    contactHotspot: 12,
     voucherProfiles: 4,
     voucherStats: 5,
     revenue: 6,
