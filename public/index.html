@@ -7,13 +7,13 @@
   <link rel="icon" type="image/png" href="/branding/icon">
   <link rel="stylesheet" href="/public/tailwind.css?v=20261105-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="/public/styles.css?v=20261111-1">
+  <link rel="stylesheet" href="/public/styles.css?v=20261111-2">
   <link rel="stylesheet" href="/public/interface.css?v=20261110-4">
-  <script defer src="/public/dashboard/state.js?v=20261111-1"></script>
+  <script defer src="/public/dashboard/state.js?v=20261111-2"></script>
   <script defer src="/public/dashboard/ui.js?v=20261110-2"></script>
-  <script defer src="/public/dashboard/selectors.js?v=20261111-1"></script>
+  <script defer src="/public/dashboard/selectors.js?v=20261111-2"></script>
   <script defer src="/public/dashboard/data.js?v=20261110-8"></script>
-  <script defer src="/public/dashboard/actions.js?v=20261110-9"></script>
+  <script defer src="/public/dashboard/actions.js?v=20261111-2"></script>
   <script defer src="/public/app.js?v=20261106-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
@@ -1298,7 +1298,7 @@
         <section x-show="activeMenu === 'reminders'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">
           <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
             <div>
-              <h2 class="font-display text-2xl"><i class="fa-solid fa-calendar-check mr-2 text-clay"></i>Reminders</h2>
+              <h2 class="font-display text-2xl"><i class="fa-solid fa-calendar-check mr-2 text-clay"></i>Jadwal pengingat</h2>
               <p class="card-description mt-1">Jadwal dibuat otomatis dari siklus pembayaran dan masa aktif pelanggan.</p>
             </div>
             <button type="button" @click="withProcessing('Memuat reminders...', () => loadReminders())" class="ui-secondary-button rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white"><i class="fa-solid fa-rotate mr-2"></i>Muat ulang</button>
@@ -1307,77 +1307,45 @@
             Ubah jadwal melalui data pelanggan. Ubah isi pesan melalui Pengaturan, lalu buka Template notifikasi.
           </div>
           <div class="filter-inline table-filter-bar mt-5">
-            <label class="table-filter-field table-filter-search"><span>Pencarian</span><input type="search" x-model="filters.reminders.search" @input="handleTableSearchInput('reminders', $event.target.value)" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari pelanggan, nomor WA, tanggal, atau isi pesan" autocomplete="off"></label>
-            <label class="table-filter-field"><span>Jenis waktu</span><select x-model="filters.reminders.deliveryType" @change="resetPage('reminders')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua jenis waktu</option><template x-for="option in reminderDeliveryTypeOptions" :key="'reminder-delivery-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
+            <label class="table-filter-field table-filter-search"><span>Pencarian</span><input id="reminders-search-input" type="search" x-model="filters.reminders.search" @input="handleTableSearchInput('reminders', $event.target.value)" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Cari pelanggan, nomor WA, tanggal, atau isi pesan" autocomplete="off"></label>
+            <label class="table-filter-field"><span>Jenis pengingat</span><select x-model="filters.reminders.deliveryType" @change="resetPage('reminders')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua pengingat</option><template x-for="option in reminderDeliveryTypeOptions" :key="'reminder-delivery-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
             <label class="table-filter-field"><span>Rentang waktu</span><select x-model="filters.reminders.schedule" @change="resetPage('reminders')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><option value="ALL">Semua jadwal</option><option value="TODAY">Hari ini</option><option value="UPCOMING">Akan datang</option><option value="OVERDUE">Terlambat</option></select></label>
             <label class="table-filter-field"><span>Baris</span><select x-model.number="filters.reminders.pageSize" @change="resetPage('reminders')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'reminders-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
             <label class="table-filter-field toolbar-mobile-sort"><span>Urutkan</span><select :value="getMobileSortValue('reminders')" @change="changeMobileSort('reminders', $event.target.value)" aria-label="Urutkan tabel reminders"><template x-for="option in getMobileSortOptions('reminders')" :key="'reminders-mobile-sort-' + option.value"><option :value="option.value" x-text="option.label"></option></template></select></label>
           <button type="button" @click="resetReminderFilters()" :disabled="!hasReminderFilters" class="customer-filter-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
           </div>
-          <div class="sent-history-table mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8 bg-white/80 shadow-sm">
-            <div class="table-scroll" tabindex="0" role="region" aria-label="Tabel reminder aktif">
+          <div class="sent-history-table reminder-schedule-frame mt-5 overflow-hidden rounded-[1.5rem] border border-ink/8 bg-white/80 shadow-sm">
+            <div class="table-scroll" tabindex="0" role="region" aria-label="Tabel jadwal pengingat">
               <table class="dashboard-table reminder-schedule-table min-w-full text-sm">
                 <thead class="bg-haze/90 text-left text-xs uppercase text-ink/50">
                   <tr>
-                    <th class="px-4 py-4" :aria-sort="getSortAria('reminders', 'contact')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'contact')" :aria-label="getSortLabel('reminders', 'contact', 'Tujuan')"><i class="fa-solid fa-user table-sort-leading-icon text-moss" aria-hidden="true"></i><span>Tujuan</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'contact')" aria-hidden="true"></i></button></th>
-                    <th class="px-4 py-4" :aria-sort="getSortAria('reminders', 'billingCycle')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'billingCycle')" :aria-label="getSortLabel('reminders', 'billingCycle', 'Siklus')"><i class="fa-solid fa-repeat table-sort-leading-icon text-moss" aria-hidden="true"></i><span>Siklus</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'billingCycle')" aria-hidden="true"></i></button></th>
-                    <th class="px-4 py-4" :aria-sort="getSortAria('reminders', 'reminderType')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'reminderType')" :aria-label="getSortLabel('reminders', 'reminderType', 'Jenis pengingat')"><span>Jenis pengingat</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'reminderType')" aria-hidden="true"></i></button></th>
-                    <th class="px-4 py-4" :aria-sort="getSortAria('reminders', 'deliveryAt')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'deliveryAt')" :aria-label="getSortLabel('reminders', 'deliveryAt', 'Waktu pengiriman')"><i class="fa-solid fa-clock table-sort-leading-icon text-clay" aria-hidden="true"></i><span>Waktu pengiriman</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'deliveryAt')" aria-hidden="true"></i></button></th>
-                    <th class="px-4 py-4" :aria-sort="getSortAria('reminders', 'referenceAt')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'referenceAt')" :aria-label="getSortLabel('reminders', 'referenceAt', 'Masa aktif berakhir')"><span>Masa aktif berakhir</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'referenceAt')" aria-hidden="true"></i></button></th>
-                    <th class="px-4 py-4" :aria-sort="getSortAria('reminders', 'template')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'template')" :aria-label="getSortLabel('reminders', 'template', 'Template')"><i class="fa-solid fa-file-lines table-sort-leading-icon text-moss" aria-hidden="true"></i><span>Template</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'template')" aria-hidden="true"></i></button></th>
-                    <th class="px-5 py-4" :aria-sort="getSortAria('reminders', 'message')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'message')" :aria-label="getSortLabel('reminders', 'message', 'Pesan')"><i class="fa-solid fa-message table-sort-leading-icon text-ink/45" aria-hidden="true"></i><span>Pesan</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'message')" aria-hidden="true"></i></button></th>
+                    <th :aria-sort="getSortAria('reminders', 'contact')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'contact')" :aria-label="getSortLabel('reminders', 'contact', 'Pelanggan')"><span>Pelanggan</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'contact')" aria-hidden="true"></i></button></th>
+                    <th :aria-sort="getSortAria('reminders', 'reminderType')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'reminderType')" :aria-label="getSortLabel('reminders', 'reminderType', 'Pengingat')"><span>Pengingat</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'reminderType')" aria-hidden="true"></i></button></th>
+                    <th :aria-sort="getSortAria('reminders', 'deliveryAt')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'deliveryAt')" :aria-label="getSortLabel('reminders', 'deliveryAt', 'Jadwal kirim')"><span>Jadwal kirim</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'deliveryAt')" aria-hidden="true"></i></button></th>
+                    <th :aria-sort="getSortAria('reminders', 'referenceAt')"><button type="button" class="table-sort-button" @click="toggleSort('reminders', 'referenceAt')" :aria-label="getSortLabel('reminders', 'referenceAt', 'Paket berakhir')"><span>Paket berakhir</span><i class="table-sort-indicator" :class="getSortIcon('reminders', 'referenceAt')" aria-hidden="true"></i></button></th>
+                    <th scope="col">Detail</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-ink/6 bg-white">
                   <template x-if="!filteredReminders.length">
-                    <tr><td colspan="7" class="px-5 py-10 text-center text-ink/45" x-text="reminders.length ? 'Tidak ada reminder yang cocok.' : 'Belum ada reminder aktif. Jadwal akan muncul setelah pelanggan memiliki siklus pembayaran atau masa aktif.'"></td></tr>
+                    <tr><td colspan="5" class="px-5 py-10 text-center text-ink/45" x-text="reminders.length ? 'Tidak ada pengingat yang cocok.' : 'Belum ada pengingat aktif. Jadwal muncul otomatis ketika pelanggan memiliki masa aktif paket.'"></td></tr>
                   </template>
                   <template x-for="reminder in paginatedReminders" :key="reminder.id">
                     <tr>
-                      <td class="px-5 py-4" data-label="Tujuan">
-                        <div class="flex items-center gap-3">
-                          <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-moss/10 text-moss">
-                            <i class="fa-solid fa-user"></i>
-                          </span>
-                          <div class="min-w-0">
-                            <div class="truncate font-semibold text-ink" x-text="reminder.contactName || 'Contact tidak ditemukan'"></div>
-                            <div class="mt-1 text-xs font-medium text-ink/45" x-text="reminder.phoneNumber || '-'"></div>
-                          </div>
-                        </div>
+                      <td data-label="Pelanggan">
+                        <strong class="reminder-customer-name" x-text="reminder.contactName || 'Pelanggan tidak ditemukan'"></strong>
                       </td>
-                      <td class="px-5 py-4" data-label="Siklus">
-                        <span class="inline-flex max-w-full items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold" :class="getBillingCycleBadgeClass(reminder)">
-                          <span x-text="getBillingCycleLabel(reminder)"></span>
-                        </span>
+                      <td data-label="Pengingat">
+                        <span class="reminder-type-label" x-text="getReminderTableTypeLabel(reminder)"></span>
                       </td>
-                      <td class="px-4 py-4 text-ink/80" data-label="Jenis pengingat">
-                        <span class="block break-words font-medium leading-relaxed" x-text="getReminderDeliveryLabel(reminder)"></span>
+                      <td data-label="Jadwal kirim">
+                        <time :datetime="reminder.deliveryDateTime || reminder.reminderDateTime || null" x-text="formatReminderTableDateTime(reminder.deliveryDateTime || reminder.reminderDateTime)"></time>
                       </td>
-                      <td class="px-4 py-4 text-ink/70" data-label="Waktu pengiriman">
-                        <time class="block break-words leading-relaxed" :datetime="reminder.deliveryDateTime || reminder.reminderDateTime" x-text="formatDateTime(reminder.deliveryDateTime || reminder.reminderDateTime)"></time>
+                      <td data-label="Paket berakhir">
+                        <span class="reminder-expiry-cell" :class="{ 'reminder-expiry-matched': isPrepaidExpiryReminder(reminder) && isReminderReferenceSameAsDelivery(reminder) }" x-text="getReminderTableExpiryLabel(reminder)"></span>
                       </td>
-                      <td class="px-4 py-4 text-ink/70" data-label="Masa aktif berakhir">
-                        <span x-show="!isPrepaidExpiryReminder(reminder)" class="mb-1 block text-xs text-ink/50" x-text="getReminderReferenceLabel(reminder)"></span>
-                        <time class="block break-words leading-relaxed" :datetime="getReminderReferenceDate(reminder) || null" x-text="getReminderReferenceDate(reminder) ? formatDateTime(getReminderReferenceDate(reminder)) : '-'"></time>
-                      </td>
-                      <td class="px-5 py-4" data-label="Template">
-                        <span class="inline-flex max-w-full items-center rounded-full bg-moss/10 px-3 py-1 text-xs font-bold text-moss ring-1 ring-moss/10">
-                          <span class="truncate" x-text="reminder.templateName || '-'"></span>
-                        </span>
-                      </td>
-                      <td class="px-5 py-4 text-ink/65" data-label="Pesan">
-                        <div
-                          class="sent-message whitespace-pre-line"
-                          :class="isMessageExpanded(messageKey('reminder', reminder.id)) ? 'sent-message-expanded' : ''"
-                          x-text="reminder.message"
-                        ></div>
-                        <button
-                          type="button"
-                          x-show="isLongMessage(reminder.message)"
-                          @click="toggleMessage(messageKey('reminder', reminder.id))"
-                          class="read-more-button mt-2 text-xs font-bold text-moss transition hover:text-ink"
-                          x-text="isMessageExpanded(messageKey('reminder', reminder.id)) ? 'Tutup' : 'Selengkapnya'"
-                        ></button>
+                      <td data-label="Detail">
+                        <button type="button" class="reminder-detail-trigger" @click="openReminderDetail(reminder, $event.currentTarget)" :aria-label="'Lihat detail pengingat ' + (reminder.contactName || 'pelanggan')">Lihat</button>
                       </td>
                     </tr>
                   </template>
@@ -1836,6 +1804,51 @@
         </section>
       </main>
         </div>
+      </div>
+    </div>
+
+    <div
+      x-cloak
+      x-show="reminderDetailModal.open"
+      x-transition.opacity
+      @keydown.escape.window="closeReminderDetail()"
+      @click.self="closeReminderDetail()"
+      class="dashboard-modal-overlay reminder-detail-overlay fixed inset-0 flex items-center justify-center bg-ink/55 px-4 py-6"
+    >
+      <div
+        id="reminder-detail-dialog"
+        x-show="reminderDetailModal.open"
+        x-transition.scale.origin.center
+        @keydown.tab="trapModalFocus($event, 'reminder-detail-dialog')"
+        class="reminder-detail-dialog w-full max-w-xl rounded-xl bg-white p-5"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reminder-detail-title"
+        aria-describedby="reminder-detail-subtitle"
+        tabindex="-1"
+      >
+        <div class="reminder-detail-header flex items-start justify-between gap-4">
+          <div class="min-w-0">
+            <h3 id="reminder-detail-title" class="text-lg font-semibold text-ink">Detail pengingat</h3>
+            <p id="reminder-detail-subtitle" class="mt-1 break-words text-sm text-ink/65" x-text="reminderDetailModal.reminder?.contactName || 'Pelanggan'"></p>
+          </div>
+          <button id="reminder-detail-close" type="button" @click="closeReminderDetail()" class="reminder-detail-close ui-secondary-button shrink-0 border border-ink/15 bg-white px-3 py-2 font-semibold" aria-label="Tutup detail pengingat">Tutup</button>
+        </div>
+        <dl class="reminder-detail-grid">
+          <div><dt>Pelanggan</dt><dd x-text="reminderDetailModal.reminder?.contactName || '-'"></dd></div>
+          <div><dt>Nomor WhatsApp</dt><dd x-text="reminderDetailModal.reminder?.phoneNumber || '-'"></dd></div>
+          <div><dt>Siklus paket</dt><dd x-text="reminderDetailModal.reminder ? getBillingCycleLabel(reminderDetailModal.reminder) : '-'"></dd></div>
+          <div><dt>Jenis pengingat</dt><dd x-text="reminderDetailModal.reminder ? getReminderDeliveryLabel(reminderDetailModal.reminder) : '-'"></dd></div>
+          <div><dt>Jadwal pengiriman</dt><dd x-text="reminderDetailModal.reminder ? formatDateTime(reminderDetailModal.reminder.deliveryDateTime || reminderDetailModal.reminder.reminderDateTime) : '-'"></dd></div>
+          <div><dt x-text="reminderDetailModal.reminder ? getReminderReferenceLabel(reminderDetailModal.reminder) : 'Paket berakhir'"></dt><dd x-text="reminderDetailModal.reminder && getReminderReferenceDate(reminderDetailModal.reminder) ? formatDateTime(getReminderReferenceDate(reminderDetailModal.reminder)) : '-'"></dd></div>
+          <div class="reminder-detail-grid-wide"><dt>Template pesan</dt><dd x-text="reminderDetailModal.reminder?.templateName || '-'"></dd></div>
+        </dl>
+        <p class="reminder-detail-context" x-text="reminderDetailModal.reminder ? getReminderTimingNote(reminderDetailModal.reminder) : ''"></p>
+        <section class="reminder-detail-template" aria-labelledby="reminder-detail-message-title">
+          <h4 id="reminder-detail-message-title">Teks template pesan</h4>
+          <p>Variabel seperti <code>{{name}}</code> atau <code>{{companyName}}</code> diganti otomatis saat pengiriman. Isi pesan aktual mengikuti template yang aktif.</p>
+          <pre class="reminder-detail-message" x-text="reminderDetailModal.reminder?.messageSource || reminderDetailModal.reminder?.message || 'Isi pesan belum tersedia.'"></pre>
+        </section>
       </div>
     </div>
 
