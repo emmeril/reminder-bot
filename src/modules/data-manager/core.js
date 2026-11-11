@@ -549,6 +549,7 @@ class DataManagerCore {
     const portalAccountsCreated = await this.synchronizeCustomerPortalAccounts();
     await this.normalizeReminderRelations();
     await this.removeNonRecurringReminders();
+    await this.restorePrepaidReminderDeliveryHistory();
     await this.repairMissingRecurringReminders();
     await this.migrateReminderPaymentAmounts();
     await this.migrateReminderVariableTemplates();

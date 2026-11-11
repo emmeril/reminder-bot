@@ -998,6 +998,7 @@ class CustomerDataManager extends DataManagerCore {
     delete result.hotspotProvisioningPrevious;
     delete result.subscriptionChangedByArrears;
     delete result.arrearsSubscriptionDebtPeriods;
+    delete result.prepaidReminderDeliveries;
     if (result.hotspotNotificationPending) {
       result.hotspotNotificationPending = {
         attempts: result.hotspotNotificationPending.attempts || 0,
@@ -1662,6 +1663,79 @@ class CustomerDataManager extends DataManagerCore {
     return { created: true, reminder };
   }
 
+  getPrepaidReminderStageDetails(reminder) {
+    const contact = this.getResolvedReminderContact(reminder);
+    if (!contact || !isPrepaidPackage(contact)) return null;
+    if (![REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY, REMINDER_KINDS.GRACE_PERIOD]
+      .includes(reminder?.reminderKind)) return null;
+
+    const activeUntil = this.normalizeOptionalDate(
+      reminder.activePeriodUntil || reminder.reminderDateTime
+    );
+    if (!activeUntil) return null;
+    return {
+      contact,
+      activeUntil,
+      stage: isGracePeriodReminder(reminder) ? "GRACE_PERIOD" : "EXPIRY",
+    };
+  }
+
+  getPrepaidReminderStageByPeriod(contact, activeUntil, stage) {
+    return contact?.prepaidReminderDeliveries?.[activeUntil]?.[stage] || null;
+  }
+
+  getPrepaidReminderStageRecord(reminder) {
+    const details = this.getPrepaidReminderStageDetails(reminder);
+    return details
+      ? this.getPrepaidReminderStageByPeriod(details.contact, details.activeUntil, details.stage)
+      : null;
+  }
+
+  recordPrepaidReminderStage(reminder, status, at = null) {
+    const details = this.getPrepaidReminderStageDetails(reminder);
+    if (!details) return false;
+
+    const { contact, activeUntil, stage } = details;
+    const previous = this.getPrepaidReminderStageByPeriod(contact, activeUntil, stage);
+    const reminderId = String(reminder.sourceReminderId || reminder.id);
+    if (previous && (previous.status !== "PROCESSING" || previous.reminderId !== reminderId)) {
+      return false;
+    }
+    const nextStatus = String(status || "UNCONFIRMED").toUpperCase();
+    if (previous?.status === nextStatus) return false;
+
+    if (!contact.prepaidReminderDeliveries
+      || typeof contact.prepaidReminderDeliveries !== "object"
+      || Array.isArray(contact.prepaidReminderDeliveries)) {
+      contact.prepaidReminderDeliveries = {};
+    }
+    contact.prepaidReminderDeliveries[activeUntil] = {
+      ...contact.prepaidReminderDeliveries[activeUntil],
+      [stage]: {
+        status: nextStatus,
+        reminderId,
+        at: at || new Date().toISOString(),
+      },
+    };
+    return true;
+  }
+
+  async restorePrepaidReminderDeliveryHistory() {
+    return this.withDataMutation(async () => {
+      let restored = 0;
+      const history = Array.from(this.sentReminders.values())
+        .sort((a, b) => new Date(a.sentAt || 0) - new Date(b.sentAt || 0));
+      for (const reminder of history) {
+        const status = String(reminder.deliveryStatus || "UNCONFIRMED").toUpperCase();
+        if (this.recordPrepaidReminderStage(reminder, status, reminder.sentAt)) {
+          restored += 1;
+        }
+      }
+      if (restored > 0) await this.saveContacts();
+      return restored;
+    });
+  }
+
   syncActivePeriodExpiryReminder(contact, purchase) {
     if (!contact || !purchase?.activeUntil) return { changed: 0, created: false, reminder: null };
     if (this.isReminderSuppressedForArrears(contact)) {
@@ -1676,18 +1750,38 @@ class CustomerDataManager extends DataManagerCore {
     }
 
     const reminderDate = activeUntil;
+    const periodUntil = activeUntil.toISOString();
+    const expiryDelivery = this.getPrepaidReminderStageByPeriod(contact, periodUntil, "EXPIRY");
+    const graceDelivery = this.getPrepaidReminderStageByPeriod(contact, periodUntil, "GRACE_PERIOD");
+    const graceDays = sanitizePositiveInteger(
+      this.getSettings().hotspotIsolationGraceDays,
+      DEFAULT_SETTINGS.hotspotIsolationGraceDays,
+      0,
+      30
+    );
     const existing = Array.from(this.reminders.values()).find((reminder) => {
       const resolvedContact = this.getResolvedReminderContact(reminder);
       return String(resolvedContact?.id || reminder.contactId || "") === String(contact.id)
         && !reminder.processingAt;
     });
+    const samePeriod = Boolean(existing
+      && this.normalizeOptionalDate(existing.activePeriodUntil || existing.reminderDateTime) === periodUntil);
+    const graceCompleted = graceDelivery && graceDelivery.status !== "PROCESSING";
+    const expiryCompleted = expiryDelivery && expiryDelivery.status !== "PROCESSING";
+
+    if (samePeriod && (graceCompleted || (graceDays === 0 && expiryCompleted))) {
+      this.reminders.delete(String(existing.id));
+      return { changed: 1, created: false, reminder: null };
+    }
+    if (!existing && (graceDelivery || (expiryDelivery && (graceDays === 0 || !expiryCompleted)))) {
+      return { changed: 0, created: false, reminder: null };
+    }
+
     const created = !existing;
     const previousState = existing ? JSON.stringify(existing) : null;
     const preserveGracePeriod = Boolean(
-      existing
-      && existing.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY
-      && isGracePeriodReminder(existing)
-      && this.normalizeOptionalDate(existing.activePeriodUntil) === activeUntil.toISOString()
+      (samePeriod && existing.reminderKind === REMINDER_KINDS.ACTIVE_PERIOD_EXPIRY
+        && isGracePeriodReminder(existing)) || (expiryCompleted && graceDays > 0)
     );
     const reminder = existing || {
       id: generateId(),
@@ -1711,12 +1805,23 @@ class CustomerDataManager extends DataManagerCore {
       messageSource: messageTemplate,
       templateName: "PaketPrabayar",
     });
-    delete reminder.nextDeliveryAttemptAt;
-    delete reminder.deliveryAttemptedAt;
-    delete reminder.lastDeliveryAttemptAt;
-    delete reminder.lastDeliveryError;
-    delete reminder.deliveryAttempts;
-    if (!preserveGracePeriod) delete reminder.gracePeriodCreatedAt;
+    if (!samePeriod) {
+      delete reminder.nextDeliveryAttemptAt;
+      delete reminder.deliveryAttemptedAt;
+      delete reminder.lastDeliveryAttemptAt;
+      delete reminder.lastDeliveryError;
+      delete reminder.deliveryAttempts;
+      delete reminder.whatsappProvider;
+      delete reminder.providerMessageId;
+      delete reminder.providerStatus;
+      delete reminder.providerError;
+    }
+    if (preserveGracePeriod) {
+      reminder.gracePeriodCreatedAt = reminder.gracePeriodCreatedAt
+        || expiryDelivery?.at || new Date().toISOString();
+    } else {
+      delete reminder.gracePeriodCreatedAt;
+    }
     this.rewriteReminderPaymentMessage(reminder, contact);
     this.reminders.set(String(reminder.id), reminder);
     const changed = created || previousState !== JSON.stringify(reminder);
@@ -2829,7 +2934,9 @@ class CustomerDataManager extends DataManagerCore {
   async markReminderDeliveryAttempt(id, provider = null) {
     return this.withDataMutation(async () => {
       const reminder = this.getReminder(id);
-      if (!reminder || reminder.deliveryAttemptedAt) return null;
+      if (!reminder || reminder.deliveryAttemptedAt || this.getPrepaidReminderStageRecord(reminder)) {
+        return null;
+      }
 
       const now = new Date().toISOString();
       reminder.deliveryAttempts = Math.max(0, Number(reminder.deliveryAttempts) || 0) + 1;
@@ -2838,7 +2945,16 @@ class CustomerDataManager extends DataManagerCore {
       reminder.whatsappProvider = provider || reminder.whatsappProvider || null;
       reminder.providerStatus = "processing";
       reminder.providerError = null;
-      await this.saveReminders();
+      const stageRecorded = this.recordPrepaidReminderStage(reminder, "PROCESSING", now);
+      if (stageRecorded) {
+        await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
+          const options = { transaction };
+          await this.saveReminders(options);
+          await this.saveContacts(options);
+        }));
+      } else {
+        await this.saveReminders();
+      }
       return this.hydrateReminder(reminder);
     });
   }
@@ -2970,6 +3086,19 @@ class CustomerDataManager extends DataManagerCore {
         return null;
       }
 
+      const previousDelivery = this.getPrepaidReminderStageRecord(reminder);
+      if (previousDelivery) {
+        if (previousDelivery.reminderId !== String(reminder.id)
+          || previousDelivery.status !== "PROCESSING") {
+          this.reminders.delete(String(id));
+          await this.saveReminders();
+          return null;
+        }
+        reminder.deliveryAttemptedAt = reminder.deliveryAttemptedAt || previousDelivery.at;
+        reminder.lastDeliveryAttemptAt = reminder.lastDeliveryAttemptAt || previousDelivery.at;
+        reminder.providerStatus = "processing";
+      }
+
       const processingStartedAt = reminder.processingAt ? new Date(reminder.processingAt).getTime() : null;
       if (Number.isFinite(processingStartedAt) && (Date.now() - processingStartedAt) < 15 * 60 * 1000) {
         return null;
@@ -3012,12 +3141,16 @@ class CustomerDataManager extends DataManagerCore {
       delete sentReminder.processingAt;
       delete sentReminder.nextDeliveryAttemptAt;
 
+      const stageRecorded = this.recordPrepaidReminderStage(
+        reminder, sentReminder.deliveryStatus, sentReminder.sentAt
+      );
       this.sentReminders.set(String(id), sentReminder);
       this.reminders.delete(String(id));
       await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
         const options = { transaction };
         await this.saveReminders(options);
         await this.saveSentReminders(options);
+        if (stageRecorded) await this.saveContacts(options);
       }));
       return sentReminder;
     });
@@ -3066,11 +3199,15 @@ class CustomerDataManager extends DataManagerCore {
         delete reminder[field];
       }
 
+      const stageRecorded = this.recordPrepaidReminderStage(
+        sentReminder, sentReminder.deliveryStatus, sentReminder.sentAt
+      );
       this.sentReminders.set(historyId, sentReminder);
       await this.withDatabaseWrite(() => this.sequelize.transaction(async (transaction) => {
         const options = { transaction };
         await this.saveReminders(options);
         await this.saveSentReminders(options);
+        if (stageRecorded) await this.saveContacts(options);
       }));
       return {
         sentReminder,
