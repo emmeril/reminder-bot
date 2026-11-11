@@ -1,5 +1,34 @@
 function createDashboardActions() {
   return {
+        openReminderDetail(reminder, trigger = null) {
+          if (!reminder) return;
+          this.reminderDetailModal = {
+            open: true,
+            reminder,
+            returnFocusElement: trigger,
+          };
+          document.body.classList.add("overflow-hidden");
+          this.$nextTick(() => document.getElementById("reminder-detail-close")?.focus());
+        },
+
+        closeReminderDetail() {
+          if (!this.reminderDetailModal.open) return;
+          const returnFocusElement = this.reminderDetailModal.returnFocusElement;
+          this.reminderDetailModal = {
+            open: false,
+            reminder: null,
+            returnFocusElement: null,
+          };
+          document.body.classList.remove("overflow-hidden");
+          this.$nextTick(() => {
+            if (returnFocusElement?.isConnected) {
+              returnFocusElement.focus();
+            } else {
+              document.getElementById("reminders-search-input")?.focus();
+            }
+          });
+        },
+
         getContactCreatePayload() {
           return {
             name: this.forms.contact.name,
