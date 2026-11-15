@@ -413,6 +413,42 @@ test("API voucher memuat server dan membuat batch melalui MikroTik", async () =>
   assert.deepEqual(removedStoredVoucher, { batchId: "batch-lama", username: "lama-1" });
 });
 
+test("API voucher memisahkan arsip dan mempertahankannya ketika MikroTik tidak tersambung", async () => {
+  const { DataManager, MikrotikService } = require("../src/app");
+  CONFIG.WEB_API_KEY = "test-api-key";
+  const manager = new DataManager({ push() {} });
+  manager.saveVoucherBatches = async () => {};
+  manager.voucherBatches.set("batch-lama", { batchId: "batch-lama", vouchers: [
+    { username: "sudah", password: "tersimpan", used: true },
+  ] });
+  let connected = true;
+  const service = new MikrotikService({ push() {} });
+  service.withConnection = async (operation) => {
+    if (!connected) throw new Error("koneksi putus");
+    return operation({ menu: () => ({ print: async () => [] }) });
+  };
+  const baseUrl = await startServer({
+    getVoucherBatches: (...args) => manager.getVoucherBatches(...args),
+    storeVoucherBatches: (...args) => manager.storeVoucherBatches(...args),
+  }, {}, service);
+  const headers = { "x-api-key": CONFIG.WEB_API_KEY };
+  for (const online of [true, false]) {
+    connected = online;
+    const activeResponse = await fetch(`${baseUrl}/api/mikrotik/voucher-batches`, { headers });
+    assert.equal(activeResponse.status, 200);
+    assert.deepEqual((await activeResponse.json()).data, []);
+    for (const scope of ["archived", "all"]) {
+      const response = await fetch(`${baseUrl}/api/mikrotik/voucher-batches?scope=${scope}`, { headers });
+      assert.equal(response.status, 200);
+      const [batch] = (await response.json()).data;
+      assert.equal(batch.vouchers[0].archived, true);
+      assert.equal(batch.vouchers[0].password, "tersimpan");
+    }
+  }
+  const invalid = await fetch(`${baseUrl}/api/mikrotik/voucher-batches?scope=invalid`, { headers });
+  assert.equal(invalid.status, 400);
+});
+
 test("API laporan voucher menyinkronkan MikroTik lalu membaca riwayat database", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   let syncCalls = 0;

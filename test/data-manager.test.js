@@ -276,6 +276,43 @@ test("seluruh riwayat batch voucher dapat dimuat tanpa batas 100 batch", () => {
   assert.equal(manager.getVoucherBatches("all").length, 125);
 });
 
+test("arsip voucher terpisah dari daftar aktif tanpa menghapus kredensial atau pendapatan", async () => {
+  const manager = createManager({ id: "placeholder" });
+  manager.saveVoucherBatches = async () => {};
+  manager.upsertVoucherRevenueEntries = async () => {};
+  await manager.storeVoucherBatches([{
+    batchId: "campuran", createdAt: "2026-11-01T00:00:00.000Z", vouchers: [
+      { username: "aktif", password: "satu" },
+      { username: "arsip", password: "dua", used: true, usageStatus: "USED",
+        archived: true, archivedAt: "2026-11-05T00:00:00.000Z" },
+    ],
+  }, {
+    batchId: "selesai", createdAt: "2026-11-02T00:00:00.000Z", vouchers: [
+      { username: "arsip-lain", archived: true, used: true },
+    ],
+  }]);
+  await manager.storeVoucherRevenueEntries([{
+    id: "revenue-arsip", username: "arsip", profile: "100M", batchId: "campuran",
+    usedAt: "2026-11-03T01:00:00.000Z", period: "2026-11", amount: 40000,
+  }]);
+
+  const active = manager.getVoucherBatches(1, { scope: "active" });
+  assert.equal(active.length, 1);
+  assert.equal(active[0].batchId, "campuran");
+  assert.equal(active[0].quantity, 1);
+  assert.equal(active[0].generationType, "SINGLE");
+  assert.deepEqual(active[0].vouchers.map((voucher) => voucher.username), ["aktif"]);
+  const archives = manager.getVoucherBatches("all", { scope: "archived" });
+  assert.equal(archives.length, 2);
+  const archive = archives.find((batch) => batch.batchId === "campuran").vouchers[0];
+  assert.equal(archive.password, "dua");
+  assert.equal(archive.usedAt, "2026-11-03T01:00:00.000Z");
+  assert.equal(archive.archivedAt, "2026-11-05T00:00:00.000Z");
+  assert.equal(manager.getVoucherRevenueReport("2026-11").summary.revenue, 40000);
+  assert.equal(manager.getVoucherBatch("campuran").quantity, 2);
+  assert.equal(manager.getVoucherBatches("all").flatMap((batch) => batch.vouchers).length, 3);
+});
+
 test("menghapus voucher memperbarui jumlah batch dan menghapus batch yang sudah kosong", async () => {
   const manager = createManager({ id: "contact-placeholder", phoneNumber: "6281234567890" });
   let saveCalls = 0;

@@ -64,12 +64,18 @@ function registerVoucherRoutes({
     const limit = req.query.limit === "all"
       ? "all"
       : Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+    const scope = req.query.scope || "active";
+    if (!["active", "archived", "all"].includes(scope)) {
+      const error = new Error("Lingkup voucher harus active, archived, atau all.");
+      error.statusCode = 400;
+      throw error;
+    }
     try {
       const knownBatches = typeof dataManager.getVoucherBatches === "function"
-        ? dataManager.getVoucherBatches(limit)
+        ? dataManager.getVoucherBatches("all")
         : [];
       const routerBatches = await mikrotikService.getHotspotVoucherBatches({
-        limit,
+        limit: typeof dataManager.storeVoucherBatches === "function" ? "all" : limit,
         knownBatches,
         knownUsageEntries: typeof dataManager.getVoucherRevenueEntries === "function"
           ? dataManager.getVoucherRevenueEntries()
@@ -78,14 +84,15 @@ function registerVoucherRoutes({
       });
       if (typeof dataManager.storeVoucherBatches === "function") {
         await dataManager.storeVoucherBatches(routerBatches);
-        return dataManager.getVoucherBatches(limit);
+        return dataManager.getVoucherBatches(limit, { scope });
       }
       return routerBatches;
     } catch (error) {
       const stored = typeof dataManager.getVoucherBatches === "function"
-        ? dataManager.getVoucherBatches(limit)
+        ? dataManager.getVoucherBatches(limit, { scope })
         : [];
-      if (stored.length > 0) {
+      if (stored.length > 0 || (typeof dataManager.getVoucherBatches === "function"
+        && dataManager.getVoucherBatches("all").length > 0)) {
         activityLog.push("error", "voucher", "MikroTik tidak dapat dibaca; memakai riwayat voucher database", {
           error: error.message,
         });

@@ -1379,6 +1379,30 @@ class VoucherRevenueSyncScheduler {
       throw new Error("Verifikasi penyimpanan riwayat pendapatan voucher gagal.");
     }
 
+    let archived = 0;
+    if (typeof this.dataManager.getVoucherBatches === "function"
+      && typeof this.dataManager.storeVoucherBatches === "function"
+      && typeof this.mikrotikService.getHotspotVoucherBatches === "function") {
+      const knownBatches = this.dataManager.getVoucherBatches("all");
+      if (knownBatches.length > 0) {
+        const batches = await this.mikrotikService.getHotspotVoucherBatches({
+          limit: "all",
+          knownBatches,
+          knownUsageEntries: this.dataManager.getVoucherRevenueEntries(),
+          timeZone,
+        });
+        const previouslyArchived = new Set(knownBatches.flatMap((batch) => (
+          batch.vouchers.filter((voucher) => voucher.archived).map((voucher) => (
+            JSON.stringify([batch.batchId, voucher.username.toLowerCase()])
+          ))
+        )));
+        archived = batches.reduce((count, batch) => count + batch.vouchers.filter((voucher) => (
+          voucher.archived && !previouslyArchived.has(JSON.stringify([batch.batchId, voucher.username.toLowerCase()]))
+        )).length, 0);
+        await this.dataManager.storeVoucherBatches(batches);
+      }
+    }
+
     const retentionHours = Number.isFinite(Number(options.retentionHours))
       ? Math.max(0, Number(options.retentionHours))
       : CONFIG.VOUCHER_SCRIPT_RETENTION_HOURS;
@@ -1399,12 +1423,13 @@ class VoucherRevenueSyncScheduler {
       }
     }
 
-    if (storage.saved > 0 || cleanup.removed > 0 || cleanup.failed > 0 || cleanup.skipped > 0) {
+    if (storage.saved > 0 || archived > 0 || cleanup.removed > 0 || cleanup.failed > 0 || cleanup.skipped > 0) {
       this.activityLog.push("info", "voucher", "Sinkronisasi pendapatan voucher selesai", {
         found: records.length,
         stored: storage.saved,
         totalStored: storage.total,
         batchesUpdated: storage.batchesUpdated,
+        archived,
         eligibleForCleanup: eligibleRecords.length,
         removedFromMikrotik: cleanup.removed,
         cleanupSkipped: cleanup.skipped,
@@ -1416,6 +1441,7 @@ class VoucherRevenueSyncScheduler {
     return {
       found: records.length,
       ...storage,
+      archived,
       cleanup,
       retentionHours,
     };

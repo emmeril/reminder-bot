@@ -450,6 +450,9 @@ class MikrotikService {
         conn.menu("/ip/hotspot/user/profile").print(),
         conn.menu("/system/script").print(),
       ]);
+      if (!Array.isArray(users)) {
+        throw new Error("Daftar user hotspot MikroTik tidak valid.");
+      }
       const profileDetails = new Map((profiles || []).map((profile) => {
         const metadata = parseVoucherProfileMetadata(readRouterValue(profile, "on-login", "onLogin", ""));
         return [
@@ -590,10 +593,13 @@ class MikrotikService {
           const belongsToAnotherBatch = Boolean(
             routerBatch?.batchId && routerBatch.batchId.toLowerCase() !== batchId.toLowerCase()
           );
+          const wasUsed = storedVoucher.used === true || storedVoucher.usageStatus === "USED"
+            || Boolean(storedVoucher.usedAt);
           let usageStatus = "MISSING";
-          if (usage || (routerUser && routerBatch?.batchId !== batchId)) usageStatus = "USED";
-          else if (routerUser) usageStatus = "UNUSED";
-          else if (storedVoucher.used || storedVoucher.usageStatus === "USED") usageStatus = "USED";
+          if (usage || wasUsed || (routerUser && !routerBatch)) usageStatus = "USED";
+          else if (routerUser && !belongsToAnotherBatch) usageStatus = "UNUSED";
+          const archived = storedVoucher.archived === true
+            || (usageStatus === "USED" && (!routerUser || belongsToAnotherBatch));
           const routerVoucher = vouchersByUsername.get(key) || {};
           vouchersByUsername.set(key, {
             ...storedVoucher,
@@ -609,6 +615,10 @@ class MikrotikService {
             used: usageStatus === "USED",
             usageStatus,
             usedAt: usage?.usedAt || storedVoucher.usedAt || null,
+            ...(archived ? {
+              archived: true,
+              archivedAt: storedVoucher.archivedAt || new Date().toISOString(),
+            } : {}),
           });
         }
         batch.vouchers = Array.from(vouchersByUsername.values());

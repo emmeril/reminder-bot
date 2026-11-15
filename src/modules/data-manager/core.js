@@ -773,11 +773,25 @@ class DataManagerCore {
     });
   }
 
-  getVoucherBatches(limit = 50) {
+  getVoucherBatches(limit = 50, options = {}) {
     const safeLimit = limit === "all"
       ? Number.POSITIVE_INFINITY
       : Math.min(100, Math.max(1, Number(limit) || 50));
     return Array.from(this.voucherBatches.values())
+      .map((batch) => {
+        if (!options.scope || options.scope === "all") return batch;
+        const vouchers = (batch.vouchers || []).filter((voucher) => (
+          options.scope === "archived" ? voucher.archived === true : voucher.archived !== true
+        ));
+        return {
+          ...batch,
+          vouchers,
+          quantity: vouchers.length,
+          generationType: vouchers.length === 1 ? "SINGLE" : "BULK",
+          disabledCount: vouchers.filter((voucher) => voucher.disabled).length,
+        };
+      })
+      .filter((batch) => !options.scope || options.scope === "all" || batch.vouchers.length > 0)
       .sort((a, b) => (
         new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
         || String(b.batchId).localeCompare(String(a.batchId), "id-ID")

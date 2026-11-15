@@ -67,3 +67,43 @@ test("script MikroTik tidak dihapus ketika verifikasi database gagal", async () 
   );
   assert.equal(cleanupCalled, false);
 });
+
+test("sinkronisasi rutin mengarsipkan voucher hilang meskipun script pemakaian sudah dibersihkan", async () => {
+  const { DataManager } = require("../src/app");
+  const { MikrotikService } = require("../src/app");
+  const manager = new DataManager({ push() {} });
+  manager.saveVoucherBatches = async () => {};
+  manager.voucherBatches.set("batch-lama", { batchId: "batch-lama", vouchers: [
+    { username: "sudah", password: "tersimpan", used: true, usageStatus: "USED" },
+    { username: "belum", used: false },
+  ] });
+  const service = new MikrotikService({ push() {} });
+  service.getVoucherUsageRecords = async () => [];
+  service.withConnection = async (operation) => operation({ menu: () => ({ print: async () => [] }) });
+  const scheduler = new VoucherRevenueSyncScheduler(service, manager, { push() {} });
+  const result = await scheduler.processSync();
+  assert.equal(result.archived, 1);
+  assert.equal(manager.getVoucherBatches("all", { scope: "archived" })[0].vouchers[0].password, "tersimpan");
+  assert.equal(manager.getVoucherBatches("all", { scope: "active" })[0].vouchers[0].username, "belum");
+  const repeated = await scheduler.processSync();
+  assert.equal(repeated.archived, 0);
+});
+
+test("kegagalan membaca MikroTik tidak mengarsipkan voucher", async () => {
+  let writes = 0;
+  const batch = { batchId: "batch", vouchers: [{ username: "sudah", used: true }] };
+  const scheduler = new VoucherRevenueSyncScheduler({
+    getVoucherUsageRecords: async () => [],
+    getHotspotVoucherBatches: async () => { throw new Error("koneksi putus"); },
+  }, {
+    getTimezone: () => "Asia/Jakarta",
+    storeVoucherRevenueEntries: async () => ({ saved: 0 }),
+    hasVoucherRevenueEntries: () => true,
+    getVoucherBatches: () => [batch],
+    getVoucherRevenueEntries: () => [],
+    storeVoucherBatches: async () => { writes += 1; },
+  }, { push() {} });
+  await assert.rejects(() => scheduler.processSync(), /koneksi putus/);
+  assert.equal(writes, 0);
+  assert.equal(batch.vouchers[0].archived, undefined);
+});

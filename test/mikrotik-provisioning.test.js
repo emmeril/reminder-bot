@@ -320,6 +320,52 @@ test("riwayat batch menandai voucher yang sudah digunakan tanpa menghilangkannya
   assert.equal(vouchers["voucher-hilang"].usageStatus, "MISSING");
 });
 
+test("voucher terpakai yang hilang diarsipkan dan arsip tetap dikenali setelah sinkronisasi ulang", async () => {
+  const batchId = "lxyz-abc123";
+  const usedAt = "2026-11-03T01:00:00.000Z";
+  const { service } = createServiceWithUsers([
+    { name: "masih-ada", comment: `vc|${batchId}|`, profile: "100M" },
+    { name: "dipakai-ulang", comment: "vc|batchbaru-aabbcc|", profile: "100M" },
+    { name: "belum-dipakai-ulang", comment: "vc|batchbaru-aabbcc|", profile: "100M" },
+  ]);
+  const [batch] = await service.getHotspotVoucherBatches({
+    knownBatches: [{ batchId, vouchers: [
+      { username: "sudah-hilang", used: true, usedAt },
+      { username: "dari-laporan" },
+      { username: "belum-hilang", used: false },
+      { username: "masih-ada", used: true, usedAt },
+      { username: "dipakai-ulang", used: true, usedAt },
+      { username: "belum-dipakai-ulang", used: false },
+    ] }],
+    knownUsageEntries: [{ username: "dari-laporan", batchId, usedAt }],
+  }).then((batches) => batches.filter((item) => item.batchId === batchId));
+  const vouchers = Object.fromEntries(batch.vouchers.map((voucher) => [voucher.username, voucher]));
+  for (const username of ["sudah-hilang", "dari-laporan", "dipakai-ulang"]) {
+    assert.equal(vouchers[username].archived, true);
+    assert.equal(vouchers[username].usageStatus, "USED");
+    assert.equal(vouchers[username].usedAt, usedAt);
+    assert.ok(Number.isFinite(Date.parse(vouchers[username].archivedAt)));
+  }
+  assert.equal(vouchers["belum-hilang"].usageStatus, "MISSING");
+  assert.notEqual(vouchers["belum-hilang"].archived, true);
+  assert.equal(vouchers["belum-dipakai-ulang"].usageStatus, "MISSING");
+  assert.notEqual(vouchers["belum-dipakai-ulang"].archived, true);
+  assert.equal(vouchers["masih-ada"].usageStatus, "USED");
+  assert.notEqual(vouchers["masih-ada"].archived, true);
+  const repeated = await service.getHotspotVoucherBatches({ knownBatches: [batch] });
+  const archived = repeated.find((item) => item.batchId === batchId).vouchers
+    .find((voucher) => voucher.username === "dari-laporan");
+  assert.equal(archived.archivedAt, vouchers["dari-laporan"].archivedAt);
+});
+
+test("respons user MikroTik yang tidak valid tidak dianggap daftar kosong untuk pengarsipan", async () => {
+  const { service } = createServiceWithUsers();
+  service.withConnection = async (operation) => operation({ menu: () => ({ print: async () => null }) });
+  await assert.rejects(() => service.getHotspotVoucherBatches({
+    knownBatches: [{ batchId: "batch", vouchers: [{ username: "terpakai", used: true }] }],
+  }), /Daftar user hotspot MikroTik tidak valid/);
+});
+
 test("pembuatan voucher menolak username yang sudah ada", async () => {
   const { service, getAddCalls } = createServiceWithUsers([{ ".id": "*1", name: "voucher-001", profile: "100M" }]);
 
