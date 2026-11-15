@@ -182,6 +182,7 @@ function createDashboardState() {
         },
         voucherResult: null,
         voucherBatches: [],
+        voucherHistoryScope: "active",
         selectedVoucherBatchId: "ALL",
         voucherHistoryError: "",
         voucherBatchFilters: {

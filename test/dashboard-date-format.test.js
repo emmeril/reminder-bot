@@ -1904,7 +1904,10 @@ test("pembuatan banyak voucher memakai pekerjaan latar belakang", async () => {
           quantity: 450,
           profile: "100M",
           server: "all",
-          vouchers: [{ username: "bulk-1", password: "bulk-1" }],
+          vouchers: Array.from({ length: 450 }, (_, index) => ({
+            username: `bulk-${index + 1}`,
+            password: `bulk-${index + 1}`,
+          })),
         },
       };
     }

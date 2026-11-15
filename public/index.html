@@ -8,11 +8,11 @@
   <link rel="stylesheet" href="/public/tailwind.css?v=20261105-1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261111-1">
-  <link rel="stylesheet" href="/public/interface.css?v=20261110-4">
-  <script defer src="/public/dashboard/state.js?v=20261111-1"></script>
+  <link rel="stylesheet" href="/public/interface.css?v=20261115-1">
+  <script defer src="/public/dashboard/state.js?v=20261115-1"></script>
   <script defer src="/public/dashboard/ui.js?v=20261110-2"></script>
   <script defer src="/public/dashboard/selectors.js?v=20261111-1"></script>
-  <script defer src="/public/dashboard/data.js?v=20261110-8"></script>
+  <script defer src="/public/dashboard/data.js?v=20261115-1"></script>
   <script defer src="/public/dashboard/actions.js?v=20261110-9"></script>
   <script defer src="/public/app.js?v=20261106-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
@@ -576,13 +576,14 @@
             </div>
           </div>
 
-          <div class="voucher-tabs" role="tablist" aria-label="Menu voucher">
-            <button type="button" role="tab" :aria-selected="activeVoucherTab === 'create'" :class="activeVoucherTab === 'create' ? 'active' : ''" @click="activeVoucherTab = 'create'"><i class="fa-solid fa-ticket-simple"></i>Voucher</button>
-            <button type="button" role="tab" :aria-selected="activeVoucherTab === 'profiles'" :class="activeVoucherTab === 'profiles' ? 'active' : ''" @click="activeVoucherTab = 'profiles'"><i class="fa-solid fa-sliders"></i>Profile voucher</button>
-            <button type="button" role="tab" :aria-selected="activeVoucherTab === 'stats'" :class="activeVoucherTab === 'stats' ? 'active' : ''" @click="activeVoucherTab = 'stats'; loadVoucherStats({ silent: true })"><i class="fa-solid fa-chart-column"></i>Statistik voucher</button>
+          <div class="voucher-tabs" role="tablist" aria-label="Menu voucher" @keydown="handleVoucherTabKeydown($event)">
+            <button id="voucher-tab-create" type="button" role="tab" aria-controls="voucher-history-panel" :tabindex="activeVoucherTab === 'create' ? 0 : -1" :aria-selected="activeVoucherTab === 'create'" :class="activeVoucherTab === 'create' ? 'active' : ''" @click="selectVoucherTab('create')"><i class="fa-solid fa-ticket-simple" aria-hidden="true"></i>Voucher aktif</button>
+            <button id="voucher-tab-archived" type="button" role="tab" aria-controls="voucher-history-panel" :tabindex="activeVoucherTab === 'archived' ? 0 : -1" :aria-selected="activeVoucherTab === 'archived'" :class="activeVoucherTab === 'archived' ? 'active' : ''" @click="selectVoucherTab('archived')"><i class="fa-solid fa-box-archive" aria-hidden="true"></i>Arsip</button>
+            <button id="voucher-tab-profiles" type="button" role="tab" aria-controls="voucher-profiles-panel" :tabindex="activeVoucherTab === 'profiles' ? 0 : -1" :aria-selected="activeVoucherTab === 'profiles'" :class="activeVoucherTab === 'profiles' ? 'active' : ''" @click="selectVoucherTab('profiles')"><i class="fa-solid fa-sliders" aria-hidden="true"></i>Profile voucher</button>
+            <button id="voucher-tab-stats" type="button" role="tab" aria-controls="voucher-stats-panel" :tabindex="activeVoucherTab === 'stats' ? 0 : -1" :aria-selected="activeVoucherTab === 'stats'" :class="activeVoucherTab === 'stats' ? 'active' : ''" @click="selectVoucherTab('stats')"><i class="fa-solid fa-chart-column" aria-hidden="true"></i>Statistik voucher</button>
           </div>
 
-          <div x-cloak x-show="activeVoucherTab === 'create'" class="voucher-workspace voucher-history-workspace">
+          <div id="voucher-history-panel" role="tabpanel" :aria-labelledby="'voucher-tab-' + activeVoucherTab" x-cloak x-show="activeVoucherTab === 'create' || activeVoucherTab === 'archived'" class="voucher-workspace voucher-history-workspace" :class="{ 'voucher-history-archived': voucherHistoryScope === 'archived' }">
             <div
               x-cloak
               x-show="voucherCreateModal.open"
@@ -710,12 +711,13 @@
             </div>
 
             <aside class="voucher-result-panel" aria-live="polite">
+              <p x-show="activeVoucherTab === 'archived'" class="card-description mb-4">Voucher yang sudah digunakan dan sudah tidak ada di MikroTik. Riwayat pemakaian dan pendapatan tetap tersimpan.</p>
               <div class="voucher-batch-toolbar">
                 <label>
                   <span>Riwayat batch</span>
-                  <select x-model="selectedVoucherBatchId" @change="selectVoucherBatch(selectedVoucherBatchId)" :disabled="loading.voucherHistory || !voucherBatches.length">
-                    <option value="ALL" :disabled="!voucherBatches.length" x-text="loading.voucherHistory ? 'Memuat riwayat...' : (voucherBatches.length ? 'Semua riwayat batch' : 'Belum ada batch voucher')"></option>
-                    <template x-for="batch in voucherBatches" :key="'voucher-batch-' + batch.batchId">
+                  <select x-model="selectedVoucherBatchId" @change="selectVoucherBatch(selectedVoucherBatchId)" :disabled="loading.voucherHistory || !visibleVoucherBatches.length">
+                    <option value="ALL" :disabled="!visibleVoucherBatches.length" x-text="loading.voucherHistory ? 'Memuat riwayat...' : (visibleVoucherBatches.length ? 'Semua riwayat batch' : (activeVoucherTab === 'archived' ? 'Belum ada arsip voucher' : 'Belum ada batch voucher'))"></option>
+                    <template x-for="batch in visibleVoucherBatches" :key="'voucher-batch-' + batch.batchId">
                       <option :value="batch.batchId" x-text="getVoucherBatchLabel(batch)"></option>
                     </template>
                   </select>
@@ -724,24 +726,25 @@
                   <i class="fa-solid" :class="loading.voucherHistory ? 'fa-circle-notch fa-spin' : 'fa-rotate'"></i>
                 </button>
               </div>
-              <p x-cloak x-show="voucherHistoryError" class="voucher-history-error" role="alert" x-text="voucherHistoryError"></p>
-              <template x-if="!voucherBatches.length">
+              <p x-cloak x-show="loading.voucherHistory" class="card-description" role="status">Memuat riwayat voucher...</p>
+              <p x-cloak x-show="voucherHistoryError" class="voucher-history-error" role="alert"><span x-text="voucherHistoryError"></span> Coba muat ulang riwayat.</p>
+              <template x-if="!visibleVoucherBatches.length && !loading.voucherHistory && !voucherHistoryError">
                 <div class="voucher-empty-state">
                   <span><i class="fa-solid fa-ticket-simple"></i></span>
-                  <strong>Belum ada batch voucher</strong>
-                  <p>Voucher yang dibuat tersimpan di MikroTik. Username dan password batch disimpan di database aplikasi agar riwayat tetap tersedia setelah voucher dipakai.</p>
+                  <strong x-text="activeVoucherTab === 'archived' ? 'Belum ada arsip voucher' : 'Belum ada batch voucher'"></strong>
+                  <p x-text="activeVoucherTab === 'archived' ? 'Voucher otomatis masuk arsip setelah digunakan dan sudah tidak ada di MikroTik. Muat ulang riwayat untuk memeriksa pembaruan.' : 'Voucher yang dibuat tersimpan di MikroTik. Username dan password batch disimpan di database aplikasi agar riwayat tetap tersedia setelah voucher dipakai.'"></p>
                 </div>
               </template>
 
-              <div x-cloak x-show="voucherBatches.length" class="voucher-print-sheet">
+              <div x-cloak x-show="visibleVoucherBatches.length" class="voucher-print-sheet">
                 <div class="voucher-result-heading">
                   <div>
                     <span class="voucher-print-brand" x-text="forms.settings.companyName || 'Emmeril Hotspot'"></span>
-                    <h3 x-text="selectedVoucherBatchId === 'ALL' ? 'Semua voucher hotspot' : 'Voucher hotspot'"></h3>
-                    <p x-show="selectedVoucherBatchId === 'ALL'"><strong x-text="voucherBatchVouchers.length"></strong> voucher dari <strong x-text="voucherBatches.length"></strong> riwayat batch</p>
+                    <h3 x-text="activeVoucherTab === 'archived' ? 'Arsip voucher' : (selectedVoucherBatchId === 'ALL' ? 'Semua voucher hotspot' : 'Voucher hotspot')"></h3>
+                    <p x-show="selectedVoucherBatchId === 'ALL'"><strong x-text="voucherBatchVouchers.length"></strong> voucher dari <strong x-text="visibleVoucherBatches.length"></strong> riwayat batch</p>
                     <p x-show="selectedVoucherBatchId !== 'ALL'"><strong x-text="voucherResult?.quantity || 0"></strong> voucher · <span x-text="voucherResult?.profile || '-'"></span> · <span x-text="voucherResult?.server === 'all' ? 'Semua server' : voucherResult?.server"></span></p>
                   </div>
-                  <div x-show="selectedVoucherBatchId !== 'ALL'" class="voucher-result-actions">
+                  <div x-show="activeVoucherTab !== 'archived' && selectedVoucherBatchId !== 'ALL'" class="voucher-result-actions">
                     <button type="button" @click="copyVoucherCredentials()" class="ui-secondary-button" aria-label="Salin semua username dan password"><i class="fa-solid fa-copy"></i><span>Salin</span></button>
                     <button type="button" @click="printVouchers()" class="ui-secondary-button" aria-label="Cetak voucher standar"><i class="fa-solid fa-print"></i><span>Cetak standar</span></button>
                     <button type="button" @click="printRewardVouchers()" class="ui-primary-button voucher-reward-print-button" aria-label="Cetak voucher reward"><i class="fa-solid fa-gift"></i><span>Cetak reward</span></button>
@@ -757,7 +760,7 @@
                     <span>Cari voucher</span>
                     <input type="search" x-model.trim="voucherBatchFilters.search" placeholder="Username atau password" autocomplete="off" spellcheck="false">
                   </label>
-                  <label class="voucher-list-field">
+                  <label x-show="activeVoucherTab !== 'archived'" class="voucher-list-field">
                     <span>Status penggunaan</span>
                     <select x-model="voucherBatchFilters.usage">
                       <option value="ALL">Semua status</option>
@@ -781,8 +784,8 @@
                         <span x-text="forms.settings.companyName || 'Emmeril Hotspot'"></span>
                         <div class="voucher-card-heading-actions">
                           <strong x-text="String(index + 1).padStart(3, '0')"></strong>
-                          <button x-show="getVoucherMacAddress(voucher)" type="button" @click="resetVoucherDevice(voucher)" class="voucher-device-reset-button" :aria-label="'Reset perangkat voucher ' + voucher.username" :title="'Reset perangkat · ' + getVoucherMacAddress(voucher)"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>
-                          <button type="button" @click="removeVoucher(voucher)" class="voucher-delete-button" :aria-label="'Hapus voucher ' + voucher.username" :title="'Hapus voucher ' + voucher.username"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                          <button x-show="!voucher.archived && getVoucherMacAddress(voucher)" type="button" @click="resetVoucherDevice(voucher)" class="voucher-device-reset-button" :aria-label="'Reset perangkat voucher ' + voucher.username" :title="'Reset perangkat · ' + getVoucherMacAddress(voucher)"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>
+                          <button x-show="!voucher.archived" type="button" @click="removeVoucher(voucher)" class="voucher-delete-button" :aria-label="'Hapus voucher ' + voucher.username" :title="'Hapus voucher ' + voucher.username"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
                         </div>
                       </div>
                       <div class="voucher-usage-row">
@@ -794,11 +797,15 @@
                           <span>Dipakai:</span>
                           <time :datetime="voucher.usedAt" x-text="formatDateTime(voucher.usedAt)"></time>
                         </div>
+                        <div class="voucher-usage-date" x-show="voucher.archivedAt">
+                          <span>Diarsipkan:</span>
+                          <time :datetime="voucher.archivedAt" x-text="formatDateTime(voucher.archivedAt)"></time>
+                        </div>
                       </div>
                       <dl>
                         <div><dt>Username</dt><dd x-text="voucher.username"></dd></div>
                         <div><dt>Password</dt><dd x-text="voucher.password"></dd></div>
-                        <div><dt>Perangkat</dt><dd class="voucher-device-value" :class="{ 'is-locked': getVoucherMacAddress(voucher) }" x-text="getVoucherDeviceLabel(voucher)"></dd></div>
+                        <div x-show="!voucher.archived"><dt>Perangkat</dt><dd class="voucher-device-value" :class="{ 'is-locked': getVoucherMacAddress(voucher) }" x-text="getVoucherDeviceLabel(voucher)"></dd></div>
                         <div x-show="selectedVoucherBatchId === 'ALL'"><dt>Batch</dt><dd x-text="getVoucherCardBatchLabel(voucher)"></dd></div>
                         <div><dt>Profile</dt><dd x-text="voucher.batchProfile || voucherResult?.profile || '-'"></dd></div>
                         <div><dt>Harga</dt><dd x-text="getVoucherPriceLabel(getVoucherBatchForVoucher(voucher))"></dd></div>
@@ -873,7 +880,7 @@
             </aside>
           </div>
 
-          <div x-cloak x-show="activeVoucherTab === 'profiles'" class="voucher-profile-page">
+          <div id="voucher-profiles-panel" role="tabpanel" aria-labelledby="voucher-tab-profiles" x-cloak x-show="activeVoucherTab === 'profiles'" class="voucher-profile-page">
             <div class="voucher-profile-list">
               <div class="voucher-profile-list-heading">
                 <div><h3>Profile di MikroTik</h3><p>Profile pelanggan bulanan tetap terlihat, tetapi tidak dapat dipakai membuat voucher sebelum masa berlaku diatur.</p></div>
@@ -984,7 +991,7 @@
           </div>
           </div>
 
-          <div x-cloak x-show="activeVoucherTab === 'stats'" class="voucher-stats-page">
+          <div id="voucher-stats-panel" role="tabpanel" aria-labelledby="voucher-tab-stats" x-cloak x-show="activeVoucherTab === 'stats'" class="voucher-stats-page">
             <div class="voucher-stats-summary">
               <article>
                 <span class="voucher-stat-icon total"><i class="fa-solid fa-ticket"></i></span>

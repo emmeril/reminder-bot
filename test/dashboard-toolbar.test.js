@@ -230,3 +230,60 @@ test("pencarian di seluruh menu memakai pencocokan kata tanpa mengubah filter da
   assert.equal(app.filters.contactBilling.search, "alea 75000");
   assert.equal(app.filters.contactHotspot.search, "alea");
 });
+
+test("tab arsip dalam menu voucher memisahkan isi batch dan mereset pilihan saat berpindah", async () => {
+  const app = createApp();
+  app.activeMenu = "vouchers";
+  let requestedUrl;
+  app.api = async (url) => {
+    requestedUrl = url;
+    return [{
+      batchId: "campuran", profile: "Paket Harian", quantity: 2, vouchers: [
+        { username: "aktif", password: "satu", usageStatus: "UNUSED" },
+        { username: "arsip", password: "dua", used: true, archived: true,
+          usedAt: "2026-11-09T03:00:00.000Z", archivedAt: "2026-11-15T01:00:00.000Z" },
+      ],
+    }, {
+      batchId: "selesai", vouchers: [{ username: "arsip-lain", archived: true, used: true }],
+    }];
+  };
+  await app.loadVoucherBatches({ silent: true, batchId: "campuran" });
+  assert.equal(requestedUrl, "/api/mikrotik/voucher-batches?limit=all&scope=all");
+  assert.equal(app.visibleVoucherBatches.length, 1);
+  assert.equal(app.voucherResult.quantity, 1);
+  assert.equal(app.voucherResult.vouchers[0].username, "aktif");
+  app.voucherBatchFilters.search = "aktif";
+  app.voucherBatchFilters.usage = "UNUSED";
+  app.selectVoucherTab("archived");
+  assert.equal(app.activeMenu, "vouchers");
+  assert.equal(app.activeVoucherTab, "archived");
+  assert.equal(app.selectedVoucherBatchId, "ALL");
+  assert.equal(app.voucherResult, null);
+  assert.equal(app.hasVoucherBatchFilters, false);
+  assert.deepEqual(Array.from(app.voucherBatchVouchers, voucher => voucher.username), ["arsip", "arsip-lain"]);
+  app.selectVoucherBatch("campuran");
+  assert.equal(app.voucherResult.vouchers[0].archived, true);
+  assert.equal(app.voucherResult.quantity, 1);
+  assert.equal(app.voucherResult.vouchers[0].password, "dua");
+  app.voucherBatchFilters.search = "arsip paket";
+  assert.equal(app.filteredVoucherBatchVouchers.length, 1);
+  app.voucherBatchFilters.search = "diarsipkan 15/11/2026";
+  assert.equal(app.filteredVoucherBatchVouchers.length, 1);
+  app.selectVoucherTab("profiles");
+  assert.equal(app.voucherHistoryScope, "archived");
+  assert.ok(app.voucherBatchVouchers.every(voucher => voucher.archived === true));
+  app.selectVoucherTab("archived");
+  app.selectVoucherTab("create");
+  assert.deepEqual(Array.from(app.voucherBatchVouchers, voucher => voucher.username), ["aktif"]);
+  app.selectVoucherBatch("selesai");
+  assert.equal(app.selectedVoucherBatchId, "ALL");
+  assert.equal(app.voucherBatches[0].quantity, 2);
+});
+
+test("tab arsip yang kosong tidak menampilkan voucher aktif", () => {
+  const app = createApp();
+  app.voucherBatches = [{ batchId: "aktif", vouchers: [{ username: "belum" }] }];
+  app.selectVoucherTab("archived");
+  assert.equal(app.visibleVoucherBatches.length, 0);
+  assert.equal(app.voucherBatchVouchers.length, 0);
+});

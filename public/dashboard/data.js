@@ -275,7 +275,7 @@ function createDashboardData() {
           this.loading.voucherHistory = true;
           this.voucherHistoryError = "";
           try {
-            const batches = await this.api("/api/mikrotik/voucher-batches?limit=all", {
+            const batches = await this.api("/api/mikrotik/voucher-batches?limit=all&scope=all", {
               silent: Boolean(options.silent),
             });
             this.voucherBatches = Array.isArray(batches) ? batches : [];
@@ -284,7 +284,7 @@ function createDashboardData() {
               || "ALL";
             this.selectVoucherBatch(preferredBatchId);
             if (!options.silent) {
-              this.notify(`${this.voucherBatches.length} batch voucher dimuat dari riwayat aplikasi.`);
+              this.notify(`${this.visibleVoucherBatches.length} batch ${this.activeVoucherTab === "archived" ? "arsip " : ""}voucher dimuat dari riwayat aplikasi.`);
             }
           } catch (error) {
             this.voucherHistoryError = error.message || "Riwayat voucher gagal dimuat.";
@@ -317,13 +317,54 @@ function createDashboardData() {
           }
         },
 
+        selectVoucherTab(tab) {
+          if (!["create", "archived", "profiles", "stats"].includes(tab)) return;
+          if (this.activeVoucherTab !== tab && ["create", "archived"].includes(tab)) {
+            this.selectVoucherBatch("ALL");
+            this.resetVoucherBatchFilters();
+          }
+          if (tab === "create" || tab === "archived") {
+            this.voucherHistoryScope = tab === "archived" ? "archived" : "active";
+          }
+          this.activeVoucherTab = tab;
+          if (tab === "stats") void this.loadVoucherStats({ silent: true });
+        },
+
+        handleVoucherTabKeydown(event) {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          const tabs = Array.from(event.currentTarget.querySelectorAll('[role="tab"]'));
+          const currentIndex = tabs.indexOf(event.target);
+          if (currentIndex < 0) return;
+          event.preventDefault();
+          const nextIndex = event.key === "Home" ? 0
+            : event.key === "End" ? tabs.length - 1
+            : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+          tabs[nextIndex].focus();
+          tabs[nextIndex].click();
+        },
+
+        get visibleVoucherBatches() {
+          const archived = this.voucherHistoryScope === "archived";
+          return this.voucherBatches.map((batch) => {
+            const vouchers = (batch.vouchers || []).filter((voucher) => (
+              (voucher.archived === true) === archived
+            ));
+            return {
+              ...batch,
+              vouchers,
+              quantity: vouchers.length,
+              generationType: vouchers.length === 1 ? "SINGLE" : "BULK",
+            };
+          }).filter((batch) => batch.vouchers.length > 0);
+        },
+
         selectVoucherBatch(batchId) {
           if (batchId === "ALL") {
             this.selectedVoucherBatchId = "ALL";
             this.voucherResult = null;
             return;
           }
-          const selected = this.voucherBatches.find((batch) => batch.batchId === batchId) || null;
+          const selected = this.visibleVoucherBatches.find((batch) => batch.batchId === batchId) || null;
           this.selectedVoucherBatchId = selected?.batchId || "ALL";
           this.voucherResult = selected;
         },
@@ -470,7 +511,7 @@ function createDashboardData() {
 
         get voucherBatchVouchers() {
           const batches = this.selectedVoucherBatchId === "ALL"
-            ? this.voucherBatches
+            ? this.visibleVoucherBatches
             : (this.voucherResult ? [this.voucherResult] : []);
           return batches.flatMap((batch) => (
             (Array.isArray(batch.vouchers) ? batch.vouchers : []).map((voucher) => ({
@@ -483,8 +524,16 @@ function createDashboardData() {
 
         get filteredVoucherBatchVouchers() {
           const usage = String(this.voucherBatchFilters.usage || "ALL").toUpperCase();
+          const search = String(this.voucherBatchFilters.search || "").trim();
+          const dateLabels = new Map();
+          const dateLabel = (value) => {
+            if (!value) return "";
+            if (!dateLabels.has(value)) dateLabels.set(value, this.formatDateTime(value));
+            return dateLabels.get(value);
+          };
           return this.voucherBatchVouchers.filter((voucher) => {
             if (usage !== "ALL" && this.getVoucherUsageStatus(voucher) !== usage) return false;
+            if (!search) return true;
             return this.searchValuesMatch([
               voucher.username,
               voucher.password,
@@ -495,8 +544,11 @@ function createDashboardData() {
               this.getVoucherCardBatchLabel(voucher),
               this.getVoucherPriceLabel(this.getVoucherBatchForVoucher(voucher)),
               voucher.usedAt,
-              voucher.usedAt ? this.formatDateTime(voucher.usedAt) : "",
-            ], this.voucherBatchFilters.search);
+              dateLabel(voucher.usedAt),
+              voucher.archived ? "arsip diarsipkan" : "",
+              voucher.archivedAt,
+              dateLabel(voucher.archivedAt),
+            ], search);
           });
         },
 

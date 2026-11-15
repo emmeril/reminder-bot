@@ -2175,6 +2175,8 @@ span[class*="rounded-full"][class*="text-xs"],
 /* Voucher generation */
 .voucher-tabs {
   display: inline-flex;
+  max-width: 100%;
+  flex-wrap: wrap;
   gap: 4px;
   margin-bottom: 16px;
   padding: 4px;
@@ -2200,7 +2202,17 @@ span[class*="rounded-full"][class*="text-xs"],
 .voucher-tabs button.active {
   color: var(--ui-primary-dark);
   background: #fff;
-  box-shadow: 0 1px 3px rgb(20 33 27 / 9%);
+  box-shadow: inset 0 -3px 0 var(--ui-primary);
+}
+
+.voucher-tabs button:hover {
+  color: var(--ui-primary-dark);
+  background: var(--ui-primary-soft);
+}
+
+.voucher-tabs button:active {
+  color: #fff;
+  background: var(--ui-primary-dark);
 }
 
 .revenue-tabs {
@@ -3187,6 +3199,10 @@ span[class*="rounded-full"][class*="text-xs"],
   opacity: .68;
 }
 
+.voucher-history-archived .voucher-card-used dl {
+  opacity: 1;
+}
+
 .voucher-card > div:first-child {
   display: flex;
   align-items: center;
@@ -3406,7 +3422,7 @@ span[class*="rounded-full"][class*="text-xs"],
   .voucher-tabs {
     display: grid;
     width: 100%;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .voucher-tabs button {
