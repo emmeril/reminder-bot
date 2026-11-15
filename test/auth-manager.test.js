@@ -34,6 +34,41 @@ test("memblokir percobaan login berulang dan mereset blokir setelah login sukses
   assert.equal(manager.isLoginBlocked("127.0.0.1"), false);
 });
 
+test("blokir berakhir setelah satu menit dan memberi lima percobaan baru", () => {
+  Object.assign(CONFIG, {
+    AUTH_MAX_LOGIN_ATTEMPTS: 5,
+    AUTH_LOGIN_WINDOW: 15 * 60_000,
+    AUTH_LOGIN_LOCKOUT: 60_000,
+  });
+  const manager = new AuthManager({ push() {} });
+  const originalNow = Date.now;
+  let now = 10_000;
+  Date.now = () => now;
+
+  try {
+    for (let index = 0; index < 5; index += 1) {
+      manager.recordLoginFailure("customer-account:rizki");
+    }
+    assert.equal(manager.isLoginBlocked("customer-account:rizki"), true);
+
+    now += 59_999;
+    assert.equal(manager.isLoginBlocked("customer-account:rizki"), true);
+
+    now += 1;
+    assert.equal(manager.isLoginBlocked("customer-account:rizki"), false);
+    assert.equal(manager.getLoginAttempt("customer-account:rizki"), null);
+
+    for (let index = 0; index < 4; index += 1) {
+      manager.recordLoginFailure("customer-account:rizki");
+      assert.equal(manager.isLoginBlocked("customer-account:rizki"), false);
+    }
+    manager.recordLoginFailure("customer-account:rizki");
+    assert.equal(manager.isLoginBlocked("customer-account:rizki"), true);
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
 test("membatasi jumlah bucket percobaan login di memori", () => {
   CONFIG.AUTH_MAX_TRACKED_LOGIN_ATTEMPTS = 100;
   const manager = new AuthManager({ push() {} });

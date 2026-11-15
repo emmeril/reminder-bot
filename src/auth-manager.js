@@ -29,8 +29,8 @@ class AuthManager {
   }
 
   isLoginAttemptExpired(attempt, now = Date.now()) {
-    return attempt.blockedUntil <= now
-      && now - attempt.firstAttemptAt > CONFIG.AUTH_LOGIN_WINDOW;
+    if (attempt.blockedUntil > 0) return attempt.blockedUntil <= now;
+    return now - attempt.firstAttemptAt > CONFIG.AUTH_LOGIN_WINDOW;
   }
 
   getLoginAttemptKey(identifier) {
