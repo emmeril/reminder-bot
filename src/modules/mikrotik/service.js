@@ -48,6 +48,7 @@ class MikrotikService {
     this.activityLog = activityLog;
     this.hotspotUserCache = null;
     this.hotspotUserRequest = null;
+    this.activeHotspotRequest = null;
   }
 
   getConnectionConfigs() {
@@ -920,6 +921,43 @@ class MikrotikService {
       .filter((user) => !needle || user.username.toLowerCase().includes(needle))
       .sort((a, b) => Number(b.username.toLowerCase() === needle) - Number(a.username.toLowerCase() === needle))
       .slice(0, boundedLimit);
+  }
+
+  async getActiveHotspotUsers() {
+    if (this.activeHotspotRequest) return this.activeHotspotRequest;
+    this.activeHotspotRequest = this.withConnection(async (conn, metadata = {}) => {
+      const sessions = await conn.menu("/ip/hotspot/active")
+        .select([".id", "user", "address", "mac-address", "uptime", "server"])
+        .print();
+      const usernames = [...new Set((sessions || []).map((session) => String(session.user || "")).filter(Boolean))];
+      const profiles = new Map();
+      for (let start = 0; start < usernames.length; start += 100) {
+        const chunk = usernames.slice(start, start + 100);
+        const menu = conn.menu("/ip/hotspot/user").select(["name", "profile"]).where("name", chunk[0]);
+        for (const username of chunk.slice(1)) menu.orWhere("name", username);
+        for (const user of await menu.print() || []) profiles.set(String(user.name || ""), String(user.profile || ""));
+      }
+      const users = (sessions || []).map((session, index) => {
+        const username = String(session.user || "");
+        const address = String(session.address || "");
+        const macAddress = String(readRouterValue(session, "mac-address", "macAddress", ""));
+        return {
+          id: String(session[".id"] || session.id || `${username}:${address}:${macAddress}:${index}`),
+          username,
+          profile: profiles.get(username) || "",
+          address,
+          macAddress,
+          uptime: String(session.uptime || ""),
+          server: String(session.server || ""),
+        };
+      }).sort((a, b) => a.username.localeCompare(b.username, "id-ID", { numeric: true }) || a.address.localeCompare(b.address));
+      return { users, router: metadata.label || "", checkedAt: new Date().toISOString() };
+    });
+    try {
+      return await this.activeHotspotRequest;
+    } finally {
+      this.activeHotspotRequest = null;
+    }
   }
 
   async getHotspotUsers() {

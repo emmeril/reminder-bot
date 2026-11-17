@@ -2240,6 +2240,7 @@ class WebServer {
 
     this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotProfiles()));
     this.app.get("/api/mikrotik/hotspot-servers", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotServers()));
+    this.app.get("/api/mikrotik/active-users", requireApiAuth, handleApi(async () => this.mikrotikService.getActiveHotspotUsers()));
     this.app.get("/api/mikrotik/hotspot-users", requireApiAuth, handleApi(async (req) => (
       req.query.limit !== undefined || req.query.q !== undefined
         ? this.mikrotikService.searchHotspotUsers(req.query.q, req.query.limit)

@@ -177,6 +177,23 @@ test("pencarian akun hotspot memerlukan autentikasi dan memisahkan lookup terbat
   assert.equal(fullReads, 1);
 });
 
+test("endpoint sesi Hotspot aktif hanya dapat dibaca administrator", async () => {
+  let reads = 0;
+  const snapshot = { users: [{ id: "*1", username: "online", address: "192.0.2.1", profile: "Harian" }], router: "primary", checkedAt: "2026-11-17T00:00:00.000Z" };
+  const baseUrl = await startServer({}, {}, {
+    getActiveHotspotUsers: async () => { reads += 1; return snapshot; },
+  });
+  const url = `${baseUrl}/api/mikrotik/active-users`;
+  assert.equal((await fetch(url)).status, 401);
+  assert.equal(reads, 0);
+  const cookie = await login(baseUrl);
+  const response = await fetch(url, { headers: { cookie } });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.deepEqual((await response.json()).data, snapshot);
+  assert.equal(reads, 1);
+});
+
 test("API reminder hanya menyediakan akses baca untuk jadwal otomatis", async () => {
   const baseUrl = await startServer({ getSortedReminders: () => [] });
   const cookie = await login(baseUrl);

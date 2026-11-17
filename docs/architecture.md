@@ -36,6 +36,8 @@ Saat menambah fitur:
 
 ## Batas pekerjaan dashboard
 
+Menu `User aktif` membaca `/api/mikrotik/active-users` ketika dibuka, kemudian mengikuti interval polling dashboard selama menu terlihat. Endpoint hanya membaca sesi Hotspot aktif dan mencari profile untuk username sesi tersebut dalam kelompok maksimal 100. Sesi beberapa perangkat dengan username yang sama tetap terpisah. Permintaan bersamaan berbagi satu pembacaan router; kegagalan refresh mempertahankan snapshot terakhir beserta waktu pembacaannya. Pengurutan header dan pilihan urut di ponsel memakai state yang sama dan dijalankan sebelum pagination; durasi RouterOS dibandingkan sebagai detik, sedangkan alamat MAC dibandingkan sebagai bilangan heksadesimal.
+
 Alpine menjalankan `init()` secara otomatis dari `x-data`; jangan menambahkan `x-init="init()"` pada komponen yang sama. Polling menunggu permintaan sebelumnya selesai, dan `destroy()` membersihkan timer.
 
 Daftar akun hotspot dimuat saat formulir dibuka atau username diketik. Dashboard meminta paling banyak 30 saran melalui `q` dan `limit`; service membagikan satu pembacaan router untuk permintaan bersamaan dan menyimpan hasil selama 15 detik. Endpoint tanpa parameter tetap menyediakan daftar lengkap. Validasi operasi tulis tetap membaca router secara langsung.

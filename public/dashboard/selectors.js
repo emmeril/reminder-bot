@@ -1748,6 +1748,60 @@ function createDashboardSelectors() {
           return this.logs;
         },
 
+        get activeHotspotProfiles() {
+          return [...new Set(this.activeHotspotUsers.map((user) => user.profile).filter(Boolean))]
+            .sort((a, b) => a.localeCompare(b, "id-ID"));
+        },
+
+        get filteredActiveHotspotUsers() {
+          const { search, profile } = this.filters.activeUsers;
+          const query = String(search || "").trim().toLocaleLowerCase("id-ID");
+          const users = this.activeHotspotUsers.filter((user) => (profile === "ALL" || user.profile === profile)
+            && (!query || [user.username, user.profile, user.address, user.macAddress, user.uptime, user.server]
+              .some((value) => String(value || "").toLocaleLowerCase("id-ID").includes(query))));
+          return this.sortTableItems(users, "activeUsers", {
+            username: (user) => user.username,
+            profile: (user) => user.profile,
+            address: (user) => user.address,
+            macAddress: (user) => this.getHotspotMacSortValue(user.macAddress),
+            uptime: (user) => this.getHotspotUptimeSeconds(user.uptime),
+            server: (user) => user.server,
+          });
+        },
+
+        getHotspotMacSortValue(value) {
+          const hex = String(value ?? "").replace(/[:-]/g, "");
+          return /^[0-9a-f]{12}$/i.test(hex) ? Number.parseInt(hex, 16) : null;
+        },
+
+        getHotspotUptimeSeconds(value) {
+          const text = String(value ?? "").trim().toLowerCase().replace(/\s+/g, "");
+          if (!text) return null;
+          if (/^\d+(?:\.\d+)?$/.test(text)) return Number(text);
+          const units = { w: 604800, d: 86400, h: 3600, m: 60, s: 1, ms: 0.001, us: 0.000001 };
+          let seconds = 0;
+          const remaining = text.replace(/(\d+(?:\.\d+)?)(ms|us|w|d|h|m|s)/g, (_, amount, unit) => {
+            seconds += Number(amount) * units[unit];
+            return "";
+          });
+          if (remaining) {
+            const clock = remaining.match(/^(\d+):([0-5]\d):([0-5]\d(?:\.\d+)?)$/);
+            if (!clock) return null;
+            seconds += Number(clock[1]) * 3600 + Number(clock[2]) * 60 + Number(clock[3]);
+          }
+          return Number.isFinite(seconds) ? seconds : null;
+        },
+
+        get paginatedActiveHotspotUsers() {
+          return this.activeMenu === "active-users" ? this.paginate(this.filteredActiveHotspotUsers, "activeUsers") : [];
+        },
+
+        resetActiveHotspotFilters() {
+          this.filters.activeUsers.search = "";
+          this.filters.activeUsers.profile = "ALL";
+          this.resetPage("activeUsers");
+        },
+
         get paginatedLogs() {
           return this.paginate(this.filteredLogs, "logs");
         },
@@ -1771,17 +1825,18 @@ function createDashboardSelectors() {
 
         setPage(key, page) {
           const totalsByKey = {
-            contacts: this.filteredContacts.length,
-            contactBilling: this.filteredBillingContacts.length,
-            contactHotspot: this.filteredHotspotContacts.length,
-            revenue: this.filteredRevenueEntries.length,
-            voucherRevenue: this.filteredVoucherRevenueEntries.length,
-            monitorAp: this.filteredApMonitors.length,
-            reminders: this.filteredReminders.length,
-            sent: this.filteredSent.length,
-            logs: this.logs.length,
+            contacts: () => this.filteredContacts.length,
+            contactBilling: () => this.filteredBillingContacts.length,
+            contactHotspot: () => this.filteredHotspotContacts.length,
+            revenue: () => this.filteredRevenueEntries.length,
+            voucherRevenue: () => this.filteredVoucherRevenueEntries.length,
+            monitorAp: () => this.filteredApMonitors.length,
+            activeUsers: () => this.filteredActiveHotspotUsers.length,
+            reminders: () => this.filteredReminders.length,
+            sent: () => this.filteredSent.length,
+            logs: () => this.logs.length,
           };
-          const total = totalsByKey[key] ?? 0;
+          const total = totalsByKey[key]?.() ?? 0;
           this.filters[key].page = Math.min(Math.max(1, page), this.totalPages(key, total));
         },
 

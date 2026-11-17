@@ -2,6 +2,7 @@ function createDashboardState() {
   return {
         loading: {
           status: false,
+          activeHotspotUsers: false,
           backups: false,
           hotspotOptions: false,
           voucherOptions: false,
@@ -142,6 +143,7 @@ function createDashboardState() {
           { key: "revenue", group: "operations", label: "Laporan Pendapatan", icon: "fa-solid fa-chart-line", description: "Periksa pendapatan pelanggan dan voucher berdasarkan rentang tanggal." },
           { key: "reminders", group: "operations", label: "Jadwal", icon: "fa-solid fa-calendar-check", description: "Pantau jadwal pengingat otomatis pelanggan." },
           { key: "monitor-ap", group: "operations", label: "Jaringan", icon: "fa-solid fa-tower-broadcast", description: "Pantau koneksi access point pelanggan." },
+          { key: "active-users", group: "operations", label: "User aktif", icon: "fa-solid fa-user-check", description: "Lihat sesi pengguna Hotspot yang sedang tersambung ke MikroTik." },
           { key: "notifications", group: "messages", label: "Kirim pesan", icon: "fa-solid fa-paper-plane", description: "Kirim pesan ke satu pelanggan atau banyak pelanggan." },
           { key: "templates", group: "messages", label: "Template", icon: "fa-solid fa-file-lines", description: "Simpan isi pesan yang sering digunakan." },
           { key: "history", group: "messages", label: "Riwayat pesan", icon: "fa-solid fa-clock-rotate-left", description: "Periksa pesan yang sudah dikirim dan statusnya." },
@@ -153,6 +155,10 @@ function createDashboardState() {
         mikrotikServers: [],
         hotspotUsers: [],
         apMonitors: [],
+        activeHotspotUsers: [],
+        activeHotspotCheckedAt: "",
+        activeHotspotRouter: "",
+        activeHotspotError: "",
         reminders: [],
         sent: [],
         templates: [],
@@ -216,6 +222,7 @@ function createDashboardState() {
           revenue: { search: "", status: "ALL", page: 1, pageSize: 10 },
           voucherRevenue: { search: "", profile: "ALL", page: 1, pageSize: 10 },
           monitorAp: { search: "", status: "ALL", linkStatus: "ALL", page: 1, pageSize: 10 },
+          activeUsers: { search: "", profile: "ALL", page: 1, pageSize: 25 },
           reminders: { search: "", billingCycle: "ALL", deliveryType: "ALL", schedule: "ALL", page: 1, pageSize: 10 },
           sent: { search: "", status: "ALL", page: 1, pageSize: 10 },
           logs: { page: 1, pageSize: 10 },
@@ -461,6 +468,14 @@ function createDashboardState() {
               "Comment"
             ]
           ],
+          "activeUsers": [
+            ["username", "Username"],
+            ["profile", "Profile"],
+            ["address", "Alamat IP"],
+            ["macAddress", "Alamat MAC"],
+            ["uptime", "Waktu tersambung"],
+            ["server", "Server"]
+          ],
           "reminders": [
             [
               "contact",
@@ -519,6 +534,7 @@ function createDashboardState() {
           revenue: { key: "", direction: "" },
           voucherRevenue: { key: "", direction: "" },
           monitorAp: { key: "", direction: "" },
+          activeUsers: { key: "", direction: "" },
           reminders: { key: "", direction: "" },
           sent: { key: "", direction: "" },
         },

@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>__DASHBOARD_TITLE__</title>
   <link rel="icon" type="image/png" href="/branding/icon">
-  <link rel="stylesheet" href="/public/tailwind.css?v=20261117-perf3">
+  <link rel="stylesheet" href="/public/tailwind.css?v=20261117-active2">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261111-1">
   <link rel="stylesheet" href="/public/interface.css?v=20261115-1">
-  <script defer src="/public/dashboard/state.js?v=20261117-perf3"></script>
-  <script defer src="/public/dashboard/ui.js?v=20261117-perf3"></script>
-  <script defer src="/public/dashboard/selectors.js?v=20261117-perf3"></script>
-  <script defer src="/public/dashboard/data.js?v=20261117-perf3"></script>
+  <script defer src="/public/dashboard/state.js?v=20261117-active3"></script>
+  <script defer src="/public/dashboard/ui.js?v=20261117-active2"></script>
+  <script defer src="/public/dashboard/selectors.js?v=20261117-active4"></script>
+  <script defer src="/public/dashboard/data.js?v=20261117-active2"></script>
   <script defer src="/public/dashboard/actions.js?v=20261110-9"></script>
   <script defer src="/public/app.js?v=20261106-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
@@ -48,7 +48,7 @@
               <div class="nav-header" x-text="group.label"></div>
               <template x-for="menu in navMenus.filter(item => item.group === group.key)" :key="'sidebar-' + menu.key">
                 <button type="button" @click="selectMenu(menu.key)" class="menu-pill nav-item" :class="activeMenu === menu.key ? 'active' : ''" :aria-current="activeMenu === menu.key ? 'page' : null" :title="menu.label">
-                  <span class="nav-icon"><i :class="menu.icon"></i></span>
+                  <span class="nav-icon" aria-hidden="true"><i :class="menu.icon"></i></span>
                   <span class="nav-label" x-text="menu.label"></span>
                 </button>
               </template>
@@ -1217,6 +1217,70 @@
               </div>
             </div>
           </div>
+        </section>
+
+        <section x-cloak x-show="activeMenu === 'active-users'" class="panel-shell rounded-[1.75rem] p-5" aria-labelledby="active-hotspot-title">
+          <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 id="active-hotspot-title" class="font-display text-2xl">User Hotspot aktif</h2>
+              <p class="card-description mt-1">Sesi yang sedang tersambung ke Hotspot MikroTik. Data diperbarui otomatis saat menu ini terbuka.</p>
+            </div>
+            <button type="button" @click="loadActiveHotspotUsers()" :disabled="loading.activeHotspotUsers" class="ui-secondary-button inline-flex min-h-11 items-center justify-center gap-2 px-4 py-2" aria-label="Muat ulang user Hotspot aktif">
+              <i class="fa-solid" :class="loading.activeHotspotUsers ? 'fa-circle-notch fa-spin' : 'fa-rotate'" aria-hidden="true"></i>
+              <span x-text="loading.activeHotspotUsers ? 'Memuat...' : 'Muat ulang'"></span>
+            </button>
+          </div>
+          <p x-show="activeHotspotCheckedAt" class="card-description mb-4">
+            <strong x-text="activeHotspotUsers.length + ' sesi aktif'"></strong>
+            <span x-show="activeHotspotRouter" x-text="' · Router ' + (activeHotspotRouter === 'backup' ? 'cadangan' : 'utama')"></span>
+            <span x-text="' · Diperbarui ' + (activeHotspotCheckedAt ? formatDateTime(activeHotspotCheckedAt) : '-')"></span>
+          </p>
+          <p role="status" class="sr-only" x-text="loading.activeHotspotUsers ? 'Membaca sesi aktif dari MikroTik...' : ''"></p>
+          <p x-show="activeHotspotError" role="alert" class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-800"><span x-text="activeHotspotError"></span><span x-show="activeHotspotCheckedAt"> Data terakhir tetap ditampilkan. Gunakan tombol muat ulang untuk mencoba lagi.</span></p>
+          <div class="filter-inline table-filter-bar mb-5">
+            <label class="table-filter-field table-filter-search"><span>Pencarian</span><input type="search" x-model.trim.debounce.250ms="filters.activeUsers.search" @input.debounce.250ms="resetPage('activeUsers')" class="filter-inline-search rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay" placeholder="Username, IP, MAC, atau server"></label>
+            <label class="table-filter-field"><span id="active-hotspot-profile-label">Profile</span><select aria-labelledby="active-hotspot-profile-label" x-model="filters.activeUsers.profile" @change="resetPage('activeUsers')" class="filter-inline-select rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay">
+              <option value="ALL">Semua profile</option>
+              <template x-for="profile in activeHotspotProfiles" :key="'active-hotspot-profile-' + profile"><option :value="profile" x-text="profile"></option></template>
+              <template x-if="filters.activeUsers.profile !== 'ALL' && !activeHotspotProfiles.includes(filters.activeUsers.profile)"><option :value="filters.activeUsers.profile" x-text="filters.activeUsers.profile"></option></template>
+            </select></label>
+            <label class="table-filter-field"><span id="active-hotspot-size-label">Baris</span><select aria-labelledby="active-hotspot-size-label" x-model.number="filters.activeUsers.pageSize" @change="resetPage('activeUsers')" class="filter-inline-size rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-clay"><template x-for="size in pageSizes" :key="'active-hotspot-size-' + size"><option :value="size" x-text="size + ' per halaman'"></option></template></select></label>
+            <label class="table-filter-field toolbar-mobile-sort"><span id="active-hotspot-sort-label">Urutkan</span><select aria-labelledby="active-hotspot-sort-label" :value="getMobileSortValue('activeUsers')" @change="changeMobileSort('activeUsers', $event.target.value)"><template x-for="option in getMobileSortOptions('activeUsers')" :key="'active-hotspot-sort-' + option.value"><option value="" :value="option.value" x-text="option.label"></option></template></select></label>
+            <button type="button" @click="resetActiveHotspotFilters()" :disabled="!filters.activeUsers.search && filters.activeUsers.profile === 'ALL'" class="customer-filter-reset toolbar-reset ui-secondary-button border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
+          </div>
+          <div class="table-scroll" tabindex="0" role="region" aria-label="Tabel sesi Hotspot aktif">
+            <table class="dashboard-table min-w-full text-sm">
+              <thead><tr>
+                <th scope="col" :aria-sort="getSortAria('activeUsers', 'username')"><button type="button" class="table-sort-button" @click="toggleSort('activeUsers', 'username')" :aria-label="getSortLabel('activeUsers', 'username', 'Username')"><span>Username</span><i class="table-sort-indicator" :class="getSortIcon('activeUsers', 'username')" aria-hidden="true"></i></button></th>
+                <th scope="col" :aria-sort="getSortAria('activeUsers', 'profile')"><button type="button" class="table-sort-button" @click="toggleSort('activeUsers', 'profile')" :aria-label="getSortLabel('activeUsers', 'profile', 'Profile')"><span>Profile</span><i class="table-sort-indicator" :class="getSortIcon('activeUsers', 'profile')" aria-hidden="true"></i></button></th>
+                <th scope="col" :aria-sort="getSortAria('activeUsers', 'address')"><button type="button" class="table-sort-button" @click="toggleSort('activeUsers', 'address')" :aria-label="getSortLabel('activeUsers', 'address', 'Alamat IP')"><span>Alamat IP</span><i class="table-sort-indicator" :class="getSortIcon('activeUsers', 'address')" aria-hidden="true"></i></button></th>
+                <th scope="col" :aria-sort="getSortAria('activeUsers', 'macAddress')"><button type="button" class="table-sort-button" @click="toggleSort('activeUsers', 'macAddress')" :aria-label="getSortLabel('activeUsers', 'macAddress', 'Alamat MAC')"><span>Alamat MAC</span><i class="table-sort-indicator" :class="getSortIcon('activeUsers', 'macAddress')" aria-hidden="true"></i></button></th>
+                <th scope="col" :aria-sort="getSortAria('activeUsers', 'uptime')"><button type="button" class="table-sort-button" @click="toggleSort('activeUsers', 'uptime')" :aria-label="getSortLabel('activeUsers', 'uptime', 'Waktu tersambung')"><span>Waktu tersambung</span><i class="table-sort-indicator" :class="getSortIcon('activeUsers', 'uptime')" aria-hidden="true"></i></button></th>
+                <th scope="col" :aria-sort="getSortAria('activeUsers', 'server')"><button type="button" class="table-sort-button" @click="toggleSort('activeUsers', 'server')" :aria-label="getSortLabel('activeUsers', 'server', 'Server')"><span>Server</span><i class="table-sort-indicator" :class="getSortIcon('activeUsers', 'server')" aria-hidden="true"></i></button></th>
+              </tr></thead>
+              <tbody>
+                <template x-for="user in paginatedActiveHotspotUsers" :key="'active-hotspot-' + user.id">
+                  <tr>
+                    <td data-label="Username" x-text="user.username || '-'"></td>
+                    <td data-label="Profile" x-text="user.profile || '-'"></td>
+                    <td data-label="Alamat IP" x-text="user.address || '-'"></td>
+                    <td data-label="Alamat MAC" x-text="user.macAddress || '-'"></td>
+                    <td data-label="Waktu tersambung" x-text="user.uptime || '-'"></td>
+                    <td data-label="Server" x-text="user.server || '-'"></td>
+                  </tr>
+                </template>
+                <template x-if="!loading.activeHotspotUsers && !activeHotspotError && activeHotspotCheckedAt && !filteredActiveHotspotUsers.length"><tr><td colspan="6" class="px-4 py-8 text-center" x-text="activeHotspotUsers.length ? 'Tidak ada sesi yang sesuai dengan filter.' : 'Belum ada sesi Hotspot aktif.'"></td></tr></template>
+              </tbody>
+            </table>
+          </div>
+          <nav class="customer-pagination" aria-label="Halaman user Hotspot aktif">
+            <span role="status" x-text="paginationLabel('activeUsers', filteredActiveHotspotUsers.length)"></span>
+            <div class="customer-pagination-controls">
+              <button type="button" class="pagination-button min-h-11 min-w-11" @click="setPage('activeUsers', filters.activeUsers.page - 1)" :disabled="filters.activeUsers.page <= 1" aria-label="Halaman user aktif sebelumnya"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+              <span x-text="filters.activeUsers.page + ' / ' + totalPages('activeUsers', filteredActiveHotspotUsers.length)"></span>
+              <button type="button" class="pagination-button min-h-11 min-w-11" @click="setPage('activeUsers', filters.activeUsers.page + 1)" :disabled="filters.activeUsers.page >= totalPages('activeUsers', filteredActiveHotspotUsers.length)" aria-label="Halaman user aktif berikutnya"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+            </div>
+          </nav>
         </section>
 
         <section x-show="activeMenu === 'monitor-ap'" x-transition.opacity class="panel-shell rounded-[1.75rem] p-5 shadow-soft backdrop-blur-xl">

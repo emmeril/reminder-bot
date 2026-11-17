@@ -59,6 +59,57 @@ test("pilihan urutan mobile sesuai tombol header dan dapat dikembalikan", () => 
   assert.equal(app.getMobileSortValue("contacts"), "");
 });
 
+test("sesi Hotspot dapat diurutkan menaik, menurun, dan dikembalikan tanpa mengubah snapshot router", () => {
+  const app = createApp();
+  app.activeMenu = "active-users";
+  app.activeHotspotUsers = [
+    { id: "long", username: "user10", profile: "Zeta", address: "192.0.2.100", macAddress: "AA:BB:CC:DD:EE:10", uptime: "1d2h", server: "hs2" },
+    { id: "short", username: "user2", profile: "Alfa", address: "192.0.2.2", macAddress: "AA:BB:CC:DD:EE:09", uptime: "5m", server: "hs1" },
+    { id: "hour", username: "user1", profile: "Beta", address: "192.0.2.10", macAddress: "AA:BB:CC:DD:EE:0A", uptime: "01:00:00", server: "hs3" },
+    { id: "unknown", username: "user3", uptime: "" },
+  ];
+  const original = app.activeHotspotUsers.map((row) => row.id);
+  const order = () => Array.from(app.filteredActiveHotspotUsers, (row) => row.id);
+  app.filters.activeUsers.page = 2;
+  app.toggleSort("activeUsers", "username");
+  assert.equal(app.filters.activeUsers.page, 1);
+  assert.deepEqual(order(), ["hour", "short", "unknown", "long"]);
+  assert.equal(app.getSortAria("activeUsers", "username"), "ascending");
+  app.toggleSort("activeUsers", "username");
+  assert.deepEqual(order(), ["long", "unknown", "short", "hour"]);
+  app.toggleSort("activeUsers", "username");
+  assert.deepEqual(order(), original);
+  const expected = {
+    profile: ["short", "hour", "long", "unknown"],
+    address: ["short", "hour", "long", "unknown"],
+    macAddress: ["short", "hour", "long", "unknown"],
+    uptime: ["short", "hour", "long", "unknown"],
+    server: ["short", "long", "hour", "unknown"],
+  };
+  for (const [key, ids] of Object.entries(expected)) {
+    app.changeMobileSort("activeUsers", `${key}:asc`);
+    assert.deepEqual(order(), ids, key);
+    app.changeMobileSort("activeUsers", `${key}:desc`);
+    assert.deepEqual(order(), [...ids.slice(0, -1)].reverse().concat("unknown"), key);
+  }
+  assert.deepEqual(app.activeHotspotUsers.map((row) => row.id), original);
+  app.changeMobileSort("activeUsers", "");
+  app.filters.activeUsers.pageSize = 2;
+  app.toggleSort("activeUsers", "uptime");
+  assert.deepEqual(Array.from(app.paginatedActiveHotspotUsers, (row) => row.id), ["short", "hour"]);
+  app.filters.activeUsers.search = "user10";
+  assert.deepEqual(order(), ["long"]);
+});
+
+test("durasi RouterOS dibandingkan berdasarkan waktu dan bukan teks", () => {
+  const app = createApp();
+  for (const [value, expected] of [
+    ["0s", 0], ["5m", 300], ["1h", 3600], ["1w2d3h4m5s", 788645],
+    ["1d02:03:04", 93784], ["00:02:30.5", 150.5], ["500ms", 0.5],
+    ["", null], [undefined, null], ["unknown", null], ["00:99:00", null],
+  ]) assert.equal(app.getHotspotUptimeSeconds(value), expected, String(value));
+});
+
 test("reset filter laporan dan jaringan membersihkan kondisi yang aktif tanpa mengubah jumlah baris", () => {
   const app = createApp();
   app.formatDateInput = () => "2026-11-08";

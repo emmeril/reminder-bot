@@ -61,6 +61,7 @@ function createDashboardUi() {
           if (this.activeMenu === "revenue" && this.activeRevenueTab === "vouchers") {
             void this.loadVoucherRevenue({ silent: true });
           }
+          if (this.activeMenu === "active-users") void this.loadActiveHotspotUsers();
 
           this.nonCriticalTimer = setTimeout(() => {
             void this.loadNonCriticalData();
@@ -85,6 +86,7 @@ function createDashboardUi() {
                 if (this.activeMenu === "monitor-ap") {
                   requests.push(this.loadContacts({ silent: true }), this.loadApMonitors({ silent: true }));
                 }
+                if (this.activeMenu === "active-users") requests.push(this.loadActiveHotspotUsers());
                 await Promise.allSettled(requests);
               } finally {
                 this.pollingStatus = false;
@@ -125,6 +127,7 @@ function createDashboardUi() {
           }
           this.activeMenu = key;
           this.mobileSidebarOpen = false;
+          if (key === "active-users") void this.loadActiveHotspotUsers();
           if (key === "vouchers" && (!this.voucherProfiles.length || !this.mikrotikServers.length)) {
             void this.loadVoucherOptions({ silent: true });
           }

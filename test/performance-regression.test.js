@@ -33,7 +33,7 @@ test("inisialisasi berulang tidak menggandakan permintaan atau polling dan tidak
   const { app, intervals, timeouts } = createDashboard();
   const calls = [];
   for (const name of ["loadStatus", "loadContacts", "loadReminders", "loadTemplates", "loadApMonitors",
-    "loadMikrotikProfiles", "loadHotspotUsers", "loadSent", "loadRecipients", "loadLogs"]) {
+    "loadMikrotikProfiles", "loadHotspotUsers", "loadSent", "loadRecipients", "loadLogs", "loadActiveHotspotUsers"]) {
     app[name] = async () => { calls.push(name); };
   }
   await Promise.all([app.init(), app.init()]);
@@ -41,6 +41,7 @@ test("inisialisasi berulang tidak menggandakan permintaan atau polling dan tidak
   assert.equal(calls.filter((name) => name === "loadStatus").length, 1);
   assert.equal(calls.filter((name) => name === "loadContacts").length, 1);
   assert.equal(calls.includes("loadHotspotUsers"), false);
+  assert.equal(calls.includes("loadActiveHotspotUsers"), false);
   assert.equal(calls.length, 9);
   app.startPolling();
   assert.equal(intervals.size, 2);
@@ -292,4 +293,81 @@ test("formatter yang dipakai ulang mempertahankan tampilan tanggal dan mengikuti
       style: "currency", currency: "IDR", maximumFractionDigits: 0,
     }).format(12500));
   }
+});
+
+test("menu user aktif dimuat saat dibuka dan polling hanya berjalan saat menu terlihat", async () => {
+  const { app, context, intervals } = createDashboard();
+  context.window.scrollTo = () => {};
+  let reads = 0;
+  app.api = async (url) => {
+    assert.equal(url, "/api/mikrotik/active-users");
+    reads += 1;
+    return { users: [{ id: "*1", username: "online" }], checkedAt: "2026-11-17T00:00:00Z", router: "primary" };
+  };
+  app.loadStatus = async () => {};
+  assert.equal(reads, 0);
+  app.selectMenu("active-users");
+  await new Promise(setImmediate);
+  assert.equal(reads, 1);
+  assert.equal(app.paginatedActiveHotspotUsers.length, 1);
+  app.startPolling();
+  const poll = [...intervals.values()][0];
+  await poll();
+  assert.equal(reads, 2);
+  app.activeMenu = "overview";
+  await poll();
+  assert.equal(reads, 2);
+  assert.equal(app.paginatedActiveHotspotUsers.length, 0);
+  app.activeMenu = "active-users";
+  context.document.hidden = true;
+  await poll();
+  assert.equal(reads, 2);
+  app.destroy();
+});
+
+test("pencarian, filter profile, dan pagination sesi aktif tidak menghitung daftar menu lain", () => {
+  const { app } = createDashboard();
+  app.activeMenu = "active-users";
+  app.activeHotspotUsers = Array.from({ length: 62 }, (_, i) => ({
+    id: String(i), username: `user-${i}`, profile: i % 2 ? "Harian" : "Bulanan",
+    address: `192.0.2.${i}`, macAddress: `AA:BB:CC:DD:EE:${i}`, server: "hs1", uptime: `${i + 1}m`,
+  }));
+  Object.defineProperty(app, "filteredContacts", { get() { throw new Error("unrelated menu"); } });
+  assert.equal(app.paginatedActiveHotspotUsers.length, 25);
+  app.setPage("activeUsers", 2);
+  assert.equal(app.paginatedActiveHotspotUsers[0].id, "25");
+  app.filters.activeUsers.profile = "Harian";
+  app.resetPage("activeUsers");
+  assert.equal(app.filteredActiveHotspotUsers.length, 31);
+  app.filters.activeUsers.search = "user-61";
+  assert.equal(app.filteredActiveHotspotUsers.length, 1);
+  app.resetActiveHotspotFilters();
+  app.filters.activeUsers.search = "192.0.2.30";
+  assert.equal(app.filteredActiveHotspotUsers[0].id, "30");
+  assert.equal(app.filteredActiveHotspotUsers.length, 1);
+  app.resetActiveHotspotFilters();
+  assert.equal(app.filteredActiveHotspotUsers.length, 62);
+});
+
+test("refresh sesi aktif tidak tumpang tindih dan kegagalan mempertahankan snapshot sebelumnya", async () => {
+  const { app } = createDashboard();
+  let finish;
+  let reads = 0;
+  app.api = () => { reads += 1; return new Promise((resolve) => { finish = resolve; }); };
+  const first = app.loadActiveHotspotUsers();
+  await app.loadActiveHotspotUsers();
+  assert.equal(reads, 1);
+  finish({ users: [{ id: "*1", username: "online" }], checkedAt: "2026-11-17T00:00:00Z", router: "backup" });
+  await first;
+  app.api = async () => { throw new Error("Router offline"); };
+  await app.loadActiveHotspotUsers();
+  assert.equal(app.activeHotspotUsers.length, 1);
+  assert.equal(app.activeHotspotRouter, "backup");
+  assert.equal(app.activeHotspotCheckedAt, "2026-11-17T00:00:00Z");
+  assert.equal(app.activeHotspotError, "Router offline");
+  assert.equal(app.loading.activeHotspotUsers, false);
+  app.api = async () => ({ users: [], checkedAt: "2026-11-17T01:00:00Z", router: "primary" });
+  await app.loadActiveHotspotUsers();
+  assert.equal(app.activeHotspotUsers.length, 0);
+  assert.equal(app.activeHotspotError, "");
 });

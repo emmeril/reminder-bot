@@ -880,6 +880,23 @@ function createDashboardData() {
           }
         },
 
+        async loadActiveHotspotUsers() {
+          if (this.loading.activeHotspotUsers) return;
+          this.loading.activeHotspotUsers = true;
+          this.activeHotspotError = "";
+          try {
+            const snapshot = await this.api("/api/mikrotik/active-users", { silent: true, timeoutMs: 65_000 });
+            this.activeHotspotUsers = Array.isArray(snapshot?.users) ? snapshot.users : [];
+            this.activeHotspotCheckedAt = snapshot.checkedAt || "";
+            this.activeHotspotRouter = snapshot.router || "";
+            this.clampPage("activeUsers", this.filteredActiveHotspotUsers.length);
+          } catch (error) {
+            this.activeHotspotError = error.message || "Sesi Hotspot aktif gagal dimuat.";
+          } finally {
+            this.loading.activeHotspotUsers = false;
+          }
+        },
+
         async loadApMonitors(options = {}) {
           this.apMonitors = await this.api("/api/mikrotik/netwatch", { silent: Boolean(options.silent) });
           this.updateApSummaryMetrics();
