@@ -232,9 +232,9 @@ class CustomerDataManager extends DataManagerCore {
     return deletedCount;
   }
 
-  getSortedContacts() {
+  getSortedContacts({ publicView = false } = {}) {
     return Array.from(this.contacts.values())
-      .map((contact) => this.hydrateContact(contact))
+      .map((contact) => publicView ? this.toPublicContact(contact) : this.hydrateContact(contact))
       .sort((a, b) => a.name.localeCompare(b.name, "id-ID"));
   }
 
@@ -255,9 +255,18 @@ class CustomerDataManager extends DataManagerCore {
   }
 
   getDashboardSummary(now = new Date()) {
-    const contacts = this.getSortedContacts();
-    const reminders = this.getSortedReminders();
-    const sentReminders = this.getSentReminders();
+    const contacts = Array.from(this.contacts.values(), (contact) => ({ ...contact, ...this.buildDebtInfo(contact) }));
+    let nextReminderAt = null;
+    for (const reminder of this.reminders.values()) {
+      const deliveryDate = this.getReminderDeliveryDate(reminder);
+      const deliveryDateTime = Number.isNaN(deliveryDate.getTime())
+        ? reminder.reminderDateTime
+        : deliveryDate.toISOString();
+      if (!nextReminderAt || new Date(deliveryDateTime) < new Date(nextReminderAt)) {
+        nextReminderAt = deliveryDateTime;
+      }
+    }
+    const sentReminders = Array.from(this.sentReminders.values());
     const paid = contacts.filter((contact) => contact.paymentStatus === PAYMENT_STATUS.PAID).length;
     const unpaid = contacts.length - paid;
     const debt = contacts.filter((contact) => contact.hasDebt).length;
@@ -282,7 +291,7 @@ class CustomerDataManager extends DataManagerCore {
     return {
       contacts: contacts.length,
       pelanggan: this.pelanggan.size,
-      reminders: reminders.length,
+      reminders: this.reminders.size,
       sentReminders: sentReminders.length,
       sentToday,
       paidContacts: paid,
@@ -291,7 +300,7 @@ class CustomerDataManager extends DataManagerCore {
       activeServices,
       serviceAttention: managedServices.length - activeServices,
       adminRecipients: this.getAdminRecipients().length,
-      nextReminderAt: reminders[0]?.deliveryDateTime || reminders[0]?.reminderDateTime || null,
+      nextReminderAt,
     };
   }
 

@@ -786,7 +786,14 @@ function createDashboardData() {
         },
 
         async loadHotspotUsers(options = {}) {
-          this.hotspotUsers = await this.api("/api/mikrotik/hotspot-users", { silent: Boolean(options.silent) });
+          const sequence = ++this.hotspotSearchSequence;
+          const query = String(options.query ?? this.forms.hotspotAccount.username ?? "").trim();
+          const users = await this.api(`/api/mikrotik/hotspot-users?limit=30&q=${encodeURIComponent(query)}`, {
+            silent: Boolean(options.silent),
+          });
+          if (sequence !== this.hotspotSearchSequence) return;
+          this.hotspotUsers = users;
+          this.syncHotspotUserToForm("hotspotAccount");
           if (!options.silent) this.notify(`${this.hotspotUsers.length} user hotspot dimuat.`);
         },
 

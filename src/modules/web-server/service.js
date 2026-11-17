@@ -1535,10 +1535,11 @@ class WebServer {
     this.app.get("/branding/icon", serveAppIcon);
 
     this.app.use("/public", (req, res, next) => {
-      const isDashboardModule = req.path.startsWith("/dashboard/") && req.path.endsWith(".js");
-      if (isDashboardModule
-        || ["/app.js", "/styles.css", "/interface.css", "/customer.js", "/customer.css", "/customer-login.js"].includes(req.path)) {
-        res.setHeader("Cache-Control", "no-store, max-age=0");
+      if (/\.(?:js|css)$/.test(req.path)) {
+        const versioned = typeof req.query.v === "string" && req.query.v.length > 0;
+        res.setHeader("Cache-Control", versioned
+          ? "public, max-age=31536000, immutable"
+          : "public, max-age=0, must-revalidate");
       }
       next();
     }, express.static(CONFIG.PUBLIC_PATH, { etag: true, maxAge: "1h" }));
@@ -2239,7 +2240,11 @@ class WebServer {
 
     this.app.get("/api/mikrotik/profiles", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotProfiles()));
     this.app.get("/api/mikrotik/hotspot-servers", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotServers()));
-    this.app.get("/api/mikrotik/hotspot-users", requireApiAuth, handleApi(async () => this.mikrotikService.getHotspotUsers()));
+    this.app.get("/api/mikrotik/hotspot-users", requireApiAuth, handleApi(async (req) => (
+      req.query.limit !== undefined || req.query.q !== undefined
+        ? this.mikrotikService.searchHotspotUsers(req.query.q, req.query.limit)
+        : this.mikrotikService.getHotspotUsers()
+    )));
     registerVoucherRoutes({
       app: this.app,
       requireApiAuth,

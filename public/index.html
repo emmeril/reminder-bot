@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>__DASHBOARD_TITLE__</title>
   <link rel="icon" type="image/png" href="/branding/icon">
-  <link rel="stylesheet" href="/public/tailwind.css?v=20261105-1">
+  <link rel="stylesheet" href="/public/tailwind.css?v=20261117-perf1">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261111-1">
   <link rel="stylesheet" href="/public/interface.css?v=20261115-1">
-  <script defer src="/public/dashboard/state.js?v=20261115-1"></script>
-  <script defer src="/public/dashboard/ui.js?v=20261110-2"></script>
+  <script defer src="/public/dashboard/state.js?v=20261117-perf1"></script>
+  <script defer src="/public/dashboard/ui.js?v=20261117-perf1"></script>
   <script defer src="/public/dashboard/selectors.js?v=20261111-1"></script>
-  <script defer src="/public/dashboard/data.js?v=20261115-1"></script>
+  <script defer src="/public/dashboard/data.js?v=20261117-perf1"></script>
   <script defer src="/public/dashboard/actions.js?v=20261110-9"></script>
   <script defer src="/public/app.js?v=20261106-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
@@ -21,7 +21,6 @@
   <a class="skip-link" href="#main-content">Langsung ke konten</a>
   <div
     x-data="dashboardApp()"
-    x-init="init()"
     class="admin-wrapper"
     :class="{ 'sidebar-collapsed': sidebarHidden, 'mobile-sidebar-open': mobileSidebarOpen }"
     @keydown.escape.window="mobileSidebarOpen = false"
@@ -2194,7 +2193,7 @@
           <div class="grid gap-4 md:grid-cols-2">
             <label class="block text-sm text-ink/60">
               Username hotspot
-              <input list="hotspot-users" x-model="forms.hotspotAccount.username" @change="syncHotspotUserToForm('hotspotAccount')" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="username_hotspot" required>
+              <input list="hotspot-users" x-model="forms.hotspotAccount.username" @input.debounce.300ms="loadHotspotUsers({ silent: true, query: $event.target.value }).catch(() => {})" @change="syncHotspotUserToForm('hotspotAccount')" class="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-moss" placeholder="username_hotspot" required>
               <span class="mt-1 block text-xs text-ink/45">Username existing akan diperiksa agar akun pelanggan lain tidak tertimpa.</span>
             </label>
             <label class="block text-sm text-ink/60">

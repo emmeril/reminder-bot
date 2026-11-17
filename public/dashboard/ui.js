@@ -1,6 +1,8 @@
 function createDashboardUi() {
   return {
         async init() {
+          if (this.initialized) return;
+          this.initialized = true;
           const requestedMenu = new URLSearchParams(window.location.search).get("menu");
           const savedMenu = requestedMenu || localStorage.getItem("dashboardActiveMenu");
           const savedContactTab = localStorage.getItem("dashboardContactTab");
@@ -58,35 +60,53 @@ function createDashboardUi() {
             void this.loadVoucherRevenue({ silent: true });
           }
 
-          setTimeout(() => {
-            this.loadNonCriticalData();
+          this.nonCriticalTimer = setTimeout(() => {
+            void this.loadNonCriticalData();
           }, this.isMobile ? 900 : 250);
 
           this.startPolling();
         },
 
         startPolling() {
+          if (this.pollers.length) return;
           const statusInterval = this.isMobile ? 45000 : 25000;
           const logsInterval = this.isMobile ? 120000 : 60000;
 
-          this.pollers.push(setInterval(() => {
-            if (!document.hidden) {
-              const requests = [this.loadStatus({ silent: true })];
-              if (this.activeMenu === "contacts" && ["hotspot", "billing"].includes(this.activeContactTab)) {
-                requests.push(this.loadContacts({ silent: true }));
+          this.pollers.push(setInterval(async () => {
+            if (!document.hidden && !this.pollingStatus) {
+              this.pollingStatus = true;
+              try {
+                const requests = [this.loadStatus({ silent: true })];
+                if (this.activeMenu === "contacts" && ["hotspot", "billing"].includes(this.activeContactTab)) {
+                  requests.push(this.loadContacts({ silent: true }));
+                }
+                if (this.activeMenu === "monitor-ap") {
+                  requests.push(this.loadContacts({ silent: true }), this.loadApMonitors({ silent: true }));
+                }
+                await Promise.allSettled(requests);
+              } finally {
+                this.pollingStatus = false;
               }
-              if (this.activeMenu === "monitor-ap") {
-                requests.push(this.loadContacts({ silent: true }), this.loadApMonitors({ silent: true }));
-              }
-              void Promise.allSettled(requests);
             }
           }, statusInterval));
 
-          this.pollers.push(setInterval(() => {
-            if (!document.hidden && this.activeMenu === "logs") {
-              this.loadLogs({ silent: true });
+          this.pollers.push(setInterval(async () => {
+            if (!document.hidden && this.activeMenu === "logs" && !this.pollingLogs) {
+              this.pollingLogs = true;
+              try {
+                await this.loadLogs({ silent: true }).catch(() => {});
+              } finally {
+                this.pollingLogs = false;
+              }
             }
           }, logsInterval));
+        },
+
+        destroy() {
+          clearTimeout(this.nonCriticalTimer);
+          this.pollers.forEach((poller) => clearInterval(poller));
+          this.pollers = [];
+          this.hotspotSearchSequence += 1;
         },
 
         toggleSidebar() {
@@ -196,7 +216,6 @@ function createDashboardUi() {
           await Promise.allSettled([
             this.loadApMonitors(),
             this.loadMikrotikProfiles({ silent: true }),
-            this.loadHotspotUsers({ silent: true }),
             this.loadSent(),
             this.loadRecipients(),
             this.loadLogs(),

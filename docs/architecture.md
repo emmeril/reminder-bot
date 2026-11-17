@@ -34,4 +34,16 @@ Saat menambah fitur:
 4. Pertahankan `src/app.js` sebagai wiring startup dan shutdown saja.
 5. Untuk dashboard, tambahkan state atau method ke modul `public/dashboard` yang sesuai dan pertahankan urutan script `defer` pada `public/index.html`.
 
+## Batas pekerjaan dashboard
+
+Alpine menjalankan `init()` secara otomatis dari `x-data`; jangan menambahkan `x-init="init()"` pada komponen yang sama. Polling menunggu permintaan sebelumnya selesai, dan `destroy()` membersihkan timer.
+
+Daftar akun hotspot dimuat saat formulir dibuka atau username diketik. Dashboard meminta paling banyak 30 saran melalui `q` dan `limit`; service membagikan satu pembacaan router untuk permintaan bersamaan dan menyimpan hasil selama 15 detik. Endpoint tanpa parameter tetap menyediakan daftar lengkap. Validasi operasi tulis tetap membaca router secara langsung.
+
+Ringkasan dashboard menghitung status dari data mentah tanpa menyiapkan seluruh tampilan riwayat. Daftar pelanggan publik menggunakan `getSortedContacts({ publicView: true })` agar setiap pelanggan dihitung dan disanitasi satu kali.
+
+Penyimpanan tabel payload membandingkan data di dalam transaksi, menulis baris baru atau berubah, dan menghapus hanya ID yang tidak ada lagi. Perbandingan selalu membaca database agar rollback tidak meninggalkan cache penyimpanan yang keliru.
+
+Aset JS/CSS dengan parameter `v` memakai cache jangka panjang; naikkan versi URL setiap kali aset tersebut berubah, termasuk hasil `npm run build`. Aset tanpa versi divalidasi ulang menggunakan ETag. Halaman yang memakai sesi dan respons API tetap memakai `no-store`.
+
 Jalankan `npm run check` sebelum commit.

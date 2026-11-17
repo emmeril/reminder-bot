@@ -128,7 +128,7 @@ test("halaman login membedakan akses administrator dan pelanggan", async () => {
   assert.doesNotMatch(adminHtml, /Akun ini berbeda dari akun hotspot/);
 });
 
-test("JavaScript dashboard tidak disimpan di cache browser", async () => {
+test("aset dashboard berversi disimpan di cache dan aset tanpa versi divalidasi ulang", async () => {
   const baseUrl = await startServer();
   for (const scriptPath of [
     "app.js",
@@ -137,11 +137,44 @@ test("JavaScript dashboard tidak disimpan di cache browser", async () => {
     "dashboard/selectors.js",
     "dashboard/data.js",
     "dashboard/actions.js",
+    "styles.css",
+    "interface.css",
   ]) {
     const response = await fetch(`${baseUrl}/public/${scriptPath}?v=test`);
     assert.equal(response.status, 200);
-    assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
+    assert.equal(response.headers.get("cache-control"), "public, max-age=31536000, immutable");
+    const unversioned = await fetch(`${baseUrl}/public/${scriptPath}`);
+    assert.equal(unversioned.headers.get("cache-control"), "public, max-age=0, must-revalidate");
+    const revalidated = await fetch(`${baseUrl}/public/${scriptPath}`, {
+      cache: "no-cache",
+      headers: { "if-none-match": unversioned.headers.get("etag") },
+    });
+    assert.equal(revalidated.status, 304);
   }
+});
+
+test("pencarian akun hotspot memerlukan autentikasi dan memisahkan lookup terbatas dari daftar lengkap", async () => {
+  const lookups = [];
+  let fullReads = 0;
+  const baseUrl = await startServer({}, {}, {
+    getHotspotUsers: async () => { fullReads += 1; return [{ username: "semua" }]; },
+    searchHotspotUsers: async (query, limit) => {
+      lookups.push({ query, limit });
+      return [{ username: "rumah" }];
+    },
+  });
+  const url = `${baseUrl}/api/mikrotik/hotspot-users?limit=30&q=rumah`;
+  assert.equal((await fetch(url)).status, 401);
+  assert.equal(lookups.length, 0);
+  const cookie = await login(baseUrl);
+  const response = await fetch(url, { headers: { cookie } });
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).data, [{ username: "rumah" }]);
+  assert.deepEqual(lookups, [{ query: "rumah", limit: "30" }]);
+  assert.equal(fullReads, 0);
+  const full = await fetch(`${baseUrl}/api/mikrotik/hotspot-users`, { headers: { cookie } });
+  assert.equal((await full.json()).data[0].username, "semua");
+  assert.equal(fullReads, 1);
 });
 
 test("API reminder hanya menyediakan akses baca untuk jadwal otomatis", async () => {

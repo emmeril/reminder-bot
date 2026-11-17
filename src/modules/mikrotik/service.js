@@ -46,6 +46,8 @@ const {
 class MikrotikService {
   constructor(activityLog) {
     this.activityLog = activityLog;
+    this.hotspotUserCache = null;
+    this.hotspotUserRequest = null;
   }
 
   getConnectionConfigs() {
@@ -897,6 +899,27 @@ class MikrotikService {
         alreadyReset: false,
       };
     });
+  }
+
+  async searchHotspotUsers(query = "", limit = 30) {
+    const needle = sanitizeInput(String(query || "")).slice(0, 100).toLowerCase();
+    const parsedLimit = Number(limit);
+    const boundedLimit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(100, Math.floor(parsedLimit))) : 30;
+    if (!this.hotspotUserCache || this.hotspotUserCache.expiresAt <= Date.now()) {
+      if (!this.hotspotUserRequest) {
+        this.hotspotUserRequest = this.getHotspotUsers()
+          .then((users) => {
+            this.hotspotUserCache = { users, expiresAt: Date.now() + 15_000 };
+            return users;
+          })
+          .finally(() => { this.hotspotUserRequest = null; });
+      }
+      await this.hotspotUserRequest;
+    }
+    return this.hotspotUserCache.users
+      .filter((user) => !needle || user.username.toLowerCase().includes(needle))
+      .sort((a, b) => Number(b.username.toLowerCase() === needle) - Number(a.username.toLowerCase() === needle))
+      .slice(0, boundedLimit);
   }
 
   async getHotspotUsers() {

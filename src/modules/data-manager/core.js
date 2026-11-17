@@ -1,7 +1,7 @@
 const fs = require("fs/promises");
 const net = require("net");
 const path = require("path");
-const { Sequelize, DataTypes } = require("sequelize");
+const { Sequelize, DataTypes, Op } = require("sequelize");
 const {
   BILLING_CYCLES,
   CONFIG,
@@ -580,10 +580,20 @@ class DataManagerCore {
       data: item,
     }));
     const transaction = options.transaction || null;
+    const storedRows = await model.findAll({ attributes: [keyField, "data"], raw: true, transaction });
+    const storedPayloads = new Map(storedRows.map((row) => [
+      String(row[keyField]),
+      JSON.stringify(this.parseStoredJson(row.data, {})),
+    ]));
+    const changedRows = rows.filter((row) => storedPayloads.get(row[keyField]) !== JSON.stringify(row.data));
+    const currentKeys = new Set(rows.map((row) => row[keyField]));
+    const deletedKeys = [...storedPayloads.keys()].filter((key) => !currentKeys.has(key));
 
-    await model.destroy({ where: {}, truncate: true, transaction });
-    if (rows.length > 0) {
-      await model.bulkCreate(rows, { transaction });
+    if (deletedKeys.length > 0) {
+      await model.destroy({ where: { [keyField]: { [Op.in]: deletedKeys } }, transaction });
+    }
+    if (changedRows.length > 0) {
+      await model.bulkCreate(changedRows, { updateOnDuplicate: ["data", "updatedAt"], transaction });
     }
   }
 
