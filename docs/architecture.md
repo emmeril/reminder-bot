@@ -42,6 +42,8 @@ Daftar akun hotspot dimuat saat formulir dibuka atau username diketik. Dashboard
 
 Ringkasan dashboard menghitung status dari data mentah tanpa menyiapkan seluruh tampilan riwayat. Daftar pelanggan publik menggunakan `getSortedContacts({ publicView: true })` agar setiap pelanggan dihitung dan disanitasi satu kali.
 
+Daftar voucher merender 25 kartu per halaman; pencarian tetap mencakup semua voucher dalam lingkup tab yang dipilih. Template cetak dibuat saat tombol cetak ditekan dan selalu mencakup seluruh batch terpilih. Statistik memakai hasil selama 60 detik saat berpindah tab; tombol muat ulang tetap meminta data baru.
+
 Penyimpanan tabel payload membandingkan data di dalam transaksi, menulis baris baru atau berubah, dan menghapus hanya ID yang tidak ada lagi. Perbandingan selalu membaca database agar rollback tidak meninggalkan cache penyimpanan yang keliru.
 
 Aset JS/CSS dengan parameter `v` memakai cache jangka panjang; naikkan versi URL setiap kali aset tersebut berubah, termasuk hasil `npm run build`. Aset tanpa versi divalidasi ulang menggunakan ETag. Halaman yang memakai sesi dan respons API tetap memakai `no-store`.

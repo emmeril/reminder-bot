@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>__DASHBOARD_TITLE__</title>
   <link rel="icon" type="image/png" href="/branding/icon">
-  <link rel="stylesheet" href="/public/tailwind.css?v=20261117-perf1">
+  <link rel="stylesheet" href="/public/tailwind.css?v=20261117-perf3">
   <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
   <link rel="stylesheet" href="/public/styles.css?v=20261111-1">
   <link rel="stylesheet" href="/public/interface.css?v=20261115-1">
-  <script defer src="/public/dashboard/state.js?v=20261117-perf1"></script>
-  <script defer src="/public/dashboard/ui.js?v=20261117-perf1"></script>
-  <script defer src="/public/dashboard/selectors.js?v=20261111-1"></script>
-  <script defer src="/public/dashboard/data.js?v=20261117-perf1"></script>
+  <script defer src="/public/dashboard/state.js?v=20261117-perf3"></script>
+  <script defer src="/public/dashboard/ui.js?v=20261117-perf3"></script>
+  <script defer src="/public/dashboard/selectors.js?v=20261117-perf3"></script>
+  <script defer src="/public/dashboard/data.js?v=20261117-perf3"></script>
   <script defer src="/public/dashboard/actions.js?v=20261110-9"></script>
   <script defer src="/public/app.js?v=20261106-1"></script>
   <script defer src="/vendor/alpine.min.js"></script>
@@ -757,18 +757,18 @@
                 <div class="voucher-list-tools">
                   <label class="voucher-list-field">
                     <span>Cari voucher</span>
-                    <input type="search" x-model.trim="voucherBatchFilters.search" placeholder="Username atau password" autocomplete="off" spellcheck="false">
+                    <input type="search" x-model.trim.debounce.250ms="voucherBatchFilters.search" @input.debounce.250ms="voucherPage = 1" placeholder="Username atau password" autocomplete="off" spellcheck="false">
                   </label>
                   <label x-show="activeVoucherTab !== 'archived'" class="voucher-list-field">
                     <span>Status penggunaan</span>
-                    <select x-model="voucherBatchFilters.usage">
+                    <select x-model="voucherBatchFilters.usage" @change="voucherPage = 1">
                       <option value="ALL">Semua status</option>
                       <option value="UNUSED">Belum digunakan</option>
                       <option value="USED">Sudah digunakan</option>
                     </select>
                   </label>
                   <button x-cloak x-show="hasVoucherBatchFilters" type="button" @click="resetVoucherBatchFilters()" class="ui-secondary-button voucher-filter-reset"><i class="fa-solid fa-filter-circle-xmark mr-2" aria-hidden="true"></i>Reset filter</button>
-                  <p class="voucher-list-summary" role="status" aria-live="polite"><strong x-text="filteredVoucherBatchVouchers.length"></strong><span> dari </span><strong x-text="voucherBatchVouchers.length"></strong><span> voucher ditampilkan</span></p>
+                  <p class="voucher-list-summary" role="status" aria-live="polite"><strong x-text="paginatedVoucherBatchVouchers.length"></strong><span> dari </span><strong x-text="filteredVoucherBatchVouchers.length"></strong><span> voucher ditampilkan</span></p>
                 </div>
                 <div x-cloak x-show="!filteredVoucherBatchVouchers.length" class="voucher-filter-empty" role="status">
                   <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
@@ -777,12 +777,12 @@
                   <button x-cloak x-show="hasVoucherBatchFilters" type="button" @click="resetVoucherBatchFilters()" class="ui-secondary-button">Tampilkan semua voucher</button>
                 </div>
                 <div x-show="filteredVoucherBatchVouchers.length" class="voucher-card-grid">
-                  <template x-for="(voucher, index) in filteredVoucherBatchVouchers" :key="'generated-voucher-' + voucher.batchId + '-' + voucher.username">
+                  <template x-for="(voucher, index) in paginatedVoucherBatchVouchers" :key="'generated-voucher-' + voucher.batchId + '-' + voucher.username">
                     <article class="voucher-card" :class="{ 'voucher-card-used': getVoucherUsageStatus(voucher) === 'USED' }">
                       <div class="voucher-card-heading">
                         <span x-text="forms.settings.companyName || 'Emmeril Hotspot'"></span>
                         <div class="voucher-card-heading-actions">
-                          <strong x-text="String(index + 1).padStart(3, '0')"></strong>
+                          <strong x-text="String((voucherPage - 1) * voucherPageSize + index + 1).padStart(3, '0')"></strong>
                           <button x-show="!voucher.archived && getVoucherMacAddress(voucher)" type="button" @click="resetVoucherDevice(voucher)" class="voucher-device-reset-button" :aria-label="'Reset perangkat voucher ' + voucher.username" :title="'Reset perangkat · ' + getVoucherMacAddress(voucher)"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button>
                           <button x-show="!voucher.archived" type="button" @click="removeVoucher(voucher)" class="voucher-delete-button" :aria-label="'Hapus voucher ' + voucher.username" :title="'Hapus voucher ' + voucher.username"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
                         </div>
@@ -812,6 +812,14 @@
                     </article>
                   </template>
                 </div>
+                <nav x-show="filteredVoucherBatchVouchers.length" class="customer-pagination" aria-label="Halaman voucher">
+                  <span role="status" x-text="'Halaman ' + voucherPage + ' dari ' + voucherPageCount"></span>
+                  <div class="customer-pagination-controls">
+                    <button type="button" class="pagination-button min-h-11 min-w-11" @click="setVoucherPage(voucherPage - 1)" :disabled="voucherPage <= 1" aria-label="Halaman voucher sebelumnya"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+                    <button type="button" class="pagination-button min-h-11 min-w-11" @click="setVoucherPage(voucherPage + 1)" :disabled="voucherPage >= voucherPageCount" aria-label="Halaman voucher berikutnya"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+                  </div>
+                </nav>
+                <template x-if="voucherPrintTemplate === 'standard'">
                 <div class="voucher-print-pages" aria-hidden="true">
                   <template x-for="(page, pageIndex) in getVoucherPrintPages()" :key="'voucher-print-page-' + pageIndex">
                     <section class="voucher-print-page">
@@ -840,6 +848,8 @@
                     </section>
                   </template>
                 </div>
+                </template>
+                <template x-if="voucherPrintTemplate === 'reward'">
                 <div class="voucher-reward-print-pages" aria-hidden="true">
                   <template x-for="(page, pageIndex) in getVoucherRewardPrintPages()" :key="'voucher-reward-page-' + pageIndex">
                     <section class="voucher-print-page voucher-reward-print-page">
@@ -875,6 +885,7 @@
                     </section>
                   </template>
                 </div>
+                </template>
               </div>
             </aside>
           </div>

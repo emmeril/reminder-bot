@@ -43,6 +43,8 @@ function createDashboardUi() {
           this.$watch("activeRevenueTab", (value) => {
             localStorage.setItem("dashboardRevenueTab", value);
           });
+          this.$watch("voucherBatches", () => { this.voucherRevision += 1; });
+          this.$watch("voucherProfiles", () => { this.voucherRevision += 1; });
 
           await this.loadStatus();
           await Promise.all([
@@ -54,7 +56,7 @@ function createDashboardUi() {
           if (this.activeMenu === "vouchers") {
             void this.loadVoucherOptions({ silent: true });
             void this.loadVoucherBatches({ silent: true });
-            void this.loadVoucherStats({ silent: true });
+            if (this.activeVoucherTab === "stats") void this.loadVoucherStats({ silent: true, useCache: true });
           }
           if (this.activeMenu === "revenue" && this.activeRevenueTab === "vouchers") {
             void this.loadVoucherRevenue({ silent: true });
@@ -129,8 +131,8 @@ function createDashboardUi() {
           if (key === "vouchers" && !this.voucherBatches.length) {
             void this.loadVoucherBatches({ silent: true });
           }
-          if (key === "vouchers" && !this.voucherStats.profiles.length) {
-            void this.loadVoucherStats({ silent: true });
+          if (key === "vouchers" && this.activeVoucherTab === "stats") {
+            void this.loadVoucherStats({ silent: true, useCache: true });
           }
           if (key === "revenue" && this.activeRevenueTab === "vouchers") {
             void this.loadVoucherRevenue({ silent: true });

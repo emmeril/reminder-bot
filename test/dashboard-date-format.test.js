@@ -1737,10 +1737,10 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(html, /voucher-card-used/);
   assert.match(html, /voucher-usage-badge/);
   assert.match(html, /getVoucherUsageLabel\(voucher\)/);
-  assert.match(html, /x-model\.trim="voucherBatchFilters\.search"/);
+  assert.match(html, /x-model\.trim\.debounce\.250ms="voucherBatchFilters\.search"/);
   assert.match(html, /x-model="voucherBatchFilters\.usage"/);
   assert.match(html, /<option value="ALL"[\s\S]*?Semua riwayat batch/);
-  assert.match(html, /x-for="\(voucher, index\) in filteredVoucherBatchVouchers"/);
+  assert.match(html, /x-for="\(voucher, index\) in paginatedVoucherBatchVouchers"/);
   assert.match(html, /voucher-filter-reset[\s\S]*?fa-filter-circle-xmark mr-2[\s\S]*?Reset filter/);
   assert.match(html, />Belum digunakan<\/option>/);
   assert.match(html, />Sudah digunakan<\/option>/);

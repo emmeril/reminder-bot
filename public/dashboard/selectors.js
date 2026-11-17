@@ -1,4 +1,11 @@
 function createDashboardSelectors() {
+  const zonedFormatters = new Map();
+  const displayFormatters = new Map();
+  const rupiahFormatter = new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  });
   return {
         getAppTimezone() {
           return this.forms.settings.timezone || "Asia/Jakarta";
@@ -8,15 +15,17 @@ function createDashboardSelectors() {
           if (value === null || value === undefined || value === "") return null;
           const date = new Date(value);
           if (Number.isNaN(date.getTime())) return null;
-          const parts = new Intl.DateTimeFormat("en-CA", {
-            timeZone: this.getAppTimezone(),
+          const timeZone = this.getAppTimezone();
+          if (!zonedFormatters.has(timeZone)) zonedFormatters.set(timeZone, new Intl.DateTimeFormat("en-CA", {
+            timeZone,
             year: "numeric",
             month: "2-digit",
             day: "2-digit",
             hour: "2-digit",
             minute: "2-digit",
             hourCycle: "h23",
-          }).formatToParts(date).reduce((result, part) => {
+          }));
+          const parts = zonedFormatters.get(timeZone).formatToParts(date).reduce((result, part) => {
             if (part.type !== "literal") result[part.type] = part.value;
             return result;
           }, {});
@@ -24,7 +33,15 @@ function createDashboardSelectors() {
         },
 
         formatDateTime(value) {
-          return new Date(value).toLocaleString("id-ID", { timeZone: this.getAppTimezone() });
+          const date = new Date(value);
+          if (Number.isNaN(date.getTime())) return "Invalid Date";
+          const timeZone = this.getAppTimezone();
+          if (!displayFormatters.has(timeZone)) displayFormatters.set(timeZone, new Intl.DateTimeFormat("id-ID", {
+            timeZone,
+            year: "numeric", month: "numeric", day: "numeric",
+            hour: "numeric", minute: "numeric", second: "numeric",
+          }));
+          return displayFormatters.get(timeZone).format(date);
         },
 
         isPrepaidExpiryReminder(reminder) {
@@ -776,11 +793,7 @@ function createDashboardSelectors() {
         },
 
         formatRupiah(value) {
-          return new Intl.NumberFormat("id-ID", {
-            style: "currency",
-            currency: "IDR",
-            maximumFractionDigits: 0,
-          }).format(Math.max(0, Number(value) || 0));
+          return rupiahFormatter.format(Math.max(0, Number(value) || 0));
         },
 
         getRevenuePeriodLabel(period = "") {

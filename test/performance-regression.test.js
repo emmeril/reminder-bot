@@ -26,7 +26,7 @@ function createDashboard() {
     .map((file) => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
   const app = vm.runInNewContext(`${sources}\n;dashboardApp()`, context);
   app.$watch = () => {};
-  return { app, intervals, timeouts };
+  return { app, intervals, timeouts, context };
 }
 
 test("inisialisasi berulang tidak menggandakan permintaan atau polling dan tidak memuat seluruh akun hotspot", async () => {
@@ -194,4 +194,102 @@ test("penyimpanan hanya menulis baris berubah, menghapus ID yang hilang, dan pul
   manager.contacts.clear();
   await manager.saveContacts();
   assert.equal(await Contact.count(), 0);
+});
+
+test("tab voucher merender paling banyak 25 kartu dan pencarian tetap menjangkau semua halaman", () => {
+  const { app } = createDashboard();
+  app.activeMenu = "vouchers";
+  app.voucherBatches = [{
+    batchId: "large-batch", profile: "Harian", createdAt: "2026-11-17T00:00:00Z",
+    vouchers: Array.from({ length: 1575 }, (_, index) => ({
+      username: `voucher-${index}`, password: `password-${index}`, archived: index < 230,
+    })),
+  }];
+  assert.equal(app.filteredVoucherBatchVouchers.length, 1345);
+  assert.equal(app.filteredVoucherBatchVouchers, app.filteredVoucherBatchVouchers);
+  const beforeMutation = app.visibleVoucherBatches;
+  app.voucherBatches[0].vouchers[230].password = "updated-password";
+  app.voucherRevision += 1;
+  assert.notEqual(app.visibleVoucherBatches, beforeMutation);
+  assert.equal(app.filteredVoucherBatchVouchers[0].password, "updated-password");
+  const activeRows = app.filteredVoucherBatchVouchers;
+  assert.equal(app.paginatedVoucherBatchVouchers.length, 25);
+  app.setVoucherPage(2);
+  assert.equal(app.paginatedVoucherBatchVouchers[0].username, "voucher-255");
+  app.voucherBatchFilters.search = "voucher-1574";
+  app.voucherPage = 1;
+  assert.equal(app.paginatedVoucherBatchVouchers[0].username, "voucher-1574");
+  app.selectVoucherTab("archived");
+  assert.equal(app.voucherPage, 1);
+  assert.equal(app.filteredVoucherBatchVouchers.length, 230);
+  assert.equal(app.paginatedVoucherBatchVouchers.length, 25);
+  app.selectVoucherTab("profiles");
+  assert.equal(app.paginatedVoucherBatchVouchers.length, 0);
+  app.selectVoucherTab("create");
+  assert.equal(app.filteredVoucherBatchVouchers, activeRows);
+  app.selectVoucherBatch("large-batch");
+  assert.equal(app.voucherResult.vouchers.length, 1345);
+  assert.equal(app.getVoucherPrintPages().flat().length, 1345);
+  assert.equal(app.getVoucherRewardPrintPages().flat().length, 1345);
+});
+
+test("statistik voucher yang masih baru tidak dimuat ulang saat pindah tab, tombol refresh tetap membaca data", async () => {
+  const { app } = createDashboard();
+  let calls = 0;
+  app.api = async () => { calls += 1; return { summary: { total: 1575 }, profiles: [] }; };
+  await app.loadVoucherStats({ silent: true, useCache: true });
+  await app.loadVoucherStats({ silent: true, useCache: true });
+  assert.equal(calls, 1);
+  await app.loadVoucherStats({ silent: true });
+  assert.equal(calls, 2);
+  app.voucherStatsLoadedAt = Date.now() - 61_000;
+  await app.loadVoucherStats({ silent: true, useCache: true });
+  assert.equal(calls, 3);
+});
+
+test("cetak menunggu kartu dibuat dan membersihkan template setelah dialog cetak selesai", async () => {
+  const { app, context } = createDashboard();
+  let rendered = false;
+  let appended = false;
+  let removed = false;
+  let prints = 0;
+  let afterprint;
+  const attributes = {};
+  const root = {
+    removeAttribute() {},
+    setAttribute: (name, value) => { attributes[name] = value; },
+    remove: () => { removed = true; },
+  };
+  context.document.querySelector = (selector) => selector === ".voucher-print-pages" && rendered
+    ? { cloneNode: () => root } : null;
+  context.document.body = {
+    appendChild: () => { appended = true; },
+    classList: { add() {}, remove() {} },
+  };
+  context.window.addEventListener = (_event, handler) => { afterprint = handler; };
+  context.window.removeEventListener = () => {};
+  context.window.setTimeout = () => {};
+  context.window.print = () => { assert.equal(appended, true); prints += 1; };
+  app.$nextTick = async () => { assert.equal(app.voucherPrintTemplate, "standard"); rendered = true; };
+  app.voucherResult = { vouchers: [{ username: "print-one" }] };
+  await app.printVouchers();
+  assert.equal(prints, 1);
+  assert.equal(attributes["x-ignore"], "");
+  assert.equal(app.voucherPrintTemplate, "standard");
+  afterprint();
+  assert.equal(app.voucherPrintTemplate, "");
+  assert.equal(removed, true);
+});
+
+test("formatter yang dipakai ulang mempertahankan tampilan tanggal dan mengikuti perubahan zona waktu", () => {
+  const { app } = createDashboard();
+  for (const timeZone of ["Asia/Jakarta", "UTC", "Asia/Jayapura"]) {
+    app.forms.settings.timezone = timeZone;
+    for (const value of ["2026-11-17T00:00:00Z", null, undefined, "invalid"]) {
+      assert.equal(app.formatDateTime(value), new Date(value).toLocaleString("id-ID", { timeZone }));
+    }
+    assert.equal(app.formatRupiah(12500), new Intl.NumberFormat("id-ID", {
+      style: "currency", currency: "IDR", maximumFractionDigits: 0,
+    }).format(12500));
+  }
 });

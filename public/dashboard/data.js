@@ -1,4 +1,13 @@
 function createDashboardData() {
+  let voucherCache;
+  const getVoucherCache = (app) => {
+    const source = app.voucherBatches;
+    const revision = app.voucherRevision;
+    if (!voucherCache || voucherCache.source !== source || voucherCache.revision !== revision) {
+      voucherCache = { source, revision, scopes: new Map(), rowSets: new Map() };
+    }
+    return voucherCache;
+  };
   return {
         async refreshAll() {
           await this.withProcessing("Memuat ulang data...", async () => {
@@ -295,6 +304,7 @@ function createDashboardData() {
 
         async loadVoucherStats(options = {}) {
           if (this.loading.voucherStats) return;
+          if (options.useCache && this.voucherStatsLoadedAt > Date.now() - 60_000) return;
           this.loading.voucherStats = true;
           this.voucherStatsError = "";
           try {
@@ -309,8 +319,10 @@ function createDashboardData() {
               },
               profiles: Array.isArray(stats?.profiles) ? stats.profiles : [],
             };
+            this.voucherStatsLoadedAt = Date.now();
             if (!options.silent) this.notify("Statistik voucher diperbarui dari MikroTik.");
           } catch (error) {
+            this.voucherStatsLoadedAt = 0;
             this.voucherStatsError = error.message || "Statistik voucher gagal dimuat.";
           } finally {
             this.loading.voucherStats = false;
@@ -327,7 +339,7 @@ function createDashboardData() {
             this.voucherHistoryScope = tab === "archived" ? "archived" : "active";
           }
           this.activeVoucherTab = tab;
-          if (tab === "stats") void this.loadVoucherStats({ silent: true });
+          if (tab === "stats") void this.loadVoucherStats({ silent: true, useCache: true });
         },
 
         handleVoucherTabKeydown(event) {
@@ -344,8 +356,10 @@ function createDashboardData() {
         },
 
         get visibleVoucherBatches() {
+          const cache = getVoucherCache(this);
           const archived = this.voucherHistoryScope === "archived";
-          return this.voucherBatches.map((batch) => {
+          if (cache.scopes.has(archived)) return cache.scopes.get(archived);
+          const batches = this.voucherBatches.map((batch) => {
             const vouchers = (batch.vouchers || []).filter((voucher) => (
               (voucher.archived === true) === archived
             ));
@@ -356,9 +370,12 @@ function createDashboardData() {
               generationType: vouchers.length === 1 ? "SINGLE" : "BULK",
             };
           }).filter((batch) => batch.vouchers.length > 0);
+          cache.scopes.set(archived, batches);
+          return batches;
         },
 
         selectVoucherBatch(batchId) {
+          this.voucherPage = 1;
           if (batchId === "ALL") {
             this.selectedVoucherBatchId = "ALL";
             this.voucherResult = null;
@@ -510,28 +527,43 @@ function createDashboardData() {
         },
 
         get voucherBatchVouchers() {
+          const cache = getVoucherCache(this);
           const batches = this.selectedVoucherBatchId === "ALL"
             ? this.visibleVoucherBatches
             : (this.voucherResult ? [this.voucherResult] : []);
-          return batches.flatMap((batch) => (
+          const selection = this.selectedVoucherBatchId === "ALL" ? this.voucherHistoryScope : this.voucherResult;
+          if (cache.rowSets.has(selection)) return cache.rowSets.get(selection);
+          const rows = batches.flatMap((batch) => (
             (Array.isArray(batch.vouchers) ? batch.vouchers : []).map((voucher) => ({
               ...voucher,
               batchId: batch.batchId,
               batchProfile: batch.profile,
             }))
           ));
+          cache.rowSets.set(selection, rows);
+          return rows;
         },
 
         get filteredVoucherBatchVouchers() {
+          const cache = getVoucherCache(this);
+          const vouchers = this.voucherBatchVouchers;
           const usage = String(this.voucherBatchFilters.usage || "ALL").toUpperCase();
           const search = String(this.voucherBatchFilters.search || "").trim();
+          if (!search && usage === "ALL") return vouchers;
+          const timezone = this.getAppTimezone();
+          const profiles = this.voucherProfiles;
+          const previous = cache.filtered;
+          if (previous && previous.vouchers === vouchers && previous.usage === usage
+            && previous.search === search && previous.timezone === timezone && previous.profiles === profiles) {
+            return previous.rows;
+          }
           const dateLabels = new Map();
           const dateLabel = (value) => {
             if (!value) return "";
             if (!dateLabels.has(value)) dateLabels.set(value, this.formatDateTime(value));
             return dateLabels.get(value);
           };
-          return this.voucherBatchVouchers.filter((voucher) => {
+          const rows = vouchers.filter((voucher) => {
             if (usage !== "ALL" && this.getVoucherUsageStatus(voucher) !== usage) return false;
             if (!search) return true;
             return this.searchValuesMatch([
@@ -550,6 +582,8 @@ function createDashboardData() {
               dateLabel(voucher.archivedAt),
             ], search);
           });
+          cache.filtered = { vouchers, usage, search, timezone, profiles, rows };
+          return rows;
         },
 
         get hasVoucherBatchFilters() {
@@ -557,7 +591,23 @@ function createDashboardData() {
             || String(this.voucherBatchFilters.usage || "ALL") !== "ALL";
         },
 
+        get voucherPageCount() {
+          return Math.max(1, Math.ceil(this.filteredVoucherBatchVouchers.length / this.voucherPageSize));
+        },
+
+        get paginatedVoucherBatchVouchers() {
+          if (this.activeMenu !== "vouchers" || !["create", "archived"].includes(this.activeVoucherTab)) return [];
+          const vouchers = this.filteredVoucherBatchVouchers;
+          const page = Math.min(this.voucherPage, Math.max(1, Math.ceil(vouchers.length / this.voucherPageSize)));
+          return vouchers.slice((page - 1) * this.voucherPageSize, page * this.voucherPageSize);
+        },
+
+        setVoucherPage(page) {
+          this.voucherPage = Math.min(Math.max(1, page), this.voucherPageCount);
+        },
+
         resetVoucherBatchFilters() {
+          this.voucherPage = 1;
           this.voucherBatchFilters.search = "";
           this.voucherBatchFilters.usage = "ALL";
         },
@@ -737,22 +787,30 @@ function createDashboardData() {
           }
         },
 
-        printVouchers(template = "standard") {
-          if (!this.voucherResult?.vouchers?.length) return;
+        async printVouchers(template = "standard") {
+          if (!this.voucherResult?.vouchers?.length || this.voucherPrintTemplate) return;
           document.querySelector(".voucher-print-root")?.remove();
           const rewardTemplate = template === "reward";
+          this.voucherPrintTemplate = rewardTemplate ? "reward" : "standard";
+          await this.$nextTick();
           const source = document.querySelector(
             rewardTemplate ? ".voucher-reward-print-pages" : ".voucher-print-pages"
           );
-          if (!source) return;
+          if (!source) {
+            this.voucherPrintTemplate = "";
+            return;
+          }
           const printRoot = source.cloneNode(true);
           printRoot.className = `voucher-print-root ${rewardTemplate ? "voucher-print-root-reward" : "voucher-print-root-standard"}`;
           printRoot.removeAttribute("aria-hidden");
+          printRoot.setAttribute("x-ignore", "");
           document.body.appendChild(printRoot);
           document.body.classList.add("voucher-print-mode");
           const cleanup = () => {
             document.body.classList.remove("voucher-print-mode");
             printRoot.remove();
+            this.voucherPrintTemplate = "";
+            window.removeEventListener("afterprint", cleanup);
           };
           window.addEventListener("afterprint", cleanup, { once: true });
           window.print();
@@ -760,7 +818,7 @@ function createDashboardData() {
         },
 
         printRewardVouchers() {
-          this.printVouchers("reward");
+          return this.printVouchers("reward");
         },
 
         getVoucherPrintPages() {
