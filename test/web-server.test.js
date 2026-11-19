@@ -128,6 +128,25 @@ test("halaman login membedakan akses administrator dan pelanggan", async () => {
   assert.doesNotMatch(adminHtml, /Akun ini berbeda dari akun hotspot/);
 });
 
+test("dashboard memakai fingerprint CSS terbaru agar cache immutable tidak menyimpan tampilan lama", async () => {
+  const baseUrl = await startServer();
+  const cookie = await login(baseUrl);
+  const response = await fetch(baseUrl + "/dashboard", { headers: { cookie } });
+  const html = await response.text();
+  const styles = await fs.readFile(path.join(CONFIG.PUBLIC_PATH, "styles.css"));
+  const version = crypto.createHash("sha256").update(styles).digest("hex").slice(0, 12);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.ok(html.includes('href="/public/styles.css?v=' + version + '"'));
+  assert.doesNotMatch(html, /__DASHBOARD_STYLES_VERSION__/);
+
+  const cssResponse = await fetch(baseUrl + "/public/styles.css?v=" + version);
+  assert.equal(cssResponse.status, 200);
+  assert.equal(cssResponse.headers.get("cache-control"), "public, max-age=31536000, immutable");
+  assert.match(await cssResponse.text(), /\.customer-hotspot-table th:nth-child\(14\) \{ width: 10%; \}/);
+});
+
 test("aset dashboard berversi disimpan di cache dan aset tanpa versi divalidasi ulang", async () => {
   const baseUrl = await startServer();
   for (const scriptPath of [
