@@ -2569,9 +2569,16 @@ class WebServer {
   async renderDashboard() {
     const title = escapeHtml(this.dataManager.getSettings().dashboardTitle);
     const templatePath = path.join(CONFIG.PUBLIC_PATH, "index.html");
-    const html = await fs.readFile(templatePath, "utf-8");
+    const stylesPath = path.join(CONFIG.PUBLIC_PATH, "styles.css");
+    const [html, styles] = await Promise.all([
+      fs.readFile(templatePath, "utf-8"),
+      fs.readFile(stylesPath),
+    ]);
+    const stylesVersion = crypto.createHash("sha256").update(styles).digest("hex").slice(0, 12);
 
-    return html.replace(/__DASHBOARD_TITLE__/g, title);
+    return html
+      .replace(/__DASHBOARD_TITLE__/g, title)
+      .replace(/__DASHBOARD_STYLES_VERSION__/g, stylesVersion);
   }
 
   async renderLoginPage() {
