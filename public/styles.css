@@ -990,20 +990,21 @@ table tbody tr:hover { background: #fafaff; }
 .customer-billing-table th:nth-child(8) { width: 9%; }
 .customer-billing-table th:nth-child(9) { width: 11%; }
 .customer-billing-table th:nth-child(10) { width: 6%; }
-.customer-hotspot-table { min-width: 1960px; }
-.customer-hotspot-table th:nth-child(1) { width: 8%; }
-.customer-hotspot-table th:nth-child(2) { width: 8%; }
-.customer-hotspot-table th:nth-child(3) { width: 8%; }
-.customer-hotspot-table th:nth-child(4) { width: 7%; }
-.customer-hotspot-table th:nth-child(5) { width: 8%; }
-.customer-hotspot-table th:nth-child(6) { width: 8%; }
-.customer-hotspot-table th:nth-child(7) { width: 8%; }
-.customer-hotspot-table th:nth-child(8) { width: 10%; }
-.customer-hotspot-table th:nth-child(9) { width: 9%; }
+.customer-hotspot-table { min-width: 2160px; }
+.customer-hotspot-table th:nth-child(1) { width: 7%; }
+.customer-hotspot-table th:nth-child(2) { width: 7%; }
+.customer-hotspot-table th:nth-child(3) { width: 7%; }
+.customer-hotspot-table th:nth-child(4) { width: 6%; }
+.customer-hotspot-table th:nth-child(5) { width: 6%; }
+.customer-hotspot-table th:nth-child(6) { width: 6%; }
+.customer-hotspot-table th:nth-child(7) { width: 6%; }
+.customer-hotspot-table th:nth-child(8) { width: 8%; }
+.customer-hotspot-table th:nth-child(9) { width: 8%; }
 .customer-hotspot-table th:nth-child(10) { width: 7%; }
-.customer-hotspot-table th:nth-child(11) { width: 6%; }
-.customer-hotspot-table th:nth-child(12) { width: 8%; }
-.customer-hotspot-table th:nth-child(13) { width: 7%; }
+.customer-hotspot-table th:nth-child(11) { width: 7%; }
+.customer-hotspot-table th:nth-child(12) { width: 5%; }
+.customer-hotspot-table th:nth-child(13) { width: 10%; }
+.customer-hotspot-table th:nth-child(14) { width: 10%; }
 .customer-ip-binding-count { display: block; color: #344054; font-size: 12px; font-weight: 700; }
 
 @media (max-width: 767px) {

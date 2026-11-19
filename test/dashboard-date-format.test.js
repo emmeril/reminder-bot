@@ -1346,11 +1346,18 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(styles, /\.customer-due-status \{[^}]*white-space: nowrap;/);
   assert.match(styles, /\.customer-billing-table th:nth-child\(3\) \{ width: 10%; \}/);
   assert.match(styles, /\.customer-hotspot-status, \.customer-schedule-status \{[^}]*white-space: nowrap;/);
-  assert.match(styles, /\.customer-hotspot-table \{ min-width: 1960px; \}/);
-  assert.match(styles, /\.customer-hotspot-table th:nth-child\(6\) \{ width: 8%; \}/);
-  assert.match(styles, /\.customer-hotspot-table th:nth-child\(7\) \{ width: 8%; \}/);
+  assert.match(styles, /\.customer-hotspot-table \{ min-width: 2160px; \}/);
+  assert.match(styles, /\.customer-hotspot-table th:nth-child\(6\) \{ width: 6%; \}/);
+  assert.match(styles, /\.customer-hotspot-table th:nth-child\(7\) \{ width: 6%; \}/);
   assert.match(styles, /\.customer-hotspot-account-actions button \{[^}]*gap: 7px;[^}]*padding-inline: 12px !important;/);
-  assert.match(styles, /\.customer-hotspot-table th:nth-child\(12\) \{ width: 8%; \}/);
+  assert.match(styles, /\.customer-hotspot-table th:nth-child\(12\) \{ width: 5%; \}/);
+  const columnWidths = [...styles.matchAll(/\.customer-hotspot-table th:nth-child\((\d+)\) \{ width: (\d+)%; \}/g)]
+    .map((match) => ({ column: Number(match[1]), width: Number(match[2]) }));
+  assert.equal(columnWidths.length, 14, "seluruh kolom hotspot harus memiliki lebar");
+  assert.deepEqual(columnWidths.map(({ column }) => column), Array.from({ length: 14 }, (_, index) => index + 1));
+  assert.equal(columnWidths.reduce((sum, { width }) => sum + width, 0), 100, "lebar kolom tidak boleh melebihi tabel");
+  assert.ok(columnWidths[12].width >= 10, "kolom Aksi Akun harus cukup lebar untuk tombol");
+  assert.ok(columnWidths[13].width >= 10, "kolom Aksi Layanan harus cukup lebar untuk Mode akses");
 });
 
 test("nominal pada tabel hanya teks rupiah, pengeditan melalui tab modal Kelola", () => {
