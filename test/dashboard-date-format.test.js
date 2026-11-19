@@ -1351,7 +1351,7 @@ test("tombol aksi data, tagihan, dan hotspot memakai bentuk bersama", () => {
   assert.match(styles, /\.customer-hotspot-table th:nth-child\(7\) \{ width: 6%; \}/);
   assert.match(styles, /\.customer-hotspot-account-actions button \{[^}]*gap: 7px;[^}]*padding-inline: 12px !important;/);
   assert.match(styles, /\.customer-hotspot-table th:nth-child\(12\) \{ width: 5%; \}/);
-  const columnWidths = [...styles.matchAll(/\\.customer-hotspot-table th:nth-child\\((\\d+)\\) \\{ width: (\\d+)%; \\}/g)]
+  const columnWidths = [...styles.matchAll(/\.customer-hotspot-table th:nth-child\((\d+)\) \{ width: (\d+)%; \}/g)]
     .map((match) => ({ column: Number(match[1]), width: Number(match[2]) }));
   assert.equal(columnWidths.length, 14, "seluruh kolom hotspot harus memiliki lebar");
   assert.deepEqual(columnWidths.map(({ column }) => column), Array.from({ length: 14 }, (_, index) => index + 1));
