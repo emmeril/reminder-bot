@@ -405,7 +405,7 @@ span[class*="rounded-full"][class*="text-xs"] { border-radius: 3px !important; }
   .metric-card .icon-chip, .status-panel .metric-card .icon-chip { width: 56px; min-height: 76px; }
   .metric-card > div > div { padding: 11px 12px; }
   .metric-card .text-2xl, .metric-card .text-3xl { font-size: 20px !important; }
-  .dashboard-modal-overlay:not(.dashboard-modal-overlay-priority) { align-items: flex-start !important; overflow-y: auto; padding: 12px !important; }
+  .dashboard-modal-overlay:not(.dashboard-modal-overlay-priority) { align-items: center !important; justify-content: center !important; overflow-y: auto; padding: 12px !important; }
   .dashboard-modal-overlay:not(.dashboard-modal-overlay-priority) > div { max-height: calc(100dvh - 24px); overflow-y: auto; padding: 15px !important; }
   .dashboard-modal-overlay:not(.dashboard-modal-overlay-priority) > div > div:first-child { margin: -15px -15px 15px; padding: 12px 15px; }
   .login-page { padding: 15px; }

@@ -1095,12 +1095,21 @@ span[class*="rounded-full"][class*="text-xs"],
 
 /* Dialogs, feedback and processing */
 .dashboard-modal-overlay {
+  align-items: center !important;
+  justify-content: center !important;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 20px !important;
   background: rgba(16, 29, 23, .66) !important;
   backdrop-filter: blur(2px) !important;
 }
 
 .dashboard-modal-overlay > div {
+  min-width: 0;
+  max-height: calc(100dvh - 40px);
+  margin: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--ui-border) !important;
   border-radius: 13px !important;
   background: #fff !important;
@@ -1981,15 +1990,18 @@ span[class*="rounded-full"][class*="text-xs"],
   }
 
   .dashboard-modal-overlay {
-    align-items: flex-end !important;
-    padding: 10px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 12px !important;
+    overflow-y: auto;
   }
 
   .dashboard-modal-overlay > div {
     width: 100% !important;
-    max-height: calc(100dvh - 20px) !important;
+    max-height: calc(100dvh - 24px) !important;
+    margin: auto;
     overflow-y: auto !important;
-    border-radius: 14px 14px 9px 9px !important;
+    border-radius: 12px !important;
   }
 
   .login-page {
@@ -3468,15 +3480,15 @@ span[class*="rounded-full"][class*="text-xs"],
   }
 
   .voucher-modal-overlay {
-    align-items: flex-end !important;
-    padding: 0 !important;
+    align-items: center !important;
+    padding: 12px !important;
   }
 
   .voucher-modal-dialog,
   .voucher-profile-modal-dialog {
     width: 100%;
-    max-height: 94vh;
-    border-radius: 14px 14px 0 0;
+    max-height: calc(100dvh - 24px);
+    border-radius: 12px;
   }
 
   .voucher-modal-heading {
