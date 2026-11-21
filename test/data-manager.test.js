@@ -133,7 +133,7 @@ test("ringkasan dashboard menghitung layanan dan pesan terkirim hari ini", () =>
     billingCycle: BILLING_CYCLES.PREPAID,
     mikrotikUsername: "aktif",
     hotspotProvisioningStatus: "ACTIVE",
-    hotspotReactivationAt: "2026-11-20T00:00:00.000Z",
+    hotspotReactivationAt: new Date(Date.now() + 86_400_000).toISOString(),
   });
   manager.settings.timezone = "Asia/Jakarta";
   manager.contacts.set("summary-disabled", {
@@ -144,7 +144,7 @@ test("ringkasan dashboard menghitung layanan dan pesan terkirim hari ini", () =>
     billingCycle: BILLING_CYCLES.PREPAID,
     mikrotikUsername: "nonaktif",
     hotspotProvisioningStatus: "DISABLED",
-    hotspotReactivationAt: "2026-11-01T00:00:00.000Z",
+    hotspotReactivationAt: new Date(Date.now() - 86_400_000).toISOString(),
   });
   manager.contacts.set("summary-contact-only", {
     id: "summary-contact-only",
@@ -153,7 +153,7 @@ test("ringkasan dashboard menghitung layanan dan pesan terkirim hari ini", () =>
     subscriptionType: SUBSCRIPTION_TYPES.RECURRING,
     billingCycle: BILLING_CYCLES.PREPAID,
     hotspotProvisioningStatus: "NONE",
-    hotspotReactivationAt: "2026-11-20T00:00:00.000Z",
+    hotspotReactivationAt: new Date(Date.now() + 86_400_000).toISOString(),
   });
   manager.reminders.set("summary-reminder", {
     id: "summary-reminder",
