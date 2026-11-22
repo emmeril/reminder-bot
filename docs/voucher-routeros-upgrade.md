@@ -2,11 +2,15 @@
 
 Generator profile menggunakan satu script untuk tanggal `mon/dd/yyyy` pada ROS 6/ROS 7 lama dan `yyyy-mm-dd` pada ROS 7.10 ke atas. Pemeriksaan tanggal dilakukan saat script berjalan, sehingga profile yang dipasang sebelum upgrade tetap bisa dipakai sesudah upgrade.
 
-`on-login` menghitung masa berlaku dari tanggal **dan jam login pertama**. Bentuk `next-run` berupa jam saja, tanggal tanpa tahun, tanggal lengkap ROS 6, dan tanggal ISO ditangani. Scheduler sementara memakai awalan `rb-voucher-expiry-`, lalu dihapus setelah tanggal expired dibaca. Jika inisialisasi gagal, sesi diputus, kegagalan dicatat pada log, dan komentar awal dipertahankan untuk percobaan login berikutnya.
+`on-login` menghitung masa berlaku dari tanggal **dan jam login pertama** dengan penjumlahan kalender langsung. Perhitungan menangani pergantian hari, bulan, tahun, dan tahun kabisat tanpa membuat scheduler sementara atau membaca `next-run`. Tanggal expired disimpan dan dibaca ulang sebelum pemakaian dicatat. Jika penyimpanan gagal, sesi diputus dan kegagalan dicatat pada log. Durasi profile harus positif dan paling lama 100 tahun agar perhitungan tetap terbatas.
+
+Voucher yang masih berkomentar awal (`vc`, `up`, atau `voucher-`) tetapi sudah memiliki uptime lebih dari satu menit dianggap kehilangan tanggal expired. Monitor menonaktifkan akun dan memutus sesinya untuk pemeriksaan; akun tersebut tidak dihapus berdasarkan dugaan waktu expired. Login juga menolak memberi masa aktif baru pada akun terpakai tanpa tanggal expired. Batas satu menit memberi ruang untuk login pertama yang masih sedang diproses. Stok baru, komentar pelanggan biasa, dan komentar kosong tidak dinonaktifkan oleh pemeriksaan monitor ini.
 
 Monitor membandingkan tanggal dan waktu sampai detik, termasuk pergantian tahun dan tahun kabisat. Pemutusan tetap mengikuti interval monitor profile, sehingga bisa terlambat paling lama sekitar satu interval. Mode hapus/batasi dan pencatatan pemakaian tetap mengikuti pengaturan profile.
 
 Komentar expired voucher aktif dalam kedua format tidak diubah saat profile disimpan ulang atau saat script diperbarui. Login ulang tidak memulai masa berlaku baru. Catatan pemakaian tetap memakai format Mikhmon yang sudah dibaca aplikasi. Jam dan zona waktu router harus benar sebelum monitor dijalankan.
+
+Scheduler sementara peninggalan generator lama perlu diperiksa terpisah. Gunakan tanggal/jam mulai ditambah interval awal untuk menilai batas pertama; `next-run` dari scheduler berulang terus bergerak dan bukan bukti masa berlaku baru. Hanya hapus voucher setelah identitas akun, profile, interval, dan bukti expired diverifikasi. Scheduler dengan event khusus tidak boleh dibersihkan sebagai scheduler sementara.
 
 ## Memperbarui profile yang sudah terpasang
 

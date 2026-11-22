@@ -36,6 +36,18 @@ const ROUTER_MONTH_NUMBERS = Object.freeze({
   dec: 12,
 });
 
+function getVoucherValiditySeconds(value) {
+  const raw = String(value || "").toLowerCase();
+  if (!/^(?:\d+[wdhms])+$/.test(raw)) throw new Error("Masa berlaku voucher tidak valid.");
+  const units = { w: 604800, d: 86400, h: 3600, m: 60, s: 1 };
+  const seconds = [...raw.matchAll(/(\d+)([wdhms])/g)]
+    .reduce((total, match) => total + Number(match[1]) * units[match[2]], 0);
+  if (!Number.isSafeInteger(seconds) || seconds < 1 || seconds > 100 * 366 * 86400) {
+    throw new Error("Masa berlaku voucher harus antara 1 detik dan 100 tahun.");
+  }
+  return seconds;
+}
+
 function parseVoucherProfileMetadata(onLogin = "") {
   const parts = String(onLogin || "").split(",");
   const expiredMode = String(parts[1] || "").trim().toLowerCase();
@@ -256,6 +268,7 @@ function normalizeVoucherProfilePayload(payload = {}) {
   if (!validity || validity.length > 32 || !/^(?:\d+[wdhms])+$/i.test(validity)) {
     throw new Error("Masa berlaku harus memakai format seperti 4h, 1d, atau 30d.");
   }
+  getVoucherValiditySeconds(validity);
 
   const sharedUsers = Number(payload.sharedUsers ?? 1);
   if (!Number.isInteger(sharedUsers) || sharedUsers < 1 || sharedUsers > 10_000) {
@@ -299,6 +312,7 @@ function normalizeVoucherProfilePayload(payload = {}) {
 }
 
 function buildVoucherProfileScripts(profile) {
+  const validitySeconds = getVoucherValiditySeconds(profile.validity);
   // Compare full calendar values so stored ROS 6 comments remain valid after a ROS 7 upgrade.
   const dateTimeScript = `:local voucherStamp do={
     :local raw [:tostr $value];
@@ -336,6 +350,52 @@ function buildVoucherProfileScripts(profile) {
     :if ($hh < 0 or $hh > 23 or $mm < 0 or $mm > 59 or $ss < 0 or $ss > 59) do={ :return 0; };
     :return ($yr * 10000000000 + $mo * 100000000 + $dy * 1000000 + $hh * 10000 + $mm * 100 + $ss);
   };`;
+  // Calendar arithmetic avoids temporary schedulers and their moving next-run value after reboot.
+  const expiryScript = `:local voucherExpiry do={
+    :local digits [:tostr $stamp];
+    :if ([:len $digits] != 14 or $seconds < 1) do={ :return ""; };
+    :local yr [:tonum [:pick $digits 0 4]];
+    :local mo [:tonum [:pick $digits 4 6]];
+    :local dy [:tonum [:pick $digits 6 8]];
+    :local hh [:tonum [:pick $digits 8 10]];
+    :local mm [:tonum [:pick $digits 10 12]];
+    :local ss [:tonum [:pick $digits 12 14]];
+    :local total ($hh * 3600 + $mm * 60 + $ss + $seconds);
+    :local clockSeconds ($total % 86400);
+    :set dy ($dy + (($total - $clockSeconds) / 86400));
+    :local monthDays (31,28,31,30,31,30,31,31,30,31,30,31);
+    :local advancing true;
+    :while ($advancing) do={
+      :if ($yr > 9999) do={ :return ""; };
+      :local maxDay ($monthDays->($mo - 1));
+      :if ($mo = 2 and (($yr % 4 = 0 and $yr % 100 != 0) or $yr % 400 = 0)) do={ :set maxDay 29; };
+      :if ($dy > $maxDay) do={
+        :set dy ($dy - $maxDay);
+        :set mo ($mo + 1);
+        :if ($mo > 12) do={ :set mo 1; :set yr ($yr + 1); };
+      } else={ :set advancing false; };
+    };
+    :set ss ($clockSeconds % 60);
+    :set mm ((($clockSeconds % 3600) - $ss) / 60);
+    :set hh (($clockSeconds - ($clockSeconds % 3600)) / 3600);
+    :local monthText [:tostr $mo];
+    :local dayText [:tostr $dy];
+    :local hourText [:tostr $hh];
+    :local minuteText [:tostr $mm];
+    :local secondText [:tostr $ss];
+    :if ($mo < 10) do={ :set monthText ("0" . $monthText); };
+    :if ($dy < 10) do={ :set dayText ("0" . $dayText); };
+    :if ($hh < 10) do={ :set hourText ("0" . $hourText); };
+    :if ($mm < 10) do={ :set minuteText ("0" . $minuteText); };
+    :if ($ss < 10) do={ :set secondText ("0" . $secondText); };
+    :local clockText ("$hourText:$minuteText:$secondText");
+    :if ($legacy = true) do={
+      :local months ("jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec");
+      :local monthText ($months->($mo - 1));
+      :return ("$monthText/$dayText/$yr $clockText");
+    };
+    :return ("$yr-$monthText-$dayText $clockText");
+  };`;
   const lockMode = profile.lockUser ? "Enable" : "Disable";
   const lockScript = profile.lockUser
     ? '; :local lockUserId [/ip hotspot user find where name=$user]; :if ([:len $lockUserId] > 0) do={ :local currentLock [/ip hotspot user get $lockUserId mac-address]; :if ([:len $currentLock] = 0 or $currentLock = "00:00:00:00:00:00") do={ /ip hotspot user set mac-address=$"mac-address" $lockUserId; } }'
@@ -348,6 +408,7 @@ function buildVoucherProfileScripts(profile) {
   const header = `:put (",${profile.expiredMode},${profile.costPrice},${profile.validity},${profile.sellingPrice},,${lockMode},${profile.commission},")`;
   const activation = `;
   ${dateTimeScript}
+  ${expiryScript}
   :local voucherUserId [/ip hotspot user find where name=$user];
   :if ([:len $voucherUserId] != 1) do={ :error "Voucher user not found"; };
   :local comment [/ip hotspot user get $voucherUserId comment];
@@ -356,37 +417,23 @@ function buildVoucherProfileScripts(profile) {
     :local date [/system clock get date];
     :local time [/system clock get time];
     :local started [$voucherStamp value=("$date $time")];
-    :local tempName ("rb-voucher-expiry-" . $user);
-    :local tempId "";
     :do {
       :if ($started = 0) do={ :error "Invalid router clock"; };
+      :if ([/ip hotspot user get $voucherUserId uptime] > [:totime "1m"]) do={
+        /ip hotspot user set disabled=yes $voucherUserId;
+        :error "Used voucher has no recorded expiration; manual review required";
+      };
       :local year [:pick [:tostr $started] 0 4];
       :local months ("jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec");
       :local month ($months->([:tonum [:pick [:tostr $started] 4 6]] - 1));
-      /system scheduler add name=$tempName disabled=no start-date=$date start-time=$time interval="${profile.validity}" on-event="" comment="Reminder Bot voucher expiry";
-      :set tempId [/system scheduler find where name=$tempName and comment="Reminder Bot voucher expiry"];
-      :delay 1s;
-      :local exp [/system scheduler get $tempId next-run];
-      :local expSize [:len $exp];
-      :if ($expSize = 8) do={ :set exp ("$date $exp"); };
-      :if ($expSize = 15) do={
-        :local shortDate [:pick $exp 0 6];
-        :local shortTime [:pick $exp 7 15];
-        :set exp ("$shortDate/$year $shortTime");
-        :if ([$voucherStamp value=$exp] < $started) do={
-          :local nextYear ([:tonum $year] + 1);
-          :set exp ("$shortDate/$nextYear $shortTime");
-        };
-      };
+      :local exp [$voucherExpiry stamp=$started seconds=${validitySeconds} legacy=([:len $date] = 11)];
       :local expires [$voucherStamp value=$exp];
       :if ($expires = 0 or $expires <= $started) do={ :error "Invalid voucher expiration"; };
-      /system scheduler remove $tempId;
-      :set tempId "";
       :if ([/ip hotspot user get $voucherUserId comment] = $comment) do={
-        /ip hotspot user set comment=$exp $voucherUserId${recordScript};
+        /ip hotspot user set comment=$exp $voucherUserId;
+        :if ([/ip hotspot user get $voucherUserId comment] != $exp) do={ :error "Voucher expiration was not saved"; }${recordScript};
       };
     } on-error={
-      :if ([:len $tempId] > 0) do={ /system scheduler remove $tempId; };
       :log error ("Voucher expiration initialization failed: " . $user);
       :if ([/ip hotspot user get $voucherUserId comment] = $comment) do={
         /ip hotspot active remove [find where user=$user];
@@ -402,6 +449,14 @@ function buildVoucherProfileScripts(profile) {
     :do {
       :local comment [/ip hotspot user get $voucherUserId comment];
       :local expires [$voucherStamp value=$comment];
+      :local voucherCode [:pick $comment 0 2];
+      :if ($expires = 0 and ($voucherCode = "vc" or $voucherCode = "up" or [:pick $comment 0 8] = "voucher-") and [/ip hotspot user get $voucherUserId uptime] > [:totime "1m"]) do={
+        :local voucherName [/ip hotspot user get $voucherUserId name];
+        :local wasDisabled [/ip hotspot user get $voucherUserId disabled];
+        /ip hotspot user set disabled=yes $voucherUserId;
+        /ip hotspot active remove [find where user=$voucherName];
+        :if ($wasDisabled = false) do={ :log warning ("Used voucher has no recorded expiration; disabled for review: " . $voucherName); };
+      };
       :if ($expires > 0 and $expires <= $currentStamp) do={
         :local voucherName [/ip hotspot user get $voucherUserId name];
         /ip hotspot user ${mode.action} $voucherUserId;
@@ -559,6 +614,7 @@ module.exports = {
   buildVoucherScriptUpdatePlan,
   buildVoucherRevenueReport,
   generateSecureVoucherCode,
+  getVoucherValiditySeconds,
   normalizeVoucherCredential,
   normalizeVoucherGenerationPayload,
   normalizeVoucherProfilePayload,

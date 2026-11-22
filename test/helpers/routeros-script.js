@@ -1,6 +1,6 @@
 // A small evaluator for the RouterOS subset emitted by voucher scripts, not a RouterOS syntax validator.
 function tokenize(source) {
-  const pattern = /\s+|"(?:\\.|[^"\\])*"|\$(?:"[^"]+"|[A-Za-z][A-Za-z0-9]*)|:[A-Za-z-]+|\/[A-Za-z][A-Za-z0-9/-]*|->|!=|<=|>=|[A-Za-z][A-Za-z0-9-]*|\d+(?:s)?|[{}[\]();,.=+*%<>-]/gy;
+  const pattern = /\s+|"(?:\\.|[^"\\])*"|\$(?:"[^"]+"|[A-Za-z][A-Za-z0-9]*)|:[A-Za-z-]+|\/[A-Za-z][A-Za-z0-9/-]*|->|!=|<=|>=|[A-Za-z][A-Za-z0-9-]*|\d+(?:s)?|[{}[\]();,.=+*%<>/-]/gy;
   const tokens = [];
   let offset = 0;
   while (offset < source.length) {
@@ -28,7 +28,7 @@ function parse(source) {
     take("}");
     return statements;
   };
-  const precedence = { or: 1, and: 2, "=": 3, "!=": 3, "<": 3, ">": 3, "<=": 3, ">=": 3, ".": 4, "+": 5, "-": 5, "*": 6, "%": 6, "->": 7 };
+  const precedence = { or: 1, and: 2, "=": 3, "!=": 3, "<": 3, ">": 3, "<=": 3, ">=": 3, ".": 4, "+": 5, "-": 5, "*": 6, "/": 6, "%": 6, "->": 7 };
   const expression = (minimum = 0) => {
     const token = take();
     let node;
@@ -61,7 +61,7 @@ function parse(source) {
   const command = () => {
     const first = take();
     if (first.startsWith(":")) {
-      const arity = { ":len": 1, ":typeof": 1, ":tonum": 1, ":tostr": 1, ":find": 2, ":pick": 3 }[first];
+      const arity = { ":len": 1, ":typeof": 1, ":tonum": 1, ":totime": 1, ":tostr": 1, ":find": 2, ":pick": 3 }[first];
       if (!arity) throw new Error(`Unsupported expression command ${first}`);
       const args = [];
       for (let i = 0; i < arity && peek() !== "]"; i += 1) args.push(expression());
@@ -110,6 +110,10 @@ function parse(source) {
     if (token === ":foreach") {
       const name = take(); take("in"); take("="); const values = expression();
       take("do"); take("="); return { kind: "foreach", name, values, body: block() };
+    }
+    if (token === ":while") {
+      const condition = expression(); take("do"); take("=");
+      return { kind: "while", condition, body: block() };
     }
     if (token === ":do") {
       const body = block(); take("on-error"); take("=");
@@ -160,7 +164,7 @@ function runRouterScript(source, { variables = {}, router, onDelay = () => {}, l
       return {
         "=": () => left === right, "!=": () => left !== right, "<": () => left < right,
         ">": () => left > right, "<=": () => left <= right, ">=": () => left >= right,
-        "+": () => left + right, "-": () => left - right, "*": () => left * right,
+        "+": () => left + right, "-": () => left - right, "*": () => left * right, "/": () => Math.trunc(left / right),
         "%": () => left % right, ".": () => toString(left) + toString(right), "->": () => left?.[right],
       }[node.operator]();
     }
@@ -170,6 +174,7 @@ function runRouterScript(source, { variables = {}, router, onDelay = () => {}, l
         ":len": () => args[0]?.length ?? toString(args[0]).length,
         ":typeof": () => typeof args[0] === "number" ? "num" : args[0] == null ? "nil" : "str",
         ":tonum": () => /^-?\d+$/.test(toString(args[0])) ? Number(args[0]) : null,
+        ":totime": () => { const match = /^(\d+)([smhd])$/.exec(args[0]); if (!match) throw new Error("Unsupported test duration"); return Number(match[1]) * ({ s: 1, m: 60, h: 3600, d: 86400 })[match[2]]; },
         ":tostr": () => toString(args[0]),
         ":pick": () => args[0]?.slice(args[1], args[2]) ?? "",
         ":find": () => { const index = args[0].indexOf(args[1]); return index < 0 ? null : index; },
@@ -200,6 +205,10 @@ function runRouterScript(source, { variables = {}, router, onDelay = () => {}, l
       else if (node.kind === "function") env.values.set(node.name, node);
       else if (node.kind === "set") env.set(node.name, ev(node.value));
       else if (node.kind === "if") execute(ev(node.condition) ? node.body : node.otherwise, new Scope(env));
+      else if (node.kind === "while") {
+        let iterations = 0;
+        while (ev(node.condition)) { if (++iterations > 1500) throw new Error("Test loop limit exceeded"); execute(node.body, new Scope(env)); }
+      }
       else if (node.kind === "foreach") {
         for (const value of ev(node.values)) execute(node.body, new Scope(env, { [node.name]: value }));
       } else if (node.kind === "try") {

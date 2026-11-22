@@ -5,12 +5,20 @@ const {
   VOUCHER_CHARACTER_SETS,
   buildVoucherProfileScripts,
   buildVoucherRevenueReport,
+  getVoucherValiditySeconds,
   normalizeVoucherGenerationPayload,
   normalizeVoucherProfilePayload,
   parseVoucherBatchComment,
   parseVoucherProfileMetadata,
   parseVoucherUsageRecord,
 } = require("../src/modules/vouchers/domain");
+
+test("durasi voucher harus positif, terbatas, dan mendukung kombinasi satuan", () => {
+  assert.equal(getVoucherValiditySeconds("1w2d3h4m5s"), 788645);
+  for (const value of ["0s", "1.5h", "-1d", "99999999999999999999w", "40000d"]) {
+    assert.throws(() => getVoucherValiditySeconds(value), /Masa berlaku voucher/);
+  }
+});
 
 test("domain voucher membaca metadata profile dan komentar batch lama maupun baru", () => {
   assert.deepEqual(

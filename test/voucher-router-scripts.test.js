@@ -8,14 +8,15 @@ const profile = {
   sellingPrice: 3000, costPrice: 2000, commission: 1000, lockUser: false,
 };
 
-function fixture({ date = "nov/22/2026", time = "08:00:00", nextRun = "nov/23 08:00:00", users, onDelay } = {}) {
+function fixture({ date = "nov/22/2026", time = "08:00:00", users, onCommentCheck, commentWriteFailure } = {}) {
   const rows = (users || [{ name: "test-voucher", comment: "vc|batch-abc123|", profile: profile.name }])
-    .map((user, index) => ({ ".id": `*U${index}`, "mac-address": "00:00:00:00:00:00", ...user }));
+    .map((user, index) => ({ ".id": `*U${index}`, "mac-address": "00:00:00:00:00:00", uptime: 0, disabled: false, ...user }));
   const schedulers = [];
   const records = [];
   const disconnected = [];
   const writes = [];
   const logs = [];
+  let commentReads = 0;
   const idOf = (value) => Array.isArray(value) ? value[0] : value;
   const router = ({ path, action, args, positional }) => {
     if (path === "system/clock" && action === "get") return positional[0] === "date" ? date : time;
@@ -31,13 +32,21 @@ function fixture({ date = "nov/22/2026", time = "08:00:00", nextRun = "nov/23 08
     if (action === "find") return table.filter((row) => Object.entries(args).every(([key, value]) => row[key] === value)).map((row) => row[".id"]);
     if (action === "add") {
       if (table.some((row) => row.name === args.name)) throw new Error("Duplicate scheduler");
-      table.push({ ".id": "*TEMP", "next-run": nextRun, ...args });
+      table.push({ ".id": "*TEMP", ...args });
       writes.push({ path, action, args });
       return;
     }
     const row = table.find((item) => item[".id"] === idOf(positional[0]));
     if (!row) throw new Error("Router item not found");
-    if (action === "get") return row[positional[1]] ?? "";
+    if (action === "get") {
+      if (positional[1] === "comment" && ++commentReads === 2) onCommentCheck?.(rows);
+      if (positional[1] === "disabled") return [true, "yes", "true"].includes(row.disabled);
+      return row[positional[1]] ?? "";
+    }
+    if (action === "set" && args.comment && commentWriteFailure) {
+      if (commentWriteFailure === "throw") throw new Error("Connection interrupted while saving expiry");
+      return;
+    }
     if (action === "set") Object.assign(row, args);
     else if (action === "remove") table.splice(table.indexOf(row), 1);
     else throw new Error(`Unsupported router action ${action}`);
@@ -47,41 +56,43 @@ function fixture({ date = "nov/22/2026", time = "08:00:00", nextRun = "nov/23 08
     rows, schedulers, records, disconnected, writes, logs,
     run(source) {
       return runRouterScript(source, {
-        router, logs, onDelay: () => onDelay?.(rows),
+        router, logs,
         variables: { user: "test-voucher", address: "10.0.0.2", "mac-address": "AA:BB:CC:DD:EE:FF" },
       });
     },
   };
 }
 
-test("login ROS 6 dan 7 menormalisasi semua bentuk next-run tanpa mengubah masa berlaku", () => {
+test("login ROS 6 dan 7 menghitung expired langsung tanpa scheduler sementara", () => {
   const cases = [
-    ["nov/22/2026", "12:00:00", "nov/22/2026 12:00:00"],
-    ["nov/22/2026", "nov/23 08:00:00", "nov/23/2026 08:00:00"],
-    ["dec/31/2026", "jan/01 08:00:00", "jan/01/2027 08:00:00"],
-    ["dec/31/2026", "jan/01/2027 08:00:00", "jan/01/2027 08:00:00"],
-    ["2026-11-22", "12:00:00", "2026-11-22 12:00:00"],
-    ["2026-11-22", "2026-11-23 08:00:00", "2026-11-23 08:00:00"],
-    ["2026-12-31", "2027-01-01 08:00:00", "2027-01-01 08:00:00"],
-    ["2028-02-28", "2028-02-29 08:00:00", "2028-02-29 08:00:00"],
+    ["nov/22/2026", "08:00:00", "4h", "nov/22/2026 12:00:00"],
+    ["nov/22/2026", "08:00:00", "1d", "nov/23/2026 08:00:00"],
+    ["dec/31/2026", "23:59:59", "1s", "jan/01/2027 00:00:00"],
+    ["2026-11-22", "08:00:00", "4h", "2026-11-22 12:00:00"],
+    ["2026-11-22", "08:00:00", "1d", "2026-11-23 08:00:00"],
+    ["2026-12-31", "23:59:59", "1s", "2027-01-01 00:00:00"],
+    ["2028-02-28", "08:00:00", "1d", "2028-02-29 08:00:00"],
+    ["2027-02-28", "08:00:00", "1d", "2027-03-01 08:00:00"],
+    ["2100-02-28", "08:00:00", "1d", "2100-03-01 08:00:00"],
+    ["2000-02-28", "08:00:00", "1d", "2000-02-29 08:00:00"],
+    ["2026-01-31", "08:00:00", "30d", "2026-03-02 08:00:00"],
+    ["2026-11-22", "08:00:00", "1w2d3h4m5s", "2026-12-01 11:04:05"],
   ];
-  for (const [date, nextRun, expected] of cases) {
-    const state = fixture({ date, nextRun });
-    state.run(buildVoucherProfileScripts(profile).onLogin);
-    assert.equal(state.rows[0].comment, expected, `${date}: ${nextRun}`);
+  for (const [date, time, validity, expected] of cases) {
+    const state = fixture({ date, time });
+    state.run(buildVoucherProfileScripts({ ...profile, validity }).onLogin);
+    assert.equal(state.rows[0].comment, expected, `${date}: ${validity}`);
     assert.equal(state.schedulers.length, 0);
     assert.equal(state.logs.length, 0);
-    const scheduler = state.writes.find((write) => write.action === "add");
-    assert.equal(scheduler.args["start-date"], date);
-    assert.equal(scheduler.args["start-time"], "08:00:00");
-    assert.equal(scheduler.args.interval, "1d");
+    assert.equal(state.writes.some((write) => write.path === "system/scheduler"), false);
     assert.equal(state.records.length, 1);
     const record = parseVoucherUsageRecord({ ...state.records[0], ".id": "*REC" }, new Map(), "Asia/Jakarta");
     assert.equal(record.amount, 3000);
     assert.equal(record.costPrice, 2000);
     assert.equal(record.commission, 1000);
     assert.equal(record.batchId, "batch-abc123");
-    assert.equal(state.records[0].owner, date.startsWith("dec") || date.startsWith("2026-12") ? "dec2026" : date.startsWith("2028") ? "feb2028" : "nov2026");
+    const expectedOwners = { "dec/31/2026": "dec2026", "2026-12-31": "dec2026", "2028-02-28": "feb2028", "2027-02-28": "feb2027", "2100-02-28": "feb2100", "2000-02-28": "feb2000", "2026-01-31": "jan2026" };
+    assert.equal(state.records[0].owner, expectedOwners[date] || "nov2026");
   }
 });
 
@@ -97,16 +108,16 @@ test("login ulang dan upgrade ROS mempertahankan tanggal expired yang sudah ters
 });
 
 test("aktivasi yang berubah saat login tidak ditimpa dan tidak dicatat dua kali", () => {
-  const state = fixture({ onDelay: (users) => { users[0].comment = "nov/25/2026 08:00:00"; } });
+  const state = fixture({ onCommentCheck: (users) => { users[0].comment = "nov/25/2026 08:00:00"; } });
   state.run(buildVoucherProfileScripts(profile).onLogin);
   assert.equal(state.rows[0].comment, "nov/25/2026 08:00:00");
   assert.equal(state.records.length, 0);
   assert.equal(state.schedulers.length, 0);
 });
 
-test("kegagalan membaca expired membersihkan scheduler dan memutus sesi tanpa memulai ulang voucher", () => {
-  for (const nextRun of ["", "invalid", "2026-02-30 08:00:00", "2026-11-22 08:00:00"]) {
-    const state = fixture({ nextRun });
+test("kegagalan menyimpan expired memutus sesi tanpa meninggalkan scheduler atau catatan pendapatan", () => {
+  for (const commentWriteFailure of ["throw", "ignore"]) {
+    const state = fixture({ commentWriteFailure });
     state.run(buildVoucherProfileScripts(profile).onLogin);
     assert.equal(state.rows[0].comment, "vc|batch-abc123|");
     assert.equal(state.records.length, 0);
@@ -114,6 +125,34 @@ test("kegagalan membaca expired membersihkan scheduler dan memutus sesi tanpa me
     assert.deepEqual(state.disconnected, ["test-voucher"]);
     assert.equal(state.logs[0].level, "error");
   }
+});
+
+test("voucher lama yang sudah dipakai tanpa expired tidak memperoleh masa aktif baru saat login", () => {
+  const state = fixture({ users: [{ name: "test-voucher", profile: profile.name, comment: "up-351-04.20.26-free1", uptime: 90063 }] });
+  state.run(buildVoucherProfileScripts(profile).onLogin);
+  assert.equal(state.rows[0].comment, "up-351-04.20.26-free1");
+  assert.equal(state.rows[0].disabled, "yes");
+  assert.equal(state.records.length, 0);
+  assert.deepEqual(state.disconnected, ["test-voucher"]);
+  assert.equal(state.logs[0].level, "error");
+});
+
+test("monitor memblokir voucher terpakai tanpa expired dan membiarkan stok baru serta pelanggan biasa", () => {
+  const state = fixture({ users: [
+    { name: "stuck", profile: profile.name, comment: "up-351-04.20.26-free1", uptime: 90063 },
+    { name: "new", profile: profile.name, comment: "vc|batch-abc123|", uptime: 0 },
+    { name: "just-logged-in", profile: profile.name, comment: "vc|batch-abc123|", uptime: 1 },
+    { name: "customer", profile: profile.name, comment: "Pelanggan Prabayar", uptime: 90063 },
+    { name: "unmarked", profile: profile.name, comment: "", uptime: 90063 },
+  ] });
+  const monitor = buildVoucherProfileScripts(profile).monitor;
+  state.run(monitor);
+  assert.deepEqual(state.rows.filter(row => row.disabled === "yes").map(row => row.name), ["stuck"]);
+  assert.deepEqual(state.disconnected, ["stuck"]);
+  assert.equal(state.rows.length, 5);
+  assert.equal(state.logs.length, 1);
+  state.run(monitor);
+  assert.equal(state.logs.length, 1);
 });
 
 test("monitor memproses komentar ROS 6 dan 7 pada batas detik, hari, dan tahun", () => {
