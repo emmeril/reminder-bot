@@ -1757,7 +1757,7 @@ test("menu voucher mendukung pembuatan satu akun dan batch", async () => {
   assert.match(html, /getVoucherPriceLabel\(\)/);
   assert.match(html, /<dt>Masa berlaku<\/dt><dd x-text="getVoucherValidityLabel\(\)"><\/dd>/);
   assert.match(html, /<dt>Nilai reward<\/dt><dd>GRATIS<\/dd>/);
-  assert.match(html, /Gunakan voucher ini untuk terhubung ke jaringan WiFi\./);
+  assert.match(html, /Gunakan voucher untuk masuk WiFi\.<br><strong>Huruf besar dan kecil harus sesuai\.<\/strong>/);
   assert.match(html, /Riwayat batch/);
   assert.match(html, /@change="selectVoucherBatch\(selectedVoucherBatchId\)"/);
   assert.match(html, /Profile voucher/);
