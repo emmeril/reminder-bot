@@ -299,6 +299,43 @@ function normalizeVoucherProfilePayload(payload = {}) {
 }
 
 function buildVoucherProfileScripts(profile) {
+  // Compare full calendar values so stored ROS 6 comments remain valid after a ROS 7 upgrade.
+  const dateTimeScript = `:local voucherStamp do={
+    :local raw [:tostr $value];
+    :local dateSize 0;
+    :local yr 0;
+    :local mo 0;
+    :local dy 0;
+    :if ([:len $raw] = 19 and [:pick $raw 4 5] = "-" and [:pick $raw 7 8] = "-") do={
+      :set dateSize 10;
+      :set yr [:tonum [:pick $raw 0 4]];
+      :set mo [:tonum [:pick $raw 5 7]];
+      :set dy [:tonum [:pick $raw 8 10]];
+    };
+    :if ([:len $raw] = 20 and [:pick $raw 3 4] = "/" and [:pick $raw 6 7] = "/") do={
+      :local months ("jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec");
+      :local monthIndex [:find $months [:pick $raw 0 3]];
+      :if ([:typeof $monthIndex] != "num") do={ :return 0; };
+      :set dateSize 11;
+      :set yr [:tonum [:pick $raw 7 11]];
+      :set mo ($monthIndex + 1);
+      :set dy [:tonum [:pick $raw 4 6]];
+    };
+    :if ($dateSize = 0 or [:typeof $yr] != "num" or [:typeof $mo] != "num" or [:typeof $dy] != "num") do={ :return 0; };
+    :if ($yr < 1970 or $yr > 9999 or $mo < 1 or $mo > 12 or $dy < 1) do={ :return 0; };
+    :local monthDays (31,28,31,30,31,30,31,31,30,31,30,31);
+    :local maxDay ($monthDays->($mo - 1));
+    :if ($mo = 2 and (($yr % 4 = 0 and $yr % 100 != 0) or $yr % 400 = 0)) do={ :set maxDay 29; };
+    :if ($dy > $maxDay) do={ :return 0; };
+    :local clockText [:pick $raw ($dateSize + 1) ($dateSize + 9)];
+    :if ([:pick $raw $dateSize ($dateSize + 1)] != " " or [:pick $clockText 2 3] != ":" or [:pick $clockText 5 6] != ":") do={ :return 0; };
+    :local hh [:tonum [:pick $clockText 0 2]];
+    :local mm [:tonum [:pick $clockText 3 5]];
+    :local ss [:tonum [:pick $clockText 6 8]];
+    :if ([:typeof $hh] != "num" or [:typeof $mm] != "num" or [:typeof $ss] != "num") do={ :return 0; };
+    :if ($hh < 0 or $hh > 23 or $mm < 0 or $mm > 59 or $ss < 0 or $ss > 59) do={ :return 0; };
+    :return ($yr * 10000000000 + $mo * 100000000 + $dy * 1000000 + $hh * 10000 + $mm * 100 + $ss);
+  };`;
   const lockMode = profile.lockUser ? "Enable" : "Disable";
   const lockScript = profile.lockUser
     ? '; :local lockUserId [/ip hotspot user find where name=$user]; :if ([:len $lockUserId] > 0) do={ :local currentLock [/ip hotspot user get $lockUserId mac-address]; :if ([:len $currentLock] = 0 or $currentLock = "00:00:00:00:00:00") do={ /ip hotspot user set mac-address=$"mac-address" $lockUserId; } }'
@@ -309,9 +346,112 @@ function buildVoucherProfileScripts(profile) {
     ? `; :local mac $"mac-address"; :local time [/system clock get time ]; /system script add name="$date-|-$time-|-$user-|-${reportPrice}-|-$address-|-$mac-|-${profile.validity}-|-${profile.name}-|-$comment-|-hotspot-|-${profile.costPrice}-|-${profile.commission}" owner="$month$year" source="$date" comment="mikhmon"`
     : "";
   const header = `:put (",${profile.expiredMode},${profile.costPrice},${profile.validity},${profile.sellingPrice},,${lockMode},${profile.commission},")`;
-  const activation = `; {:local comment [ /ip hotspot user get [/ip hotspot user find where name="$user"] comment]; :local ucode [:pic $comment 0 2]; :if ($ucode = "vc" or $ucode = "up" or $comment = "") do={ :local date [ /system clock get date ];:local year [ :pick $date 7 11 ];:local month [ :pick $date 0 3 ]; /system scheduler add name="$user" disabled=no start-date=$date interval="${profile.validity}"; :delay 5s; :local exp [ /system scheduler get [ /system scheduler find where name="$user" ] next-run]; :local getxp [len $exp]; :if ($getxp = 15) do={ :local d [:pick $exp 0 6]; :local t [:pick $exp 7 16]; :local s ("/"); :local exp ("$d$s$year $t"); /ip hotspot user set comment="$exp" [find where name="$user"];}; :if ($getxp = 8) do={ /ip hotspot user set comment="$date $exp" [find where name="$user"];}; :if ($getxp > 15) do={ /ip hotspot user set comment="$exp" [find where name="$user"];};:delay 5s; /system scheduler remove [find where name="$user"]${recordScript}}}${lockScript}`;
-  const monitor = `:local dateint do={:local montharray ( "jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec" );:local days [ :pick $d 4 6 ];:local month [ :pick $d 0 3 ];:local year [ :pick $d 7 11 ];:local monthint ([ :find $montharray $month]);:local month ($monthint + 1);:if ( [len $month] = 1) do={:local zero ("0");:return [:tonum ("$year$zero$month$days")];} else={:return [:tonum ("$year$month$days")];}}; :local timeint do={ :local hours [ :pick $t 0 2 ]; :local minutes [ :pick $t 3 5 ]; :return ($hours * 60 + $minutes) ; }; :local date [ /system clock get date ]; :local time [ /system clock get time ]; :local today [$dateint d=$date] ; :local curtime [$timeint t=$time] ; :foreach i in [ /ip hotspot user find where profile="${profile.name}" ] do={ :local comment [ /ip hotspot user get $i comment]; :local name [ /ip hotspot user get $i name]; :local gettime [:pick $comment 12 20]; :if ([:pick $comment 3] = "/" and [:pick $comment 6] = "/") do={:local expd [$dateint d=$comment] ; :local expt [$timeint t=$gettime] ; :if (($expd < $today and $expt < $curtime) or ($expd < $today and $expt > $curtime) or ($expd = $today and $expt < $curtime)) do={ [ /ip hotspot user ${mode.action} $i ]; [ /ip hotspot active remove [find where user=$name] ];}}}`;
+  const activation = `;
+  ${dateTimeScript}
+  :local voucherUserId [/ip hotspot user find where name=$user];
+  :if ([:len $voucherUserId] != 1) do={ :error "Voucher user not found"; };
+  :local comment [/ip hotspot user get $voucherUserId comment];
+  :local ucode [:pick $comment 0 2];
+  :if ($ucode = "vc" or $ucode = "up" or [:pick $comment 0 8] = "voucher-" or $comment = "") do={
+    :local date [/system clock get date];
+    :local time [/system clock get time];
+    :local started [$voucherStamp value=("$date $time")];
+    :local tempName ("rb-voucher-expiry-" . $user);
+    :local tempId "";
+    :do {
+      :if ($started = 0) do={ :error "Invalid router clock"; };
+      :local year [:pick [:tostr $started] 0 4];
+      :local months ("jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec");
+      :local month ($months->([:tonum [:pick [:tostr $started] 4 6]] - 1));
+      /system scheduler add name=$tempName disabled=no start-date=$date start-time=$time interval="${profile.validity}" on-event="" comment="Reminder Bot voucher expiry";
+      :set tempId [/system scheduler find where name=$tempName and comment="Reminder Bot voucher expiry"];
+      :delay 1s;
+      :local exp [/system scheduler get $tempId next-run];
+      :local expSize [:len $exp];
+      :if ($expSize = 8) do={ :set exp ("$date $exp"); };
+      :if ($expSize = 15) do={
+        :local shortDate [:pick $exp 0 6];
+        :local shortTime [:pick $exp 7 15];
+        :set exp ("$shortDate/$year $shortTime");
+        :if ([$voucherStamp value=$exp] < $started) do={
+          :local nextYear ([:tonum $year] + 1);
+          :set exp ("$shortDate/$nextYear $shortTime");
+        };
+      };
+      :local expires [$voucherStamp value=$exp];
+      :if ($expires = 0 or $expires <= $started) do={ :error "Invalid voucher expiration"; };
+      /system scheduler remove $tempId;
+      :set tempId "";
+      :if ([/ip hotspot user get $voucherUserId comment] = $comment) do={
+        /ip hotspot user set comment=$exp $voucherUserId${recordScript};
+      };
+    } on-error={
+      :if ([:len $tempId] > 0) do={ /system scheduler remove $tempId; };
+      :log error ("Voucher expiration initialization failed: " . $user);
+      :if ([/ip hotspot user get $voucherUserId comment] = $comment) do={
+        /ip hotspot active remove [find where user=$user];
+      };
+    };
+  }${lockScript}`;
+  const monitor = `${dateTimeScript}
+  :local date [/system clock get date];
+  :local time [/system clock get time];
+  :local currentStamp [$voucherStamp value=("$date $time")];
+  :if ($currentStamp = 0) do={ :error "Invalid router clock; voucher expiry skipped"; };
+  :foreach voucherUserId in=[/ip hotspot user find where profile="${profile.name}"] do={
+    :do {
+      :local comment [/ip hotspot user get $voucherUserId comment];
+      :local expires [$voucherStamp value=$comment];
+      :if ($expires > 0 and $expires <= $currentStamp) do={
+        :local voucherName [/ip hotspot user get $voucherUserId name];
+        /ip hotspot user ${mode.action} $voucherUserId;
+        /ip hotspot active remove [find where user=$voucherName];
+      };
+    } on-error={ :log warning ("Voucher expiry check failed: " . $voucherUserId); };
+  };`;
   return { onLogin: `${header}${activation}`, monitor };
+}
+
+function buildVoucherScriptUpdatePlan(profiles, schedulers) {
+  if (!Array.isArray(profiles) || !Array.isArray(schedulers)) {
+    throw new Error("Daftar profile atau scheduler MikroTik tidak valid.");
+  }
+  const changes = [];
+  const skipped = [];
+  for (const profile of profiles) {
+    const onLogin = String(profile["on-login"] || profile.onLogin || "");
+    const metadata = parseVoucherProfileMetadata(onLogin);
+    if (!VOUCHER_EXPIRY_MODES[metadata.expiredMode]) continue;
+    const name = String(profile.name || "");
+    const matches = schedulers.filter((scheduler) => String(scheduler.name || "") === name);
+    const scheduler = matches[0];
+    if (matches.length !== 1 || String(scheduler.comment || "") !== `Monitor Profile ${name}`) {
+      skipped.push({ name, reason: "Monitor profile tidak ditemukan atau dipakai fungsi lain." });
+      continue;
+    }
+    const profileId = String(profile[".id"] || profile.id || "");
+    const schedulerId = String(scheduler[".id"] || scheduler.id || "");
+    if (!profileId || !schedulerId) throw new Error(`ID profile atau scheduler ${name} tidak valid.`);
+    let request;
+    try {
+      request = normalizeVoucherProfilePayload({ name, ...metadata });
+    } catch (error) {
+      skipped.push({ name, reason: error.message });
+      continue;
+    }
+    const scripts = buildVoucherProfileScripts({ ...request, commission: metadata.commission });
+    const onEvent = String(scheduler["on-event"] || scheduler.onEvent || "");
+    if (scripts.onLogin === onLogin && scripts.monitor === onEvent) continue;
+    changes.push({
+      name,
+      profileId,
+      schedulerId,
+      schedulerDisabled: String(scheduler.disabled || "false"),
+      before: { onLogin, onEvent },
+      after: { onLogin: scripts.onLogin, onEvent: scripts.monitor },
+    });
+  }
+  return { changes, skipped };
 }
 
 function normalizeVoucherCredential(value, label, { required = true, maxLength = 64 } = {}) {
@@ -416,6 +556,7 @@ module.exports = {
   VOUCHER_CHARACTER_SETS,
   VOUCHER_EXPIRY_MODES,
   buildVoucherProfileScripts,
+  buildVoucherScriptUpdatePlan,
   buildVoucherRevenueReport,
   generateSecureVoucherCode,
   normalizeVoucherCredential,

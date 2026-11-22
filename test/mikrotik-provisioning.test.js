@@ -423,7 +423,11 @@ test("batch voucher dibatalkan jika pembuatan gagal di tengah proses", async () 
 test("profile voucher memasang script login, monitor expired, dan memigrasikan komentar lama", async () => {
   const profiles = [{ ".id": "*p1", name: "4Jam", "shared-users": "1", "on-login": "" }];
   const schedulers = [{ ".id": "*s1", name: "4Jam", disabled: "false", comment: "Monitor Profile 4Jam" }];
-  const users = [{ ".id": "*u1", name: "voucher-lama", profile: "4Jam", comment: "voucher-mh123-abc123 Batch lama" }];
+  const users = [
+    { ".id": "*u1", name: "voucher-lama", profile: "4Jam", comment: "voucher-mh123-abc123 Batch lama" },
+    { ".id": "*u2", name: "voucher-aktif-ros6", profile: "4Jam", comment: "nov/23/2026 08:00:00" },
+    { ".id": "*u3", name: "voucher-aktif-ros7", profile: "4Jam", comment: "2026-11-23 08:00:00" },
+  ];
   const menuFor = (rows) => ({
     print: async () => rows.map((row) => ({ ...row })),
     add: async (payload) => { rows.push({ ".id": `*${rows.length + 1}`, ...payload }); },
@@ -463,6 +467,8 @@ test("profile voucher memasang script login, monitor expired, dan memigrasikan k
   assert.match(schedulers[0]["on-event"], /profile="4Jam"/);
   assert.equal(schedulers[0].disabled, "no");
   assert.equal(users[0].comment, "vc|mh123-abc123|Batch lama");
+  assert.equal(users[1].comment, "nov/23/2026 08:00:00");
+  assert.equal(users[2].comment, "2026-11-23 08:00:00");
 
   const listed = await service.getVoucherProfiles();
   const profile = listed.profiles.find((item) => item.name === "4Jam");
