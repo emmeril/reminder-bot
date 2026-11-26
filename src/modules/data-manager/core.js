@@ -1,3 +1,4 @@
+const { randomUUID } = require("crypto");
 const fs = require("fs/promises");
 const net = require("net");
 const path = require("path");
@@ -148,6 +149,26 @@ class DataManagerCore {
     });
     this.models.Reminder = jsonPayloadModel("Reminder", "reminders", "id");
     this.models.SentReminder = jsonPayloadModel("SentReminder", "sent_reminders", "id");
+    this.models.ApDownIncident = this.sequelize.define("ApDownIncident", {
+      host: { type: DataTypes.STRING, primaryKey: true },
+      incidentId: { type: DataTypes.UUID, allowNull: false },
+      netwatchSince: { type: DataTypes.DATE, allowNull: true },
+      firstObservedAt: { type: DataTypes.DATE, allowNull: false },
+    }, {
+      tableName: "ap_down_incidents",
+      timestamps: false,
+    });
+    this.models.ApDownNotification = this.sequelize.define("ApDownNotification", {
+      incidentId: { type: DataTypes.UUID, primaryKey: true },
+      contactId: { type: DataTypes.STRING, primaryKey: true },
+      host: { type: DataTypes.STRING, allowNull: false },
+      attemptedAt: { type: DataTypes.DATE, allowNull: false },
+      sentAt: { type: DataTypes.DATE, allowNull: true },
+      status: { type: DataTypes.STRING, allowNull: false },
+    }, {
+      tableName: "ap_down_notifications",
+      timestamps: false,
+    });
     this.models.VoucherBatch = jsonPayloadModel("VoucherBatch", "voucher_batches", "batchId");
     this.models.VoucherRevenueEntry = jsonPayloadModel(
       "VoucherRevenueEntry",
@@ -304,6 +325,73 @@ class DataManagerCore {
 
   async withDatabaseWrite(operation) {
     return this.dbWriteLock.runExclusive("database_write", operation);
+  }
+
+  async observeApDownIncident(host, netwatchSince, firstObservedAt) {
+    return this.withDatabaseWrite(async () => {
+      const incidents = this.models.ApDownIncident;
+      const active = (await incidents.findByPk(host))?.get({ plain: true });
+      const newIncident = () => ({ host, incidentId: randomUUID(), netwatchSince, firstObservedAt });
+
+      if (!active) {
+        try {
+          const incident = await incidents.create(newIncident());
+          return incident.get({ plain: true });
+        } catch (error) {
+          if (!(error instanceof Sequelize.UniqueConstraintError)) throw error;
+          return null;
+        }
+      }
+
+      if (!netwatchSince || active.netwatchSince?.getTime() === netwatchSince.getTime()) {
+        return active;
+      }
+
+      const matchesFirstObservation = !active.netwatchSince && netwatchSince <= active.firstObservedAt;
+      const changes = matchesFirstObservation ? { netwatchSince } : newIncident();
+      const [updated] = await incidents.update(changes, {
+        where: { host, incidentId: active.incidentId, netwatchSince: active.netwatchSince },
+      });
+      return updated ? { ...active, ...changes } : null;
+    });
+  }
+
+  async closeRecoveredApDownIncidents(hosts, observedAt) {
+    if (hosts.length === 0) return;
+    await this.withDatabaseWrite(() => this.models.ApDownIncident.destroy({
+      where: { host: { [Op.in]: hosts }, firstObservedAt: { [Op.lte]: observedAt } },
+    }));
+  }
+
+  async getApDownNotificationContacts(incidentId) {
+    const attempts = await this.models.ApDownNotification.findAll({
+      where: { incidentId },
+      attributes: ["contactId"],
+      raw: true,
+    });
+    return new Set(attempts.map((attempt) => attempt.contactId));
+  }
+
+  async reserveApDownNotification(incident, contactId) {
+    try {
+      await this.withDatabaseWrite(() => this.models.ApDownNotification.create({
+        incidentId: incident.incidentId,
+        contactId,
+        host: incident.host,
+        attemptedAt: new Date(),
+        status: "pending",
+      }));
+      return true;
+    } catch (error) {
+      if (!(error instanceof Sequelize.UniqueConstraintError)) throw error;
+      return false;
+    }
+  }
+
+  async finishApDownNotification(incidentId, contactId, status, sentAt) {
+    await this.withDatabaseWrite(() => this.models.ApDownNotification.update({ status, sentAt }, {
+      where: { incidentId, contactId },
+    }));
   }
 
   async withDataMutation(operation) {

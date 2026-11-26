@@ -1039,7 +1039,6 @@ class ApDownNotifier {
     this.notificationBot = notificationBot;
     this.dataManager = dataManager;
     this.activityLog = activityLog;
-    this.monitorStates = new Map();
     this.isInitialized = false;
     this.isProcessing = false;
   }
@@ -1048,71 +1047,13 @@ class ApDownNotifier {
     return String(value || "UNKNOWN").trim().toUpperCase();
   }
 
-  getMinimumDownMinutes() {
-    const settings = this.dataManager.getSettings();
+  getMinimumDownMinutes(settings) {
     return sanitizePositiveInteger(
       settings.apDownMinimumDownMinutes || settings.apDownConfirmationChecks,
       DEFAULT_SETTINGS.apDownMinimumDownMinutes,
       1,
       120
     );
-  }
-
-  getSinceAgeMinutes(monitor, state) {
-    const sinceDate = parseNetwatchSinceDate(monitor.since);
-    if (sinceDate) {
-      return Math.max(0, (Date.now() - sinceDate.getTime()) / 60000);
-    }
-
-    if (!state.firstObservedAt) {
-      return null;
-    }
-
-    return Math.max(0, (Date.now() - state.firstObservedAt) / 60000);
-  }
-
-  syncMonitorState(host, monitor) {
-    const currentStatus = this.normalizeStatus(monitor.status);
-    const currentSince = sanitizeInput(monitor.since || "");
-    const previousState = this.monitorStates.get(host) || {
-      alertAttempted: false,
-      lastStatus: "UNKNOWN",
-      lastSince: "",
-      firstObservedAt: null,
-      attemptedContactIds: new Set(),
-    };
-
-    if (currentStatus !== "DOWN") {
-      if (previousState.alertAttempted || previousState.lastStatus === "DOWN") {
-        this.activityLog.push("info", "ap-monitor", `AP ${host} kembali ${currentStatus}; status alert direset`);
-      }
-
-      const nextState = {
-        alertAttempted: false,
-        lastStatus: currentStatus,
-        lastSince: currentSince,
-        firstObservedAt: null,
-        attemptedContactIds: new Set(),
-      };
-      this.monitorStates.set(host, nextState);
-      return nextState;
-    }
-
-    const sinceChanged = previousState.lastSince !== currentSince;
-    const isNewIncident = previousState.lastStatus !== "DOWN" || sinceChanged;
-    const nextState = {
-      ...previousState,
-      alertAttempted: isNewIncident ? false : previousState.alertAttempted,
-      lastStatus: currentStatus,
-      lastSince: currentSince,
-      firstObservedAt: isNewIncident || !previousState.firstObservedAt ? Date.now() : previousState.firstObservedAt,
-      attemptedContactIds: isNewIncident
-        ? new Set()
-        : new Set(previousState.attemptedContactIds || []),
-    };
-
-    this.monitorStates.set(host, nextState);
-    return nextState;
   }
 
   renderApDownMessage(template, context) {
@@ -1125,6 +1066,56 @@ class ApDownNotifier {
       .replace(/{{\s*companyName\s*}}/gi, context.companyName || "");
   }
 
+  async notifyLinkedContacts(incident, host, settings) {
+    const linkedContacts = this.dataManager.getContacts()
+      .filter((contact) => normalizeNetworkHost(contact.linkedApHost) === incident.host);
+    if (linkedContacts.length === 0) return;
+
+    const attemptedContacts = await this.dataManager.getApDownNotificationContacts(incident.incidentId);
+    for (const contact of linkedContacts) {
+      const contactId = String(contact.id);
+      if (attemptedContacts.has(contactId)) continue;
+
+      const message = this.renderApDownMessage(settings.apDownMessageTemplate, {
+        name: contact.name,
+        host,
+        status: "DOWN",
+        supportSignature: settings.supportSignature,
+        companyName: settings.companyName,
+      });
+
+      // Reserve before handing off to WhatsApp, since a restart can lose its response.
+      if (!await this.dataManager.reserveApDownNotification(incident, contactId)) continue;
+      attemptedContacts.add(contactId);
+
+      let result;
+      try {
+        result = await this.notificationBot.sendMessage(contact.phoneNumber, message);
+      } catch (error) {
+        await this.dataManager.finishApDownNotification(incident.incidentId, contactId, "failed", null);
+        this.activityLog.push("error", "ap-monitor", `Gagal kirim notifikasi AP DOWN ke ${contact.phoneNumber}`, {
+          host,
+          contactId,
+          error: error.message,
+        });
+        continue;
+      }
+
+      const sentAt = new Date();
+      const status = result?.deliveryStatus || "accepted";
+      await this.dataManager.finishApDownNotification(incident.incidentId, contactId, status, sentAt);
+      const confirmed = status === "delivered" || status === "read";
+      this.activityLog.push("info", "ap-monitor", confirmed
+        ? `Notifikasi AP DOWN terkirim ke ${contact.phoneNumber}`
+        : `WhatsApp menerima notifikasi AP DOWN untuk ${contact.phoneNumber}`, {
+        host,
+        contactId,
+        status,
+        sentAt: sentAt.toISOString(),
+      });
+    }
+  }
+
   async processNetwatchChanges() {
     if (this.isProcessing) {
       this.activityLog.push("info", "ap-monitor", "Pemeriksaan AP dilewati karena proses sebelumnya masih berjalan");
@@ -1133,109 +1124,40 @@ class ApDownNotifier {
 
     this.isProcessing = true;
     try {
+      const observedAt = new Date();
       const monitors = await this.mikrotikService.getNetwatchStatus();
-      const currentStatuses = new Map();
       const settings = this.dataManager.getSettings();
-
-      if (!this.isInitialized) {
-        for (const monitor of monitors) {
-          const host = sanitizeInput(String(monitor.host || ""));
-          const hostKey = normalizeNetworkHost(host);
-          if (!hostKey) continue;
-
-          const status = this.normalizeStatus(monitor.status);
-          const currentSince = sanitizeInput(monitor.since || "");
-          currentStatuses.set(hostKey, status);
-          this.monitorStates.set(hostKey, {
-            alertAttempted: false,
-            lastStatus: status,
-            lastSince: currentSince,
-            firstObservedAt: status === "DOWN" ? Date.now() : null,
-            attemptedContactIds: new Set(),
-          });
-        }
-
-        this.isInitialized = true;
-        return;
-      }
-
-      const minimumDownMinutes = this.getMinimumDownMinutes();
+      const downMonitors = new Map();
+      const recoveredHosts = new Set();
 
       for (const monitor of monitors) {
-        const host = sanitizeInput(String(monitor.host || ""));
-        const hostKey = normalizeNetworkHost(host);
+        const hostKey = normalizeNetworkHost(monitor.host);
         if (!hostKey) continue;
 
         const currentStatus = this.normalizeStatus(monitor.status);
-        currentStatuses.set(hostKey, currentStatus);
-
-        const state = this.syncMonitorState(hostKey, monitor);
-        if (currentStatus !== "DOWN") continue;
-        if (settings.notifyContactsOnApDown === false) continue;
-
-        const sinceAgeMinutes = this.getSinceAgeMinutes(monitor, state);
-        if (sinceAgeMinutes === null) {
-          this.activityLog.push(
-            "warn",
-            "ap-monitor",
-            `AP ${host} status DOWN tapi nilai since belum bisa dibaca, menunggu pembacaan berikutnya`
-          );
-          continue;
-        }
-
-        if (sinceAgeMinutes < minimumDownMinutes) {
-          this.activityLog.push(
-            "info",
-            "ap-monitor",
-            `AP ${host} DOWN sejak ${sanitizeInput(monitor.since || "-")} (${sinceAgeMinutes.toFixed(1)} menit), menunggu hingga ${minimumDownMinutes} menit`
-          );
-          continue;
-        }
-
-        const linkedContacts = this.dataManager
-          .getContacts()
-          .filter((contact) => normalizeNetworkHost(contact.linkedApHost) === hostKey);
-        const attemptedContactIds = new Set(state.attemptedContactIds || []);
-
-        for (const contact of linkedContacts) {
-          if (attemptedContactIds.has(String(contact.id))) continue;
-          attemptedContactIds.add(String(contact.id));
-
-          try {
-            const message = this.renderApDownMessage(settings.apDownMessageTemplate, {
-              name: contact.name,
-              host,
-              status: currentStatus,
-              supportSignature: settings.supportSignature || "CS Emmeril Hotspot",
-              companyName: settings.companyName || "",
-            });
-            await this.notificationBot.sendMessage(contact.phoneNumber, message);
-            this.activityLog.push("info", "ap-monitor", `Notifikasi AP DOWN terkirim ke ${contact.phoneNumber}`, {
-              host,
-              contactId: contact.id,
-            });
-          } catch (error) {
-            this.activityLog.push("error", "ap-monitor", `Gagal kirim notifikasi AP DOWN ke ${contact.phoneNumber}`, {
-              host,
-              error: error.message,
-              contactId: contact.id,
-            });
-          }
-        }
-
-        this.monitorStates.set(hostKey, {
-          ...state,
-          alertAttempted: linkedContacts.length > 0
-            && linkedContacts.every((contact) => attemptedContactIds.has(String(contact.id))),
-          attemptedContactIds,
-        });
-      }
-
-      for (const host of Array.from(this.monitorStates.keys())) {
-        if (!currentStatuses.has(host)) {
-          this.monitorStates.delete(host);
+        if (currentStatus === "UP") recoveredHosts.add(hostKey);
+        if (currentStatus === "DOWN" && !downMonitors.has(hostKey)) {
+          downMonitors.set(hostKey, monitor);
         }
       }
+
+      const recovered = [...recoveredHosts].filter((host) => !downMonitors.has(host));
+      await this.dataManager.closeRecoveredApDownIncidents(recovered, observedAt);
+
+      const minimumDownMinutes = this.getMinimumDownMinutes(settings);
+      for (const [hostKey, monitor] of downMonitors) {
+        const netwatchSince = parseNetwatchSinceDate(monitor.since);
+        const incident = await this.dataManager.observeApDownIncident(hostKey, netwatchSince, observedAt);
+        if (!incident || !this.isInitialized || settings.notifyContactsOnApDown === false) continue;
+
+        const downSince = incident.netwatchSince || incident.firstObservedAt;
+        if (observedAt - downSince < minimumDownMinutes * 60000) continue;
+
+        const host = sanitizeInput(String(monitor.host || ""));
+        await this.notifyLinkedContacts(incident, host, settings);
+      }
+
+      this.isInitialized = true;
     } finally {
       this.isProcessing = false;
     }
