@@ -2063,7 +2063,7 @@ test("data pelanggan dipertahankan ketika penghapusan akun hotspot gagal", async
   assert.equal(localDeleteCalls, 0);
 });
 
-test("akun hotspot dipulihkan ketika penghapusan data lokal gagal", async () => {
+test("akun hotspot, IP Binding, dan No-Admin dipulihkan ketika penghapusan data lokal gagal", async () => {
   CONFIG.WEB_API_KEY = "test-api-key";
   const events = [];
   const contact = {
@@ -2072,6 +2072,8 @@ test("akun hotspot dipulihkan ketika penghapusan data lokal gagal", async () => 
     mikrotikUsername: "pelanggan_rollback",
     mikrotikPassword: "67892",
     mikrotikProfile: "50M",
+    mikrotikMacAddresses: ["AA:BB:CC:DD:EE:92"],
+    hotspotAccessMode: "BOTH",
     hotspotProvisioningStatus: "ACTIVE",
   };
   const baseUrl = await startServer({
@@ -2085,9 +2087,22 @@ test("akun hotspot dipulihkan ketika penghapusan data lokal gagal", async () => 
       events.push("mikrotik-delete");
       return { username: contact.mikrotikUsername, removedUsers: 1, activeSessionsKilled: 0 };
     },
+    deleteIpBinding: async ({ macAddress }) => {
+      events.push(`binding-delete:${macAddress}`);
+      return { removedBindings: 1 };
+    },
+    deleteIpBindingNoAdminEntries: async (contactId) => {
+      events.push(`no-admin-delete:${contactId}`);
+    },
     reactivateHotspotUser: async (account) => {
       events.push(`mikrotik-restore:${account.username}`);
       return { ...account, created: true };
+    },
+    upsertIpBinding: async ({ macAddress, type }) => {
+      events.push(`binding-restore:${macAddress}:${type}`);
+    },
+    syncIpBindingBandwidthForCustomer: async ({ contactId, disabled }) => {
+      events.push(`binding-sync:${contactId}:${disabled}`);
     },
   });
 
@@ -2101,8 +2116,12 @@ test("akun hotspot dipulihkan ketika penghapusan data lokal gagal", async () => 
   assert.match(payload.error, /sudah dipulihkan/);
   assert.deepEqual(events, [
     "mikrotik-delete",
+    "binding-delete:AA:BB:CC:DD:EE:92",
+    "no-admin-delete:contact-delete-rollback",
     "local-delete",
     "mikrotik-restore:pelanggan_rollback",
+    "binding-restore:AA:BB:CC:DD:EE:92:bypassed",
+    "binding-sync:contact-delete-rollback:false",
   ]);
 });
 

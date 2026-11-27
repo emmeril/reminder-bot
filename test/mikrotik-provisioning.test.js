@@ -1188,7 +1188,7 @@ test("IP Binding menolak MAC yang sudah dimiliki pelanggan lain", async () => {
   );
 });
 
-function createBandwidthService({ profiles = [], leases = [], hosts = [], queues = [] } = {}) {
+function createBandwidthService({ profiles = [], leases = [], hosts = [], bindings = [], queues = [], addressList = [] } = {}) {
   const rows = queues.map((queue) => ({ ...queue }));
   const queueMenu = {
     print: async () => rows.map((queue) => ({ ...queue })),
@@ -1215,11 +1215,85 @@ function createBandwidthService({ profiles = [], leases = [], hosts = [], queues
       if (path === "/ip/hotspot/user/profile") return { print: async () => profiles.map((row) => ({ ...row })) };
       if (path === "/ip/dhcp-server/lease") return { print: async () => leases.map((row) => ({ ...row })) };
       if (path === "/ip/hotspot/host") return { print: async () => hosts.map((row) => ({ ...row })) };
+      if (path === "/ip/hotspot/ip-binding") return {
+        print: async ({ comment }) => bindings.filter((row) => row.comment === comment).map((row) => ({ ...row })),
+      };
+      if (path === "/ip/firewall/address-list") return {
+        print: async ({ list }) => addressList.filter((row) => row.list === list).map((row) => ({ ...row })),
+        add: async (payload) => {
+          const duplicate = addressList.some((row) => row.list === payload.list
+            && row.address.replace(/\/32$/, "") === payload.address);
+          if (duplicate) throw new Error("already have such entry");
+          addressList.push({ ".id": `*A${addressList.length + 1}-${payload.address}`, ...payload });
+        },
+        update: async (payload, id) => {
+          const row = addressList.find((item) => item[".id"] === id);
+          assert.ok(row);
+          Object.assign(row, payload);
+        },
+        remove: async (id) => {
+          const index = addressList.findIndex((row) => row[".id"] === id);
+          assert.notEqual(index, -1);
+          addressList.splice(index, 1);
+        },
+      };
       throw new Error(`Menu tidak dikenal: ${path}`);
     },
   }, {});
   return { service, queues: rows };
 }
+
+test("No-Admin menyinkronkan hanya IP Binding bypassed, termasuk profil tanpa rate limit", async () => {
+  const owner = "reminder-bot:pelanggan-binding";
+  const firstMac = "AA:BB:CC:DD:EE:51";
+  const secondMac = "AA:BB:CC:DD:EE:52";
+  const hotspotMac = "AA:BB:CC:DD:EE:53";
+  const bindings = [
+    { "mac-address": firstMac, type: "bypassed", comment: owner },
+    { "mac-address": secondMac, type: "bypassed", comment: owner },
+    { "mac-address": hotspotMac, type: "regular", comment: owner },
+  ];
+  const leases = [
+    { "mac-address": firstMac, "active-address": "10.51.0.51", status: "bound" },
+    { "mac-address": hotspotMac, "active-address": "10.51.0.53", status: "bound" },
+  ];
+  const hosts = [];
+  const manualEntry = { ".id": "*manual", list: "No-Admin", address: "10.51.0.52/32", comment: "profil hotspot" };
+  const addressList = [manualEntry];
+  const { service } = createBandwidthService({
+    profiles: [{ name: "Tanpa Limit" }], bindings, leases, hosts, addressList,
+  });
+  const customer = {
+    contactId: "pelanggan-binding", profile: "Tanpa Limit", macAddresses: [firstMac, secondMac, hotspotMac],
+  };
+
+  const initial = await service.syncIpBindingBandwidthForCustomer(customer);
+  assert.equal(initial.status, "NO_RATE_LIMIT");
+  assert.deepEqual(addressList.map((row) => row.address), ["10.51.0.52/32", "10.51.0.51"]);
+
+  leases[0]["active-address"] = "10.51.0.54";
+  hosts.push({ "mac-address": secondMac, "to-address": "10.51.0.55" });
+  await service.syncIpBindingBandwidthForCustomers([customer]);
+  await service.syncIpBindingBandwidthForCustomer(customer);
+  assert.deepEqual(addressList.map((row) => row.address), ["10.51.0.52/32", "10.51.0.54", "10.51.0.55"]);
+
+  hosts[0]["to-address"] = "10.51.0.52";
+  await service.syncIpBindingBandwidthForCustomer(customer);
+  assert.deepEqual(addressList.map((row) => row.address), ["10.51.0.52/32", "10.51.0.54"]);
+
+  bindings[0].type = "regular";
+  bindings[1].type = "regular";
+  await service.syncIpBindingBandwidthForCustomer({ ...customer, disabled: true });
+  assert.deepEqual(addressList, [manualEntry]);
+
+  bindings[0].type = "bypassed";
+  bindings[0].address = "10.51.0.56/32";
+  leases.shift();
+  await service.syncIpBindingBandwidthForCustomer(customer);
+  assert.deepEqual(addressList.map((row) => row.address), ["10.51.0.52/32", "10.51.0.56"]);
+  await service.deleteIpBindingNoAdminEntries(customer.contactId);
+  assert.deepEqual(addressList, [manualEntry]);
+});
 
 test("bandwidth beberapa IP Binding membuat satu Simple Queue untuk setiap IP", async () => {
   const { service, queues } = createBandwidthService({

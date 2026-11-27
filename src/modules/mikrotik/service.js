@@ -5,6 +5,7 @@ const path = require("path");
 const crypto = require("crypto");
 const ftp = require("basic-ftp");
 const { RouterOSClient } = require("routeros-client");
+const AsyncLock = require("../../async-lock");
 const { CONFIG, DEFAULT_SETTINGS } = require("../../config");
 const {
   VOUCHER_CHARACTER_SETS,
@@ -43,12 +44,15 @@ const {
   sleep,
 } = require("../../utils");
 
+const IP_BINDING_ADDRESS_LIST = "No-Admin";
+
 class MikrotikService {
   constructor(activityLog) {
     this.activityLog = activityLog;
     this.hotspotUserCache = null;
     this.hotspotUserRequest = null;
     this.activeHotspotRequest = null;
+    this.addressListLock = new AsyncLock();
   }
 
   getConnectionConfigs() {
@@ -1183,11 +1187,114 @@ class MikrotikService {
     });
   }
 
+  async resolveIpBindingDevices(conn, macAddresses) {
+    if (macAddresses.length === 0) return [];
+    const [leases, hotspotHosts] = await Promise.all([
+      conn.menu("/ip/dhcp-server/lease").print(),
+      conn.menu("/ip/hotspot/host").print(),
+    ]);
+    const addressByMac = new Map();
+    const rememberAddress = (row, source) => {
+      let macAddress;
+      try {
+        macAddress = normalizeMacAddress(readRouterValue(row, "mac-address", "macAddress", ""));
+      } catch (_error) {
+        return;
+      }
+      if (!macAddresses.includes(macAddress) || addressByMac.has(macAddress)) return;
+      const candidates = source === "DHCP"
+        ? [readRouterValue(row, "active-address", "activeAddress", ""), row.address]
+        : [readRouterValue(row, "to-address", "toAddress", ""), row.address];
+      const address = candidates.map((value) => String(value || "").trim())
+        .find((value) => net.isIP(value) === 4);
+      if (address) addressByMac.set(macAddress, { address, source });
+    };
+    for (const lease of leases || []) rememberAddress(lease, "DHCP");
+    for (const host of hotspotHosts || []) rememberAddress(host, "HOTSPOT");
+
+    return macAddresses.map((macAddress) => {
+      const resolved = addressByMac.get(macAddress);
+      return resolved
+        ? { macAddress, address: resolved.address, source: resolved.source, status: "READY" }
+        : { macAddress, address: "", source: "", status: "PENDING_DHCP" };
+    });
+  }
+
+  async syncIpBindingNoAdminWithConnection(conn, contactId, devices) {
+    return this.addressListLock.runExclusive(IP_BINDING_ADDRESS_LIST, async () => {
+      const desired = new Set();
+      if (devices.length > 0) {
+        const bindingOwner = buildIpBindingOwnerComment(contactId);
+        const bindings = await conn.menu("/ip/hotspot/ip-binding").print({ comment: bindingOwner });
+        const addressesByMac = new Map(devices.map(({ macAddress, address }) => [macAddress, address]));
+        for (const row of bindings || []) {
+          if (row.comment !== bindingOwner || row.type !== "bypassed"
+            || ["true", "yes"].includes(String(row.disabled).toLowerCase())) continue;
+          const macAddress = normalizeMacAddress(readRouterValue(row, "mac-address", "macAddress", ""));
+          if (!addressesByMac.has(macAddress)) continue;
+          const configuredAddress = String(row.address || "").trim().replace(/\/32$/, "");
+          const address = [addressesByMac.get(macAddress), configuredAddress]
+            .find((value) => value && value !== "0.0.0.0" && net.isIP(value) === 4);
+          if (address) desired.add(address);
+        }
+      }
+
+      const ownerComment = `reminder-bot-no-admin:${contactId}`;
+      const menu = conn.menu("/ip/firewall/address-list");
+      const rows = await menu.print({ list: IP_BINDING_ADDRESS_LIST });
+      const activeAddresses = new Set();
+      const disabledOwnedEntries = new Map();
+      for (const row of rows || []) {
+        if (row.list !== IP_BINDING_ADDRESS_LIST) continue;
+        const address = String(row.address || "").trim().replace(/\/32$/, "");
+        const owned = row.comment === ownerComment;
+        const id = row[".id"] || row.id || row.numbers || row.number;
+        if (owned && !desired.has(address)) {
+          if (!id) throw new Error(`ID entri ${IP_BINDING_ADDRESS_LIST} ${address} tidak ditemukan.`);
+          await menu.remove(String(id));
+        } else if (!["true", "yes"].includes(String(row.disabled).toLowerCase())) {
+          activeAddresses.add(address);
+        } else if (owned) {
+          if (!id) throw new Error(`ID entri ${IP_BINDING_ADDRESS_LIST} ${address} tidak ditemukan.`);
+          disabledOwnedEntries.set(address, String(id));
+        }
+      }
+
+      for (const address of desired) {
+        if (activeAddresses.has(address)) continue;
+        const disabledId = disabledOwnedEntries.get(address);
+        if (disabledId) {
+          await menu.update({ disabled: "no" }, disabledId);
+        } else {
+          await menu.add({ list: IP_BINDING_ADDRESS_LIST, address, comment: ownerComment });
+        }
+      }
+    });
+  }
+
+  async deleteIpBindingNoAdminEntries(contactId) {
+    return this.withConnection((conn) => this.syncIpBindingNoAdminWithConnection(conn, contactId, []));
+  }
+
   async syncIpBindingBandwidthWithConnection(conn, customer = {}) {
     const contactId = String(customer.contactId || customer.id || "").trim();
     if (!contactId) throw new Error("ID pelanggan wajib diisi untuk sinkronisasi bandwidth.");
     const profileName = sanitizeInput(String(customer.profile || customer.mikrotikProfile || ""));
     const macAddresses = normalizeMacAddresses(customer.macAddresses || customer.mikrotikMacAddresses);
+    const disabled = Boolean(customer.disabled);
+    let devices;
+    if (macAddresses.length > 0) {
+      try {
+        if (!disabled) devices = await this.resolveIpBindingDevices(conn, macAddresses);
+        await this.syncIpBindingNoAdminWithConnection(conn, contactId, devices || []);
+      } catch (error) {
+        this.activityLog.push("warn", "mikrotik", `Sinkronisasi ${IP_BINDING_ADDRESS_LIST} gagal untuk pelanggan ${contactId}`, {
+          contactId,
+          error: error.message,
+        });
+      }
+    }
+
     const ownerComment = buildIpBindingBandwidthOwnerComment(contactId);
     const queueMenu = conn.menu("/queue/simple");
     const queueRows = await queueMenu.print();
@@ -1233,41 +1340,7 @@ class MikrotikService {
       };
     }
 
-    const [leases, hotspotHosts] = await Promise.all([
-      conn.menu("/ip/dhcp-server/lease").print(),
-      conn.menu("/ip/hotspot/host").print(),
-    ]);
-    const addressByMac = new Map();
-    const rememberAddress = (row, source) => {
-      let macAddress;
-      try {
-        macAddress = normalizeMacAddress(readRouterValue(row, "mac-address", "macAddress", ""));
-      } catch (_error) {
-        return;
-      }
-      if (!macAddresses.includes(macAddress) || addressByMac.has(macAddress)) return;
-      const candidates = source === "DHCP"
-        ? [
-            readRouterValue(row, "active-address", "activeAddress", ""),
-            row.address,
-          ]
-        : [
-            readRouterValue(row, "to-address", "toAddress", ""),
-            row.address,
-          ];
-      const address = candidates.map((value) => String(value || "").trim())
-        .find((value) => net.isIP(value) === 4);
-      if (address) addressByMac.set(macAddress, { address, source });
-    };
-    for (const lease of leases || []) rememberAddress(lease, "DHCP");
-    for (const host of hotspotHosts || []) rememberAddress(host, "HOTSPOT");
-
-    const devices = macAddresses.map((macAddress) => {
-      const resolved = addressByMac.get(macAddress);
-      return resolved
-        ? { macAddress, address: resolved.address, source: resolved.source, status: "READY" }
-        : { macAddress, address: "", source: "", status: "PENDING_DHCP" };
-    });
+    devices ??= await this.resolveIpBindingDevices(conn, macAddresses);
     const targetAddresses = normalizeQueueTarget(devices.map((device) => device.address));
     const pendingMacAddresses = devices
       .filter((device) => !device.address)
@@ -1285,7 +1358,6 @@ class MikrotikService {
       };
     }
 
-    const disabled = Boolean(customer.disabled);
     const queueLimitsMatch = (row) => (
       normalizeSimpleQueueLimitForComparison(readRouterValue(row, "max-limit", "maxLimit", ""))
         === normalizeSimpleQueueLimitForComparison(queueLimits.maxLimit)

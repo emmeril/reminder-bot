@@ -313,6 +313,9 @@ class WebServer {
         await this.mikrotikService.deleteIpBinding({ macAddress, contactId: contact.id });
         completedRemovals.push(macAddress);
       }
+      if (desired.length === 0 && typeof this.mikrotikService.deleteIpBindingNoAdminEntries === "function") {
+        await this.mikrotikService.deleteIpBindingNoAdminEntries(contact.id);
+      }
       const updated = await this.dataManager.setContactMikrotikMacAddresses(contact.id, desired);
       return this.syncContactIpBindingBandwidth(updated);
     } catch (error) {
@@ -978,7 +981,7 @@ class WebServer {
       const restoreState = getHotspotAccessRouterState(accessMode, serviceDisabled);
       const bindingType = restoreState.bindingType;
       const removedMacAddresses = [];
-      let bandwidthQueueRemoved = false;
+      let ipBindingResourcesChanged = false;
       let hotspotDeletion = {
         username: username || null,
         macAddresses,
@@ -991,7 +994,7 @@ class WebServer {
       const restoreMikrotikAccess = async ({
         restoreUser = false,
         restoreBindings = [],
-        restoreBandwidth = false,
+        restoreIpBindingResources = false,
       } = {}) => {
         if (restoreUser) {
           if (!password || !contact.mikrotikProfile) throw new Error("Data profile atau password hotspot tidak lengkap.");
@@ -1012,7 +1015,7 @@ class WebServer {
             type: bindingType,
           });
         }
-        if (restoreBandwidth && typeof this.mikrotikService.syncIpBindingBandwidthForCustomer === "function") {
+        if (restoreIpBindingResources && typeof this.mikrotikService.syncIpBindingBandwidthForCustomer === "function") {
           await this.mikrotikService.syncIpBindingBandwidthForCustomer({
             contactId: contact.id,
             profile: contact.mikrotikProfile,
@@ -1035,7 +1038,11 @@ class WebServer {
           if (typeof this.mikrotikService.deleteIpBindingBandwidthQueue === "function") {
             const queueResult = await this.mikrotikService.deleteIpBindingBandwidthQueue(contact.id);
             hotspotDeletion.removedQueues = queueResult.removedQueues || 0;
-            bandwidthQueueRemoved = hotspotDeletion.removedQueues > 0;
+            ipBindingResourcesChanged = hotspotDeletion.removedQueues > 0;
+          }
+          if (macAddresses.length > 0 && typeof this.mikrotikService.deleteIpBindingNoAdminEntries === "function") {
+            ipBindingResourcesChanged = true;
+            await this.mikrotikService.deleteIpBindingNoAdminEntries(contact.id);
           }
           hotspotDeletion.skipped = false;
         } catch (error) {
@@ -1043,7 +1050,7 @@ class WebServer {
             await restoreMikrotikAccess({
               restoreUser: hotspotDeletion.removedUsers > 0,
               restoreBindings: removedMacAddresses,
-              restoreBandwidth: bandwidthQueueRemoved,
+              restoreIpBindingResources: ipBindingResourcesChanged,
             });
           } catch (rollbackError) {
             const wrapped = new Error(`Penghapusan akses MikroTik gagal dan rollback tidak lengkap: ${rollbackError.message}`);
@@ -1062,13 +1069,15 @@ class WebServer {
       try {
         deleted = await this.dataManager.deleteContact(contact.id);
       } catch (error) {
-        if ((!username || hotspotDeletion.removedUsers < 1) && hotspotDeletion.removedBindings < 1) throw error;
+        if (hotspotDeletion.removedUsers < 1 && hotspotDeletion.removedBindings < 1 && !ipBindingResourcesChanged) {
+          throw error;
+        }
 
         try {
           await restoreMikrotikAccess({
             restoreUser: username && hotspotDeletion.removedUsers > 0,
             restoreBindings: removedMacAddresses,
-            restoreBandwidth: bandwidthQueueRemoved,
+            restoreIpBindingResources: ipBindingResourcesChanged,
           });
         } catch (rollbackError) {
           this.activityLog.push("error", "mikrotik", `Rollback penghapusan akun hotspot ${username} gagal: ${rollbackError.message}`, {
